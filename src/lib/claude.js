@@ -1,9 +1,28 @@
-import Anthropic from '@anthropic-ai/sdk';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const API_URL = 'https://api.anthropic.com/v1/messages';
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
+async function callClaude(prompt, maxTokens = 2000) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Claude API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
 
 export async function generatePracticePlan(userProfile) {
   const { instrument, level, goals, skills, availableDays, dailyDuration } = userProfile;
@@ -21,15 +40,17 @@ User Profile:
 Generate a JSON response with this exact structure:
 {
   "weeklyPlan": {
-    "monday": { "sessions": [...] } or null if not available,
-    "tuesday": { "sessions": [...] } or null,
-    "wednesday": { "sessions": [...] } or null,
-    "thursday": { "sessions": [...] } or null,
-    "friday": { "sessions": [...] } or null,
-    "saturday": { "sessions": [...] } or null,
-    "sunday": { "sessions": [...] } or null
+    "monday": { "sessions": [...] },
+    "tuesday": { "sessions": [...] },
+    "wednesday": { "sessions": [...] },
+    "thursday": { "sessions": [...] },
+    "friday": { "sessions": [...] },
+    "saturday": { "sessions": [...] },
+    "sunday": { "sessions": [...] }
   }
 }
+
+For days the user is NOT available, set the value to null instead of an object.
 
 Each session object:
 {
@@ -41,43 +62,31 @@ Each session object:
 }
 
 Rules:
-- Total session durations must equal the daily practice time
-- Be very specific (e.g. "A minor pentatonic scale, 3 positions, 60bpm" not "practice scales")
-- Vary exercises across the week to prevent boredom
-- Start with warmup each session
+- Total session durations must equal the daily practice time exactly
+- Be very specific (e.g. "A minor pentatonic, positions 1-3 at 60bpm" not "practice scales")
+- Always start with a warmup
 - Match difficulty to the user's level
-- Only include days the user marked as available
+- Only include sessions for available days, set others to null
 
-Return only valid JSON, no markdown, no explanation.`;
+Return only valid JSON, no markdown fences, no explanation.`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = message.content[0].text;
+  const text = await callClaude(prompt, 2000);
   return JSON.parse(text);
 }
 
 export async function adjustSessionFromRating(session, rating, feedback) {
-  const prompt = `You are Prova, a music practice coach. A user just completed a practice session and gave feedback.
+  const prompt = `You are Prova, a music practice coach. A user just completed a practice session.
 
-Session that was completed:
+Session completed:
 ${JSON.stringify(session, null, 2)}
 
-User rating: ${rating} (options: "too_easy", "just_right", "too_hard")
-User feedback: "${feedback || 'No additional feedback'}"
+Rating: ${rating} (too_easy / just_right / too_hard)
+Feedback: "${feedback || 'None'}"
 
-Generate an adjusted version of this session for next time. Return only a JSON array of session objects with the same structure. Make it harder if "too_easy", easier if "too_hard", or slightly progress if "just_right".
+Return an adjusted JSON array of session objects for next time. Same structure as input. Make harder if too_easy, easier if too_hard, slightly progress if just_right.
 
-Return only valid JSON array, no markdown.`;
+Return only a valid JSON array, no markdown.`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return JSON.parse(message.content[0].text);
+  const text = await callClaude(prompt, 1000);
+  return JSON.parse(text);
 }
