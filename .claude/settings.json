@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/Cohnor-Stac/Documents/prova && git pull 2>/dev/null || true",
+            "command": "cd /Users/ethanlam/prova && git pull 2>/dev/null || true",
             "statusMessage": "Pulling latest code from GitHub..."
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/Cohnor-Stac/Documents/prova && git add . && git diff --cached --quiet || git commit -m 'auto-save' && git push 2>/dev/null || true",
+            "command": "cd /Users/ethanlam/prova && git add . && git diff --cached --quiet || git commit -m 'auto-save' && git push 2>/dev/null || true",
             "statusMessage": "Pushing changes to GitHub..."
           }
         ]
