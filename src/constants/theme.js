@@ -1,16 +1,16 @@
 export const COLORS = {
-  background: '#0A0A0A',
-  surface: '#141414',
-  card: '#1C1C1C',
-  primary: '#FF6B35',
-  primaryDark: '#CC5528',
-  accent: '#FFD700',
-  text: '#FFFFFF',
-  textSecondary: '#A0A0A0',
-  textMuted: '#555555',
-  success: '#4CAF50',
-  error: '#FF4444',
-  border: '#2A2A2A',
+  background: '#050810',
+  surface: '#0C1022',
+  card: '#111827',
+  primary: '#3B82F6',
+  primaryDark: '#1D4ED8',
+  accent: '#06B6D4',
+  text: '#F0F4FF',
+  textSecondary: '#8B9CC8',
+  textMuted: '#3D4F7A',
+  success: '#10B981',
+  error: '#F43F5E',
+  border: '#1E2D4A',
 };
 
 export const FONTS = {

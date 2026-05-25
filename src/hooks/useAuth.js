@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged } from '@firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from '../lib/firebase';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
@@ -12,8 +12,8 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        setOnboardingComplete(snap.data()?.onboardingComplete || false);
+        const cached = await AsyncStorage.getItem(`onboarding_${firebaseUser.uid}`);
+        setOnboardingComplete(cached === 'true');
       } else {
         setUser(null);
         setOnboardingComplete(false);

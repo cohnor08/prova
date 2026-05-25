@@ -1,8 +1,9 @@
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
-async function callClaude(prompt, maxTokens = 2000) {
-  const response = await fetch(API_URL, {
+async function callClaude(prompt, maxTokens = 2000, model = 'claude-haiku-4-5-20251001') {
+  console.log('PROVA: Calling Claude API, key starts with:', ANTHROPIC_API_KEY.slice(0, 10));
+  const fetchPromise = fetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -10,11 +11,17 @@ async function callClaude(prompt, maxTokens = 2000) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Request timed out after 120s')), 120000)
+  );
+
+  const response = await Promise.race([fetchPromise, timeoutPromise]);
 
   if (!response.ok) {
     throw new Error(`Claude API error: ${response.status}`);
@@ -70,8 +77,9 @@ Rules:
 
 Return only valid JSON, no markdown fences, no explanation.`;
 
-  const text = await callClaude(prompt, 2000);
-  return JSON.parse(text);
+  const text = await callClaude(prompt, 4000);
+  const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  return JSON.parse(clean);
 }
 
 export async function adjustSessionFromRating(session, rating, feedback) {

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { Alert } from 'react-native';
+import { doc, setDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { generatePracticePlan } from '../../lib/claude';
 import OnboardingInstrument from './OnboardingInstrument';
@@ -25,20 +27,24 @@ export default function OnboardingFlow() {
     // Final step — generate plan
     setGenerating(true);
     try {
+      console.log('PROVA: Starting plan generation...');
       const plan = await generatePracticePlan(updatedProfile);
+      console.log('PROVA: Plan generated, saving to Firestore...');
       const uid = auth.currentUser.uid;
 
-      await updateDoc(doc(db, 'users', uid), {
+      await setDoc(doc(db, 'users', uid), {
         ...updatedProfile,
         onboardingComplete: true,
         practicePlan: plan,
         planGeneratedAt: new Date().toISOString(),
         streak: 0,
         totalMinutes: 0,
-      });
+      }, { merge: true });
+      console.log('PROVA: Firestore save complete.');
     } catch (error) {
       console.error('Failed to generate plan:', error);
       setGenerating(false);
+      Alert.alert('Error', `Failed to generate plan: ${error.message}`);
     }
   };
 

@@ -7,17 +7,18 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { adjustSessionFromRating } from '../../lib/claude';
 
 const CATEGORY_COLORS = {
-  warmup: '#FF9500',
-  technique: '#FF6B35',
-  theory: '#5856D6',
-  ear_training: '#34C759',
-  repertoire: '#007AFF',
-  improvisation: '#FF2D55',
+  warmup: '#06B6D4',
+  technique: '#3B82F6',
+  theory: '#8B5CF6',
+  ear_training: '#10B981',
+  repertoire: '#0EA5E9',
+  improvisation: '#6366F1',
 };
 
 function SessionCard({ session, onComplete, completed }) {
@@ -89,6 +90,7 @@ export default function TodayScreen() {
   const [completedIds, setCompletedIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
+  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
     loadTodaySessions();
@@ -100,6 +102,7 @@ export default function TodayScreen() {
       const userDoc = await getDoc(doc(db, 'users', uid));
       const data = userDoc.data();
 
+      setUserData(data);
       const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       const todayPlan = data?.practicePlan?.weeklyPlan?.[today];
       setSessions(todayPlan?.sessions || []);
@@ -119,14 +122,40 @@ export default function TodayScreen() {
   const handleRating = async (rating) => {
     try {
       const uid = auth.currentUser.uid;
+
+      const todayStr = new Date().toDateString();
+      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+      const lastStr = userData?.lastSessionDate
+        ? new Date(userData.lastSessionDate).toDateString()
+        : null;
+
+      let newStreak;
+      if (lastStr === todayStr) {
+        newStreak = userData?.streak || 1;
+      } else if (lastStr === yesterdayStr) {
+        newStreak = (userData?.streak || 0) + 1;
+      } else {
+        newStreak = 1;
+      }
+
       await updateDoc(doc(db, 'users', uid), {
         lastSessionRating: rating,
         lastSessionDate: new Date().toISOString(),
-        totalMinutes: (await getDoc(doc(db, 'users', uid))).data().totalMinutes +
-          sessions.reduce((sum, s) => sum + s.duration, 0),
+        totalMinutes: increment(sessions.reduce((sum, s) => sum + s.duration, 0)),
+        streak: newStreak,
       });
+
       setShowRating(false);
-      Alert.alert('Session logged!', 'Prova will adjust tomorrow\'s plan based on your feedback.');
+      Alert.alert('Session logged!', "Prova will adjust your next plan based on your feedback.");
+
+      const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      adjustSessionFromRating(sessions, rating, null)
+        .then((adjusted) =>
+          updateDoc(doc(db, 'users', uid), {
+            [`practicePlan.weeklyPlan.${dayName}.sessions`]: adjusted,
+          })
+        )
+        .catch(console.error);
     } catch (error) {
       console.error(error);
     }

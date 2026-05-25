@@ -7,12 +7,12 @@ import { COLORS, SPACING } from '../../constants/theme';
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 const CATEGORY_COLORS = {
-  warmup: '#FF9500',
-  technique: '#FF6B35',
-  theory: '#5856D6',
-  ear_training: '#34C759',
-  repertoire: '#007AFF',
-  improvisation: '#FF2D55',
+  warmup: '#06B6D4',
+  technique: '#3B82F6',
+  theory: '#8B5CF6',
+  ear_training: '#10B981',
+  repertoire: '#0EA5E9',
+  improvisation: '#6366F1',
 };
 
 export default function PlanScreen() {

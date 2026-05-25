@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { COLORS, SPACING, INSTRUMENTS } from '../../constants/theme';
 
 export default function OnboardingInstrument({ onNext, data }) {
@@ -18,7 +18,10 @@ export default function OnboardingInstrument({ onNext, data }) {
             style={[styles.option, selected === instrument && styles.optionSelected]}
             onPress={() => setSelected(instrument)}
           >
-            <Text style={styles.optionIcon}>{instrument === 'Guitar' ? '🎸' : '🎵'}</Text>
+            {instrument === 'Guitar'
+  ? <Text style={styles.optionIcon}>🎸</Text>
+  : <Image source={require('../../../assets/bass.png')} style={styles.optionImage} />
+}
             <Text style={[styles.optionText, selected === instrument && styles.optionTextSelected]}>
               {instrument}
             </Text>
@@ -53,6 +56,7 @@ const styles = StyleSheet.create({
   },
   optionSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryDark + '22' },
   optionIcon: { fontSize: 48, marginBottom: SPACING.sm },
+  optionImage: { width: 56, height: 56, marginBottom: SPACING.sm, resizeMode: 'contain', transform: [{ rotate: '-30deg' }] },
   optionText: { color: COLORS.textSecondary, fontSize: 20, fontWeight: '600' },
   optionTextSelected: { color: COLORS.primary },
   button: {
