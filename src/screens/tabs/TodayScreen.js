@@ -5,8 +5,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
+  Modal,
+  Animated,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -21,6 +23,25 @@ const CATEGORY_COLORS = {
   improvisation: '#6366F1',
 };
 
+const RATING_OPTIONS = [
+  { key: 'too_easy', label: 'Too Easy', sub: 'Step it up next time', icon: 'trending-up' },
+  { key: 'just_right', label: 'Just Right', sub: 'Perfect challenge level', icon: 'checkmark-circle' },
+  { key: 'too_hard', label: 'Too Hard', sub: 'Dial it back a bit', icon: 'trending-down' },
+];
+
+function SkeletonBlock({ width, height, style }) {
+  const anim = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 0.7, duration: 900, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return <Animated.View style={[{ width, height, borderRadius: 8, backgroundColor: COLORS.card, opacity: anim }, style]} />;
+}
+
 function SessionCard({ session, onComplete, completed }) {
   const [timerActive, setTimerActive] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
@@ -28,9 +49,7 @@ function SessionCard({ session, onComplete, completed }) {
 
   useEffect(() => {
     if (timerActive && secondsLeft > 0) {
-      intervalRef.current = setInterval(() => {
-        setSecondsLeft((s) => s - 1);
-      }, 1000);
+      intervalRef.current = setInterval(() => setSecondsLeft(s => s - 1), 1000);
     } else if (secondsLeft === 0) {
       clearInterval(intervalRef.current);
       setTimerActive(false);
@@ -45,6 +64,7 @@ function SessionCard({ session, onComplete, completed }) {
   };
 
   const categoryColor = CATEGORY_COLORS[session.category] || COLORS.primary;
+  const progress = 1 - secondsLeft / (session.duration * 60);
 
   return (
     <View style={[styles.card, completed && styles.cardCompleted]}>
@@ -65,21 +85,36 @@ function SessionCard({ session, onComplete, completed }) {
         <Text style={styles.sessionDesc}>{session.description}</Text>
 
         {!completed && (
-          <View style={styles.timerRow}>
-            <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
-            <TouchableOpacity
-              style={[styles.timerBtn, timerActive && styles.timerBtnActive]}
-              onPress={() => setTimerActive(!timerActive)}
-            >
-              <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.completeBtn} onPress={() => onComplete(session.id)}>
-              <Text style={styles.completeBtnText}>Done ✓</Text>
-            </TouchableOpacity>
+          <View>
+            {timerActive && (
+              <View style={styles.timerProgress}>
+                <View style={[styles.timerProgressFill, { width: `${progress * 100}%`, backgroundColor: categoryColor }]} />
+              </View>
+            )}
+            <View style={styles.timerRow}>
+              <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
+              <TouchableOpacity
+                style={[styles.timerBtn, timerActive && { backgroundColor: categoryColor }]}
+                onPress={() => setTimerActive(!timerActive)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
+                <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.completeBtn} onPress={() => onComplete(session.id)} activeOpacity={0.8}>
+                <Ionicons name="checkmark" size={14} color={COLORS.success} />
+                <Text style={styles.completeBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
-        {completed && <Text style={styles.completedBadge}>Completed ✓</Text>}
+        {completed && (
+          <View style={styles.completedRow}>
+            <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+            <Text style={styles.completedBadge}>Completed</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -91,21 +126,27 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
+  const slideAnim = useRef(new Animated.Value(300)).current;
+
+  useEffect(() => { loadTodaySessions(); }, []);
 
   useEffect(() => {
-    loadTodaySessions();
-  }, []);
+    if (showRating) {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }).start();
+    } else {
+      slideAnim.setValue(300);
+    }
+  }, [showRating]);
 
   const loadTodaySessions = async () => {
     try {
-      const uid = auth.currentUser.uid;
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
       const userDoc = await getDoc(doc(db, 'users', uid));
       const data = userDoc.data();
-
       setUserData(data);
       const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const todayPlan = data?.practicePlan?.weeklyPlan?.[today];
-      setSessions(todayPlan?.sessions || []);
+      setSessions(data?.practicePlan?.weeklyPlan?.[today]?.sessions || []);
     } catch (error) {
       console.error(error);
     } finally {
@@ -114,29 +155,26 @@ export default function TodayScreen() {
   };
 
   const handleComplete = (sessionId) => {
-    setCompletedIds((prev) => [...prev, sessionId]);
-    const allDone = sessions.every((s) => [...completedIds, sessionId].includes(s.id));
-    if (allDone) setShowRating(true);
+    const newCompleted = [...completedIds, sessionId];
+    setCompletedIds(newCompleted);
+    if (sessions.every(s => newCompleted.includes(s.id))) setShowRating(true);
   };
 
   const handleRating = async (rating) => {
+    setShowRating(false);
     try {
-      const uid = auth.currentUser.uid;
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
 
       const todayStr = new Date().toDateString();
       const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
-      const lastStr = userData?.lastSessionDate
-        ? new Date(userData.lastSessionDate).toDateString()
-        : null;
+      const lastStr = userData?.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
 
-      let newStreak;
-      if (lastStr === todayStr) {
-        newStreak = userData?.streak || 1;
-      } else if (lastStr === yesterdayStr) {
-        newStreak = (userData?.streak || 0) + 1;
-      } else {
-        newStreak = 1;
-      }
+      const newStreak = lastStr === todayStr
+        ? (userData?.streak || 1)
+        : lastStr === yesterdayStr
+          ? (userData?.streak || 0) + 1
+          : 1;
 
       await updateDoc(doc(db, 'users', uid), {
         lastSessionRating: rating,
@@ -145,16 +183,11 @@ export default function TodayScreen() {
         streak: newStreak,
       });
 
-      setShowRating(false);
-      Alert.alert('Session logged!', "Prova will adjust your next plan based on your feedback.");
-
       const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       adjustSessionFromRating(sessions, rating, null)
-        .then((adjusted) =>
-          updateDoc(doc(db, 'users', uid), {
-            [`practicePlan.weeklyPlan.${dayName}.sessions`]: adjusted,
-          })
-        )
+        .then(adjusted => updateDoc(doc(db, 'users', uid), {
+          [`practicePlan.weeklyPlan.${dayName}.sessions`]: adjusted,
+        }))
         .catch(console.error);
     } catch (error) {
       console.error(error);
@@ -167,91 +200,106 @@ export default function TodayScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.loadingText}>Loading your plan...</Text>
-      </View>
-    );
-  }
-
-  if (showRating) {
-    return (
-      <View style={styles.ratingContainer}>
-        <Text style={styles.ratingTitle}>How was that session?</Text>
-        <Text style={styles.ratingSubtitle}>Prova will adjust your next session based on this</Text>
-        {['too_easy', 'just_right', 'too_hard'].map((r) => (
-          <TouchableOpacity key={r} style={styles.ratingBtn} onPress={() => handleRating(r)}>
-            <Text style={styles.ratingBtnText}>
-              {r === 'too_easy' ? 'Too Easy — step it up' : r === 'just_right' ? 'Just Right' : 'Too Hard — slow down'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <SkeletonBlock width={160} height={12} style={{ marginBottom: SPACING.sm }} />
+          <SkeletonBlock width={220} height={28} style={{ marginBottom: SPACING.lg }} />
+          <View style={{ flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.md }}>
+            <SkeletonBlock width="30%" height={72} style={{ flex: 1 }} />
+            <SkeletonBlock width="30%" height={72} style={{ flex: 1 }} />
+            <SkeletonBlock width="30%" height={72} style={{ flex: 1 }} />
+          </View>
+          <SkeletonBlock width="100%" height={4} style={{ marginBottom: SPACING.xl }} />
+          <SkeletonBlock width="100%" height={120} style={{ marginBottom: SPACING.md }} />
+          <SkeletonBlock width="100%" height={120} style={{ marginBottom: SPACING.md }} />
+          <SkeletonBlock width="100%" height={100} />
+        </ScrollView>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.date}>{today}</Text>
-      <Text style={styles.title}>Today's Practice</Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.date}>{today.toUpperCase()}</Text>
+        <Text style={styles.title}>Today's Practice</Text>
 
-      <View style={styles.statsRow}>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{totalMins}</Text>
-          <Text style={styles.statLabel}>minutes</Text>
+        <View style={styles.statsRow}>
+          {[
+            { value: totalMins, label: 'MINUTES' },
+            { value: sessions.length, label: 'EXERCISES' },
+            { value: completedIds.length, label: 'DONE' },
+          ].map(stat => (
+            <View key={stat.label} style={styles.stat}>
+              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{sessions.length}</Text>
-          <Text style={styles.statLabel}>exercises</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{completedIds.length}</Text>
-          <Text style={styles.statLabel}>done</Text>
-        </View>
-      </View>
 
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
-
-      {sessions.length === 0 ? (
-        <View style={styles.restDay}>
-          <Text style={styles.restIcon}>🎸</Text>
-          <Text style={styles.restTitle}>Rest Day</Text>
-          <Text style={styles.restSubtitle}>No sessions scheduled today. Enjoy the break!</Text>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-      ) : (
-        sessions.map((session) => (
-          <SessionCard
-            key={session.id}
-            session={session}
-            onComplete={handleComplete}
-            completed={completedIds.includes(session.id)}
-          />
-        ))
-      )}
-    </ScrollView>
+        <Text style={styles.progressLabel}>{completedIds.length} of {sessions.length} completed</Text>
+
+        {sessions.length === 0 ? (
+          <View style={styles.restDay}>
+            <View style={styles.restIconWrap}>
+              <Ionicons name="musical-notes" size={40} color={COLORS.primary} />
+            </View>
+            <Text style={styles.restTitle}>Rest Day</Text>
+            <Text style={styles.restSubtitle}>No sessions scheduled today. Enjoy the break!</Text>
+          </View>
+        ) : (
+          sessions.map(session => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              onComplete={handleComplete}
+              completed={completedIds.includes(session.id)}
+            />
+          ))
+        )}
+      </ScrollView>
+
+      <Modal visible={showRating} transparent animationType="none">
+        <View style={styles.ratingBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowRating(false)} />
+          <Animated.View style={[styles.ratingSheet, { transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.ratingHandle} />
+            <Text style={styles.ratingTitle}>How was that session?</Text>
+            <Text style={styles.ratingSubtitle}>Prova will adjust your next session based on this</Text>
+            {RATING_OPTIONS.map(({ key, label, sub, icon }) => (
+              <TouchableOpacity key={key} style={styles.ratingBtn} onPress={() => handleRating(key)} activeOpacity={0.8}>
+                <View style={styles.ratingBtnIcon}>
+                  <Ionicons name={icon} size={20} color={COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={styles.ratingBtnLabel}>{label}</Text>
+                  <Text style={styles.ratingBtnSub}>{sub}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
-  center: { flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { color: COLORS.textSecondary, fontSize: 16 },
-  date: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 2, marginBottom: SPACING.xs },
-  title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
-  statsRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.md },
-  stat: { flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center' },
-  statValue: { color: COLORS.primary, fontSize: 24, fontWeight: '800' },
-  statLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', letterSpacing: 1 },
-  progressBar: {
-    height: 4,
-    backgroundColor: COLORS.border,
-    borderRadius: 2,
-    marginBottom: SPACING.xl,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 2 },
+  date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.lg },
+  statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
+  stat: { flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  statValue: { color: COLORS.primary, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statLabel: { color: COLORS.textMuted, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginTop: 2 },
+  progressBar: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginBottom: SPACING.xs, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
+  progressLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginBottom: SPACING.lg },
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
@@ -261,53 +309,100 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  cardCompleted: { opacity: 0.5 },
+  cardCompleted: { opacity: 0.45 },
   categoryBar: { width: 4 },
   cardContent: { flex: 1, padding: SPACING.md },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
-  categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 2, borderRadius: 4 },
+  categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: 4 },
   categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
-  sessionTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700', marginBottom: SPACING.xs },
+  sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
   sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
   sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
+  timerProgress: { height: 3, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: SPACING.sm, overflow: 'hidden' },
+  timerProgressFill: { height: '100%', borderRadius: 2 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  timerText: { color: COLORS.text, fontSize: 20, fontWeight: '700', minWidth: 60 },
+  timerText: { color: COLORS.text, fontSize: 18, fontWeight: '700', minWidth: 56, fontVariant: ['tabular-nums'] },
   timerBtn: {
     backgroundColor: COLORS.border,
     borderRadius: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
-  timerBtnActive: { backgroundColor: COLORS.primary },
   timerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   completeBtn: {
-    backgroundColor: COLORS.success + '22',
+    backgroundColor: COLORS.success + '1A',
     borderRadius: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   completeBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+  completedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   completedBadge: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
-  restIcon: { fontSize: 64, marginBottom: SPACING.md },
-  restTitle: { color: COLORS.text, fontSize: 24, fontWeight: '800', marginBottom: SPACING.sm },
-  restSubtitle: { color: COLORS.textSecondary, fontSize: 15, textAlign: 'center' },
-  ratingContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    padding: SPACING.xl,
+  restIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primary + '18',
+    alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '33',
   },
-  ratingTitle: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.sm },
-  ratingSubtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.xxl },
+  restTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800', marginBottom: SPACING.sm },
+  restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  ratingBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  ratingSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: SPACING.xl,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+  },
+  ratingHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: SPACING.lg,
+  },
+  ratingTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800', marginBottom: SPACING.xs },
+  ratingSubtitle: { color: COLORS.textSecondary, fontSize: 14, marginBottom: SPACING.xl, lineHeight: 20 },
   ratingBtn: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
   },
-  ratingBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  ratingBtnIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary + '1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  ratingBtnLabel: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  ratingBtnSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 });

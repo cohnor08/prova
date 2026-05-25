@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Alert } from 'react-native';
-import { doc, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { generatePracticePlan } from '../../lib/claude';
+import { useAuthContext } from '../../contexts/AuthContext';
 import OnboardingInstrument from './OnboardingInstrument';
 import OnboardingLevel from './OnboardingLevel';
 import OnboardingGoals from './OnboardingGoals';
@@ -11,6 +12,7 @@ import OnboardingSchedule from './OnboardingSchedule';
 import OnboardingGenerating from './OnboardingGenerating';
 
 export default function OnboardingFlow() {
+  const { setOnboardingComplete } = useAuthContext();
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState({});
   const [generating, setGenerating] = useState(false);
@@ -24,12 +26,9 @@ export default function OnboardingFlow() {
       return;
     }
 
-    // Final step — generate plan
     setGenerating(true);
     try {
-      console.log('PROVA: Starting plan generation...');
       const plan = await generatePracticePlan(updatedProfile);
-      console.log('PROVA: Plan generated, saving to Firestore...');
       const uid = auth.currentUser.uid;
 
       await setDoc(doc(db, 'users', uid), {
@@ -40,21 +39,28 @@ export default function OnboardingFlow() {
         streak: 0,
         totalMinutes: 0,
       }, { merge: true });
-      console.log('PROVA: Firestore save complete.');
+
+      // Sync AsyncStorage so useAuth reads true immediately on this device
+      await AsyncStorage.setItem(`onboarding_${uid}`, 'true');
+      // Update in-memory state to trigger navigation to MainTabs
+      setOnboardingComplete(true);
     } catch (error) {
-      console.error('Failed to generate plan:', error);
       setGenerating(false);
       Alert.alert('Error', `Failed to generate plan: ${error.message}`);
     }
   };
 
+  const handleBack = () => {
+    if (step > 0) setStep(step - 1);
+  };
+
   if (generating) return <OnboardingGenerating />;
 
   const screens = [
-    <OnboardingInstrument key="instrument" onNext={handleNext} data={profile} />,
-    <OnboardingLevel key="level" onNext={handleNext} data={profile} />,
-    <OnboardingGoals key="goals" onNext={handleNext} data={profile} />,
-    <OnboardingSchedule key="schedule" onNext={handleNext} data={profile} />,
+    <OnboardingInstrument key="instrument" onNext={handleNext} onBack={null} data={profile} />,
+    <OnboardingLevel key="level" onNext={handleNext} onBack={handleBack} data={profile} />,
+    <OnboardingGoals key="goals" onNext={handleNext} onBack={handleBack} data={profile} />,
+    <OnboardingSchedule key="schedule" onNext={handleNext} onBack={handleBack} data={profile} />,
   ];
 
   return screens[step];

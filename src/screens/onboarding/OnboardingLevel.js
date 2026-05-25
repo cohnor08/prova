@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, LEVELS } from '../../constants/theme';
 
 const LEVEL_DESCRIPTIONS = {
@@ -10,12 +11,23 @@ const LEVEL_DESCRIPTIONS = {
   Elite: 'Professional level, can play complex solos, improvise freely',
 };
 
-export default function OnboardingLevel({ onNext, data }) {
+export default function OnboardingLevel({ onNext, onBack, data }) {
   const [selected, setSelected] = useState(data?.level || null);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.step}>Step 2 of 5</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="arrow-back" size={24} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+        <View style={styles.stepPills}>
+          {[0, 1, 2, 3].map(i => (
+            <View key={i} style={[styles.pill, i === 1 && styles.pillActive, i < 1 && styles.pillDone]} />
+          ))}
+        </View>
+        <View style={{ width: 24 }} />
+      </View>
+
       <Text style={styles.title}>What's your level?</Text>
       <Text style={styles.subtitle}>Be honest — this helps Prova build the right plan</Text>
 
@@ -25,18 +37,16 @@ export default function OnboardingLevel({ onNext, data }) {
             key={level}
             style={[styles.option, selected === level && styles.optionSelected]}
             onPress={() => setSelected(level)}
+            activeOpacity={0.75}
           >
-            <View style={styles.optionLeft}>
-              <Text style={[styles.optionNumber, selected === level && styles.optionNumberSelected]}>
-                {index + 1}
-              </Text>
-              <View>
-                <Text style={[styles.optionTitle, selected === level && styles.optionTitleSelected]}>
-                  {level}
-                </Text>
-                <Text style={styles.optionDesc}>{LEVEL_DESCRIPTIONS[level]}</Text>
-              </View>
+            <View style={[styles.badge, selected === level && styles.badgeSelected]}>
+              <Text style={[styles.badgeText, selected === level && styles.badgeTextSelected]}>{index + 1}</Text>
             </View>
+            <View style={styles.optionContent}>
+              <Text style={[styles.optionTitle, selected === level && styles.optionTitleSelected]}>{level}</Text>
+              <Text style={styles.optionDesc}>{LEVEL_DESCRIPTIONS[level]}</Text>
+            </View>
+            {selected === level && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
           </TouchableOpacity>
         ))}
       </View>
@@ -45,8 +55,10 @@ export default function OnboardingLevel({ onNext, data }) {
         style={[styles.button, !selected && styles.buttonDisabled]}
         onPress={() => selected && onNext({ level: selected })}
         disabled={!selected}
+        activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Continue</Text>
+        <Ionicons name="arrow-forward" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
     </ScrollView>
   );
@@ -54,10 +66,14 @@ export default function OnboardingLevel({ onNext, data }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
-  step: { color: COLORS.primary, fontSize: 12, fontWeight: '600', letterSpacing: 2, marginBottom: SPACING.sm },
-  title: { color: COLORS.text, fontSize: 32, fontWeight: '800', marginBottom: SPACING.sm },
-  subtitle: { color: COLORS.textSecondary, fontSize: 16, marginBottom: SPACING.xl },
+  content: { padding: SPACING.xl, paddingTop: 56, paddingBottom: SPACING.xxl },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
+  stepPills: { flexDirection: 'row', gap: 6 },
+  pill: { width: 24, height: 4, borderRadius: 2, backgroundColor: COLORS.border },
+  pillActive: { backgroundColor: COLORS.primary, width: 40 },
+  pillDone: { backgroundColor: COLORS.primary + '66' },
+  title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.sm },
+  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.xl, lineHeight: 22 },
   options: { gap: SPACING.sm, marginBottom: SPACING.xl },
   option: {
     backgroundColor: COLORS.card,
@@ -65,29 +81,34 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderWidth: 2,
     borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
   },
-  optionSelected: { borderColor: COLORS.primary },
-  optionLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-  optionNumber: {
+  optionSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '12' },
+  badge: {
     width: 32,
     height: 32,
     borderRadius: 16,
     backgroundColor: COLORS.border,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '700',
-    fontSize: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  optionNumberSelected: { backgroundColor: COLORS.primary, color: COLORS.text },
+  badgeSelected: { backgroundColor: COLORS.primary },
+  badgeText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
+  badgeTextSelected: { color: COLORS.text },
+  optionContent: { flex: 1 },
   optionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 2 },
   optionTitleSelected: { color: COLORS.primary },
-  optionDesc: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
+  optionDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
   button: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
-    padding: SPACING.md,
+    height: 52,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },

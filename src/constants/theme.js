@@ -57,4 +57,5 @@ export const PRACTICE_DURATIONS = [
   { label: '3+ hours', value: 180 },
 ];
 
-export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// lowercase to match Firestore schema and Cloud Functions validation
+export const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];

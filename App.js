@@ -4,8 +4,10 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from './src/hooks/useAuth';
+import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS } from './src/constants/theme';
 
 import LoginScreen from './src/screens/auth/LoginScreen';
@@ -19,52 +21,40 @@ import ProfileScreen from './src/screens/tabs/ProfileScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function TabIcon({ label, focused }) {
-  const icons = { Today: '🎸', Plan: '📅', Progress: '📈', Profile: '👤' };
-  return (
-    <View style={{ alignItems: 'center' }}>
-      <Text style={{ fontSize: 20 }}>{icons[label]}</Text>
-      <Text style={{ color: focused ? COLORS.primary : COLORS.textMuted, fontSize: 10, fontWeight: '600' }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
+const TAB_ICONS = {
+  Today: ['musical-notes', 'musical-notes-outline'],
+  Plan: ['calendar', 'calendar-outline'],
+  Progress: ['trending-up', 'trending-up-outline'],
+  Profile: ['person', 'person-outline'],
+};
 
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
           backgroundColor: COLORS.surface,
           borderTopColor: COLORS.border,
-          height: 80,
-          paddingBottom: 10,
+          borderTopWidth: 1,
+          height: 84,
+          paddingBottom: 20,
+          paddingTop: 10,
         },
-        tabBarShowLabel: false,
-      }}
+        tabBarShowLabel: true,
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
+        tabBarIcon: ({ focused, color, size }) => {
+          const [active, inactive] = TAB_ICONS[route.name] || ['ellipse', 'ellipse-outline'];
+          return <Ionicons name={focused ? active : inactive} size={22} color={color} />;
+        },
+      })}
     >
-      <Tab.Screen
-        name="Today"
-        component={TodayScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon label="Today" focused={focused} /> }}
-      />
-      <Tab.Screen
-        name="Plan"
-        component={PlanScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon label="Plan" focused={focused} /> }}
-      />
-      <Tab.Screen
-        name="Progress"
-        component={ProgressScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon label="Progress" focused={focused} /> }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon label="Profile" focused={focused} /> }}
-      />
+      <Tab.Screen name="Today" component={TodayScreen} />
+      <Tab.Screen name="Plan" component={PlanScreen} />
+      <Tab.Screen name="Progress" component={ProgressScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
@@ -79,31 +69,33 @@ function AuthStack() {
 }
 
 export default function App() {
-  const { user, onboardingComplete, loading } = useAuth();
+  const { user, onboardingComplete, setOnboardingComplete, loading } = useAuth();
 
   if (loading) {
     return (
       <View style={styles.loading}>
         <StatusBar style="light" />
         <Text style={styles.loadingLogo}>PROVA</Text>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={COLORS.primary} size="small" />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      <StatusBar style="light" />
-      {!user ? (
-        <AuthStack />
-      ) : !onboardingComplete ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Onboarding" component={OnboardingFlow} />
-        </Stack.Navigator>
-      ) : (
-        <MainTabs />
-      )}
-    </NavigationContainer>
+    <AuthContext.Provider value={{ setOnboardingComplete }}>
+      <NavigationContainer>
+        <StatusBar style="light" />
+        {!user ? (
+          <AuthStack />
+        ) : !onboardingComplete ? (
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Onboarding" component={OnboardingFlow} />
+          </Stack.Navigator>
+        ) : (
+          <MainTabs />
+        )}
+      </NavigationContainer>
+    </AuthContext.Provider>
   );
 }
 

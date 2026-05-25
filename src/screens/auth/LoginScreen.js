@@ -8,26 +8,41 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+
+const FIREBASE_ERRORS = {
+  'auth/invalid-email': 'Please enter a valid email address.',
+  'auth/user-not-found': 'No account found with this email.',
+  'auth/wrong-password': 'Incorrect password. Please try again.',
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/too-many-requests': 'Too many attempts. Please try again later.',
+  'auth/user-disabled': 'This account has been disabled.',
+  'auth/network-request-failed': 'Network error. Check your connection.',
+};
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!email.trim() || !password) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
       return;
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (error) {
-      Alert.alert('Login Failed', error.message);
+      const message = FIREBASE_ERRORS[error.code] || 'Login failed. Please try again.';
+      Alert.alert('Login Failed', message);
     } finally {
       setLoading(false);
     }
@@ -39,37 +54,67 @@ export default function LoginScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>PROVA</Text>
-        <Text style={styles.tagline}>Your AI Guitar Coach</Text>
+        <View style={styles.logoArea}>
+          <View style={styles.logoGlow}>
+            <Text style={styles.logo}>PROVA</Text>
+          </View>
+          <Text style={styles.tagline}>Your AI Music Coach</Text>
+        </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={COLORS.textMuted}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={COLORS.textMuted}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        <View style={styles.form}>
+          <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
+            <Ionicons name="mail-outline" size={18} color={focusedField === 'email' ? COLORS.primary : COLORS.textMuted} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor={COLORS.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+              onFocus={() => setFocusedField('email')}
+              onBlur={() => setFocusedField(null)}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Log In'}</Text>
-        </TouchableOpacity>
+          <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputWrapperFocused]}>
+            <Ionicons name="lock-closed-outline" size={18} color={focusedField === 'password' ? COLORS.primary : COLORS.textMuted} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor={COLORS.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-          <Text style={styles.linkText}>Don't have an account? Sign up</Text>
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading
+              ? <ActivityIndicator color={COLORS.text} size="small" />
+              : <Text style={styles.buttonText}>Log In</Text>
+            }
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity onPress={() => navigation.navigate('Signup')} hitSlop={{ top: 8, bottom: 8 }}>
+          <Text style={styles.linkText}>
+            Don't have an account? <Text style={styles.linkAccent}>Sign up</Text>
+          </Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -79,40 +124,61 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
+  logoArea: { alignItems: 'center', marginBottom: SPACING.xxl },
+  logoGlow: {
+    borderWidth: 1,
+    borderColor: COLORS.primary + '44',
+    borderRadius: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.primary + '0D',
+  },
   logo: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: '900',
     color: COLORS.primary,
-    textAlign: 'center',
-    letterSpacing: 8,
-    marginBottom: SPACING.xs,
+    letterSpacing: 10,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xxl,
     letterSpacing: 2,
+    textTransform: 'uppercase',
   },
-  input: {
+  form: { marginBottom: SPACING.xl },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.card,
-    color: COLORS.text,
     borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    fontSize: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    height: 52,
+  },
+  inputWrapperFocused: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '0A',
+  },
+  inputIcon: { marginRight: SPACING.sm },
+  input: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 16,
+    height: '100%',
   },
   button: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
-    padding: SPACING.md,
+    height: 52,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: SPACING.sm,
-    marginBottom: SPACING.lg,
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   linkText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14 },
+  linkAccent: { color: COLORS.primary, fontWeight: '600' },
 });
