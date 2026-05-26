@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, GOALS, SKILLS } from '../../constants/theme';
 
@@ -16,7 +16,7 @@ export default function OnboardingGoals({ onNext, onBack, data }) {
   const canContinue = selectedGoals.length > 0 && selectedSkills.length > 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textSecondary} />
@@ -30,38 +30,42 @@ export default function OnboardingGoals({ onNext, onBack, data }) {
       </View>
 
       <Text style={styles.title}>Goals & skills</Text>
-      <Text style={styles.subtitle}>Select all that apply — Prova uses this to focus your sessions</Text>
+      <Text style={styles.subtitle}>Select all that apply</Text>
 
-      <Text style={styles.sectionTitle}>YOUR GOALS</Text>
-      <View style={styles.chips}>
-        {GOALS.map((goal) => (
-          <TouchableOpacity
-            key={goal}
-            style={[styles.chip, selectedGoals.includes(goal) && styles.chipSelected]}
-            onPress={() => toggleGoal(goal)}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.chipText, selectedGoals.includes(goal) && styles.chipTextSelected]}>
-              {goal}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>YOUR GOALS</Text>
+        <View style={styles.chips}>
+          {GOALS.map((goal) => (
+            <TouchableOpacity
+              key={goal}
+              style={[styles.chip, selectedGoals.includes(goal) && styles.chipSelected]}
+              onPress={() => toggleGoal(goal)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.chipText, selectedGoals.includes(goal) && styles.chipTextSelected]}>
+                {goal}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
-      <Text style={styles.sectionTitle}>SKILLS TO FOCUS ON</Text>
-      <View style={styles.chips}>
-        {SKILLS.map((skill) => (
-          <TouchableOpacity
-            key={skill}
-            style={[styles.chip, selectedSkills.includes(skill) && styles.chipSelected]}
-            onPress={() => toggleSkill(skill)}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.chipText, selectedSkills.includes(skill) && styles.chipTextSelected]}>
-              {skill}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>SKILLS TO FOCUS ON</Text>
+        <View style={styles.chips}>
+          {SKILLS.map((skill) => (
+            <TouchableOpacity
+              key={skill}
+              style={[styles.chip, selectedSkills.includes(skill) && styles.chipSelected]}
+              onPress={() => toggleSkill(skill)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.chipText, selectedSkills.includes(skill) && styles.chipTextSelected]}>
+                {skill}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <TouchableOpacity
@@ -73,39 +77,38 @@ export default function OnboardingGoals({ onNext, onBack, data }) {
         <Text style={styles.buttonText}>Continue</Text>
         <Ionicons name="arrow-forward" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.xl, paddingTop: 56, paddingBottom: SPACING.xxl },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl, paddingTop: 56 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
   stepPills: { flexDirection: 'row', gap: 6 },
   pill: { width: 24, height: 4, borderRadius: 2, backgroundColor: COLORS.border },
   pillActive: { backgroundColor: COLORS.primary, width: 40 },
   pillDone: { backgroundColor: COLORS.primary + '66' },
-  title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.sm },
-  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.xl, lineHeight: 22 },
+  title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.xs },
+  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.lg, lineHeight: 22 },
+  section: { marginBottom: SPACING.lg },
   sectionTitle: {
     color: COLORS.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
     marginBottom: SPACING.sm,
-    marginTop: SPACING.md,
   },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   chip: {
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 100,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   chipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '500' },
+  chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
   chipTextSelected: { color: COLORS.text, fontWeight: '700' },
   button: {
     backgroundColor: COLORS.primary,
@@ -114,7 +117,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: SPACING.md,
+    marginTop: 'auto',
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },

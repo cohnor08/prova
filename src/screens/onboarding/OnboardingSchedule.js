@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, DAYS, PRACTICE_DURATIONS } from '../../constants/theme';
 
@@ -13,7 +13,7 @@ export default function OnboardingSchedule({ onNext, onBack, data }) {
   const canContinue = selectedDays.length > 0 && selectedDuration !== null;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textSecondary} />
@@ -71,33 +71,32 @@ export default function OnboardingSchedule({ onNext, onBack, data }) {
         <Text style={styles.buttonText}>Generate My Plan</Text>
         <Ionicons name="sparkles" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.xl, paddingTop: 56, paddingBottom: SPACING.xxl },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl, paddingTop: 56 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
   stepPills: { flexDirection: 'row', gap: 6 },
   pill: { width: 24, height: 4, borderRadius: 2, backgroundColor: COLORS.border },
   pillActive: { backgroundColor: COLORS.primary, width: 40 },
   pillDone: { backgroundColor: COLORS.primary + '66' },
-  title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.sm },
-  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.xl, lineHeight: 22 },
+  title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.xs },
+  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.lg, lineHeight: 22 },
   sectionTitle: {
     color: COLORS.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
-    marginBottom: SPACING.md,
-    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.sm,
   },
-  days: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xl, flexWrap: 'wrap' },
+  days: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg, flexWrap: 'wrap' },
   dayChip: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
@@ -107,7 +106,7 @@ const styles = StyleSheet.create({
   dayChipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   dayText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
   dayTextSelected: { color: COLORS.text },
-  durations: { gap: SPACING.sm, marginBottom: SPACING.xl },
+  durations: { gap: SPACING.sm, marginBottom: SPACING.lg },
   durationChip: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
@@ -119,7 +118,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   durationChipSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '12' },
-  durationText: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '600' },
+  durationText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
   durationTextSelected: { color: COLORS.primary },
   button: {
     backgroundColor: COLORS.primary,
@@ -128,6 +127,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 'auto',
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },

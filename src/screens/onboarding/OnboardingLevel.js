@@ -1,21 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, LEVELS } from '../../constants/theme';
 
 const LEVEL_DESCRIPTIONS = {
   Beginner: 'Just starting out, learning basic chords and notes',
   Novice: 'Know some chords, can play simple songs',
-  Intermediate: 'Comfortable with most open chords, some barre chords, basic scales',
-  Advanced: 'Proficient with techniques, can learn songs quickly, knows music theory',
-  Elite: 'Professional level, can play complex solos, improvise freely',
+  Intermediate: 'Comfortable with most chords, some barre chords, basic scales',
+  Advanced: 'Proficient with techniques, knows music theory',
+  Elite: 'Professional level, complex solos, improvise freely',
 };
 
 export default function OnboardingLevel({ onNext, onBack, data }) {
   const [selected, setSelected] = useState(data?.level || null);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textSecondary} />
@@ -60,21 +60,20 @@ export default function OnboardingLevel({ onNext, onBack, data }) {
         <Text style={styles.buttonText}>Continue</Text>
         <Ionicons name="arrow-forward" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.xl, paddingTop: 56, paddingBottom: SPACING.xxl },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl, paddingTop: 56 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
   stepPills: { flexDirection: 'row', gap: 6 },
   pill: { width: 24, height: 4, borderRadius: 2, backgroundColor: COLORS.border },
   pillActive: { backgroundColor: COLORS.primary, width: 40 },
   pillDone: { backgroundColor: COLORS.primary + '66' },
   title: { color: COLORS.text, fontSize: 30, fontWeight: '800', marginBottom: SPACING.sm },
-  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.xl, lineHeight: 22 },
-  options: { gap: SPACING.sm, marginBottom: SPACING.xl },
+  subtitle: { color: COLORS.textSecondary, fontSize: 15, marginBottom: SPACING.lg, lineHeight: 22 },
+  options: { flex: 1, gap: SPACING.sm, justifyContent: 'center' },
   option: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
@@ -99,9 +98,9 @@ const styles = StyleSheet.create({
   badgeText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   badgeTextSelected: { color: COLORS.text },
   optionContent: { flex: 1 },
-  optionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  optionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
   optionTitleSelected: { color: COLORS.primary },
-  optionDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
+  optionDesc: { color: COLORS.textSecondary, fontSize: 11, lineHeight: 16 },
   button: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
@@ -109,6 +108,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: SPACING.lg,
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
