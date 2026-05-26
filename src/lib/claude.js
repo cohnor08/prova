@@ -24,13 +24,23 @@ async function callFunction(name, data, timeoutMs = 120000) {
       body: JSON.stringify({ data }),
     });
 
-    const json = await response.json();
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(`Server error ${response.status}: ${text.slice(0, 300)}`);
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Bad response (${response.status}): ${text.slice(0, 200)}`);
+    }
 
     if (json.error) {
       throw new Error(json.error.message || `Function error: ${response.status}`);
     }
 
-    // Firebase callable protocol returns result in { result: ... }
     return json.result;
   } finally {
     clearTimeout(timeoutId);

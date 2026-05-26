@@ -86,7 +86,7 @@ function validateProfile(p) {
 }
 
 exports.generatePracticePlan = onCall(
-  { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180, memory: '256MiB' },
+  { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180, memory: '256MiB', invoker: 'public' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
@@ -146,7 +146,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 );
 
 exports.adjustSessionFromRating = onCall(
-  { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 60, memory: '256MiB' },
+  { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 60, memory: '256MiB', invoker: 'public' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
