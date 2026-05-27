@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc } from 'firebase/firestore';
+import { onSnapshot, doc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export function useAuth() {
@@ -10,31 +9,29 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const timeout = setTimeout(() => setLoading(false), 5000);
+    let firestoreUnsub = null;
+
+    const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
+      clearTimeout(timeout);
       if (firebaseUser) {
         setUser(firebaseUser);
-        const key = `onboarding_${firebaseUser.uid}`;
-        const cached = await AsyncStorage.getItem(key);
-        if (cached === 'true') {
-          setOnboardingComplete(true);
-        } else {
-          // Firestore fallback handles multi-device and first install after data already exists
-          try {
-            const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-            const isComplete = snap.data()?.onboardingComplete === true;
-            setOnboardingComplete(isComplete);
-            if (isComplete) await AsyncStorage.setItem(key, 'true');
-          } catch {
-            setOnboardingComplete(false);
-          }
-        }
+        firestoreUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snap) => {
+          setOnboardingComplete(snap.data()?.onboardingComplete === true);
+          setLoading(false);
+        });
       } else {
         setUser(null);
         setOnboardingComplete(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      clearTimeout(timeout);
+      authUnsub();
+      if (firestoreUnsub) firestoreUnsub();
+    };
   }, []);
 
   return { user, onboardingComplete, setOnboardingComplete, loading };

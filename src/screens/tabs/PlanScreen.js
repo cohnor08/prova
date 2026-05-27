@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -22,9 +24,11 @@ export default function PlanScreen() {
   );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadPlan();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadPlan();
+    }, [])
+  );
 
   const loadPlan = async () => {
     try {
@@ -50,7 +54,8 @@ export default function PlanScreen() {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container}>
+    <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.title}>Weekly Plan</Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayScroll}>
@@ -104,6 +109,7 @@ export default function PlanScreen() {
         ))
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

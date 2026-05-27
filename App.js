@@ -17,6 +17,7 @@ import TodayScreen from './src/screens/tabs/TodayScreen';
 import ProgressScreen from './src/screens/tabs/ProgressScreen';
 import PlanScreen from './src/screens/tabs/PlanScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
+import TeacherScreen from './src/screens/tabs/TeacherScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -25,6 +26,7 @@ const TAB_ICONS = {
   Today: ['musical-notes', 'musical-notes-outline'],
   Plan: ['calendar', 'calendar-outline'],
   Progress: ['trending-up', 'trending-up-outline'],
+  Teacher: ['school', 'school-outline'],
   Profile: ['person', 'person-outline'],
 };
 
@@ -45,7 +47,7 @@ function MainTabs() {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           const [active, inactive] = TAB_ICONS[route.name] || ['ellipse', 'ellipse-outline'];
           return <Ionicons name={focused ? active : inactive} size={22} color={color} />;
         },
@@ -54,6 +56,7 @@ function MainTabs() {
       <Tab.Screen name="Today" component={TodayScreen} />
       <Tab.Screen name="Plan" component={PlanScreen} />
       <Tab.Screen name="Progress" component={ProgressScreen} />
+      <Tab.Screen name="Teacher" component={TeacherScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
