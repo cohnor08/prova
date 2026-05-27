@@ -279,7 +279,7 @@ export default function TodayScreen() {
                   <Text style={styles.ratingBtnLabel}>{label}</Text>
                   <Text style={styles.ratingBtnSub}>{sub}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} style={{ flex: 1, textAlign: 'right' }} />
               </TouchableOpacity>
             ))}
           </Animated.View>

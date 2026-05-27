@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';import { doc, getDoc } from 'firebase/firestore';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 
@@ -114,7 +115,10 @@ function LineGraph() {
     const y2 = getY(DAILY_MINS[i + 1].mins);
     const length = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
     const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-    return { x1, y1, length, angle };
+    // RN rotates around center, so position at midpoint offset by half length
+    const cx = (x1 + x2) / 2 - length / 2;
+    const cy = (y1 + y2) / 2 - 1.25;
+    return { cx, cy, length, angle };
   });
 
   return (
@@ -135,14 +139,13 @@ function LineGraph() {
             key={i}
             style={{
               position: 'absolute',
-              left: seg.x1,
-              top: seg.y1,
+              left: seg.cx,
+              top: seg.cy,
               width: seg.length,
               height: 2.5,
               backgroundColor: COLORS.primary,
               borderRadius: 2,
               transform: [{ rotate: `${seg.angle}deg` }],
-              transformOrigin: '0 50%',
             }}
           />
         ))}
@@ -485,7 +488,7 @@ const styles = StyleSheet.create({
   graphLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   graphLegendDot: { width: 8, height: 8, borderRadius: 4 },
   graphLegendText: { color: COLORS.textMuted, fontSize: 11 },
-  graphPeak: { color: COLORS.textSecondary, fontSize: 11, marginLeft: 'auto' },
+  graphPeak: { color: COLORS.textSecondary, fontSize: 11, flex: 1, textAlign: 'right' },
 
   // Bar chart
   barChart: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.md, height: 180 },

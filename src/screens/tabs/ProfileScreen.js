@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Modal, ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';import { signOut } from 'firebase/auth';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
