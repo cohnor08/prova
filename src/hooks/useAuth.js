@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../lib/firebase';
 
 export function useAuth() {
@@ -9,15 +10,28 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 5000);
+    const timeout = setTimeout(() => setLoading(false), 8000);
     let firestoreUnsub = null;
 
-    const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
+    const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeout);
       if (firebaseUser) {
         setUser(firebaseUser);
-        firestoreUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snap) => {
-          setOnboardingComplete(snap.data()?.onboardingComplete === true);
+
+        // Check AsyncStorage first so the app loads instantly without waiting for Firestore
+        const cached = await AsyncStorage.getItem(`onboarding_${firebaseUser.uid}`);
+        if (cached === 'true') {
+          setOnboardingComplete(true);
+          setLoading(false);
+        }
+
+        // Firestore listener keeps the value fresh (e.g. after completing onboarding on another device)
+        firestoreUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
+          const isComplete = snap.data()?.onboardingComplete === true;
+          setOnboardingComplete(isComplete);
+          if (isComplete) {
+            await AsyncStorage.setItem(`onboarding_${firebaseUser.uid}`, 'true');
+          }
           setLoading(false);
         });
       } else {
