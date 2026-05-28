@@ -17,16 +17,21 @@ const CATEGORY_COLORS = {
   improvisation: '#6366F1',
 };
 
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export default function PlanScreen() {
   const [plan, setPlan] = useState(null);
   const [selectedDay, setSelectedDay] = useState(
     new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
   );
   const [loading, setLoading] = useState(true);
+  const lastFetchRef = React.useRef(0);
 
   useFocusEffect(
     React.useCallback(() => {
-      loadPlan();
+      if (Date.now() - lastFetchRef.current > CACHE_TTL_MS) {
+        loadPlan();
+      }
     }, [])
   );
 
@@ -35,6 +40,7 @@ export default function PlanScreen() {
       const uid = auth.currentUser.uid;
       const snap = await getDoc(doc(db, 'users', uid));
       setPlan(snap.data()?.practicePlan?.weeklyPlan || null);
+      lastFetchRef.current = Date.now();
     } catch (error) {
       console.error(error);
     } finally {

@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profiles ─────────────────────────────────────────────────────────
+    // Any signed-in user can read another user's profile (required for the
+    // teacher search-by-email feature). Only the owner can write.
+    match /users/{userId} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Backend-only collections ───────────────────────────────────────────────
+    // These are written exclusively by Cloud Functions via the Firebase Admin
+    // SDK, which bypasses security rules entirely. Block all direct client
+    // reads and writes so the app can never accidentally hit these.
+    match /rateLimits/{document=**} {
+      allow read, write: if false;
+    }
+    match /usageLogs/{document=**} {
+      allow read, write: if false;
+    }
+    match /adminStats/{document=**} {
+      allow read, write: if false;
+    }
+    match /adminAlerts/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Deny everything else ───────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
