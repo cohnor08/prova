@@ -97,7 +97,8 @@ function ProvaScore({ score }) {
             {score > 700 ? '🔥 On Fire' : score > 400 ? '📈 Improving' : '🌱 Getting Started'}
           </Text>
         </View>
-      </View>    </View>
+      </View>
+    </View>
   );
 }
 

@@ -98,8 +98,6 @@ export default function ProfileScreen() {
       setUserData(snap.data());
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoading(false);
     }
   };
 
