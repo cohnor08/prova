@@ -43,29 +43,8 @@ function SkeletonBlock({ width, height, style }) {
   return <Animated.View style={[{ width, height, borderRadius: 8, backgroundColor: COLORS.card, opacity: anim }, style]} />;
 }
 
-function SessionCard({ session, onComplete, completed }) {
-  const [timerActive, setTimerActive] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    if (timerActive && secondsLeft > 0) {
-      intervalRef.current = setInterval(() => setSecondsLeft(s => s - 1), 1000);
-    } else if (secondsLeft === 0) {
-      clearInterval(intervalRef.current);
-      setTimerActive(false);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [timerActive, secondsLeft]);
-
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
+function SessionCard({ session, onComplete, completed, onStart }) {
   const categoryColor = CATEGORY_COLORS[session.category] || COLORS.primary;
-  const progress = 1 - secondsLeft / (session.duration * 60);
 
   return (
     <View style={[styles.card, completed && styles.cardCompleted]}>
@@ -86,27 +65,19 @@ function SessionCard({ session, onComplete, completed }) {
         <Text style={styles.sessionDesc}>{session.description}</Text>
 
         {!completed && (
-          <View>
-            {timerActive && (
-              <View style={styles.timerProgress}>
-                <View style={[styles.timerProgressFill, { width: `${progress * 100}%`, backgroundColor: categoryColor }]} />
-              </View>
-            )}
-            <View style={styles.timerRow}>
-              <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
-              <TouchableOpacity
-                style={[styles.timerBtn, timerActive && { backgroundColor: categoryColor }]}
-                onPress={() => setTimerActive(!timerActive)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
-                <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.completeBtn} onPress={() => onComplete(session.id)} activeOpacity={0.8}>
-                <Ionicons name="checkmark" size={14} color={COLORS.success} />
-                <Text style={styles.completeBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.timerRow}>
+            <TouchableOpacity
+              style={styles.timerBtn}
+              onPress={() => onStart?.(session)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="play" size={14} color={COLORS.text} />
+              <Text style={styles.timerBtnText}>Start</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.completeBtn} onPress={() => onComplete(session.id)} activeOpacity={0.8}>
+              <Ionicons name="checkmark" size={14} color={COLORS.success} />
+              <Text style={styles.completeBtnText}>Done</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -121,7 +92,7 @@ function SessionCard({ session, onComplete, completed }) {
   );
 }
 
-export default function TodayScreen() {
+export default function TodayScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -290,6 +261,7 @@ export default function TodayScreen() {
               session={session}
               onComplete={handleComplete}
               completed={completedIds.includes(session.id)}
+              onStart={(s) => navigation.navigate('Practice', { activeSession: s })}
             />
           ))
         )}
