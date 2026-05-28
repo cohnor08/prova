@@ -10,6 +10,12 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Session history — written by the app when a session is rated,
+    // read by the app for Progress charts. Owner-only access.
+    match /sessionHistory/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Backend-only collections ───────────────────────────────────────────────
     // These are written exclusively by Cloud Functions via the Firebase Admin
     // SDK, which bypasses security rules entirely. Block all direct client

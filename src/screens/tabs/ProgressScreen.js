@@ -1,81 +1,139 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc } from 'firebase/firestore';
+import { useFocusEffect } from '@react-navigation/native';
+import { doc, getDoc, getDocs, collection, query, orderBy, limit } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
-
-// Demo data — 4 weeks of practice history
-const WEEKLY_HOURS = [
-  { week: '5 May', hours: 3.5 },
-  { week: '12 May', hours: 5.0 },
-  { week: '19 May', hours: 4.0 },
-  { week: '26 May', hours: 6.5 },
-];
-
-const CATEGORY_BREAKDOWN = [
-  { label: 'Technique', mins: 420, color: '#3B82F6' },
-  { label: 'Repertoire', mins: 310, color: '#0EA5E9' },
-  { label: 'Theory', mins: 180, color: '#8B5CF6' },
-  { label: 'Ear Training', mins: 140, color: '#10B981' },
-  { label: 'Warmup', mins: 100, color: '#06B6D4' },
-  { label: 'Improvisation', mins: 70, color: '#6366F1' },
-];
-
-// Last 5 weeks heatmap (35 days), 1 = practiced, 0 = rest, 0.5 = short session
-const HEATMAP = [
-  [0, 1, 1, 0, 1, 1, 0],
-  [1, 1, 0, 1, 1, 0, 1],
-  [0, 1, 1, 1, 0, 1, 1],
-  [1, 0, 1, 1, 1, 1, 0],
-  [1, 1, 1, 0, 1, 1, 1],
-];
-
-const MILESTONES = [
-  { icon: '🔥', label: '7-Day Streak', earned: true },
-  { icon: '⏱️', label: '10 Hours', earned: true },
-  { icon: '🎸', label: 'First Session', earned: true },
-  { icon: '📅', label: '30 Sessions', earned: true },
-  { icon: '⭐', label: '25 Hours', earned: false },
-  { icon: '🏆', label: '30-Day Streak', earned: false },
-];
-
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
-const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
-const LEVEL_XP = { Beginner: 0.72, Novice: 0.45, Intermediate: 0.28, Advanced: 0.15, Elite: 1.0 };
-
-// Daily practice minutes — last 14 days
-const DAILY_MINS = [
-  { day: '13', mins: 0 },
-  { day: '14', mins: 45 },
-  { day: '15', mins: 60 },
-  { day: '16', mins: 30 },
-  { day: '17', mins: 0 },
-  { day: '18', mins: 75 },
-  { day: '19', mins: 90 },
-  { day: '20', mins: 50 },
-  { day: '21', mins: 65 },
-  { day: '22', mins: 0 },
-  { day: '23', mins: 80 },
-  { day: '24', mins: 110 },
-  { day: '25', mins: 70 },
-  { day: '26', mins: 95 },
-];
-
 const GRAPH_H = 120;
 const GRAPH_PAD = 8;
+const CACHE_TTL = 5 * 60 * 1000;
+
+const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
+
+const CATEGORY_COLORS = {
+  warmup: '#06B6D4',
+  technique: '#3B82F6',
+  theory: '#8B5CF6',
+  ear_training: '#10B981',
+  repertoire: '#0EA5E9',
+  improvisation: '#6366F1',
+};
+
+// Hours of practice needed to "fill" the progress bar for each level
+const LEVEL_HOURS = { Beginner: 10, Novice: 25, Intermediate: 60, Advanced: 120, Elite: 120 };
+
+// ─── Data helpers ─────────────────────────────────────────────────────────────
+
+function computeProvaScore(streak, totalMinutes, totalSessions, lastRating) {
+  const streakPts  = Math.min(streak * 10, 300);
+  const volumePts  = Math.min(Math.floor(totalMinutes / 12), 300);
+  const sessionPts = Math.min(totalSessions * 5, 250);
+  const qualityPts = lastRating === 'just_right' ? 150
+    : lastRating === 'too_hard' ? 100
+    : lastRating === 'too_easy' ? 75 : 0;
+  return Math.min(1000, streakPts + volumePts + sessionPts + qualityPts);
+}
+
+function computeLevelXP(level, totalMinutes) {
+  const needed = (LEVEL_HOURS[level] || 10) * 60;
+  return level === 'Elite' ? 1 : Math.min(1, totalMinutes / needed);
+}
+
+function buildDailyData(logMap) {
+  const result = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    result.push({ day: String(d.getDate()), mins: logMap[key]?.totalMinutes || 0 });
+  }
+  return result;
+}
+
+function buildWeeklyData(logMap) {
+  const today = new Date();
+  const dow = (today.getDay() + 6) % 7; // 0 = Mon
+  const monStart = new Date(today);
+  monStart.setDate(today.getDate() - dow);
+  monStart.setHours(0, 0, 0, 0);
+
+  const weeks = [];
+  for (let w = 3; w >= 0; w--) {
+    let mins = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(monStart);
+      day.setDate(monStart.getDate() - w * 7 + d);
+      if (day <= today) {
+        mins += logMap[day.toISOString().split('T')[0]]?.totalMinutes || 0;
+      }
+    }
+    const label = (() => {
+      const start = new Date(monStart);
+      start.setDate(monStart.getDate() - w * 7);
+      return start.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    })();
+    weeks.push({ week: label, hours: Math.round(mins / 60 * 10) / 10 });
+  }
+  return weeks;
+}
+
+function buildHeatmapData(logMap) {
+  const today = new Date();
+  const dow = (today.getDay() + 6) % 7;
+  const monStart = new Date(today);
+  monStart.setDate(today.getDate() - dow);
+  monStart.setHours(0, 0, 0, 0);
+
+  const weeks = [];
+  for (let w = 4; w >= 0; w--) {
+    const row = [];
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(monStart);
+      day.setDate(monStart.getDate() - w * 7 + d);
+      if (day > today) { row.push(-1); continue; }
+      const mins = logMap[day.toISOString().split('T')[0]]?.totalMinutes || 0;
+      row.push(mins === 0 ? 0 : mins < 20 ? 0.5 : 1);
+    }
+    weeks.push(row);
+  }
+  return weeks;
+}
+
+function buildCategoryData(logMap) {
+  const totals = {};
+  Object.values(logMap).forEach(log => {
+    Object.entries(log.categories || {}).forEach(([cat, mins]) => {
+      totals[cat] = (totals[cat] || 0) + mins;
+    });
+  });
+  return Object.entries(totals)
+    .map(([cat, mins]) => ({
+      label: cat.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      mins,
+      color: CATEGORY_COLORS[cat] || COLORS.primary,
+    }))
+    .sort((a, b) => b.mins - a.mins);
+}
+
+function computeMilestones(streak, totalMinutes, totalSessions) {
+  const hours = totalMinutes / 60;
+  return [
+    { icon: '🎸', label: 'First Session', earned: totalSessions >= 1 },
+    { icon: '🔥', label: '7-Day Streak', earned: streak >= 7 },
+    { icon: '⏱️', label: '10 Hours', earned: hours >= 10 },
+    { icon: '📅', label: '30 Sessions', earned: totalSessions >= 30 },
+    { icon: '⭐', label: '25 Hours', earned: hours >= 25 },
+    { icon: '🏆', label: '30-Day Streak', earned: streak >= 30 },
+  ];
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ProvaScore({ score }) {
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  const filled = (score / 1000) * circumference;
-
   return (
     <View style={styles.scoreCard}>
       <View style={styles.scoreRingWrapper}>
@@ -91,7 +149,7 @@ function ProvaScore({ score }) {
       </View>
       <View style={styles.scoreRight}>
         <Text style={styles.scoreTitle}>Prova Score</Text>
-        <Text style={styles.scoreDesc}>Your overall practice quality, consistency and growth combined into one number.</Text>
+        <Text style={styles.scoreDesc}>Practice consistency, volume, and quality — in one number.</Text>
         <View style={styles.scoreBadge}>
           <Text style={styles.scoreBadgeText}>
             {score > 700 ? '🔥 On Fire' : score > 400 ? '📈 Improving' : '🌱 Getting Started'}
@@ -102,120 +160,91 @@ function ProvaScore({ score }) {
   );
 }
 
-function LineGraph() {
-  const maxMins = Math.max(...DAILY_MINS.map((d) => d.mins), 1);
-  const pointSpacing = (CHART_W - GRAPH_PAD * 2) / (DAILY_MINS.length - 1);
+function LineGraph({ data }) {
+  if (!data || data.every(d => d.mins === 0)) {
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>DAILY PRACTICE — LAST 14 DAYS</Text>
+        <View style={[styles.emptyChart, { height: GRAPH_H }]}>
+          <Text style={styles.emptyText}>Complete sessions to see your chart</Text>
+        </View>
+      </View>
+    );
+  }
 
-  const getX = (i) => GRAPH_PAD + i * pointSpacing;
-  const getY = (mins) => GRAPH_H - GRAPH_PAD - ((mins / maxMins) * (GRAPH_H - GRAPH_PAD * 2));
+  const maxMins = Math.max(...data.map(d => d.mins), 1);
+  const spacing = (CHART_W - GRAPH_PAD * 2) / (data.length - 1);
+  const getX = i => GRAPH_PAD + i * spacing;
+  const getY = mins => GRAPH_H - GRAPH_PAD - (mins / maxMins) * (GRAPH_H - GRAPH_PAD * 2);
 
-  const lines = DAILY_MINS.slice(0, -1).map((d, i) => {
-    const x1 = getX(i);
-    const y1 = getY(d.mins);
-    const x2 = getX(i + 1);
-    const y2 = getY(DAILY_MINS[i + 1].mins);
-    const length = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-    const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-    // RN rotates around center, so position at midpoint offset by half length
-    const cx = (x1 + x2) / 2 - length / 2;
-    const cy = (y1 + y2) / 2 - 1.25;
-    return { cx, cy, length, angle };
+  const lines = data.slice(0, -1).map((d, i) => {
+    const x1 = getX(i), y1 = getY(d.mins);
+    const x2 = getX(i + 1), y2 = getY(data[i + 1].mins);
+    const len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    const ang = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+    return { cx: (x1 + x2) / 2 - len / 2, cy: (y1 + y2) / 2 - 1.25, len, ang };
   });
 
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>DAILY PRACTICE — LAST 14 DAYS</Text>
       <View style={[styles.graphContainer, { height: GRAPH_H + 24 }]}>
-        {/* Y-axis guide lines */}
-        {[0, 0.5, 1].map((pct) => (
-          <View
-            key={pct}
-            style={[styles.graphGuideLine, { top: GRAPH_PAD + (1 - pct) * (GRAPH_H - GRAPH_PAD * 2) }]}
-          />
+        {[0, 0.5, 1].map(pct => (
+          <View key={pct} style={[styles.graphGuideLine, { top: GRAPH_PAD + (1 - pct) * (GRAPH_H - GRAPH_PAD * 2) }]} />
         ))}
-
-        {/* Line segments */}
         {lines.map((seg, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: seg.cx,
-              top: seg.cy,
-              width: seg.length,
-              height: 2.5,
-              backgroundColor: COLORS.primary,
-              borderRadius: 2,
-              transform: [{ rotate: `${seg.angle}deg` }],
-            }}
-          />
+          <View key={i} style={{
+            position: 'absolute', left: seg.cx, top: seg.cy,
+            width: seg.len, height: 2.5, backgroundColor: COLORS.primary,
+            borderRadius: 2, transform: [{ rotate: `${seg.ang}deg` }],
+          }} />
         ))}
-
-        {/* Data points */}
-        {DAILY_MINS.map((d, i) => {
-          const x = getX(i);
-          const y = getY(d.mins);
-          const isToday = i === DAILY_MINS.length - 1;
+        {data.map((d, i) => {
+          const x = getX(i), y = getY(d.mins);
+          const isToday = i === data.length - 1;
           return (
-            <View
-              key={i}
-              style={[
-                styles.graphDot,
-                d.mins === 0 && styles.graphDotEmpty,
-                isToday && styles.graphDotToday,
-                { left: x - (isToday ? 7 : 4), top: y - (isToday ? 7 : 4) },
-              ]}
-            />
+            <View key={i} style={[
+              styles.graphDot,
+              d.mins === 0 && styles.graphDotEmpty,
+              isToday && styles.graphDotToday,
+              { left: x - (isToday ? 7 : 4), top: y - (isToday ? 7 : 4) },
+            ]} />
           );
         })}
-
-        {/* X-axis labels — every other day */}
         <View style={[styles.graphXAxis, { top: GRAPH_H }]}>
-          {DAILY_MINS.map((d, i) => (
-            <Text
-              key={i}
-              style={[styles.graphXLabel, { width: pointSpacing, marginLeft: i === 0 ? GRAPH_PAD : 0 }]}
-            >
+          {data.map((d, i) => (
+            <Text key={i} style={[styles.graphXLabel, { width: spacing, marginLeft: i === 0 ? GRAPH_PAD : 0 }]}>
               {i % 2 === 0 ? d.day : ''}
             </Text>
           ))}
         </View>
       </View>
-
-      {/* Legend */}
       <View style={styles.graphLegend}>
         <View style={styles.graphLegendItem}>
           <View style={[styles.graphLegendDot, { backgroundColor: COLORS.primary }]} />
           <Text style={styles.graphLegendText}>Practice day</Text>
         </View>
-        <Text style={styles.graphPeak}>Peak: {Math.max(...DAILY_MINS.map(d => d.mins))} min</Text>
+        <Text style={styles.graphPeak}>Peak: {Math.max(...data.map(d => d.mins))} min</Text>
       </View>
     </View>
   );
 }
 
-function WeeklyBarChart() {
-  const maxH = Math.max(...WEEKLY_HOURS.map((w) => w.hours));
-  const barW = (CHART_W - SPACING.md * (WEEKLY_HOURS.length - 1)) / WEEKLY_HOURS.length;
-
+function WeeklyBarChart({ data }) {
+  const maxH = Math.max(...data.map(w => w.hours), 0.1);
+  const barW = (CHART_W - SPACING.md * (data.length - 1)) / data.length;
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>WEEKLY PRACTICE HOURS</Text>
       <View style={styles.barChart}>
-        {WEEKLY_HOURS.map((w, i) => {
+        {data.map((w, i) => {
           const barH = (w.hours / maxH) * 120;
-          const isLatest = i === WEEKLY_HOURS.length - 1;
+          const isLatest = i === data.length - 1;
           return (
             <View key={w.week} style={[styles.barCol, { width: barW }]}>
-              <Text style={[styles.barValue, isLatest && { color: COLORS.primary }]}>
-                {w.hours}h
-              </Text>
+              <Text style={[styles.barValue, isLatest && { color: COLORS.primary }]}>{w.hours}h</Text>
               <View style={styles.barTrack}>
-                <View style={[
-                  styles.barFill,
-                  { height: barH, backgroundColor: isLatest ? COLORS.primary : COLORS.card },
-                  isLatest && styles.barFillActive,
-                ]} />
+                <View style={[styles.barFill, { height: Math.max(barH, 2), backgroundColor: isLatest ? COLORS.primary : COLORS.card }, isLatest && styles.barFillActive]} />
               </View>
               <Text style={styles.barLabel}>{w.week}</Text>
             </View>
@@ -226,26 +255,23 @@ function WeeklyBarChart() {
   );
 }
 
-function ActivityHeatmap() {
+function ActivityHeatmap({ data }) {
+  const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>ACTIVITY — LAST 5 WEEKS</Text>
       <View style={styles.heatmapDays}>
-        {DAYS.map((d, i) => (
-          <Text key={i} style={styles.heatmapDayLabel}>{d}</Text>
-        ))}
+        {DAYS.map((d, i) => <Text key={i} style={styles.heatmapDayLabel}>{d}</Text>)}
       </View>
-      {HEATMAP.map((week, wi) => (
+      {data.map((week, wi) => (
         <View key={wi} style={styles.heatmapRow}>
           {week.map((val, di) => (
-            <View
-              key={di}
-              style={[
-                styles.heatmapCell,
-                val === 1 && styles.heatmapCellFull,
-                val === 0.5 && styles.heatmapCellHalf,
-              ]}
-            />
+            <View key={di} style={[
+              styles.heatmapCell,
+              val === 1 && styles.heatmapCellFull,
+              val === 0.5 && styles.heatmapCellHalf,
+              val === -1 && styles.heatmapCellFuture,
+            ]} />
           ))}
         </View>
       ))}
@@ -260,30 +286,36 @@ function ActivityHeatmap() {
   );
 }
 
-function CategoryBreakdown() {
-  const total = CATEGORY_BREAKDOWN.reduce((s, c) => s + c.mins, 0);
+function CategoryBreakdown({ data }) {
+  if (!data.length) {
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>TIME BY CATEGORY</Text>
+        <View style={styles.emptyChart}>
+          <Text style={styles.emptyText}>Complete sessions to see your breakdown</Text>
+        </View>
+      </View>
+    );
+  }
+  const total = data.reduce((s, c) => s + c.mins, 0);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>TIME BY CATEGORY</Text>
-      {CATEGORY_BREAKDOWN.map((cat) => {
-        const pct = cat.mins / total;
-        return (
-          <View key={cat.label} style={styles.catRow}>
-            <Text style={styles.catLabel}>{cat.label}</Text>
-            <View style={styles.catTrack}>
-              <View style={[styles.catBar, { width: `${pct * 100}%`, backgroundColor: cat.color }]} />
-            </View>
-            <Text style={styles.catMins}>{Math.round(cat.mins / 60 * 10) / 10}h</Text>
+      {data.map(cat => (
+        <View key={cat.label} style={styles.catRow}>
+          <Text style={styles.catLabel}>{cat.label}</Text>
+          <View style={styles.catTrack}>
+            <View style={[styles.catBar, { width: `${(cat.mins / total) * 100}%`, backgroundColor: cat.color }]} />
           </View>
-        );
-      })}
+          <Text style={styles.catMins}>{Math.round(cat.mins / 60 * 10) / 10}h</Text>
+        </View>
+      ))}
     </View>
   );
 }
 
-function LevelProgress({ level }) {
+function LevelProgress({ level, xp }) {
   const idx = LEVELS.indexOf(level);
-  const xp = LEVEL_XP[level] ?? 0.3;
   const nextLevel = LEVELS[Math.min(idx + 1, LEVELS.length - 1)];
   return (
     <View style={styles.levelCard}>
@@ -299,24 +331,24 @@ function LevelProgress({ level }) {
         )}
       </View>
       <View style={styles.xpTrack}>
-        <View style={[styles.xpBar, { width: `${xp * 100}%` }]} />
+        <View style={[styles.xpBar, { width: `${Math.min(xp * 100, 100)}%` }]} />
       </View>
-      <Text style={styles.xpLabel}>{Math.round(xp * 100)}% to {nextLevel}</Text>
+      <Text style={styles.xpLabel}>
+        {level === 'Elite' ? 'Maximum level reached' : `${Math.round(xp * 100)}% to ${nextLevel}`}
+      </Text>
     </View>
   );
 }
 
-function Milestones() {
+function Milestones({ data }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>MILESTONES</Text>
       <View style={styles.milestoneGrid}>
-        {MILESTONES.map((m) => (
+        {data.map(m => (
           <View key={m.label} style={[styles.milestoneBadge, !m.earned && styles.milestoneLocked]}>
             <Text style={styles.milestoneIcon}>{m.earned ? m.icon : '🔒'}</Text>
-            <Text style={[styles.milestoneLabel, !m.earned && styles.milestoneLabelLocked]}>
-              {m.label}
-            </Text>
+            <Text style={[styles.milestoneLabel, !m.earned && styles.milestoneLabelLocked]}>{m.label}</Text>
           </View>
         ))}
       </View>
@@ -328,18 +360,39 @@ function Milestones() {
 
 export default function ProgressScreen() {
   const [userData, setUserData] = useState(null);
+  const [logMap, setLogMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const lastFetchRef = useRef(0);
 
-  useEffect(() => { loadUserData(); }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (Date.now() - lastFetchRef.current > CACHE_TTL) loadData();
+    }, [])
+  );
 
-  const loadUserData = async () => {
+  const loadData = async () => {
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-      const snap = await getDoc(doc(db, 'users', uid));
-      setUserData(snap.data());
-    } catch (error) {
-      console.error(error);
+
+      const [userSnap, logsSnap] = await Promise.all([
+        getDoc(doc(db, 'users', uid)),
+        getDocs(query(
+          collection(db, 'sessionHistory', uid, 'logs'),
+          orderBy('date', 'desc'),
+          limit(35)
+        )),
+      ]);
+
+      setUserData(userSnap.data());
+
+      const map = {};
+      logsSnap.forEach(d => { map[d.id] = d.data(); });
+      setLogMap(map);
+
+      lastFetchRef.current = Date.now();
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -353,55 +406,53 @@ export default function ProgressScreen() {
     );
   }
 
-  const streak = userData?.streak || 12;
-  const totalMins = userData?.totalMinutes || 1220;
-  const totalHours = Math.floor(totalMins / 60);
-  const level = userData?.level || 'Intermediate';
-  const sessions = 24;
-  const avgMins = Math.round(totalMins / sessions);
-  const provaScore = 634;
+  const streak       = userData?.streak || 0;
+  const totalMins    = userData?.totalMinutes || 0;
+  const totalSessions = userData?.totalSessions || 0;
+  const level        = userData?.level || 'Beginner';
+  const lastRating   = userData?.lastSessionRating;
+  const avgMins      = totalSessions > 0 ? Math.round(totalMins / totalSessions) : 0;
+
+  const provaScore   = computeProvaScore(streak, totalMins, totalSessions, lastRating);
+  const xp           = computeLevelXP(level, totalMins);
+  const dailyData    = buildDailyData(logMap);
+  const weeklyData   = buildWeeklyData(logMap);
+  const heatmapData  = buildHeatmapData(logMap);
+  const categoryData = buildCategoryData(logMap);
+  const milestones   = computeMilestones(streak, totalMins, totalSessions);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Progress</Text>
 
-        {/* Top stats row */}
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{streak}</Text>
-            <Text style={styles.statUnit}>🔥</Text>
-            <Text style={styles.statLabel}>Day Streak</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{totalHours}</Text>
-            <Text style={styles.statUnit}>HRS</Text>
-            <Text style={styles.statLabel}>Total Time</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{sessions}</Text>
-            <Text style={styles.statUnit}>SESSIONS</Text>
-            <Text style={styles.statLabel}>All Time</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{avgMins}</Text>
-            <Text style={styles.statUnit}>MIN AVG</Text>
-            <Text style={styles.statLabel}>Per Session</Text>
-          </View>
+          {[
+            { value: streak, unit: '🔥', label: 'Day Streak' },
+            { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
+            { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
+            { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
+          ].map(s => (
+            <View key={s.label} style={styles.statCard}>
+              <Text style={styles.statValue}>{s.value}</Text>
+              <Text style={styles.statUnit}>{s.unit}</Text>
+              <Text style={styles.statLabel}>{s.label}</Text>
+            </View>
+          ))}
         </View>
 
         <ProvaScore score={provaScore} />
-        <LevelProgress level={level} />
-        <LineGraph />
-        <WeeklyBarChart />
-        <ActivityHeatmap />
-        <CategoryBreakdown />
-        <Milestones />
+        <LevelProgress level={level} xp={xp} />
+        <LineGraph data={dailyData} />
+        <WeeklyBarChart data={weeklyData} />
+        <ActivityHeatmap data={heatmapData} />
+        <CategoryBreakdown data={categoryData} />
+        <Milestones data={milestones} />
 
-        {/* Goals */}
         {userData?.goals?.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>YOUR GOALS</Text>
-            {userData.goals.map((goal) => (
+            {userData.goals.map(goal => (
               <View key={goal} style={styles.goalItem}>
                 <View style={styles.goalDot} />
                 <Text style={styles.goalText}>{goal}</Text>
@@ -410,7 +461,8 @@ export default function ProgressScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>  );
+    </SafeAreaView>
+  );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -419,51 +471,28 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   center: { flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { color: COLORS.textSecondary },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
 
-  // Stats row
   statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
-  statCard: {
-    flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.sm,
-    alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
-  },
+  statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   statValue: { color: COLORS.text, fontSize: 22, fontWeight: '900' },
   statUnit: { color: COLORS.primary, fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
   statLabel: { color: COLORS.textMuted, fontSize: 9, marginTop: 2, textAlign: 'center' },
 
-  // Prova Score
-  scoreCard: {
-    backgroundColor: COLORS.card, borderRadius: 20, padding: SPACING.lg,
-    borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row',
-    alignItems: 'center', gap: SPACING.lg, marginBottom: SPACING.lg,  },
+  scoreCard: { backgroundColor: COLORS.card, borderRadius: 20, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, marginBottom: SPACING.lg },
   scoreRingWrapper: { alignItems: 'center', justifyContent: 'center' },
-  scoreRingOuter: {
-    width: 110, height: 110, borderRadius: 55, borderWidth: 8,
-    borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center',
-  },
-  scoreRingFill: {
-    position: 'absolute', width: 110, height: 110, borderRadius: 55,
-    borderWidth: 8, borderTopColor: 'transparent', borderRightColor: 'transparent',
-    transform: [{ rotate: '-45deg' }],
-  },
+  scoreRingOuter: { width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  scoreRingFill: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderTopColor: 'transparent', borderRightColor: 'transparent', transform: [{ rotate: '-45deg' }] },
   scoreCenter: { alignItems: 'center' },
   scoreNumber: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
   scoreMax: { color: COLORS.textMuted, fontSize: 11 },
   scoreRight: { flex: 1 },
   scoreTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: SPACING.xs },
   scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: SPACING.sm },
-  scoreBadge: {
-    backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm,
-    paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border,
-  },
+  scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
 
-  // Level
-  levelCard: {
-    backgroundColor: COLORS.primary + '22', borderRadius: 16, padding: SPACING.lg,
-    borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg,
-  },
+  levelCard: { backgroundColor: COLORS.primary + '22', borderRadius: 16, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg },
   levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.md },
   levelSub: { color: COLORS.primary, fontSize: 10, fontWeight: '700', letterSpacing: 2 },
   levelValue: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
@@ -473,11 +502,12 @@ const styles = StyleSheet.create({
   xpBar: { height: 6, backgroundColor: COLORS.primary, borderRadius: 3 },
   xpLabel: { color: COLORS.textSecondary, fontSize: 12 },
 
-  // Section
   section: { marginBottom: SPACING.xl },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.md },
 
-  // Line graph
+  emptyChart: { height: 80, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { color: COLORS.textMuted, fontSize: 13 },
+
   graphContainer: { position: 'relative', width: '100%', backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   graphGuideLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: COLORS.border + '55' },
   graphDot: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
@@ -491,7 +521,6 @@ const styles = StyleSheet.create({
   graphLegendText: { color: COLORS.textMuted, fontSize: 11 },
   graphPeak: { color: COLORS.textSecondary, fontSize: 11, flex: 1, textAlign: 'right' },
 
-  // Bar chart
   barChart: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.md, height: 180 },
   barCol: { alignItems: 'center', flex: 1 },
   barValue: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 4 },
@@ -500,36 +529,30 @@ const styles = StyleSheet.create({
   barFillActive: { shadowColor: COLORS.primary, shadowOpacity: 0.4, shadowRadius: 8 },
   barLabel: { color: COLORS.textMuted, fontSize: 9, marginTop: 6, textAlign: 'center' },
 
-  // Heatmap
   heatmapDays: { flexDirection: 'row', marginBottom: SPACING.xs },
   heatmapDayLabel: { flex: 1, color: COLORS.textMuted, fontSize: 10, textAlign: 'center' },
   heatmapRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
   heatmapCell: { flex: 1, height: 28, borderRadius: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   heatmapCellHalf: { backgroundColor: COLORS.primary + '55', borderColor: COLORS.primary + '44' },
   heatmapCellFull: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  heatmapCellFuture: { backgroundColor: 'transparent', borderColor: 'transparent' },
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, justifyContent: 'flex-end' },
   heatmapLegendText: { color: COLORS.textMuted, fontSize: 10 },
 
-  // Category
   catRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm },
   catLabel: { color: COLORS.textSecondary, fontSize: 12, width: 90 },
   catTrack: { flex: 1, height: 8, backgroundColor: COLORS.card, borderRadius: 4, overflow: 'hidden' },
   catBar: { height: 8, borderRadius: 4 },
   catMins: { color: COLORS.textMuted, fontSize: 11, width: 30, textAlign: 'right' },
 
-  // Milestones
   milestoneGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-  milestoneBadge: {
-    backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
-    alignItems: 'center', borderWidth: 1, borderColor: COLORS.primary + '44',
-    width: (CHART_W - SPACING.sm * 2) / 3,
-  },
+  milestoneBadge: { backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.primary + '44', width: (CHART_W - SPACING.sm * 2) / 3 },
   milestoneLocked: { borderColor: COLORS.border, opacity: 0.4 },
   milestoneIcon: { fontSize: 24, marginBottom: 4 },
   milestoneLabel: { color: COLORS.text, fontSize: 10, fontWeight: '600', textAlign: 'center' },
   milestoneLabelLocked: { color: COLORS.textMuted },
 
-  // Goals
   goalItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
-  goalText: { color: COLORS.text, fontSize: 15 },});
+  goalText: { color: COLORS.text, fontSize: 15 },
+});

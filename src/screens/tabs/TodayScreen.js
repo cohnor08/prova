@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating } from '../../lib/claude';
@@ -145,6 +145,16 @@ export default function TodayScreen() {
       if (!uid) return;
       const userDoc = await getDoc(doc(db, 'users', uid));
       const data = userDoc.data();
+
+      // Reset streak if the user skipped yesterday and today hasn't been practiced yet
+      const todayStr = new Date().toDateString();
+      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+      const lastStr = data?.lastSessionDate ? new Date(data.lastSessionDate).toDateString() : null;
+      if (lastStr && lastStr !== todayStr && lastStr !== yesterdayStr && (data?.streak || 0) > 0) {
+        await updateDoc(doc(db, 'users', uid), { streak: 0 });
+        data.streak = 0;
+      }
+
       setUserData(data);
       const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       setSessions(data?.practicePlan?.weeklyPlan?.[today]?.sessions || []);
@@ -177,12 +187,34 @@ export default function TodayScreen() {
           ? (userData?.streak || 0) + 1
           : 1;
 
-      await updateDoc(doc(db, 'users', uid), {
-        lastSessionRating: rating,
-        lastSessionDate: new Date().toISOString(),
-        totalMinutes: increment(sessions.reduce((sum, s) => sum + s.duration, 0)),
-        streak: newStreak,
+      const sessionMins = sessions.reduce((sum, s) => sum + s.duration, 0);
+
+      // Aggregate minutes per category for progress tracking
+      const categories = {};
+      sessions.forEach(s => {
+        categories[s.category] = (categories[s.category] || 0) + s.duration;
       });
+
+      const dateKey = new Date().toISOString().split('T')[0];
+      await Promise.all([
+        updateDoc(doc(db, 'users', uid), {
+          lastSessionRating: rating,
+          lastSessionDate: new Date().toISOString(),
+          totalMinutes: increment(sessionMins),
+          totalSessions: increment(1),
+          streak: newStreak,
+        }),
+        // Session history log — powers ProgressScreen charts
+        setDoc(doc(db, 'sessionHistory', uid, 'logs', dateKey), {
+          date: dateKey,
+          totalMinutes: increment(sessionMins),
+          sessionCount: increment(1),
+          categories: Object.fromEntries(
+            Object.entries(categories).map(([k, v]) => [k, increment(v)])
+          ),
+          rating,
+        }, { merge: true }),
+      ]);
 
       const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       adjustSessionFromRating(sessions, rating, null)

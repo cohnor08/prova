@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
@@ -74,97 +75,122 @@ function PickerModal({ visible, title, options, selected, multi, onSave, onClose
 
 // ─── Legal Modal ─────────────────────────────────────────────────────────────
 
-const PRIVACY_POLICY = `Last updated: [Date]
+const PRIVACY_POLICY = `Last updated: 28 May 2026
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Prova ("we", "us", or "our") operates the Prova mobile application (the "Service"). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service.
+Prova ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use the Prova mobile application.
 
 1. INFORMATION WE COLLECT
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. We collect information you provide directly to us, such as when you create an account, complete onboarding, or use our AI-powered practice planning features.
+Account Information
+When you create an account, we collect your email address and password (stored securely via Firebase Authentication). We never see your plain-text password.
 
-Account Information: Lorem ipsum dolor sit amet, consectetur adipiscing elit. When you register, we collect your email address and practice profile information including your instrument, skill level, goals, and available practice time.
+Practice Profile
+During onboarding and through Profile settings, you provide your instrument, skill level, practice goals, focus skills, available practice days, and daily practice duration. This information is used solely to generate and personalise your practice plans.
 
-Usage Data: Lorem ipsum dolor sit amet, consectetur adipiscing elit. We automatically collect certain information about how you interact with the Service, including session durations, practice completion rates, and feature usage patterns.
+Practice Activity
+When you complete a session, we record the date, duration, categories practised (e.g. warmup, technique), and your session rating (too easy / just right / too hard). We do not record audio, video, or the specific notes or exercises you play.
+
+Usage Metadata
+For security and service improvement, our backend logs each AI request with metadata including: your user ID, request timestamp, model used, and token count. We do not log the content of prompts sent to our AI provider.
 
 2. HOW WE USE YOUR INFORMATION
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. We use the information we collect to provide, maintain, and improve our Services, process your AI-generated practice plans, track your progress, and communicate with you about updates to the Service.
+We use your information to:
+- Generate and adjust your personalised AI practice plans
+- Track your progress (streak, total hours, sessions, Prova Score)
+- Display your practice history in charts and the activity heatmap
+- Detect and prevent abuse of the AI features
+- Maintain the security and reliability of the Service
 
-AI Practice Planning: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Your practice profile (instrument, level, goals, schedule) is sent to our AI service to generate personalised practice plans. We do not store your prompts or AI-generated responses beyond what is necessary to provide the Service.
+Your practice profile is sent to our AI provider (Anthropic) to generate plans. Anthropic processes this data according to their own privacy policy and does not use it to train their models.
 
-3. DATA SHARING AND DISCLOSURE
+3. DATA SHARING
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We do not sell, trade, or rent your personal information to third parties. We may share information in the following limited circumstances: with your consent, to comply with legal obligations, or to protect the rights, property, or safety of Prova, our users, or others.
+We do not sell, rent, or share your personal information with third parties for marketing purposes. We may share data only:
+- With service providers who operate the app on our behalf (Firebase/Google, Anthropic), under strict data processing agreements
+- If required by law, court order, or to protect the safety of our users
 
-4. DATA RETENTION
+4. DATA STORAGE AND SECURITY
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We retain your account information for as long as your account is active or as needed to provide you with our Services. You may delete your account at any time by contacting us, and we will delete your personal information within 30 days.
+Your data is stored in Google Firebase (Firestore and Firebase Authentication), hosted in secure Google Cloud data centres. We use industry-standard encryption in transit (TLS) and at rest. Access is restricted by security rules that ensure you can only access your own data.
 
-5. SECURITY
+5. DATA RETENTION
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We take reasonable measures to help protect information about you from loss, theft, misuse, and unauthorised access. Your data is stored using Firebase, a Google service, and protected by industry-standard security measures.
+We retain your account and practice data for as long as your account is active. You may request deletion of your account and all associated data by contacting us at privacy@prova.app. We will action deletion requests within 30 days.
 
 6. CHILDREN'S PRIVACY
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Our Service is not directed to children under the age of 13. We do not knowingly collect personal information from children under 13.
+Prova is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately.
 
-7. CHANGES TO THIS POLICY
+7. YOUR RIGHTS
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.
+Depending on your location, you may have the right to access, correct, or delete the personal data we hold about you. To exercise these rights, contact us at privacy@prova.app.
 
-8. CONTACT US
+8. CHANGES TO THIS POLICY
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. If you have any questions about this Privacy Policy, please contact us at: privacy@prova.app`;
+We may update this Privacy Policy periodically. We will notify you of significant changes by updating the date at the top of this page. Continued use of the app after changes constitutes acceptance of the updated policy.
 
-const TERMS_CONDITIONS = `Last updated: [Date]
+9. CONTACT
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Please read these Terms and Conditions carefully before using the Prova mobile application operated by us. Your access to and use of the Service is conditioned on your acceptance of and compliance with these Terms.
+For privacy-related questions, contact us at: privacy@prova.app`;
+
+const TERMS_CONDITIONS = `Last updated: 28 May 2026
+
+Please read these Terms and Conditions carefully before using the Prova application. By creating an account or using the Service, you agree to be bound by these Terms.
 
 1. ACCEPTANCE OF TERMS
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. By accessing or using our Service, you agree to be bound by these Terms. If you disagree with any part of the Terms, you may not access the Service. These Terms apply to all visitors, users, and others who access or use the Service.
+By accessing or using Prova, you confirm that you are at least 13 years old and agree to these Terms. If you are under 18, you should review these Terms with a parent or guardian. If you do not agree to any part of these Terms, do not use the Service.
 
-2. ACCOUNTS
+2. YOUR ACCOUNT
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. When you create an account with us, you must provide information that is accurate, complete, and current at all times. You are responsible for safeguarding the password that you use to access the Service and for any activities or actions under your password. You agree not to disclose your password to any third party.
+You are responsible for maintaining the confidentiality of your account credentials. You must provide accurate information when registering and keep it up to date. You are responsible for all activity that occurs under your account. Notify us immediately at legal@prova.app if you suspect unauthorised access.
 
-3. AI-GENERATED CONTENT
+We reserve the right to suspend or terminate accounts that violate these Terms, engage in abusive behaviour, or attempt to circumvent service limits.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. The practice plans and recommendations generated by our AI are for informational purposes only and should not be considered professional music instruction. Results may vary based on your individual circumstances, skill level, and consistency of practice. We make no guarantees about specific outcomes.
+3. THE SERVICE
 
-Rate Limits: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Free accounts are subject to daily usage limits on AI-generated content. These limits exist to ensure fair access for all users and to protect the integrity of the Service.
+Prova provides AI-generated music practice plans, session tracking, and progress analytics for guitar and bass players. The Service is provided on a best-efforts basis and features may change over time.
+
+AI-Generated Content: Practice plans are generated by an AI model and are intended as a starting point for your practice. They do not constitute professional music instruction. Results depend on your own effort, consistency, and musical development. We make no guarantees about specific outcomes.
+
+Usage Limits: To ensure fair access and protect service stability, each account is subject to daily limits on AI requests. Attempting to circumvent these limits is a violation of these Terms.
 
 4. ACCEPTABLE USE
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. You agree not to use the Service in any way that could damage, disable, overburden, or impair the Service, or interfere with any other party's use of the Service. You may not attempt to gain unauthorised access to any part of the Service, other accounts, or computer systems connected to the Service.
+You agree not to:
+- Use the Service for any unlawful purpose
+- Attempt to access other users' accounts or data
+- Reverse-engineer, scrape, or extract data from the Service
+- Use automated tools to make AI requests beyond normal personal use
+- Share your account credentials with others
+- Attempt to overload or disrupt the Service
 
 5. INTELLECTUAL PROPERTY
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. The Service and its original content (excluding content provided by users), features, and functionality are and will remain the exclusive property of Prova and its licensors. Our trademarks and trade dress may not be used in connection with any product or service without the prior written consent of Prova.
+All content, branding, design, and code in Prova is the property of Prova and its licensors. You may not copy, reproduce, or redistribute any part of the Service without our written permission. Your personal data and practice history belong to you.
 
-6. TERMINATION
+6. LIMITATION OF LIABILITY
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We may terminate or suspend your account immediately, without prior notice or liability, for any reason whatsoever, including without limitation if you breach the Terms. Upon termination, your right to use the Service will cease immediately.
+To the maximum extent permitted by law, Prova and its team shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the Service, including loss of data, loss of practice progress, or interruption of service.
 
-7. LIMITATION OF LIABILITY
+Our total liability for any claim arising from use of the Service shall not exceed the amount you paid for the Service in the 12 months preceding the claim (or NZD $10 if you have not paid anything).
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. In no event shall Prova, its directors, employees, partners, agents, suppliers, or affiliates, be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your use of the Service.
+7. DISCLAIMER OF WARRANTIES
 
-8. DISCLAIMER
+The Service is provided "as is" and "as available" without warranties of any kind, express or implied. We do not warrant that the Service will be uninterrupted, error-free, or that AI-generated practice plans will meet your specific musical goals.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Your use of the Service is at your sole risk. The Service is provided on an "AS IS" and "AS AVAILABLE" basis. The Service is provided without warranties of any kind, whether express or implied, including but not limited to implied warranties of merchantability, fitness for a particular purpose, non-infringement, or course of performance.
+8. GOVERNING LAW
 
-9. GOVERNING LAW
+These Terms are governed by the laws of New Zealand. Any disputes shall be subject to the exclusive jurisdiction of the courts of New Zealand.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. These Terms shall be governed and construed in accordance with the laws of New Zealand, without regard to its conflict of law provisions.
+9. CHANGES TO TERMS
 
-10. CHANGES TO TERMS
+We may update these Terms periodically. We will give at least 14 days' notice of material changes by updating the date above. Continued use of the Service after changes take effect constitutes acceptance.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. We reserve the right to modify or replace these Terms at any time. We will provide at least 30 days' notice before any new terms take effect. By continuing to access or use our Service after those revisions become effective, you agree to be bound by the revised terms.
+10. CONTACT
 
-11. CONTACT US
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. If you have any questions about these Terms, please contact us at: legal@prova.app`;
+For questions about these Terms: legal@prova.app`;
 
 function LegalModal({ visible, title, content, onClose }) {
   return (
@@ -212,6 +238,7 @@ function Row({ icon, label, value, valueColor }) {
 export default function ProfileScreen() {
   const [userData, setUserData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [legalVisible, setLegalVisible] = useState(null); // 'privacy' | 'terms' | null
   const [modal, setModal] = useState(null); // { key, title, options, multi }
   useEffect(() => { loadUser(); }, []);
@@ -244,10 +271,10 @@ export default function ProfileScreen() {
       if (planKeys.includes(key)) {
         Alert.alert(
           'Regenerate Plan?',
-          'Your settings changed. Would you like Prova to regenerate your practice plan?',
+          'Your settings changed. Would you like Prova to build you a new practice plan?',
           [
             { text: 'Not Now', style: 'cancel' },
-            { text: 'Regenerate', onPress: () => Alert.alert('Coming Soon', 'Plan regeneration will be available in the next update.') },
+            { text: 'Regenerate', onPress: () => handleRegenerate({ ...userData, [key]: value }) },
           ]
         );
       }
@@ -255,6 +282,23 @@ export default function ProfileScreen() {
       Alert.alert('Error', err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRegenerate = async (profile) => {
+    setRegenerating(true);
+    try {
+      const uid = auth.currentUser.uid;
+      const plan = await generatePracticePlan(profile);
+      await setDoc(doc(db, 'users', uid), {
+        practicePlan: plan,
+        planGeneratedAt: new Date().toISOString(),
+      }, { merge: true });
+      Alert.alert('Done!', 'Your new practice plan is ready. Head to the Today tab.');
+    } catch (err) {
+      Alert.alert('Error', `Could not regenerate plan: ${err.message}`);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -298,6 +342,12 @@ export default function ProfileScreen() {
           <View style={styles.savingRow}>
             <ActivityIndicator size="small" color={COLORS.primary} />
             <Text style={styles.savingText}>Saving...</Text>
+          </View>
+        )}
+        {regenerating && (
+          <View style={styles.savingRow}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={styles.savingText}>Building your new plan...</Text>
           </View>
         )}
 
