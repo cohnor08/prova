@@ -19,6 +19,7 @@ import PlanScreen from './src/screens/tabs/PlanScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
+import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -28,6 +29,7 @@ const TAB_ICONS = {
   Practice: ['options', 'options-outline'],
   Plan: ['calendar', 'calendar-outline'],
   Progress: ['trending-up', 'trending-up-outline'],
+  Messages: ['chatbubbles', 'chatbubbles-outline'],
   Teacher: ['school', 'school-outline'],
   Profile: ['person', 'person-outline'],
 };
@@ -59,6 +61,7 @@ function MainTabs() {
       <Tab.Screen name="Practice" component={PracticeScreen} />
       <Tab.Screen name="Plan" component={PlanScreen} />
       <Tab.Screen name="Progress" component={ProgressScreen} />
+      <Tab.Screen name="Messages" component={MessagesScreen} />
       <Tab.Screen name="Teacher" component={TeacherScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
