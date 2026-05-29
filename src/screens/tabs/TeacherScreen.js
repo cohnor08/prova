@@ -406,7 +406,7 @@ function InlineChatView({ student, myUid, isDemo, chatId: propChatId, senderRole
         contentContainerStyle={styles.chatMessages}
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
         renderItem={({ item }) => {
-          const isMe = item.senderRole === 'teacher';
+          const isMe = item.senderRole === senderRole;
           return (
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>

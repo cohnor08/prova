@@ -39,7 +39,7 @@ export default function LoginScreen({ navigation }) {
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     } catch (error) {
       const message = FIREBASE_ERRORS[error.code] || 'Login failed. Please try again.';
       Alert.alert('Login Failed', message);

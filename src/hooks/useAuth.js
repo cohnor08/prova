@@ -33,9 +33,11 @@ export function useAuth() {
           if (isComplete) {
             await AsyncStorage.setItem(`onboarding_${firebaseUser.uid}`, 'true');
           }
-          // Normalize email to lowercase so teacher-by-email search always works
-          if (data.email && data.email !== data.email.toLowerCase()) {
-            updateDoc(doc(db, 'users', firebaseUser.uid), { email: data.email.toLowerCase() }).catch(() => {});
+          // Normalize email to lowercase so teacher-by-email search always works.
+          // Only run on fresh server data (not cache) to avoid spurious writes on reconnect.
+          if (!snap.metadata.fromCache && data.email && data.email !== data.email.toLowerCase()) {
+            updateDoc(doc(db, 'users', firebaseUser.uid), { email: data.email.toLowerCase() })
+              .catch((err) => console.warn('Email normalise failed:', err));
           }
           setLoading(false);
         });
