@@ -48,6 +48,7 @@ const THUMB_SIZE = 26;
 function BpmSlider({ bpm, onChange }) {
   const trackWidth = useRef(0);
   const bpmRef = useRef(bpm);
+  const startTrackX = useRef(0);
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
@@ -63,12 +64,13 @@ function BpmSlider({ bpm, onChange }) {
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (e) => {
+        startTrackX.current = e.nativeEvent.locationX;
         const next = xToBpm(e.nativeEvent.locationX);
         onChange(next);
         bpmRef.current = next;
       },
-      onPanResponderMove: (e) => {
-        const next = xToBpm(e.nativeEvent.locationX);
+      onPanResponderMove: (_, gs) => {
+        const next = xToBpm(startTrackX.current + gs.dx);
         if (next !== bpmRef.current) {
           onChange(next);
           bpmRef.current = next;
