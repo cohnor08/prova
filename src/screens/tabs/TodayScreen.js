@@ -66,6 +66,7 @@ function SessionCard({ session, onComplete, completed }) {
 
   const categoryColor = CATEGORY_COLORS[session.category] || COLORS.primary;
   const progress = 1 - secondsLeft / (session.duration * 60);
+  const timerDone = secondsLeft === 0;
 
   return (
     <View style={[styles.card, completed && styles.cardCompleted]}>
@@ -96,23 +97,23 @@ function SessionCard({ session, onComplete, completed }) {
               <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
               <TouchableOpacity
                 style={[styles.timerBtn, timerActive && { backgroundColor: categoryColor }]}
-                onPress={() => setTimerActive(!timerActive)}
-                activeOpacity={0.8}
+                onPress={() => !timerDone && setTimerActive(!timerActive)}
+                activeOpacity={timerDone ? 1 : 0.8}
               >
                 <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
                 <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.completeBtn, secondsLeft > 0 && styles.completeBtnLocked]}
-                onPress={() => secondsLeft === 0 && onComplete(session.id)}
-                activeOpacity={secondsLeft === 0 ? 0.8 : 1}
+                style={[styles.completeBtn, !timerDone && styles.completeBtnLocked]}
+                onPress={() => timerDone && onComplete(session.id)}
+                activeOpacity={timerDone ? 0.8 : 1}
               >
                 <Ionicons
-                  name={secondsLeft === 0 ? 'checkmark' : 'lock-closed'}
+                  name={timerDone ? 'checkmark' : 'lock-closed'}
                   size={14}
-                  color={secondsLeft === 0 ? COLORS.success : COLORS.textMuted}
+                  color={timerDone ? COLORS.success : COLORS.textMuted}
                 />
-                <Text style={[styles.completeBtnText, secondsLeft > 0 && styles.completeBtnTextLocked]}>Done</Text>
+                <Text style={[styles.completeBtnText, !timerDone && styles.completeBtnTextLocked]}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -386,7 +387,7 @@ const styles = StyleSheet.create({
   completeBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   completeBtnLocked: { backgroundColor: COLORS.border + '80' },
   completeBtnTextLocked: { color: COLORS.textMuted },
-  completedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  completedRow: { flexDirection: 'row', alignItems: 'center', gap: COLORS.xs },
   completedBadge: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: {

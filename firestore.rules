@@ -16,6 +16,16 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Teacher ↔ student chat ────────────────────────────────────────────────
+    // chatId = {teacherUid}_{studentUid}
+    // Only the two participants (whose UIDs appear in the chatId) can read/write.
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, write: if request.auth != null && (
+        chatId.matches(request.auth.uid + '_.*') ||
+        chatId.matches('.*_' + request.auth.uid)
+      );
+    }
+
     // Backend-only collections ───────────────────────────────────────────────
     // These are written exclusively by Cloud Functions via the Firebase Admin
     // SDK, which bypasses security rules entirely. Block all direct client
