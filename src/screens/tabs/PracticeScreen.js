@@ -224,7 +224,7 @@ export default function PracticeScreen({ route }) {
       const isAccent = nextBeat === 0;
       const sound = isAccent ? accentSound.current : tickSound.current;
       if (sound) {
-        sound.setPositionAsync(0).then(() => sound.playAsync()).catch(() => {});
+        sound.replayAsync().catch(() => {});
       }
 
       Animated.sequence([
