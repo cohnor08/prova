@@ -17,7 +17,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
-const DEMO_MODE = true;
+const DEMO_MODE = false;
 
 const _now = Date.now();
 const DEMO_STUDENTS_DATA = [
@@ -341,7 +341,9 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo }) {
+function InlineChatView({ student, myUid, isDemo, chatId: propChatId, senderRole = 'teacher' }) {
+  const chatId = propChatId || `${myUid}_${student.uid}`;
+
   const initMessages = () => {
     if (!isDemo) return [];
     return (student.demoMessages || []).map((m) => ({
@@ -360,13 +362,12 @@ function InlineChatView({ student, myUid, isDemo }) {
 
   useEffect(() => {
     if (isDemo) return;
-    const chatId = `${myUid}_${student.uid}`;
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return unsub;
-  }, [isDemo, myUid, student.uid]);
+  }, [isDemo, chatId]);
 
   useEffect(() => {
     if (messages.length > 0) flatRef.current?.scrollToEnd({ animated: true });
@@ -380,13 +381,12 @@ function InlineChatView({ student, myUid, isDemo }) {
       if (isDemo) {
         setMessages((prev) => [
           ...prev,
-          { id: `local_${Date.now()}`, senderUid: myUid, senderRole: 'teacher', text: trimmed, ts: Date.now() },
+          { id: `local_${Date.now()}`, senderUid: myUid, senderRole, text: trimmed, ts: Date.now() },
         ]);
         setText('');
       } else {
-        const chatId = `${myUid}_${student.uid}`;
         await addDoc(collection(db, 'chats', chatId, 'messages'), {
-          senderUid: myUid, senderRole: 'teacher', text: trimmed, timestamp: serverTimestamp(),
+          senderUid: myUid, senderRole, text: trimmed, timestamp: serverTimestamp(),
         });
         setText('');
       }
@@ -898,6 +898,8 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
                 student={{ uid: teacherUid, email: 'teacher', demoMessages: [] }}
                 myUid={myUid}
                 isDemo={false}
+                chatId={`${teacherUid}_${myUid}`}
+                senderRole="student"
               />
             </View>
           </View>
