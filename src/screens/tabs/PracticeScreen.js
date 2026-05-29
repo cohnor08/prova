@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Vibration, PanResponder,
+  Animated, PanResponder,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -178,10 +179,26 @@ export default function PracticeScreen({ route }) {
   const [beatsPerBar, setBeatsPerBar] = useState(4);
   const intervalRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const tickSound = useRef(null);
+  const accentSound = useRef(null);
+  const beatRef = useRef(0);
 
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
   const [stringIndex, setStringIndex] = useState(0);
+
+  // Load click sounds once on mount
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    Audio.Sound.createAsync(require('../../../assets/tick.wav'))
+      .then(({ sound }) => { tickSound.current = sound; });
+    Audio.Sound.createAsync(require('../../../assets/tick-accent.wav'))
+      .then(({ sound }) => { accentSound.current = sound; });
+    return () => {
+      tickSound.current?.unloadAsync();
+      accentSound.current?.unloadAsync();
+    };
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -200,8 +217,16 @@ export default function PracticeScreen({ route }) {
 
     const ms = (60 / bpm) * 1000;
     intervalRef.current = setInterval(() => {
-      setBeat((prev) => (prev + 1) % beatsPerBar);
-      Vibration.vibrate(8);
+      const nextBeat = (beatRef.current + 1) % beatsPerBar;
+      beatRef.current = nextBeat;
+      setBeat(nextBeat);
+
+      const isAccent = nextBeat === 0;
+      const sound = isAccent ? accentSound.current : tickSound.current;
+      if (sound) {
+        sound.setPositionAsync(0).then(() => sound.playAsync()).catch(() => {});
+      }
+
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.25, duration: 55, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 90, useNativeDriver: true }),
