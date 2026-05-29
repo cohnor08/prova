@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Vibration,
+  Animated, PanResponder, Alert,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -40,68 +41,156 @@ const CATEGORY_COLORS = {
 const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
-const BPM_MAX = 300;
-const WHEEL_ITEM_H = 46;
-const BPM_VALUES = Array.from({ length: BPM_MAX - BPM_MIN + 1 }, (_, i) => BPM_MIN + i);
+const BPM_MAX = 200;
+const THUMB_SIZE = 26;
 
-// ─── BPM Wheel ────────────────────────────────────────────────────────────────
+// ─── BPM Slider ───────────────────────────────────────────────────────────────
 
-function BpmWheel({ bpm, onChange }) {
-  const scrollRef = useRef(null);
+function BpmSlider({ bpm, onChange }) {
+  const trackWidth = useRef(0);
+  const trackPageX = useRef(0);
+  const bpmRef = useRef(bpm);
+  const startTrackX = useRef(0);
 
-  useEffect(() => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: (bpm - BPM_MIN) * WHEEL_ITEM_H, animated: false });
-    }, 50);
-  }, []);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
-  const onScrollEnd = (e) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H);
-    onChange(BPM_VALUES[Math.max(0, Math.min(BPM_VALUES.length - 1, idx))]);
-  };
+  const xToBpm = (x) =>
+    Math.round(Math.max(BPM_MIN, Math.min(BPM_MAX,
+      BPM_MIN + (x / Math.max(1, trackWidth.current)) * (BPM_MAX - BPM_MIN)
+    )));
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: (e) => {
+        // Use pageX so touching the thumb doesn't give a near-zero locationX
+        const trackX = e.nativeEvent.pageX - trackPageX.current;
+        startTrackX.current = trackX;
+        const next = xToBpm(trackX);
+        onChange(next);
+        bpmRef.current = next;
+      },
+      onPanResponderMove: (_, gs) => {
+        const next = xToBpm(startTrackX.current + gs.dx);
+        if (next !== bpmRef.current) {
+          onChange(next);
+          bpmRef.current = next;
+        }
+      },
+    })
+  ).current;
+
+  const ratio = (bpm - BPM_MIN) / (BPM_MAX - BPM_MIN);
 
   return (
-    <View style={wheelStyles.wrap}>
-      <View style={wheelStyles.centerHighlight} pointerEvents="none" />
-      <ScrollView
-        ref={scrollRef}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_H}
-        decelerationRate="fast"
-        onMomentumScrollEnd={onScrollEnd}
-        onScrollEndDrag={onScrollEnd}
-        contentContainerStyle={{ paddingVertical: WHEEL_ITEM_H * 2 }}
-      >
-        {BPM_VALUES.map((val) => {
-          const dist = Math.abs(val - bpm);
-          return (
-            <View key={val} style={wheelStyles.item}>
-              <Text style={[
-                wheelStyles.itemText,
-                dist === 0 && wheelStyles.itemTextActive,
-                { opacity: dist === 0 ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.25 : 0.08 },
-              ]}>
-                {val}
-              </Text>
-            </View>
-          );
-        })}
-      </ScrollView>
+    <View
+      onLayout={(e) => {
+        trackWidth.current = e.nativeEvent.layout.width;
+        e.target.measure((_, __, ___, ____, pageX) => { trackPageX.current = pageX; });
+      }}
+      {...pan.panHandlers}
+      style={sliderStyles.container}
+    >
+      <View style={sliderStyles.track} />
+      <View style={[sliderStyles.fill, { width: `${ratio * 100}%` }]} />
+      <View style={[sliderStyles.thumb, { left: `${ratio * 100}%`, marginLeft: -THUMB_SIZE / 2 }]} />
     </View>
   );
 }
 
-const wheelStyles = StyleSheet.create({
-  wrap: { height: WHEEL_ITEM_H * 5, position: 'relative', overflow: 'hidden' },
-  centerHighlight: {
-    position: 'absolute', left: 40, right: 40,
-    top: WHEEL_ITEM_H * 2, height: WHEEL_ITEM_H,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border,
+const sliderStyles = StyleSheet.create({
+  container: {
+    height: THUMB_SIZE + 16,
+    justifyContent: 'center',
   },
-  item: { height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' },
-  itemText: { color: COLORS.text, fontSize: 18, fontWeight: '400', fontVariant: ['tabular-nums'] },
-  itemTextActive: { fontSize: 32, fontWeight: '800' },
+  track: {
+    height: 3,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+  },
+  fill: {
+    position: 'absolute',
+    height: 3,
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+    top: '50%',
+    marginTop: -1.5,
+  },
+  thumb: {
+    position: 'absolute',
+    width: THUMB_SIZE, height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: COLORS.primary,
+    borderWidth: 3,
+    borderColor: COLORS.background,
+    top: '50%',
+    marginTop: -THUMB_SIZE / 2,
+  },
 });
+
+// ─── Pitch detection ──────────────────────────────────────────────────────────
+
+function parseWavSamples(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.getUint32(0, false) !== 0x52494646) return null; // not RIFF
+  let offset = 12;
+  let dataOffset = -1, dataLen = 0, sampleRate = 44100;
+  while (offset < arrayBuffer.byteLength - 8) {
+    const id = view.getUint32(offset, false);
+    const size = view.getUint32(offset + 4, true);
+    if (id === 0x666d7420) sampleRate = view.getUint32(offset + 12, true); // fmt
+    if (id === 0x64617461) { dataOffset = offset + 8; dataLen = size; break; } // data
+    offset += 8 + size;
+  }
+  if (dataOffset < 0) return null;
+  return { samples: new Int16Array(arrayBuffer, dataOffset, Math.floor(dataLen / 2)), sampleRate };
+}
+
+function detectPitchHz(int16Samples, sampleRate) {
+  const n = Math.min(8192, int16Samples.length);
+  let rms = 0;
+  const buf = new Float32Array(n);
+  for (let i = 0; i < n; i++) { buf[i] = int16Samples[i] / 32768; rms += buf[i] * buf[i]; }
+  if (Math.sqrt(rms / n) < 0.02) return null; // too quiet
+  const minLag = Math.floor(sampleRate / 1500);
+  const maxLag = Math.min(Math.ceil(sampleRate / 40), Math.floor(n / 2));
+  let best = -1, bestCorr = -Infinity;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let c = 0;
+    for (let i = 0; i < n - lag; i++) c += buf[i] * buf[i + lag];
+    if (c > bestCorr) { bestCorr = c; best = lag; }
+  }
+  return best > 0 ? sampleRate / best : null;
+}
+
+function centsOff(detectedHz, targetHz) {
+  return Math.round(1200 * Math.log2(detectedHz / targetHz));
+}
+
+const TUNER_RECORDING_OPTIONS = {
+  ios: {
+    extension: '.wav',
+    outputFormat: 'lpcm',
+    audioQuality: 0,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  android: {
+    extension: '.wav',
+    outputFormat: 6,
+    audioEncoder: 4,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+  },
+};
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +199,12 @@ export default function PracticeScreen({ route }) {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
+
+  // Timer — declared before effects so closures always capture the right bindings
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
+  const timerRef = useRef(null);
+  const timerSecondsRef = useRef(0); // always-current mirror of timerSeconds
 
   // When navigated from Today with a specific session, snap to it
   useEffect(() => {
@@ -121,28 +216,36 @@ export default function PracticeScreen({ route }) {
   // Reset timer when active session changes
   useEffect(() => {
     clearInterval(timerRef.current);
+    timerRef.current = null;
+    const secs = activeSession ? activeSession.duration * 60 : 0;
     setTimerActive(false);
-    setTimerSeconds(activeSession ? activeSession.duration * 60 : 0);
+    setTimerSeconds(secs);
+    timerSecondsRef.current = secs; // update ref synchronously so play works immediately
   }, [activeSession?.id]);
 
   // Countdown
   useEffect(() => {
     clearInterval(timerRef.current);
+    timerRef.current = null;
     if (!timerActive) return;
-    if (timerSeconds <= 0) { setTimerActive(false); return; }
+    if (timerSecondsRef.current <= 0) { setTimerActive(false); return; }
+
     timerRef.current = setInterval(() => {
       setTimerSeconds((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); setTimerActive(false); return 0; }
-        return s - 1;
+        const next = s - 1;
+        timerSecondsRef.current = next;
+        if (next <= 0) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+          setTimerActive(false);
+          return 0;
+        }
+        return next;
       });
     }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, [timerActive]);
 
-  // Timer
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const timerRef = useRef(null);
+    return () => { clearInterval(timerRef.current); timerRef.current = null; };
+  }, [timerActive]);
 
   // Metronome
   const [bpm, setBpm] = useState(80);
@@ -151,10 +254,32 @@ export default function PracticeScreen({ route }) {
   const [beatsPerBar, setBeatsPerBar] = useState(4);
   const intervalRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const tickSound = useRef(null);
+  const accentSound = useRef(null);
+  const beatRef = useRef(0);
 
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
   const [stringIndex, setStringIndex] = useState(0);
+  const [isTuning, setIsTuning] = useState(false);
+  const [detectedHz, setDetectedHz] = useState(null);
+  const [tunerCents, setTunerCents] = useState(0);
+  const isTuningRef = useRef(false);
+  const recordingRef = useRef(null);
+  const targetFreqRef = useRef(0);
+
+  // Load click sounds once on mount
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    Audio.Sound.createAsync(require('../../../assets/tick.wav'))
+      .then(({ sound }) => { tickSound.current = sound; });
+    Audio.Sound.createAsync(require('../../../assets/tick-accent.wav'))
+      .then(({ sound }) => { accentSound.current = sound; });
+    return () => {
+      tickSound.current?.unloadAsync();
+      accentSound.current?.unloadAsync();
+    };
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -162,6 +287,7 @@ export default function PracticeScreen({ route }) {
       return () => {
         clearInterval(intervalRef.current);
         setIsPlaying(false);
+        stopTuning();
       };
     }, [])
   );
@@ -173,8 +299,16 @@ export default function PracticeScreen({ route }) {
 
     const ms = (60 / bpm) * 1000;
     intervalRef.current = setInterval(() => {
-      setBeat((prev) => (prev + 1) % beatsPerBar);
-      Vibration.vibrate(8);
+      const nextBeat = (beatRef.current + 1) % beatsPerBar;
+      beatRef.current = nextBeat;
+      setBeat(nextBeat);
+
+      const isAccent = nextBeat === 0;
+      const sound = isAccent ? accentSound.current : tickSound.current;
+      if (sound) {
+        sound.replayAsync().catch(() => {});
+      }
+
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.25, duration: 55, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 90, useNativeDriver: true }),
@@ -203,6 +337,62 @@ export default function PracticeScreen({ route }) {
     }
   };
 
+  const stopTuning = async () => {
+    isTuningRef.current = false;
+    setIsTuning(false);
+    setDetectedHz(null);
+    if (recordingRef.current) {
+      try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
+      recordingRef.current = null;
+    }
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+  };
+
+  const startTuning = async () => {
+    const { status } = await Audio.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Microphone needed', 'Allow microphone access in Settings to use the tuner.');
+      return;
+    }
+    setIsPlaying(false); // stop metronome — can't record and play simultaneously on iOS
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    isTuningRef.current = true;
+    setIsTuning(true);
+    tunerLoop();
+  };
+
+  const tunerLoop = async () => {
+    while (isTuningRef.current) {
+      try {
+        const rec = new Audio.Recording();
+        await rec.prepareToRecordAsync(TUNER_RECORDING_OPTIONS);
+        recordingRef.current = rec;
+        await rec.startAsync();
+        await new Promise(r => setTimeout(r, 350));
+        if (!isTuningRef.current) { try { await rec.stopAndUnloadAsync(); } catch (_) {} break; }
+        await rec.stopAndUnloadAsync();
+        recordingRef.current = null;
+        const uri = rec.getURI();
+        if (!uri) continue;
+        const resp = await fetch(uri);
+        const buf = await resp.arrayBuffer();
+        const parsed = parseWavSamples(buf);
+        if (parsed) {
+          const hz = detectPitchHz(parsed.samples, parsed.sampleRate);
+          if (hz && isTuningRef.current) {
+            setDetectedHz(hz);
+            setTunerCents(centsOff(hz, targetFreqRef.current));
+          } else {
+            setDetectedHz(null);
+          }
+        }
+      } catch (e) {
+        console.warn('Tuner loop error:', e);
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+  };
+
   const togglePlay = () => {
     setBeat(0);
     setIsPlaying((p) => !p);
@@ -216,6 +406,7 @@ export default function PracticeScreen({ route }) {
 
   const strings = tunerInstrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS;
   const currentString = strings[stringIndex] || strings[0];
+  targetFreqRef.current = currentString.freq;
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
     : COLORS.primary;
@@ -353,9 +544,18 @@ export default function PracticeScreen({ route }) {
             })}
           </View>
 
-          {/* BPM wheel */}
-          <BpmWheel bpm={bpm} onChange={setBpm} />
-          <Text style={styles.bpmUnitLabel}>BPM</Text>
+          {/* BPM display */}
+          <View style={styles.bpmDisplay}>
+            <Text style={styles.bpmValue}>{bpm}</Text>
+            <Text style={styles.bpmUnitLabel}>BPM</Text>
+          </View>
+
+          {/* Horizontal slider */}
+          <BpmSlider bpm={bpm} onChange={setBpm} />
+          <View style={styles.bpmRange}>
+            <Text style={styles.bpmRangeLabel}>{BPM_MIN}</Text>
+            <Text style={styles.bpmRangeLabel}>{BPM_MAX}</Text>
+          </View>
 
           {/* Time signature */}
           <View style={styles.timeSigRow}>
@@ -386,7 +586,7 @@ export default function PracticeScreen({ route }) {
         </View>
 
         {/* ── Tuner ── */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>REFERENCE TUNER</Text>
+        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>TUNER</Text>
         <View style={styles.card}>
 
           {/* Guitar / Bass toggle */}
@@ -413,12 +613,10 @@ export default function PracticeScreen({ route }) {
             >
               <Ionicons name="chevron-back" size={32} color={COLORS.textSecondary} />
             </TouchableOpacity>
-
             <View style={styles.tunerNoteWrap}>
               <Text style={styles.tunerNote}>{currentString.note}</Text>
               <Text style={styles.tunerOctave}>{currentString.octave}</Text>
             </View>
-
             <TouchableOpacity
               style={styles.tunerArrow}
               onPress={() => setStringIndex((i) => (i + 1) % strings.length)}
@@ -428,8 +626,7 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.tunerFreq}>{currentString.freq.toFixed(2)} Hz</Text>
-          <Text style={styles.tunerStringLabel}>{currentString.label}</Text>
+          <Text style={styles.tunerFreq}>{currentString.freq.toFixed(2)} Hz · {currentString.label}</Text>
 
           {/* String dots */}
           <View style={styles.tunerDots}>
@@ -440,8 +637,48 @@ export default function PracticeScreen({ route }) {
             ))}
           </View>
 
+          {/* Needle — only shown when tuning */}
+          {isTuning && (
+            <View style={styles.needleWrap}>
+              {detectedHz ? (() => {
+                const cents = Math.max(-50, Math.min(50, tunerCents));
+                const ratio = (cents + 50) / 100;
+                const inTune = Math.abs(cents) <= 5;
+                const color = inTune ? COLORS.success : Math.abs(cents) <= 20 ? '#F59E0B' : COLORS.error;
+                return (
+                  <>
+                    <Text style={[styles.needleHz, { color }]}>
+                      {detectedHz.toFixed(1)} Hz · {inTune ? 'In tune' : `${Math.abs(tunerCents)}¢ ${tunerCents < 0 ? 'flat' : 'sharp'}`}
+                    </Text>
+                    <View style={styles.needleTrack}>
+                      <View style={styles.needleCenter} />
+                      <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
+                    </View>
+                    <View style={styles.needleLabels}>
+                      <Text style={styles.needleLabel}>-50¢</Text>
+                      <Text style={styles.needleLabel}>0</Text>
+                      <Text style={styles.needleLabel}>+50¢</Text>
+                    </View>
+                  </>
+                );
+              })() : (
+                <Text style={styles.needleListening}>Listening… play a note</Text>
+              )}
+            </View>
+          )}
+
+          {/* Start / Stop tuning button */}
+          <TouchableOpacity
+            style={[styles.tunerBtn, isTuning && styles.tunerBtnActive]}
+            onPress={isTuning ? stopTuning : startTuning}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
+            <Text style={styles.tunerBtnText}>{isTuning ? 'Stop Tuning' : 'Start Tuning'}</Text>
+          </TouchableOpacity>
+
           <Text style={styles.tunerCaption}>
-            Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning · reference only
+            Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning
           </Text>
         </View>
 
@@ -486,13 +723,17 @@ const styles = StyleSheet.create({
   timerPlayBtn: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
 
   // Metronome
-  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.xl },
+  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
   beatDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.border },
   beatDotAccent: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.border },
   beatDotOn: { backgroundColor: COLORS.primary },
   beatDotAccentOn: { backgroundColor: COLORS.accent },
 
-  bpmUnitLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: SPACING.md },
+  bpmDisplay: { alignItems: 'center', marginBottom: SPACING.sm },
+  bpmValue: { color: COLORS.text, fontSize: 48, fontWeight: '900', fontVariant: ['tabular-nums'], lineHeight: 52 },
+  bpmUnitLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2 },
+  bpmRange: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.xs, marginBottom: SPACING.md },
+  bpmRangeLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
   timeSigRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.lg },
   timeSigLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
@@ -518,11 +759,22 @@ const styles = StyleSheet.create({
   tunerNote: { color: COLORS.text, fontSize: 72, fontWeight: '900', lineHeight: 80 },
   tunerOctave: { color: COLORS.textMuted, fontSize: 22, fontWeight: '700', marginTop: 10 },
   tunerFreq: { color: COLORS.primary, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  tunerStringLabel: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
-
   tunerDots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: SPACING.md },
   tunerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
   tunerDotActive: { backgroundColor: COLORS.primary, width: 20, borderRadius: 4 },
 
-  tunerCaption: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', letterSpacing: 0.5 },
+  tunerCaption: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', letterSpacing: 0.5, marginTop: SPACING.sm },
+
+  needleWrap: { marginVertical: SPACING.md },
+  needleHz: { fontSize: 13, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
+  needleTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, position: 'relative', marginBottom: 4 },
+  needleCenter: { position: 'absolute', left: '50%', top: -4, width: 2, height: 12, backgroundColor: COLORS.textMuted, borderRadius: 1 },
+  needleIndicator: { position: 'absolute', width: 14, height: 14, borderRadius: 7, top: -5, marginLeft: -7, borderWidth: 2, borderColor: COLORS.background },
+  needleLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  needleLabel: { color: COLORS.textMuted, fontSize: 10 },
+  needleListening: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.md, fontStyle: 'italic' },
+
+  tunerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm, marginTop: SPACING.md },
+  tunerBtnActive: { backgroundColor: COLORS.error },
+  tunerBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
 });
