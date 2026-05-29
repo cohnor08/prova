@@ -40,13 +40,14 @@ const CATEGORY_COLORS = {
 const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
-const BPM_MAX = 300;
+const BPM_MAX = 200;
 const THUMB_SIZE = 26;
 
 // ─── BPM Slider ───────────────────────────────────────────────────────────────
 
 function BpmSlider({ bpm, onChange }) {
   const trackWidth = useRef(0);
+  const trackPageX = useRef(0);
   const bpmRef = useRef(bpm);
   const startTrackX = useRef(0);
 
@@ -64,8 +65,10 @@ function BpmSlider({ bpm, onChange }) {
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (e) => {
-        startTrackX.current = e.nativeEvent.locationX;
-        const next = xToBpm(e.nativeEvent.locationX);
+        // Use pageX so touching the thumb doesn't give a near-zero locationX
+        const trackX = e.nativeEvent.pageX - trackPageX.current;
+        startTrackX.current = trackX;
+        const next = xToBpm(trackX);
         onChange(next);
         bpmRef.current = next;
       },
@@ -83,7 +86,10 @@ function BpmSlider({ bpm, onChange }) {
 
   return (
     <View
-      onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
+      onLayout={(e) => {
+        trackWidth.current = e.nativeEvent.layout.width;
+        e.target.measure((_, __, ___, ____, pageX) => { trackPageX.current = pageX; });
+      }}
       {...pan.panHandlers}
       style={sliderStyles.container}
     >
