@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Vibration,
+  Animated, Vibration, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,66 +41,136 @@ const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
 const BPM_MAX = 300;
-const WHEEL_ITEM_H = 46;
-const BPM_VALUES = Array.from({ length: BPM_MAX - BPM_MIN + 1 }, (_, i) => BPM_MIN + i);
+const KNOB_SIZE = 190;
+const RING_WIDTH = 26;
+const INDICATOR_SIZE = RING_WIDTH - 6;
+const TICK_COUNT = 36;
 
-// ─── BPM Wheel ────────────────────────────────────────────────────────────────
+// ─── Rotary Knob ──────────────────────────────────────────────────────────────
 
-function BpmWheel({ bpm, onChange }) {
-  const scrollRef = useRef(null);
+function RotaryKnob({ bpm, onChange }) {
+  const center = useRef({ x: 0, y: 0 });
+  const lastAngle = useRef(null);
+  const bpmRef = useRef(bpm);
 
-  useEffect(() => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: (bpm - BPM_MIN) * WHEEL_ITEM_H, animated: false });
-    }, 50);
-  }, []);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
-  const onScrollEnd = (e) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H);
-    onChange(BPM_VALUES[Math.max(0, Math.min(BPM_VALUES.length - 1, idx))]);
-  };
+  const getAngle = (pageX, pageY) =>
+    Math.atan2(pageY - center.current.y, pageX - center.current.x) * (180 / Math.PI);
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        lastAngle.current = getAngle(e.nativeEvent.pageX, e.nativeEvent.pageY);
+      },
+      onPanResponderMove: (e) => {
+        const angle = getAngle(e.nativeEvent.pageX, e.nativeEvent.pageY);
+        let delta = angle - lastAngle.current;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        const next = Math.round(Math.max(BPM_MIN, Math.min(BPM_MAX, bpmRef.current + delta * 3)));
+        if (next !== bpmRef.current) {
+          onChange(next);
+          bpmRef.current = next;
+        }
+        lastAngle.current = angle;
+      },
+    })
+  ).current;
+
+  // maps BPM_MIN→-135°, BPM_MAX→+135°
+  const indicatorAngle = ((bpm - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 270 - 135;
+  const tickRadius = KNOB_SIZE / 2 - RING_WIDTH / 2;
 
   return (
-    <View style={wheelStyles.wrap}>
-      <View style={wheelStyles.centerHighlight} pointerEvents="none" />
-      <ScrollView
-        ref={scrollRef}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_H}
-        decelerationRate="fast"
-        onMomentumScrollEnd={onScrollEnd}
-        onScrollEndDrag={onScrollEnd}
-        contentContainerStyle={{ paddingVertical: WHEEL_ITEM_H * 2 }}
+    <View
+      style={knobStyles.knob}
+      onLayout={(e) =>
+        e.target.measure((_, __, ___, ____, pageX, pageY) => {
+          center.current = { x: pageX + KNOB_SIZE / 2, y: pageY + KNOB_SIZE / 2 };
+        })
+      }
+      {...pan.panHandlers}
+    >
+      {/* Ring track */}
+      <View style={knobStyles.ring} pointerEvents="none" />
+
+      {/* Tick marks on the ring */}
+      {Array.from({ length: TICK_COUNT }).map((_, i) => {
+        const deg = (i / TICK_COUNT) * 360;
+        const rad = ((deg - 90) * Math.PI) / 180;
+        const isMajor = i % 6 === 0;
+        const tW = isMajor ? 3 : 2;
+        const tH = isMajor ? 10 : 6;
+        return (
+          <View
+            key={i}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: KNOB_SIZE / 2 + tickRadius * Math.cos(rad) - tW / 2,
+              top: KNOB_SIZE / 2 + tickRadius * Math.sin(rad) - tH / 2,
+              width: tW, height: tH,
+              borderRadius: tW / 2,
+              backgroundColor: COLORS.border,
+              transform: [{ rotate: `${deg}deg` }],
+            }}
+          />
+        );
+      })}
+
+      {/* Rotating indicator dot */}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            paddingTop: RING_WIDTH / 2 - INDICATOR_SIZE / 2,
+            transform: [{ rotate: `${indicatorAngle}deg` }],
+          },
+        ]}
       >
-        {BPM_VALUES.map((val) => {
-          const dist = Math.abs(val - bpm);
-          return (
-            <View key={val} style={wheelStyles.item}>
-              <Text style={[
-                wheelStyles.itemText,
-                dist === 0 && wheelStyles.itemTextActive,
-                { opacity: dist === 0 ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.25 : 0.08 },
-              ]}>
-                {val}
-              </Text>
-            </View>
-          );
-        })}
-      </ScrollView>
+        <View style={knobStyles.indicator} />
+      </View>
+
+      {/* BPM center */}
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}
+      >
+        <Text style={knobStyles.bpmValue}>{bpm}</Text>
+        <Text style={knobStyles.bpmUnit}>BPM</Text>
+      </View>
     </View>
   );
 }
 
-const wheelStyles = StyleSheet.create({
-  wrap: { height: WHEEL_ITEM_H * 5, position: 'relative', overflow: 'hidden' },
-  centerHighlight: {
-    position: 'absolute', left: 40, right: 40,
-    top: WHEEL_ITEM_H * 2, height: WHEEL_ITEM_H,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border,
+const knobStyles = StyleSheet.create({
+  knob: {
+    width: KNOB_SIZE, height: KNOB_SIZE,
+    alignSelf: 'center',
   },
-  item: { height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' },
-  itemText: { color: COLORS.text, fontSize: 18, fontWeight: '400', fontVariant: ['tabular-nums'] },
-  itemTextActive: { fontSize: 32, fontWeight: '800' },
+  ring: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: KNOB_SIZE / 2,
+    borderWidth: RING_WIDTH,
+    borderColor: COLORS.surface,
+  },
+  indicator: {
+    width: INDICATOR_SIZE, height: INDICATOR_SIZE,
+    borderRadius: INDICATOR_SIZE / 2,
+    backgroundColor: COLORS.primary,
+  },
+  bpmValue: {
+    color: COLORS.text, fontSize: 40, fontWeight: '900',
+    fontVariant: ['tabular-nums'], lineHeight: 44,
+  },
+  bpmUnit: {
+    color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2,
+  },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -353,9 +423,22 @@ export default function PracticeScreen({ route }) {
             })}
           </View>
 
-          {/* BPM wheel */}
-          <BpmWheel bpm={bpm} onChange={setBpm} />
-          <Text style={styles.bpmUnitLabel}>BPM</Text>
+          {/* Rotary knob + fine-tune */}
+          <View style={styles.knobRow}>
+            <TouchableOpacity
+              style={styles.bpmAdj}
+              onPress={() => setBpm((b) => Math.max(BPM_MIN, b - 1))}
+            >
+              <Ionicons name="remove" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+            <RotaryKnob bpm={bpm} onChange={setBpm} />
+            <TouchableOpacity
+              style={styles.bpmAdj}
+              onPress={() => setBpm((b) => Math.min(BPM_MAX, b + 1))}
+            >
+              <Ionicons name="add" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           {/* Time signature */}
           <View style={styles.timeSigRow}>
@@ -486,13 +569,14 @@ const styles = StyleSheet.create({
   timerPlayBtn: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
 
   // Metronome
-  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.xl },
+  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
   beatDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.border },
   beatDotAccent: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.border },
   beatDotOn: { backgroundColor: COLORS.primary },
   beatDotAccentOn: { backgroundColor: COLORS.accent },
 
-  bpmUnitLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: SPACING.md },
+  knobRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.lg, marginBottom: SPACING.lg },
+  bpmAdj: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
 
   timeSigRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.lg },
   timeSigLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
