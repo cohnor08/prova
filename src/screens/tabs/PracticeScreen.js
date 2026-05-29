@@ -139,6 +139,12 @@ export default function PracticeScreen({ route }) {
   const [activeSession, setActiveSession] = useState(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
 
+  // Timer — declared before effects so closures always capture the right bindings
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
+  const timerRef = useRef(null);
+  const timerSecondsRef = useRef(0); // always-current mirror of timerSeconds
+
   // When navigated from Today with a specific session, snap to it
   useEffect(() => {
     if (route?.params?.activeSession) {
@@ -149,28 +155,36 @@ export default function PracticeScreen({ route }) {
   // Reset timer when active session changes
   useEffect(() => {
     clearInterval(timerRef.current);
+    timerRef.current = null;
+    const secs = activeSession ? activeSession.duration * 60 : 0;
     setTimerActive(false);
-    setTimerSeconds(activeSession ? activeSession.duration * 60 : 0);
+    setTimerSeconds(secs);
+    timerSecondsRef.current = secs; // update ref synchronously so play works immediately
   }, [activeSession?.id]);
 
   // Countdown
   useEffect(() => {
     clearInterval(timerRef.current);
+    timerRef.current = null;
     if (!timerActive) return;
-    if (timerSeconds <= 0) { setTimerActive(false); return; }
+    if (timerSecondsRef.current <= 0) { setTimerActive(false); return; }
+
     timerRef.current = setInterval(() => {
       setTimerSeconds((s) => {
-        if (s <= 1) { clearInterval(timerRef.current); setTimerActive(false); return 0; }
-        return s - 1;
+        const next = s - 1;
+        timerSecondsRef.current = next;
+        if (next <= 0) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+          setTimerActive(false);
+          return 0;
+        }
+        return next;
       });
     }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, [timerActive]);
 
-  // Timer
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const timerRef = useRef(null);
+    return () => { clearInterval(timerRef.current); timerRef.current = null; };
+  }, [timerActive]);
 
   // Metronome
   const [bpm, setBpm] = useState(80);
