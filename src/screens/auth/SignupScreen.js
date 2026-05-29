@@ -26,6 +26,7 @@ const FIREBASE_ERRORS = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen({ navigation }) {
+  const [role, setRole] = useState('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -58,6 +59,7 @@ export default function SignupScreen({ navigation }) {
       const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       await setDoc(doc(db, 'users', user.uid), {
         email: normalizedEmail,
+        role,
         createdAt: new Date().toISOString(),
         onboardingComplete: false,
       });
@@ -81,6 +83,45 @@ export default function SignupScreen({ navigation }) {
           </View>
           <Text style={styles.tagline}>Create your account</Text>
         </View>
+
+        {/* Role selector */}
+        <View style={styles.roleRow}>
+          <TouchableOpacity
+            style={[styles.rolePill, role === 'student' && styles.rolePillActive]}
+            onPress={() => setRole('student')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="musical-notes"
+              size={15}
+              color={role === 'student' ? COLORS.text : COLORS.textMuted}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.rolePillText, role === 'student' && styles.rolePillTextActive]}>
+              Student
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.rolePill, role === 'teacher' && styles.rolePillActive]}
+            onPress={() => setRole('teacher')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="school"
+              size={15}
+              color={role === 'teacher' ? COLORS.text : COLORS.textMuted}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.rolePillText, role === 'teacher' && styles.rolePillTextActive]}>
+              Teacher
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.roleHint}>
+          {role === 'student'
+            ? 'Get an AI-powered practice plan and track your progress'
+            : 'Monitor your students and assign custom practice tasks'}
+        </Text>
 
         <View style={styles.form}>
           <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
@@ -132,7 +173,7 @@ export default function SignupScreen({ navigation }) {
               onFocus={() => setFocusedField('confirm')}
               onBlur={() => setFocusedField(null)}
             />
-            <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 12 }}>
               <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
@@ -163,7 +204,7 @@ export default function SignupScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
-  logoArea: { alignItems: 'center', marginBottom: SPACING.xl },
+  logoArea: { alignItems: 'center', marginBottom: SPACING.lg },
   logoGlow: {
     borderWidth: 1,
     borderColor: COLORS.primary + '44',
@@ -184,6 +225,33 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     letterSpacing: 2,
     textTransform: 'uppercase',
+  },
+  roleRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  rolePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  rolePillActive: { backgroundColor: COLORS.primary },
+  rolePillText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
+  rolePillTextActive: { color: COLORS.text },
+  roleHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    lineHeight: 17,
   },
   form: { marginBottom: SPACING.xl },
   inputWrapper: {

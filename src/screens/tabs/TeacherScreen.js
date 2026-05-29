@@ -940,7 +940,12 @@ export default function TeacherScreen() {
     );
   }
 
-  if (userData?.teacherUid) {
+  // role (set at signup) is the source of truth.
+  // Fall back to legacy fields for existing accounts without a role.
+  const isStudent = userData?.role === 'student' || (!userData?.role && userData?.teacherUid);
+  const isTeacher = userData?.role === 'teacher' || (!userData?.role && userData?.isTeacherPro);
+
+  if (isStudent) {
     return (
       <SafeAreaView style={styles.container}>
         <StudentTasksView assignedTasks={userData.assignedTasks || []} teacherUid={userData.teacherUid} />
@@ -948,7 +953,7 @@ export default function TeacherScreen() {
     );
   }
 
-  if (!userData?.isTeacherPro && !DEMO_MODE) {
+  if (!isTeacher) {
     return <PaywallScreen onUnlock={loadUser} />;
   }
 
