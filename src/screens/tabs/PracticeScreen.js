@@ -41,22 +41,20 @@ const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
 const BPM_MAX = 300;
-const KNOB_SIZE = 190;
-const RING_WIDTH = 26;
-const INDICATOR_SIZE = RING_WIDTH - 6;
-const TICK_COUNT = 36;
+const THUMB_SIZE = 26;
 
-// ─── Rotary Knob ──────────────────────────────────────────────────────────────
+// ─── BPM Slider ───────────────────────────────────────────────────────────────
 
-function RotaryKnob({ bpm, onChange }) {
-  const center = useRef({ x: 0, y: 0 });
-  const lastAngle = useRef(null);
+function BpmSlider({ bpm, onChange }) {
+  const trackWidth = useRef(0);
   const bpmRef = useRef(bpm);
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
-  const getAngle = (pageX, pageY) =>
-    Math.atan2(pageY - center.current.y, pageX - center.current.x) * (180 / Math.PI);
+  const xToBpm = (x) =>
+    Math.round(Math.max(BPM_MIN, Math.min(BPM_MAX,
+      BPM_MIN + (x / Math.max(1, trackWidth.current)) * (BPM_MAX - BPM_MIN)
+    )));
 
   const pan = useRef(
     PanResponder.create({
@@ -65,114 +63,62 @@ function RotaryKnob({ bpm, onChange }) {
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (e) => {
-        lastAngle.current = getAngle(e.nativeEvent.pageX, e.nativeEvent.pageY);
+        const next = xToBpm(e.nativeEvent.locationX);
+        onChange(next);
+        bpmRef.current = next;
       },
       onPanResponderMove: (e) => {
-        const angle = getAngle(e.nativeEvent.pageX, e.nativeEvent.pageY);
-        let delta = angle - lastAngle.current;
-        if (delta > 180) delta -= 360;
-        if (delta < -180) delta += 360;
-        const next = Math.round(Math.max(BPM_MIN, Math.min(BPM_MAX, bpmRef.current + delta * 3)));
+        const next = xToBpm(e.nativeEvent.locationX);
         if (next !== bpmRef.current) {
           onChange(next);
           bpmRef.current = next;
         }
-        lastAngle.current = angle;
       },
     })
   ).current;
 
-  // maps BPM_MIN→-135°, BPM_MAX→+135°
-  const indicatorAngle = ((bpm - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 270 - 135;
-  const tickRadius = KNOB_SIZE / 2 - RING_WIDTH / 2;
+  const ratio = (bpm - BPM_MIN) / (BPM_MAX - BPM_MIN);
 
   return (
     <View
-      style={knobStyles.knob}
-      onLayout={(e) =>
-        e.target.measure((_, __, ___, ____, pageX, pageY) => {
-          center.current = { x: pageX + KNOB_SIZE / 2, y: pageY + KNOB_SIZE / 2 };
-        })
-      }
+      onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
       {...pan.panHandlers}
+      style={sliderStyles.container}
     >
-      {/* Ring track */}
-      <View style={knobStyles.ring} pointerEvents="none" />
-
-      {/* Tick marks on the ring */}
-      {Array.from({ length: TICK_COUNT }).map((_, i) => {
-        const deg = (i / TICK_COUNT) * 360;
-        const rad = ((deg - 90) * Math.PI) / 180;
-        const isMajor = i % 6 === 0;
-        const tW = isMajor ? 3 : 2;
-        const tH = isMajor ? 10 : 6;
-        return (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: KNOB_SIZE / 2 + tickRadius * Math.cos(rad) - tW / 2,
-              top: KNOB_SIZE / 2 + tickRadius * Math.sin(rad) - tH / 2,
-              width: tW, height: tH,
-              borderRadius: tW / 2,
-              backgroundColor: COLORS.border,
-              transform: [{ rotate: `${deg}deg` }],
-            }}
-          />
-        );
-      })}
-
-      {/* Rotating indicator dot */}
-      <View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingTop: RING_WIDTH / 2 - INDICATOR_SIZE / 2,
-            transform: [{ rotate: `${indicatorAngle}deg` }],
-          },
-        ]}
-      >
-        <View style={knobStyles.indicator} />
-      </View>
-
-      {/* BPM center */}
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}
-      >
-        <Text style={knobStyles.bpmValue}>{bpm}</Text>
-        <Text style={knobStyles.bpmUnit}>BPM</Text>
-      </View>
+      <View style={sliderStyles.track} />
+      <View style={[sliderStyles.fill, { width: `${ratio * 100}%` }]} />
+      <View style={[sliderStyles.thumb, { left: `${ratio * 100}%`, marginLeft: -THUMB_SIZE / 2 }]} />
     </View>
   );
 }
 
-const knobStyles = StyleSheet.create({
-  knob: {
-    width: KNOB_SIZE, height: KNOB_SIZE,
-    alignSelf: 'center',
+const sliderStyles = StyleSheet.create({
+  container: {
+    height: THUMB_SIZE + 16,
+    justifyContent: 'center',
   },
-  ring: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: KNOB_SIZE / 2,
-    borderWidth: RING_WIDTH,
-    borderColor: COLORS.surface,
+  track: {
+    height: 3,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
   },
-  indicator: {
-    width: INDICATOR_SIZE, height: INDICATOR_SIZE,
-    borderRadius: INDICATOR_SIZE / 2,
+  fill: {
+    position: 'absolute',
+    height: 3,
     backgroundColor: COLORS.primary,
+    borderRadius: 2,
+    top: '50%',
+    marginTop: -1.5,
   },
-  bpmValue: {
-    color: COLORS.text, fontSize: 40, fontWeight: '900',
-    fontVariant: ['tabular-nums'], lineHeight: 44,
-  },
-  bpmUnit: {
-    color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2,
+  thumb: {
+    position: 'absolute',
+    width: THUMB_SIZE, height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: COLORS.primary,
+    borderWidth: 3,
+    borderColor: COLORS.background,
+    top: '50%',
+    marginTop: -THUMB_SIZE / 2,
   },
 });
 
@@ -426,21 +372,17 @@ export default function PracticeScreen({ route }) {
             })}
           </View>
 
-          {/* Rotary knob + fine-tune */}
-          <View style={styles.knobRow}>
-            <TouchableOpacity
-              style={styles.bpmAdj}
-              onPress={() => setBpm((b) => Math.max(BPM_MIN, b - 1))}
-            >
-              <Ionicons name="remove" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-            <RotaryKnob bpm={bpm} onChange={setBpm} />
-            <TouchableOpacity
-              style={styles.bpmAdj}
-              onPress={() => setBpm((b) => Math.min(BPM_MAX, b + 1))}
-            >
-              <Ionicons name="add" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
+          {/* BPM display */}
+          <View style={styles.bpmDisplay}>
+            <Text style={styles.bpmValue}>{bpm}</Text>
+            <Text style={styles.bpmUnitLabel}>BPM</Text>
+          </View>
+
+          {/* Horizontal slider */}
+          <BpmSlider bpm={bpm} onChange={setBpm} />
+          <View style={styles.bpmRange}>
+            <Text style={styles.bpmRangeLabel}>{BPM_MIN}</Text>
+            <Text style={styles.bpmRangeLabel}>{BPM_MAX}</Text>
           </View>
 
           {/* Time signature */}
@@ -578,8 +520,11 @@ const styles = StyleSheet.create({
   beatDotOn: { backgroundColor: COLORS.primary },
   beatDotAccentOn: { backgroundColor: COLORS.accent },
 
-  knobRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.lg, marginBottom: SPACING.lg },
-  bpmAdj: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  bpmDisplay: { alignItems: 'center', marginBottom: SPACING.sm },
+  bpmValue: { color: COLORS.text, fontSize: 48, fontWeight: '900', fontVariant: ['tabular-nums'], lineHeight: 52 },
+  bpmUnitLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2 },
+  bpmRange: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.xs, marginBottom: SPACING.md },
+  bpmRangeLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
   timeSigRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.lg },
   timeSigLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
