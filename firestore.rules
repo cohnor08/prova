@@ -16,11 +16,23 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Teacher ↔ student chat ────────────────────────────────────────────────
-    // chatId = {teacherUid}_{studentUid}
-    // Only the two participants (whose UIDs appear in the chatId) can read/write.
+    // Direct messages between any two users ─────────────────────────────────
+    // chatId = sorted(uid1, uid2).join('_')
+    // Only the two participants can read/write messages.
     match /chats/{chatId}/messages/{messageId} {
       allow read, write: if request.auth != null && (
+        chatId.matches(request.auth.uid + '_.*') ||
+        chatId.matches('.*_' + request.auth.uid)
+      );
+    }
+
+    // Conversation metadata — used to list a user's chats ───────────────────
+    // Each participant can read their own list; either participant can write
+    // (so sending a message updates both users' conversation lists).
+    match /userChats/{uid}/conversations/{chatId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && (
+        request.auth.uid == uid ||
         chatId.matches(request.auth.uid + '_.*') ||
         chatId.matches('.*_' + request.auth.uid)
       );
