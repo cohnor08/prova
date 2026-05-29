@@ -61,6 +61,9 @@ function RotaryKnob({ bpm, onChange }) {
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: (e) => {
         lastAngle.current = getAngle(e.nativeEvent.pageX, e.nativeEvent.pageY);
       },
