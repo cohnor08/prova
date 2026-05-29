@@ -39,6 +39,31 @@ prova/
 │           └── ProfileScreen.js    # Account info + logout
 ```
 
+## Git Workflow — IMPORTANT
+Two developers (Cohnor and Ethan) work on this repo simultaneously, both using Claude Code.
+**Never commit directly to `master`.** Always follow this flow:
+
+1. Before starting any work, create a branch:
+   ```bash
+   git checkout master && git pull
+   git checkout -b <your-name>/<short-description>
+   # e.g. cohnor/timer-lock  or  ethan/practice-screen
+   ```
+2. Make all commits on that branch.
+3. When done, push and open a PR:
+   ```bash
+   git push -u origin <branch-name>
+   gh pr create --fill
+   ```
+4. The other developer reviews and merges via GitHub — never merge your own PR.
+
+Branch naming: `cohnor/<feature>` or `ethan/<feature>`. Keep branches short-lived (one feature per branch).
+
+If `master` is ahead of your branch before you push, rebase:
+```bash
+git fetch origin && git rebase origin/master
+```
+
 ## Key Rules
 - All files must be `.js` — never `.ts` or `.tsx`
 - Never use `import ... from 'firebase/analytics'` — analytics is browser-only and crashes React Native
