@@ -102,9 +102,17 @@ function SessionCard({ session, onComplete, completed }) {
                 <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
                 <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.completeBtn} onPress={() => onComplete(session.id)} activeOpacity={0.8}>
-                <Ionicons name="checkmark" size={14} color={COLORS.success} />
-                <Text style={styles.completeBtnText}>Done</Text>
+              <TouchableOpacity
+                style={[styles.completeBtn, secondsLeft > 0 && styles.completeBtnLocked]}
+                onPress={() => secondsLeft === 0 && onComplete(session.id)}
+                activeOpacity={secondsLeft === 0 ? 0.8 : 1}
+              >
+                <Ionicons
+                  name={secondsLeft === 0 ? 'checkmark' : 'lock-closed'}
+                  size={14}
+                  color={secondsLeft === 0 ? COLORS.success : COLORS.textMuted}
+                />
+                <Text style={[styles.completeBtnText, secondsLeft > 0 && styles.completeBtnTextLocked]}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -376,6 +384,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   completeBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+  completeBtnLocked: { backgroundColor: COLORS.border + '80' },
+  completeBtnTextLocked: { color: COLORS.textMuted },
   completedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   completedBadge: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
