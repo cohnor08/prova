@@ -43,7 +43,7 @@ function SkeletonBlock({ width, height, style }) {
   return <Animated.View style={[{ width, height, borderRadius: 8, backgroundColor: COLORS.card, opacity: anim }, style]} />;
 }
 
-function SessionCard({ session, onComplete, completed }) {
+function SessionCard({ session, onComplete, completed, onStart }) {
   const [timerActive, setTimerActive] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
   const intervalRef = useRef(null);
@@ -97,7 +97,14 @@ function SessionCard({ session, onComplete, completed }) {
               <Text style={styles.timerText}>{formatTime(secondsLeft)}</Text>
               <TouchableOpacity
                 style={[styles.timerBtn, timerActive && { backgroundColor: categoryColor }]}
-                onPress={() => !timerDone && setTimerActive(!timerActive)}
+                onPress={() => {
+                  if (timerDone) return;
+                  if (!timerActive && onStart) {
+                    onStart(session);
+                  } else {
+                    setTimerActive(!timerActive);
+                  }
+                }}
                 activeOpacity={timerDone ? 1 : 0.8}
               >
                 <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
@@ -130,7 +137,7 @@ function SessionCard({ session, onComplete, completed }) {
   );
 }
 
-export default function TodayScreen() {
+export default function TodayScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -299,6 +306,7 @@ export default function TodayScreen() {
               session={session}
               onComplete={handleComplete}
               completed={completedIds.includes(session.id)}
+              onStart={(s) => navigation.navigate('Practice', { activeSession: s })}
             />
           ))
         )}
