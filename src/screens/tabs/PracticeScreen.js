@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, PanResponder,
+  Animated, PanResponder, Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -131,6 +131,67 @@ const sliderStyles = StyleSheet.create({
   },
 });
 
+// ─── Pitch detection ──────────────────────────────────────────────────────────
+
+function parseWavSamples(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.getUint32(0, false) !== 0x52494646) return null; // not RIFF
+  let offset = 12;
+  let dataOffset = -1, dataLen = 0, sampleRate = 44100;
+  while (offset < arrayBuffer.byteLength - 8) {
+    const id = view.getUint32(offset, false);
+    const size = view.getUint32(offset + 4, true);
+    if (id === 0x666d7420) sampleRate = view.getUint32(offset + 12, true); // fmt
+    if (id === 0x64617461) { dataOffset = offset + 8; dataLen = size; break; } // data
+    offset += 8 + size;
+  }
+  if (dataOffset < 0) return null;
+  return { samples: new Int16Array(arrayBuffer, dataOffset, Math.floor(dataLen / 2)), sampleRate };
+}
+
+function detectPitchHz(int16Samples, sampleRate) {
+  const n = Math.min(8192, int16Samples.length);
+  let rms = 0;
+  const buf = new Float32Array(n);
+  for (let i = 0; i < n; i++) { buf[i] = int16Samples[i] / 32768; rms += buf[i] * buf[i]; }
+  if (Math.sqrt(rms / n) < 0.02) return null; // too quiet
+  const minLag = Math.floor(sampleRate / 1500);
+  const maxLag = Math.min(Math.ceil(sampleRate / 40), Math.floor(n / 2));
+  let best = -1, bestCorr = -Infinity;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let c = 0;
+    for (let i = 0; i < n - lag; i++) c += buf[i] * buf[i + lag];
+    if (c > bestCorr) { bestCorr = c; best = lag; }
+  }
+  return best > 0 ? sampleRate / best : null;
+}
+
+function centsOff(detectedHz, targetHz) {
+  return Math.round(1200 * Math.log2(detectedHz / targetHz));
+}
+
+const TUNER_RECORDING_OPTIONS = {
+  ios: {
+    extension: '.wav',
+    outputFormat: 'lpcm',
+    audioQuality: 0,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  android: {
+    extension: '.wav',
+    outputFormat: 6,
+    audioEncoder: 4,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+  },
+};
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PracticeScreen({ route }) {
@@ -200,6 +261,12 @@ export default function PracticeScreen({ route }) {
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
   const [stringIndex, setStringIndex] = useState(0);
+  const [isTuning, setIsTuning] = useState(false);
+  const [detectedHz, setDetectedHz] = useState(null);
+  const [tunerCents, setTunerCents] = useState(0);
+  const isTuningRef = useRef(false);
+  const recordingRef = useRef(null);
+  const targetFreqRef = useRef(0);
 
   // Load click sounds once on mount
   useEffect(() => {
@@ -220,6 +287,7 @@ export default function PracticeScreen({ route }) {
       return () => {
         clearInterval(intervalRef.current);
         setIsPlaying(false);
+        stopTuning();
       };
     }, [])
   );
@@ -269,6 +337,62 @@ export default function PracticeScreen({ route }) {
     }
   };
 
+  const stopTuning = async () => {
+    isTuningRef.current = false;
+    setIsTuning(false);
+    setDetectedHz(null);
+    if (recordingRef.current) {
+      try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
+      recordingRef.current = null;
+    }
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+  };
+
+  const startTuning = async () => {
+    const { status } = await Audio.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Microphone needed', 'Allow microphone access in Settings to use the tuner.');
+      return;
+    }
+    setIsPlaying(false); // stop metronome — can't record and play simultaneously on iOS
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    isTuningRef.current = true;
+    setIsTuning(true);
+    tunerLoop();
+  };
+
+  const tunerLoop = async () => {
+    while (isTuningRef.current) {
+      try {
+        const rec = new Audio.Recording();
+        await rec.prepareToRecordAsync(TUNER_RECORDING_OPTIONS);
+        recordingRef.current = rec;
+        await rec.startAsync();
+        await new Promise(r => setTimeout(r, 350));
+        if (!isTuningRef.current) { try { await rec.stopAndUnloadAsync(); } catch (_) {} break; }
+        await rec.stopAndUnloadAsync();
+        recordingRef.current = null;
+        const uri = rec.getURI();
+        if (!uri) continue;
+        const resp = await fetch(uri);
+        const buf = await resp.arrayBuffer();
+        const parsed = parseWavSamples(buf);
+        if (parsed) {
+          const hz = detectPitchHz(parsed.samples, parsed.sampleRate);
+          if (hz && isTuningRef.current) {
+            setDetectedHz(hz);
+            setTunerCents(centsOff(hz, targetFreqRef.current));
+          } else {
+            setDetectedHz(null);
+          }
+        }
+      } catch (e) {
+        console.warn('Tuner loop error:', e);
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+  };
+
   const togglePlay = () => {
     setBeat(0);
     setIsPlaying((p) => !p);
@@ -282,6 +406,7 @@ export default function PracticeScreen({ route }) {
 
   const strings = tunerInstrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS;
   const currentString = strings[stringIndex] || strings[0];
+  targetFreqRef.current = currentString.freq;
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
     : COLORS.primary;
@@ -461,7 +586,7 @@ export default function PracticeScreen({ route }) {
         </View>
 
         {/* ── Tuner ── */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>REFERENCE TUNER</Text>
+        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>TUNER</Text>
         <View style={styles.card}>
 
           {/* Guitar / Bass toggle */}
@@ -488,12 +613,10 @@ export default function PracticeScreen({ route }) {
             >
               <Ionicons name="chevron-back" size={32} color={COLORS.textSecondary} />
             </TouchableOpacity>
-
             <View style={styles.tunerNoteWrap}>
               <Text style={styles.tunerNote}>{currentString.note}</Text>
               <Text style={styles.tunerOctave}>{currentString.octave}</Text>
             </View>
-
             <TouchableOpacity
               style={styles.tunerArrow}
               onPress={() => setStringIndex((i) => (i + 1) % strings.length)}
@@ -503,8 +626,7 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.tunerFreq}>{currentString.freq.toFixed(2)} Hz</Text>
-          <Text style={styles.tunerStringLabel}>{currentString.label}</Text>
+          <Text style={styles.tunerFreq}>{currentString.freq.toFixed(2)} Hz · {currentString.label}</Text>
 
           {/* String dots */}
           <View style={styles.tunerDots}>
@@ -515,8 +637,48 @@ export default function PracticeScreen({ route }) {
             ))}
           </View>
 
+          {/* Needle — only shown when tuning */}
+          {isTuning && (
+            <View style={styles.needleWrap}>
+              {detectedHz ? (() => {
+                const cents = Math.max(-50, Math.min(50, tunerCents));
+                const ratio = (cents + 50) / 100;
+                const inTune = Math.abs(cents) <= 5;
+                const color = inTune ? COLORS.success : Math.abs(cents) <= 20 ? '#F59E0B' : COLORS.error;
+                return (
+                  <>
+                    <Text style={[styles.needleHz, { color }]}>
+                      {detectedHz.toFixed(1)} Hz · {inTune ? 'In tune' : `${Math.abs(tunerCents)}¢ ${tunerCents < 0 ? 'flat' : 'sharp'}`}
+                    </Text>
+                    <View style={styles.needleTrack}>
+                      <View style={styles.needleCenter} />
+                      <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
+                    </View>
+                    <View style={styles.needleLabels}>
+                      <Text style={styles.needleLabel}>-50¢</Text>
+                      <Text style={styles.needleLabel}>0</Text>
+                      <Text style={styles.needleLabel}>+50¢</Text>
+                    </View>
+                  </>
+                );
+              })() : (
+                <Text style={styles.needleListening}>Listening… play a note</Text>
+              )}
+            </View>
+          )}
+
+          {/* Start / Stop tuning button */}
+          <TouchableOpacity
+            style={[styles.tunerBtn, isTuning && styles.tunerBtnActive]}
+            onPress={isTuning ? stopTuning : startTuning}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
+            <Text style={styles.tunerBtnText}>{isTuning ? 'Stop Tuning' : 'Start Tuning'}</Text>
+          </TouchableOpacity>
+
           <Text style={styles.tunerCaption}>
-            Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning · reference only
+            Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning
           </Text>
         </View>
 
@@ -597,11 +759,22 @@ const styles = StyleSheet.create({
   tunerNote: { color: COLORS.text, fontSize: 72, fontWeight: '900', lineHeight: 80 },
   tunerOctave: { color: COLORS.textMuted, fontSize: 22, fontWeight: '700', marginTop: 10 },
   tunerFreq: { color: COLORS.primary, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  tunerStringLabel: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
-
   tunerDots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: SPACING.md },
   tunerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
   tunerDotActive: { backgroundColor: COLORS.primary, width: 20, borderRadius: 4 },
 
-  tunerCaption: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', letterSpacing: 0.5 },
+  tunerCaption: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', letterSpacing: 0.5, marginTop: SPACING.sm },
+
+  needleWrap: { marginVertical: SPACING.md },
+  needleHz: { fontSize: 13, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
+  needleTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, position: 'relative', marginBottom: 4 },
+  needleCenter: { position: 'absolute', left: '50%', top: -4, width: 2, height: 12, backgroundColor: COLORS.textMuted, borderRadius: 1 },
+  needleIndicator: { position: 'absolute', width: 14, height: 14, borderRadius: 7, top: -5, marginLeft: -7, borderWidth: 2, borderColor: COLORS.background },
+  needleLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  needleLabel: { color: COLORS.textMuted, fontSize: 10 },
+  needleListening: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.md, fontStyle: 'italic' },
+
+  tunerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm, marginTop: SPACING.md },
+  tunerBtnActive: { backgroundColor: COLORS.error },
+  tunerBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
 });
