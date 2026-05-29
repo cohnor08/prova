@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../lib/firebase';
 
@@ -27,10 +27,15 @@ export function useAuth() {
 
         // Firestore listener keeps the value fresh (e.g. after completing onboarding on another device)
         firestoreUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
-          const isComplete = snap.data()?.onboardingComplete === true;
+          const data = snap.data() || {};
+          const isComplete = data.onboardingComplete === true;
           setOnboardingComplete(isComplete);
           if (isComplete) {
             await AsyncStorage.setItem(`onboarding_${firebaseUser.uid}`, 'true');
+          }
+          // Normalize email to lowercase so teacher-by-email search always works
+          if (data.email && data.email !== data.email.toLowerCase()) {
+            updateDoc(doc(db, 'users', firebaseUser.uid), { email: data.email.toLowerCase() }).catch(() => {});
           }
           setLoading(false);
         });

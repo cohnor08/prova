@@ -54,9 +54,10 @@ export default function SignupScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const normalizedEmail = email.trim().toLowerCase();
+      const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       await setDoc(doc(db, 'users', user.uid), {
-        email: email.trim(),
+        email: normalizedEmail,
         createdAt: new Date().toISOString(),
         onboardingComplete: false,
       });
