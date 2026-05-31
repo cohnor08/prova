@@ -39,6 +39,11 @@ function computeProvaScore(streak, totalMinutes, totalSessions, lastRating) {
   return Math.min(1000, streakPts + volumePts + sessionPts + qualityPts);
 }
 
+// Prova Score for a raw user doc — used to rank leaderboards
+function entryScore(e) {
+  return computeProvaScore(e.streak || 0, e.totalMinutes || 0, e.totalSessions || 0, e.lastSessionRating);
+}
+
 function computeLevelXP(level, totalMinutes) {
   const needed = (LEVEL_HOURS[level] || 10) * 60;
   return level === 'Elite' ? 1 : Math.min(1, totalMinutes / needed);
@@ -515,7 +520,10 @@ export default function ProgressScreen() {
       logsSnap.forEach(d => { map[d.id] = d.data(); });
       setLogMap(map);
 
-      const world = boardSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      // Fetched by totalMinutes for a cheap top-N, then ranked by Prova Score
+      const world = boardSnap.docs
+        .map(d => ({ uid: d.id, ...d.data() }))
+        .sort((a, b) => entryScore(b) - entryScore(a));
       setWorldBoard(world);
 
       // Fetch friends
@@ -523,10 +531,7 @@ export default function ProgressScreen() {
       if (friendUids.length > 0) {
         const friendDocs = await Promise.all(friendUids.map(fuid => getDoc(doc(db, 'users', fuid))));
         const friends = friendDocs.filter(d => d.exists()).map(d => ({ uid: d.id, ...d.data() }));
-        const board = [{ uid, ...data }, ...friends].sort((a, b) =>
-          computeProvaScore(b.streak || 0, b.totalMinutes || 0, b.totalSessions || 0, b.lastSessionRating) -
-          computeProvaScore(a.streak || 0, a.totalMinutes || 0, a.totalSessions || 0, a.lastSessionRating)
-        );
+        const board = [{ uid, ...data }, ...friends].sort((a, b) => entryScore(b) - entryScore(a));
         setFriendsBoard(board);
       } else {
         setFriendsBoard([{ uid, ...data }]);

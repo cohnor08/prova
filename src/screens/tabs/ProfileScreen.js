@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, Modal, ActivityIndicator,
+  Alert, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
@@ -244,6 +244,9 @@ export default function ProfileScreen() {
   const [regenerating, setRegenerating] = useState(false);
   const [legalVisible, setLegalVisible] = useState(null); // 'privacy' | 'terms' | null
   const [modal, setModal] = useState(null); // { key, title, options, multi }
+  const [usernameModal, setUsernameModal] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
@@ -302,6 +305,26 @@ export default function ProfileScreen() {
       Alert.alert('Error', `Could not regenerate plan: ${err.message}`);
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const openUsernameModal = () => {
+    setUsernameInput(userData?.username || '');
+    setUsernameModal(true);
+  };
+
+  const handleSaveUsername = async () => {
+    const trimmed = usernameInput.trim();
+    if (trimmed.length < 2) { Alert.alert('Too short', 'Username must be at least 2 characters.'); return; }
+    setSavingUsername(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { username: trimmed });
+      setUserData(prev => ({ ...prev, username: trimmed }));
+      setUsernameModal(false);
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingUsername(false);
     }
   };
 
@@ -458,19 +481,7 @@ export default function ProfileScreen() {
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
-          <TouchableOpacity style={styles.row} onPress={() => {
-            Alert.prompt('Set Username', 'This shows on the leaderboard', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Save', onPress: async (val) => {
-                const trimmed = (val || '').trim();
-                if (!trimmed || trimmed.length < 2) { Alert.alert('Too short', 'At least 2 characters.'); return; }
-                try {
-                  await updateDoc(doc(db, 'users', auth.currentUser.uid), { username: trimmed });
-                  setUserData(prev => ({ ...prev, username: trimmed }));
-                } catch (e) { Alert.alert('Error', e.message); }
-              }},
-            ], 'plain-text', userData?.username || '');
-          }}>
+          <TouchableOpacity style={styles.row} onPress={openUsernameModal}>
             <Text style={styles.rowLabel}>Username</Text>
             <View style={styles.rowRight}>
               <Text style={styles.rowValue}>{userData?.username || 'Tap to set'}</Text>
@@ -539,6 +550,39 @@ export default function ProfileScreen() {
           onClose={() => setModal(null)}
         />
       )}
+
+      <Modal visible={usernameModal} transparent animationType="slide" onRequestClose={() => setUsernameModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Set Username</Text>
+            <TextInput
+              style={styles.usernameInput}
+              placeholder="Your username"
+              placeholderTextColor={COLORS.textMuted}
+              value={usernameInput}
+              onChangeText={(t) => setUsernameInput(t.replace(/\s/g, ''))}
+              autoCapitalize="none"
+              autoFocus
+              maxLength={20}
+            />
+            <Text style={styles.usernameHint}>This shows on the leaderboard.</Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setUsernameModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, savingUsername && { opacity: 0.6 }]}
+                onPress={handleSaveUsername}
+                disabled={savingUsername}
+              >
+                {savingUsername
+                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  : <Text style={styles.modalSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>  );
 }
 
@@ -591,6 +635,8 @@ const styles = StyleSheet.create({
     padding: SPACING.xl, maxHeight: '75%',
   },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.lg },
+  usernameInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm },
+  usernameHint: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.lg },
   modalOptions: { marginBottom: SPACING.lg },
   optionRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
