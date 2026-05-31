@@ -4,6 +4,7 @@ import {
   Animated, PanResponder, Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import { PitchDetector } from 'pitchy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -150,20 +151,23 @@ function parseWavSamples(arrayBuffer) {
 }
 
 function detectPitchHz(int16Samples, sampleRate) {
-  const n = Math.min(8192, int16Samples.length);
+  // pitchy works on power-of-two windows; take the largest that fits
+  let n = 1;
+  while (n * 2 <= int16Samples.length && n * 2 <= 16384) n *= 2;
+  if (n < 1024) return null;
+
   let rms = 0;
   const buf = new Float32Array(n);
   for (let i = 0; i < n; i++) { buf[i] = int16Samples[i] / 32768; rms += buf[i] * buf[i]; }
   if (Math.sqrt(rms / n) < 0.02) return null; // too quiet
-  const minLag = Math.floor(sampleRate / 1500);
-  const maxLag = Math.min(Math.ceil(sampleRate / 40), Math.floor(n / 2));
-  let best = -1, bestCorr = -Infinity;
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let c = 0;
-    for (let i = 0; i < n - lag; i++) c += buf[i] * buf[i + lag];
-    if (c > bestCorr) { bestCorr = c; best = lag; }
-  }
-  return best > 0 ? sampleRate / best : null;
+
+  const detector = PitchDetector.forFloat32Array(n);
+  detector.minVolumeDecibels = -45;
+  const [pitch, clarity] = detector.findPitch(buf, sampleRate);
+
+  // Reject low-confidence / out-of-range results (40–1500 Hz covers guitar & bass)
+  if (clarity < 0.85 || pitch < 40 || pitch > 1500) return null;
+  return pitch;
 }
 
 function centsOff(detectedHz, targetHz) {
@@ -199,6 +203,9 @@ export default function PracticeScreen({ route }) {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
+
+  // Which tool is visible: 'timer' | 'metronome' | 'tuner'
+  const [tool, setTool] = useState('timer');
 
   // Timer — declared before effects so closures always capture the right bindings
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -267,6 +274,7 @@ export default function PracticeScreen({ route }) {
   const isTuningRef = useRef(false);
   const recordingRef = useRef(null);
   const targetFreqRef = useRef(0);
+  const smoothedHzRef = useRef(null);
 
   // Load click sounds once on mount
   useEffect(() => {
@@ -341,6 +349,7 @@ export default function PracticeScreen({ route }) {
     isTuningRef.current = false;
     setIsTuning(false);
     setDetectedHz(null);
+    smoothedHzRef.current = null;
     if (recordingRef.current) {
       try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
       recordingRef.current = null;
@@ -380,9 +389,16 @@ export default function PracticeScreen({ route }) {
         if (parsed) {
           const hz = detectPitchHz(parsed.samples, parsed.sampleRate);
           if (hz && isTuningRef.current) {
-            setDetectedHz(hz);
-            setTunerCents(centsOff(hz, targetFreqRef.current));
+            // Smooth readings with an EMA, but snap if the pitch jumps (new string)
+            const prev = smoothedHzRef.current;
+            const smoothed = (prev && Math.abs(hz - prev) / prev < 0.15)
+              ? prev * 0.6 + hz * 0.4
+              : hz;
+            smoothedHzRef.current = smoothed;
+            setDetectedHz(smoothed);
+            setTunerCents(centsOff(smoothed, targetFreqRef.current));
           } else {
+            smoothedHzRef.current = null;
             setDetectedHz(null);
           }
         }
@@ -396,6 +412,18 @@ export default function PracticeScreen({ route }) {
   const togglePlay = () => {
     setBeat(0);
     setIsPlaying((p) => !p);
+  };
+
+  // Switch tools — stop any audio from the tool we're leaving
+  const selectTool = (next) => {
+    if (next !== 'metronome' && isPlaying) {
+      clearInterval(intervalRef.current);
+      setIsPlaying(false);
+    }
+    if (next !== 'tuner' && isTuning) {
+      stopTuning();
+    }
+    setTool(next);
   };
 
   const formatTime = (secs) => {
@@ -472,10 +500,28 @@ export default function PracticeScreen({ route }) {
           </>
         )}
 
+        {/* ── Tool selector ── */}
+        <View style={styles.toolSelector}>
+          {[
+            { key: 'timer', label: 'Timer', icon: 'timer-outline' },
+            { key: 'metronome', label: 'Metronome', icon: 'pulse-outline' },
+            { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
+          ].map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.toolBtn, tool === t.key && styles.toolBtnActive]}
+              onPress={() => selectTool(t.key)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name={t.icon} size={22} color={tool === t.key ? COLORS.text : COLORS.textMuted} />
+              <Text style={[styles.toolBtnText, tool === t.key && styles.toolBtnTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* ── Timer ── */}
-        {activeSession && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>TIMER</Text>
+        {tool === 'timer' && (
+          activeSession ? (
             <View style={styles.card}>
               {/* Progress bar */}
               <View style={styles.timerBarTrack}>
@@ -517,11 +563,16 @@ export default function PracticeScreen({ route }) {
                 </TouchableOpacity>
               </View>
             </View>
-          </>
+          ) : (
+            <View style={styles.emptyTask}>
+              <Ionicons name="musical-notes-outline" size={28} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+              <Text style={styles.emptyTaskText}>Pick a task above to start the timer</Text>
+            </View>
+          )
         )}
 
         {/* ── Metronome ── */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>METRONOME</Text>
+        {tool === 'metronome' && (
         <View style={styles.card}>
 
           {/* Beat dots */}
@@ -584,9 +635,10 @@ export default function PracticeScreen({ route }) {
             <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.text} />
           </TouchableOpacity>
         </View>
+        )}
 
         {/* ── Tuner ── */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.xl }]}>TUNER</Text>
+        {tool === 'tuner' && (
         <View style={styles.card}>
 
           {/* Guitar / Bass toggle */}
@@ -626,7 +678,7 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.tunerFreq}>{currentString.freq.toFixed(2)} Hz · {currentString.label}</Text>
+          <Text style={styles.tunerFreq}>{currentString.label}</Text>
 
           {/* String dots */}
           <View style={styles.tunerDots}>
@@ -648,16 +700,16 @@ export default function PracticeScreen({ route }) {
                 return (
                   <>
                     <Text style={[styles.needleHz, { color }]}>
-                      {detectedHz.toFixed(1)} Hz · {inTune ? 'In tune' : `${Math.abs(tunerCents)}¢ ${tunerCents < 0 ? 'flat' : 'sharp'}`}
+                      {inTune ? '✓ In tune' : tunerCents < 0 ? 'Tune up ↑' : 'Tune down ↓'}
                     </Text>
                     <View style={styles.needleTrack}>
                       <View style={styles.needleCenter} />
                       <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
                     </View>
                     <View style={styles.needleLabels}>
-                      <Text style={styles.needleLabel}>-50¢</Text>
-                      <Text style={styles.needleLabel}>0</Text>
-                      <Text style={styles.needleLabel}>+50¢</Text>
+                      <Text style={styles.needleLabel}>flat</Text>
+                      <Text style={styles.needleLabel}>♪</Text>
+                      <Text style={styles.needleLabel}>sharp</Text>
                     </View>
                   </>
                 );
@@ -681,6 +733,7 @@ export default function PracticeScreen({ route }) {
             Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning
           </Text>
         </View>
+        )}
 
       </ScrollView>
     </SafeAreaView>
@@ -695,6 +748,13 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: SPACING.sm },
   card: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+
+  // Tool selector
+  toolSelector: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, marginBottom: SPACING.lg },
+  toolBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
+  toolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  toolBtnText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  toolBtnTextActive: { color: COLORS.text },
 
   // Task
   taskPlaceholder: { height: 100, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },

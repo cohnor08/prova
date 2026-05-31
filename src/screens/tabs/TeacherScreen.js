@@ -201,6 +201,44 @@ function formatRelativeTime(ts) {
 
 // ─── Paywall ──────────────────────────────────────────────────────────────────
 
+const DEMO_PREVIEW_STUDENTS = [
+  { name: 'Jamie R.', level: 'Intermediate', instrument: 'Guitar', streak: 12, hours: 34, lastSession: '2 days ago', tasks: '3/4', rating: '🔥 On fire' },
+  { name: 'Priya K.', level: 'Beginner', instrument: 'Bass', streak: 5, hours: 8, lastSession: 'Today', tasks: '1/2', rating: '😊 Good' },
+  { name: 'Tom H.', level: 'Advanced', instrument: 'Guitar', streak: 28, hours: 120, lastSession: 'Yesterday', tasks: '5/5', rating: '⭐ Perfect' },
+];
+
+function DemoStudentCard({ student }) {
+  return (
+    <View style={styles.demoCard}>
+      <View style={styles.studentHeader}>
+        <View style={[styles.studentAvatar, { backgroundColor: COLORS.primaryDark || COLORS.primary }]}>
+          <Text style={styles.studentAvatarText}>{student.name[0]}</Text>
+        </View>
+        <View style={styles.studentInfo}>
+          <Text style={styles.studentEmail}>{student.name}</Text>
+          <Text style={styles.studentMetaText}>{student.level} · {student.instrument}</Text>
+        </View>
+        <View style={styles.demoRatingBadge}>
+          <Text style={styles.demoRatingText}>{student.rating}</Text>
+        </View>
+      </View>
+      <View style={styles.statsRow}>
+        {[
+          { value: student.streak, label: 'streak' },
+          { value: `${student.hours}h`, label: 'total' },
+          { value: student.lastSession, label: 'last session' },
+          { value: student.tasks, label: 'tasks done' },
+        ].map(s => (
+          <View key={s.label} style={styles.statBox}>
+            <Text style={styles.statValue}>{s.value}</Text>
+            <Text style={styles.statLabel}>{s.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function PaywallScreen({ onUnlock }) {
   const [loading, setLoading] = useState(false);
 
@@ -221,12 +259,29 @@ function PaywallScreen({ onUnlock }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Teacher Mode</Text>
-        <Text style={styles.subtitle}>Monitor and guide your students</Text>
+        <Text style={styles.subtitle}>See what your dashboard looks like</Text>
 
-        <View style={styles.paywallCard}>
-          <View style={styles.paywallIconWrap}>
-            <Ionicons name="school" size={36} color={COLORS.primary} />
+        {/* Blurred demo preview */}
+        <View style={styles.previewWrapper}>
+          <View style={styles.demoInviteBar}>
+            <Text style={styles.demoInviteText}>student@email.com</Text>
+            <View style={styles.demoInviteBtn}>
+              <Text style={styles.demoInviteBtnText}>Add</Text>
+            </View>
           </View>
+          {DEMO_PREVIEW_STUDENTS.map(s => (
+            <DemoStudentCard key={s.name} student={s} />
+          ))}
+          <View style={styles.lockOverlay}>
+            <View style={styles.lockBadge}>
+              <Text style={styles.lockIcon}>🔒</Text>
+              <Text style={styles.lockText}>Unlock Teacher Mode</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* CTA card */}
+        <View style={styles.paywallCard}>
           <Text style={styles.paywallTitle}>Prova for Teachers</Text>
           <Text style={styles.paywallDesc}>
             Monitor students' practice, assign custom tasks, and track their weekly progress.
@@ -983,19 +1038,18 @@ export default function TeacherScreen() {
 
   // role (set at signup) is the source of truth.
   // Fall back to legacy fields for existing accounts without a role.
-  const isStudent = userData?.role === 'student' || (!userData?.role && userData?.teacherUid);
-  const isTeacher = userData?.role === 'teacher' || (!userData?.role && userData?.isTeacherPro);
+  // Only paid teachers get in — role alone doesn't bypass the paywall
+  if (!userData?.isTeacherPro) {
+    return <PaywallScreen onUnlock={loadUser} />;
+  }
 
-  if (isStudent) {
+  // Paid teachers who are also linked as a student see assigned tasks
+  if (userData?.teacherUid) {
     return (
       <SafeAreaView style={styles.container}>
         <StudentTasksView assignedTasks={userData.assignedTasks || []} teacherUid={userData.teacherUid} />
       </SafeAreaView>
     );
-  }
-
-  if (!isTeacher) {
-    return <PaywallScreen onUnlock={loadUser} />;
   }
 
   return (
@@ -1155,6 +1209,18 @@ const styles = StyleSheet.create({
   chatWithTeacherText: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
 
   // Paywall
+  previewWrapper: { position: 'relative', marginBottom: SPACING.lg },
+  demoCard: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md, padding: SPACING.md },
+  demoInviteBar: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, alignItems: 'center', marginBottom: SPACING.md, gap: SPACING.sm },
+  demoInviteText: { flex: 1, color: COLORS.textMuted, fontSize: 14 },
+  demoInviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+  demoInviteBtnText: { color: COLORS.text, fontWeight: '700', fontSize: 13 },
+  demoRatingBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 3 },
+  demoRatingText: { fontSize: 11, color: COLORS.textSecondary },
+  lockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,8,16,0.78)', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  lockBadge: { backgroundColor: COLORS.card, borderRadius: 16, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  lockIcon: { fontSize: 28, marginBottom: SPACING.xs },
+  lockText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
   paywallCard: { backgroundColor: COLORS.card, borderRadius: 20, padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, marginTop: SPACING.lg },
   paywallIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(59,130,246,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
   paywallTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800', marginBottom: SPACING.sm },

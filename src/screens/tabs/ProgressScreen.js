@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { doc, getDoc, getDocs, collection, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 
@@ -36,6 +37,11 @@ function computeProvaScore(streak, totalMinutes, totalSessions, lastRating) {
     : lastRating === 'too_hard' ? 100
     : lastRating === 'too_easy' ? 75 : 0;
   return Math.min(1000, streakPts + volumePts + sessionPts + qualityPts);
+}
+
+// Prova Score for a raw user doc — used to rank leaderboards
+function entryScore(e) {
+  return computeProvaScore(e.streak || 0, e.totalMinutes || 0, e.totalSessions || 0, e.lastSessionRating);
 }
 
 function computeLevelXP(level, totalMinutes) {
@@ -356,12 +362,138 @@ function Milestones({ data }) {
   );
 }
 
+// ─── Leaderboard ─────────────────────────────────────────────────────────────
+
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+function LeaderboardRow({ entry, rank, isMe }) {
+  const score = computeProvaScore(entry.streak || 0, entry.totalMinutes || 0, entry.totalSessions || 0, entry.lastSessionRating);
+  const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
+  const initial = (name[0] || '?').toUpperCase();
+  return (
+    <View style={[styles.lbRow, isMe && styles.lbRowMe]}>
+      <Text style={styles.lbRank}>{rank <= 3 ? RANK_MEDALS[rank - 1] : `#${rank}`}</Text>
+      <View style={[styles.lbAvatar, isMe && { backgroundColor: COLORS.primary }]}>
+        <Text style={styles.lbAvatarText}>{initial}</Text>
+      </View>
+      <View style={styles.lbInfo}>
+        <Text style={[styles.lbName, isMe && { color: COLORS.primary }]}>{isMe ? `${name} (you)` : name}</Text>
+        <Text style={styles.lbMeta}>{entry.level || 'Beginner'} · {entry.streak || 0}🔥</Text>
+      </View>
+      <Text style={[styles.lbScore, isMe && { color: COLORS.primary }]}>{score}</Text>
+    </View>
+  );
+}
+
+function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
+  const [tab, setTab] = useState('world');
+  const [showAdd, setShowAdd] = useState(false);
+  const [email, setEmail] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return;
+    setAdding(true);
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', trimmed));
+      const snap = await getDocs(q);
+      if (snap.empty) { Alert.alert('Not found', 'No Prova user with that email.'); return; }
+      const friendUid = snap.docs[0].id;
+      if (friendUid === myUid) { Alert.alert('Hmm', "That's you!"); return; }
+      await updateDoc(doc(db, 'users', myUid), { friends: arrayUnion(friendUid) });
+      setEmail('');
+      setShowAdd(false);
+      onAddFriend();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const rows = tab === 'world' ? worldBoard : friendsBoard;
+  const isEmpty = rows.length === 0;
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>LEADERBOARD</Text>
+
+      {/* Tab toggle */}
+      <View style={styles.lbTabs}>
+        {['world', 'friends'].map(t => (
+          <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => setTab(t)}>
+            <Ionicons name={t === 'world' ? 'globe-outline' : 'people-outline'} size={14} color={tab === t ? COLORS.text : COLORS.textMuted} style={{ marginRight: 5 }} />
+            <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]}>
+              {t === 'world' ? 'World' : 'Friends'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Board */}
+      <View style={styles.lbCard}>
+        {isEmpty ? (
+          <View style={styles.lbEmpty}>
+            <Text style={styles.lbEmptyIcon}>{tab === 'friends' ? '👥' : '🌍'}</Text>
+            <Text style={styles.lbEmptyText}>
+              {tab === 'friends' ? 'Add friends to see how you stack up' : 'No data yet'}
+            </Text>
+          </View>
+        ) : (
+          rows.map((entry, i) => (
+            <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
+          ))
+        )}
+      </View>
+
+      {/* Add friend button (friends tab) */}
+      {tab === 'friends' && (
+        <TouchableOpacity style={styles.addFriendBtn} onPress={() => setShowAdd(true)}>
+          <Ionicons name="person-add-outline" size={15} color={COLORS.primary} />
+          <Text style={styles.addFriendText}>Add Friend by Email</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Add friend modal */}
+      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add a Friend</Text>
+            <Text style={styles.modalSub}>Enter their Prova account email</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="friend@email.com"
+              placeholderTextColor={COLORS.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoFocus
+            />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setShowAdd(false); setEmail(''); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalConfirm, adding && { opacity: 0.6 }]} onPress={handleAdd} disabled={adding}>
+                {adding ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
   const [userData, setUserData] = useState(null);
   const [logMap, setLogMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [worldBoard, setWorldBoard] = useState([]);
+  const [friendsBoard, setFriendsBoard] = useState([]);
   const lastFetchRef = useRef(0);
 
   useFocusEffect(
@@ -375,20 +507,35 @@ export default function ProgressScreen() {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      const [userSnap, logsSnap] = await Promise.all([
+      const [userSnap, logsSnap, boardSnap] = await Promise.all([
         getDoc(doc(db, 'users', uid)),
-        getDocs(query(
-          collection(db, 'sessionHistory', uid, 'logs'),
-          orderBy('date', 'desc'),
-          limit(35)
-        )),
+        getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), orderBy('date', 'desc'), limit(35))),
+        getDocs(query(collection(db, 'users'), orderBy('totalMinutes', 'desc'), limit(20))),
       ]);
 
-      setUserData(userSnap.data());
+      const data = userSnap.data();
+      setUserData(data);
 
       const map = {};
       logsSnap.forEach(d => { map[d.id] = d.data(); });
       setLogMap(map);
+
+      // Fetched by totalMinutes for a cheap top-N, then ranked by Prova Score
+      const world = boardSnap.docs
+        .map(d => ({ uid: d.id, ...d.data() }))
+        .sort((a, b) => entryScore(b) - entryScore(a));
+      setWorldBoard(world);
+
+      // Fetch friends
+      const friendUids = data?.friends || [];
+      if (friendUids.length > 0) {
+        const friendDocs = await Promise.all(friendUids.map(fuid => getDoc(doc(db, 'users', fuid))));
+        const friends = friendDocs.filter(d => d.exists()).map(d => ({ uid: d.id, ...d.data() }));
+        const board = [{ uid, ...data }, ...friends].sort((a, b) => entryScore(b) - entryScore(a));
+        setFriendsBoard(board);
+      } else {
+        setFriendsBoard([{ uid, ...data }]);
+      }
 
       lastFetchRef.current = Date.now();
     } catch (e) {
@@ -442,6 +589,13 @@ export default function ProgressScreen() {
         </View>
 
         <ProvaScore score={provaScore} />
+        <Leaderboard
+          myUid={auth.currentUser?.uid}
+          myData={userData}
+          worldBoard={worldBoard}
+          friendsBoard={friendsBoard}
+          onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
+        />
         <LevelProgress level={level} xp={xp} />
         <LineGraph data={dailyData} />
         <WeeklyBarChart data={weeklyData} />
@@ -555,4 +709,39 @@ const styles = StyleSheet.create({
   goalItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   goalText: { color: COLORS.text, fontSize: 15 },
+
+  lbTabs: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 12, padding: 4, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
+  lbTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 9 },
+  lbTabActive: { backgroundColor: COLORS.surface },
+  lbTabText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  lbTabTextActive: { color: COLORS.text },
+
+  lbCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', marginBottom: SPACING.sm },
+  lbRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border + '66', gap: SPACING.sm },
+  lbRowMe: { backgroundColor: COLORS.primary + '12' },
+  lbRank: { width: 28, fontSize: 14, fontWeight: '800', color: COLORS.textMuted, textAlign: 'center' },
+  lbAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  lbAvatarText: { color: COLORS.text, fontWeight: '800', fontSize: 14 },
+  lbInfo: { flex: 1 },
+  lbName: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  lbMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
+  lbScore: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '900' },
+
+  lbEmpty: { alignItems: 'center', paddingVertical: SPACING.xxl },
+  lbEmptyIcon: { fontSize: 36, marginBottom: SPACING.sm },
+  lbEmptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
+
+  addFriendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, backgroundColor: COLORS.primary + '15', borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '33' },
+  addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },
+  modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
+  modalInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },
+  modalBtns: { flexDirection: 'row', gap: SPACING.md },
+  modalCancel: { flex: 1, padding: SPACING.md, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },
+  modalConfirm: { flex: 1, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
+  modalConfirmText: { color: COLORS.text, fontWeight: '700' },
 });

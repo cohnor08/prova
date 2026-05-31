@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, Modal, ActivityIndicator,
+  Alert, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
+import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
 // ─── Picker Modal ─────────────────────────────────────────────────────────────
@@ -236,11 +238,15 @@ function Row({ icon, label, value, valueColor }) {
 }
 
 export default function ProfileScreen() {
+  const { setOnboardingComplete } = useContext(AuthContext);
   const [userData, setUserData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [legalVisible, setLegalVisible] = useState(null); // 'privacy' | 'terms' | null
   const [modal, setModal] = useState(null); // { key, title, options, multi }
+  const [usernameModal, setUsernameModal] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
@@ -300,6 +306,63 @@ export default function ProfileScreen() {
     } finally {
       setRegenerating(false);
     }
+  };
+
+  const openUsernameModal = () => {
+    setUsernameInput(userData?.username || '');
+    setUsernameModal(true);
+  };
+
+  const handleSaveUsername = async () => {
+    const trimmed = usernameInput.trim();
+    if (trimmed.length < 2) { Alert.alert('Too short', 'Username must be at least 2 characters.'); return; }
+    setSavingUsername(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { username: trimmed });
+      setUserData(prev => ({ ...prev, username: trimmed }));
+      setUsernameModal(false);
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingUsername(false);
+    }
+  };
+
+  const handleResetTeacherPro = () => {
+    Alert.alert('Reset Teacher Pro', 'This will remove your Teacher Pro access so you can see the paywall again.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset', onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            await updateDoc(doc(db, 'users', uid), { isTeacherPro: false });
+            Alert.alert('Done', 'Teacher Pro reset. Tap the Teacher tab to see the paywall.');
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleRestartSurvey = () => {
+    Alert.alert('Restart Survey', 'This will take you back through the setup survey and generate a new plan. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Restart', onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            await updateDoc(doc(db, 'users', uid), { onboardingComplete: false });
+            await AsyncStorage.removeItem(`onboarding_${uid}`);
+            setOnboardingComplete(false);
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
   };
 
   const handleLogout = () => {
@@ -418,6 +481,13 @@ export default function ProfileScreen() {
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
+          <TouchableOpacity style={styles.row} onPress={openUsernameModal}>
+            <Text style={styles.rowLabel}>Username</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{userData?.username || 'Tap to set'}</Text>
+              <Text style={styles.rowArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Email</Text>
             <Text style={styles.rowValue}>{auth.currentUser?.email}</Text>
@@ -442,6 +512,14 @@ export default function ProfileScreen() {
             <Text style={styles.rowArrow}>›</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.restartBtn} onPress={handleRestartSurvey}>
+          <Text style={styles.restartText}>Restart Survey</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.restartBtn} onPress={handleResetTeacherPro}>
+          <Text style={styles.restartText}>Reset Teacher Pro</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
@@ -472,6 +550,39 @@ export default function ProfileScreen() {
           onClose={() => setModal(null)}
         />
       )}
+
+      <Modal visible={usernameModal} transparent animationType="slide" onRequestClose={() => setUsernameModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Set Username</Text>
+            <TextInput
+              style={styles.usernameInput}
+              placeholder="Your username"
+              placeholderTextColor={COLORS.textMuted}
+              value={usernameInput}
+              onChangeText={(t) => setUsernameInput(t.replace(/\s/g, ''))}
+              autoCapitalize="none"
+              autoFocus
+              maxLength={20}
+            />
+            <Text style={styles.usernameHint}>This shows on the leaderboard.</Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setUsernameModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, savingUsername && { opacity: 0.6 }]}
+                onPress={handleSaveUsername}
+                disabled={savingUsername}
+              >
+                {savingUsername
+                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  : <Text style={styles.modalSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>  );
 }
 
@@ -506,9 +617,15 @@ const styles = StyleSheet.create({
   rowValue: { color: COLORS.text, fontSize: 15, fontWeight: '500', textAlign: 'right' },
   rowArrow: { color: COLORS.textMuted, fontSize: 18, lineHeight: 20 },
 
+  restartBtn: {
+    backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
+    alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, marginTop: SPACING.lg,
+  },
+  restartText: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '600' },
   logoutBtn: {
     backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
-    alignItems: 'center', borderWidth: 1, borderColor: COLORS.error + '44', marginTop: SPACING.lg,  },
+    alignItems: 'center', borderWidth: 1, borderColor: COLORS.error + '44', marginTop: SPACING.sm,
+  },
   logoutText: { color: COLORS.error, fontSize: 16, fontWeight: '600' },
 
   // Modal
@@ -518,6 +635,8 @@ const styles = StyleSheet.create({
     padding: SPACING.xl, maxHeight: '75%',
   },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.lg },
+  usernameInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm },
+  usernameHint: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.lg },
   modalOptions: { marginBottom: SPACING.lg },
   optionRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

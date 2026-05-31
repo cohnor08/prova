@@ -17,7 +17,6 @@ import OnboardingFlow from './src/screens/onboarding/OnboardingFlow';
 import TeacherOnboarding from './src/screens/onboarding/TeacherOnboarding';
 import TodayScreen from './src/screens/tabs/TodayScreen';
 import ProgressScreen from './src/screens/tabs/ProgressScreen';
-import PlanScreen from './src/screens/tabs/PlanScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
@@ -29,7 +28,6 @@ const Tab = createBottomTabNavigator();
 const TAB_ICONS = {
   Today: ['musical-notes', 'musical-notes-outline'],
   Practice: ['options', 'options-outline'],
-  Plan: ['calendar', 'calendar-outline'],
   Progress: ['trending-up', 'trending-up-outline'],
   Messages: ['chatbubbles', 'chatbubbles-outline'],
   Teacher: ['school', 'school-outline'],
@@ -71,7 +69,6 @@ function MainTabs({ role }) {
         <>
           <Tab.Screen name="Today" component={TodayScreen} />
           <Tab.Screen name="Practice" component={PracticeScreen} />
-          <Tab.Screen name="Plan" component={PlanScreen} />
           <Tab.Screen name="Progress" component={ProgressScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
           <Tab.Screen name="Teacher" component={TeacherScreen} />
