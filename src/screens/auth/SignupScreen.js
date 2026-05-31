@@ -27,6 +27,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen({ navigation }) {
   const [role, setRole] = useState('student');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -36,8 +37,12 @@ export default function SignupScreen({ navigation }) {
   const [focusedField, setFocusedField] = useState(null);
 
   const handleSignup = async () => {
-    if (!email.trim() || !password || !confirmPassword) {
+    if (!username.trim() || !email.trim() || !password || !confirmPassword) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    if (username.trim().length < 2) {
+      Alert.alert('Username too short', 'Username must be at least 2 characters.');
       return;
     }
     if (!EMAIL_REGEX.test(email.trim())) {
@@ -59,6 +64,7 @@ export default function SignupScreen({ navigation }) {
       const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       await setDoc(doc(db, 'users', user.uid), {
         email: normalizedEmail,
+        username: username.trim(),
         role,
         createdAt: new Date().toISOString(),
         onboardingComplete: false,
@@ -124,6 +130,21 @@ export default function SignupScreen({ navigation }) {
         </Text>
 
         <View style={styles.form}>
+          <View style={[styles.inputWrapper, focusedField === 'username' && styles.inputWrapperFocused]}>
+            <Ionicons name="person-outline" size={18} color={focusedField === 'username' ? COLORS.primary : COLORS.textMuted} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              placeholderTextColor={COLORS.textMuted}
+              value={username}
+              onChangeText={t => setUsername(t.replace(/\s/g, ''))}
+              autoCapitalize="none"
+              autoComplete="username"
+              onFocus={() => setFocusedField('username')}
+              onBlur={() => setFocusedField(null)}
+            />
+          </View>
+
           <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
             <Ionicons name="mail-outline" size={18} color={focusedField === 'email' ? COLORS.primary : COLORS.textMuted} style={styles.inputIcon} />
             <TextInput

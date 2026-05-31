@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Modal, ActivityIndicator,
@@ -6,8 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
+import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
 // ─── Picker Modal ─────────────────────────────────────────────────────────────
@@ -236,6 +238,7 @@ function Row({ icon, label, value, valueColor }) {
 }
 
 export default function ProfileScreen() {
+  const { setOnboardingComplete } = useContext(AuthContext);
   const [userData, setUserData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -300,6 +303,43 @@ export default function ProfileScreen() {
     } finally {
       setRegenerating(false);
     }
+  };
+
+  const handleResetTeacherPro = () => {
+    Alert.alert('Reset Teacher Pro', 'This will remove your Teacher Pro access so you can see the paywall again.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset', onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            await updateDoc(doc(db, 'users', uid), { isTeacherPro: false });
+            Alert.alert('Done', 'Teacher Pro reset. Tap the Teacher tab to see the paywall.');
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleRestartSurvey = () => {
+    Alert.alert('Restart Survey', 'This will take you back through the setup survey and generate a new plan. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Restart', onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            await updateDoc(doc(db, 'users', uid), { onboardingComplete: false });
+            await AsyncStorage.removeItem(`onboarding_${uid}`);
+            setOnboardingComplete(false);
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
   };
 
   const handleLogout = () => {
@@ -418,6 +458,25 @@ export default function ProfileScreen() {
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
+          <TouchableOpacity style={styles.row} onPress={() => {
+            Alert.prompt('Set Username', 'This shows on the leaderboard', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Save', onPress: async (val) => {
+                const trimmed = (val || '').trim();
+                if (!trimmed || trimmed.length < 2) { Alert.alert('Too short', 'At least 2 characters.'); return; }
+                try {
+                  await updateDoc(doc(db, 'users', auth.currentUser.uid), { username: trimmed });
+                  setUserData(prev => ({ ...prev, username: trimmed }));
+                } catch (e) { Alert.alert('Error', e.message); }
+              }},
+            ], 'plain-text', userData?.username || '');
+          }}>
+            <Text style={styles.rowLabel}>Username</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{userData?.username || 'Tap to set'}</Text>
+              <Text style={styles.rowArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Email</Text>
             <Text style={styles.rowValue}>{auth.currentUser?.email}</Text>
@@ -442,6 +501,14 @@ export default function ProfileScreen() {
             <Text style={styles.rowArrow}>›</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.restartBtn} onPress={handleRestartSurvey}>
+          <Text style={styles.restartText}>Restart Survey</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.restartBtn} onPress={handleResetTeacherPro}>
+          <Text style={styles.restartText}>Reset Teacher Pro</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
@@ -506,9 +573,15 @@ const styles = StyleSheet.create({
   rowValue: { color: COLORS.text, fontSize: 15, fontWeight: '500', textAlign: 'right' },
   rowArrow: { color: COLORS.textMuted, fontSize: 18, lineHeight: 20 },
 
+  restartBtn: {
+    backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
+    alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, marginTop: SPACING.lg,
+  },
+  restartText: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '600' },
   logoutBtn: {
     backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
-    alignItems: 'center', borderWidth: 1, borderColor: COLORS.error + '44', marginTop: SPACING.lg,  },
+    alignItems: 'center', borderWidth: 1, borderColor: COLORS.error + '44', marginTop: SPACING.sm,
+  },
   logoutText: { color: COLORS.error, fontSize: 16, fontWeight: '600' },
 
   // Modal
