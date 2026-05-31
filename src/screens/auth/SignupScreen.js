@@ -25,8 +25,9 @@ const FIREBASE_ERRORS = {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function SignupScreen({ navigation }) {
-  const [role, setRole] = useState('student');
+export default function SignupScreen({ navigation, route }) {
+  const role = route?.params?.role === 'teacher' ? 'teacher' : 'student';
+  const isTeacher = role === 'teacher';
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,51 +83,47 @@ export default function SignupScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.navigate('Welcome')}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="chevron-back" size={24} color={COLORS.textSecondary} />
+      </TouchableOpacity>
       <View style={styles.inner}>
         <View style={styles.logoArea}>
           <View style={styles.logoGlow}>
             <Text style={styles.logo}>PROVA</Text>
           </View>
-          <Text style={styles.tagline}>Create your account</Text>
+          <Text style={styles.tagline}>
+            {isTeacher ? 'Create your teacher account' : 'Create your student account'}
+          </Text>
         </View>
 
-        {/* Role selector */}
-        <View style={styles.roleRow}>
-          <TouchableOpacity
-            style={[styles.rolePill, role === 'student' && styles.rolePillActive]}
-            onPress={() => setRole('student')}
-            activeOpacity={0.8}
-          >
+        {/* Chosen role (set on the welcome screen) */}
+        <View style={styles.roleBadgeRow}>
+          <View style={styles.roleBadge}>
             <Ionicons
-              name="musical-notes"
-              size={15}
-              color={role === 'student' ? COLORS.text : COLORS.textMuted}
+              name={isTeacher ? 'school' : 'musical-notes'}
+              size={14}
+              color={COLORS.primary}
               style={{ marginRight: 6 }}
             />
-            <Text style={[styles.rolePillText, role === 'student' && styles.rolePillTextActive]}>
-              Student
+            <Text style={styles.roleBadgeText}>
+              {isTeacher ? 'Signing up as a Teacher' : 'Signing up as a Student'}
             </Text>
-          </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            style={[styles.rolePill, role === 'teacher' && styles.rolePillActive]}
-            onPress={() => setRole('teacher')}
-            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Welcome')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons
-              name="school"
-              size={15}
-              color={role === 'teacher' ? COLORS.text : COLORS.textMuted}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.rolePillText, role === 'teacher' && styles.rolePillTextActive]}>
-              Teacher
-            </Text>
+            <Text style={styles.changeLink}>Change</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.roleHint}>
-          {role === 'student'
-            ? 'Get an AI-powered practice plan and track your progress'
-            : 'Monitor your students and assign custom practice tasks'}
+          {isTeacher
+            ? 'Monitor your students and assign custom practice tasks'
+            : 'Get an AI-powered practice plan and track your progress'}
         </Text>
 
         <View style={styles.form}>
@@ -247,26 +244,25 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
-  roleRow: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  rolePill: {
-    flex: 1,
+  backButton: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10 },
+  roleBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
   },
-  rolePillActive: { backgroundColor: COLORS.primary },
-  rolePillText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
-  rolePillTextActive: { color: COLORS.text },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '14',
+    borderWidth: 1,
+    borderColor: COLORS.primary + '33',
+    borderRadius: 10,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+  },
+  roleBadgeText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  changeLink: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   roleHint: {
     color: COLORS.textMuted,
     fontSize: 12,

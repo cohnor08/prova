@@ -53,6 +53,13 @@ export default function LoginScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.navigate('Welcome')}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="chevron-back" size={24} color={COLORS.textSecondary} />
+      </TouchableOpacity>
       <View style={styles.inner}>
         <View style={styles.logoArea}>
           <View style={styles.logoGlow}>
@@ -111,7 +118,7 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate('Signup')} hitSlop={{ top: 8, bottom: 8 }}>
+        <TouchableOpacity onPress={() => navigation.navigate('Welcome')} hitSlop={{ top: 8, bottom: 8 }}>
           <Text style={styles.linkText}>
             Don't have an account? <Text style={styles.linkAccent}>Sign up</Text>
           </Text>
@@ -123,6 +130,7 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  backButton: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10 },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
   logoArea: { alignItems: 'center', marginBottom: SPACING.xxl },
   logoGlow: {

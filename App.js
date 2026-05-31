@@ -10,9 +10,11 @@ import { useAuth } from './src/hooks/useAuth';
 import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS } from './src/constants/theme';
 
+import WelcomeScreen from './src/screens/auth/WelcomeScreen';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import SignupScreen from './src/screens/auth/SignupScreen';
 import OnboardingFlow from './src/screens/onboarding/OnboardingFlow';
+import TeacherOnboarding from './src/screens/onboarding/TeacherOnboarding';
 import TodayScreen from './src/screens/tabs/TodayScreen';
 import ProgressScreen from './src/screens/tabs/ProgressScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
@@ -32,9 +34,11 @@ const TAB_ICONS = {
   Profile: ['person', 'person-outline'],
 };
 
-function MainTabs() {
+function MainTabs({ role }) {
+  const isTeacher = role === 'teacher';
   return (
     <Tab.Navigator
+      initialRouteName={isTeacher ? 'Teacher' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -55,12 +59,22 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Today" component={TodayScreen} />
-      <Tab.Screen name="Practice" component={PracticeScreen} />
-      <Tab.Screen name="Progress" component={ProgressScreen} />
-      <Tab.Screen name="Messages" component={MessagesScreen} />
-      <Tab.Screen name="Teacher" component={TeacherScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      {isTeacher ? (
+        <>
+          <Tab.Screen name="Teacher" component={TeacherScreen} options={{ tabBarLabel: 'Students' }} />
+          <Tab.Screen name="Messages" component={MessagesScreen} />
+          <Tab.Screen name="Profile" component={ProfileScreen} />
+        </>
+      ) : (
+        <>
+          <Tab.Screen name="Today" component={TodayScreen} />
+          <Tab.Screen name="Practice" component={PracticeScreen} />
+          <Tab.Screen name="Progress" component={ProgressScreen} />
+          <Tab.Screen name="Messages" component={MessagesScreen} />
+          <Tab.Screen name="Teacher" component={TeacherScreen} />
+          <Tab.Screen name="Profile" component={ProfileScreen} />
+        </>
+      )}
     </Tab.Navigator>
   );
 }
@@ -68,6 +82,7 @@ function MainTabs() {
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
     </Stack.Navigator>
@@ -75,7 +90,7 @@ function AuthStack() {
 }
 
 export default function App() {
-  const { user, onboardingComplete, setOnboardingComplete, loading } = useAuth();
+  const { user, onboardingComplete, setOnboardingComplete, role, loading } = useAuth();
 
   if (loading) {
     return (
@@ -95,10 +110,13 @@ export default function App() {
           <AuthStack />
         ) : !onboardingComplete ? (
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Onboarding" component={OnboardingFlow} />
+            <Stack.Screen
+              name="Onboarding"
+              component={role === 'teacher' ? TeacherOnboarding : OnboardingFlow}
+            />
           </Stack.Navigator>
         ) : (
-          <MainTabs />
+          <MainTabs role={role} />
         )}
       </NavigationContainer>
     </AuthContext.Provider>

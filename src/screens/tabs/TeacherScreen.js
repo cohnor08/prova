@@ -9,10 +9,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
-  updateDoc, arrayUnion, arrayRemove, serverTimestamp,
-  addDoc, onSnapshot, orderBy,
+  updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { COLORS, SPACING } from '../../constants/theme';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
@@ -396,15 +396,17 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo, chatId: propChatId, senderRole = 'teacher' }) {
-  const chatId = propChatId || `${myUid}_${student.uid}`;
+function InlineChatView({ student, myUid, isDemo }) {
+  const otherUid = student.uid;
+  const otherEmail = student.email;
+  const myEmail = auth.currentUser?.email || '';
+  const chatId = makeChatId(myUid, otherUid);
 
   const initMessages = () => {
     if (!isDemo) return [];
     return (student.demoMessages || []).map((m) => ({
       id: m.id,
       senderUid: m.senderRole === 'teacher' ? myUid : student.uid,
-      senderRole: m.senderRole,
       text: m.text,
       ts: m.ts,
     }));
@@ -436,14 +438,19 @@ function InlineChatView({ student, myUid, isDemo, chatId: propChatId, senderRole
       if (isDemo) {
         setMessages((prev) => [
           ...prev,
-          { id: `local_${Date.now()}`, senderUid: myUid, senderRole, text: trimmed, ts: Date.now() },
+          { id: `local_${Date.now()}`, senderUid: myUid, text: trimmed, ts: Date.now() },
         ]);
         setText('');
       } else {
-        await addDoc(collection(db, 'chats', chatId, 'messages'), {
-          senderUid: myUid, senderRole, text: trimmed, timestamp: serverTimestamp(),
-        });
         setText('');
+        await sendChatMessage({
+          chatId,
+          senderUid: myUid,
+          senderEmail: myEmail,
+          otherUid,
+          otherEmail,
+          text: trimmed,
+        });
       }
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -461,7 +468,7 @@ function InlineChatView({ student, myUid, isDemo, chatId: propChatId, senderRole
         contentContainerStyle={styles.chatMessages}
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
         renderItem={({ item }) => {
-          const isMe = item.senderRole === senderRole;
+          const isMe = item.senderUid === myUid;
           return (
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
@@ -512,6 +519,7 @@ function TeacherDashboard() {
   const [expanded, setExpanded] = useState(null);
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
+  const [convoMap, setConvoMap] = useState({});
 
   const myUid = auth.currentUser?.uid;
   const todayName = WEEK_DAYS[new Date().getDay()];
@@ -519,6 +527,17 @@ function TeacherDashboard() {
   useFocusEffect(
     React.useCallback(() => { loadStudents(); }, [])
   );
+
+  // Live last-message previews for the Messages tab, keyed by chatId.
+  useEffect(() => {
+    if (!myUid || DEMO_MODE) return;
+    const q = query(collection(db, 'userChats', myUid, 'conversations'));
+    return onSnapshot(q, (snap) => {
+      const map = {};
+      snap.docs.forEach((d) => { map[d.id] = d.data(); });
+      setConvoMap(map);
+    });
+  }, [myUid]);
 
   const loadStudents = async () => {
     setLoading(true);
@@ -806,8 +825,25 @@ function TeacherDashboard() {
               </View>
             ) : (
               students.map((student) => {
-                const msgs = student.demoMessages || [];
-                const last = msgs[msgs.length - 1];
+                let lastText = null;
+                let lastTs = null;
+                let lastMine = false;
+                if (DEMO_MODE) {
+                  const msgs = student.demoMessages || [];
+                  const last = msgs[msgs.length - 1];
+                  if (last) {
+                    lastText = last.text;
+                    lastTs = last.ts;
+                    lastMine = last.senderRole === 'teacher';
+                  }
+                } else {
+                  const conv = convoMap[makeChatId(myUid, student.uid)];
+                  if (conv?.lastMessage) {
+                    lastText = conv.lastMessage;
+                    lastTs = conv.lastMessageAt?.toMillis ? conv.lastMessageAt.toMillis() : conv.lastMessageAt;
+                    lastMine = conv.lastSenderUid === myUid;
+                  }
+                }
                 const displayName = student.name || student.email;
                 const initial = displayName[0].toUpperCase();
                 const status = getStudentStatus(student);
@@ -824,16 +860,16 @@ function TeacherDashboard() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.studentName}>{displayName}</Text>
-                      {last ? (
+                      {lastText ? (
                         <Text style={styles.chatPreviewText} numberOfLines={1}>
-                          {last.senderRole === 'teacher' ? 'You: ' : ''}{last.text}
+                          {lastMine ? 'You: ' : ''}{lastText}
                         </Text>
                       ) : (
                         <Text style={styles.chatPreviewEmpty}>No messages yet</Text>
                       )}
                     </View>
                     <View style={styles.chatListRight}>
-                      {last && <Text style={styles.chatPreviewTime}>{formatRelativeTime(last.ts)}</Text>}
+                      {lastTs && <Text style={styles.chatPreviewTime}>{formatRelativeTime(lastTs)}</Text>}
                       <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} style={{ marginTop: 4 }} />
                     </View>
                   </TouchableOpacity>
@@ -860,8 +896,15 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
   const [tasks, setTasks] = useState(assignedTasks || []);
   const [loading, setLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [teacherEmail, setTeacherEmail] = useState('');
   const myUid = auth.currentUser?.uid;
-  const chatId = teacherUid && myUid ? `${teacherUid}_${myUid}` : null;
+
+  useEffect(() => {
+    if (!teacherUid) return;
+    getDoc(doc(db, 'users', teacherUid))
+      .then((s) => setTeacherEmail(s.data()?.email || 'Your teacher'))
+      .catch(() => {});
+  }, [teacherUid]);
 
   const toggleTask = async (taskId) => {
     setLoading(true);
@@ -890,7 +933,7 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
             <Text style={styles.title}>Assigned Tasks</Text>
             <Text style={styles.subtitle}>Tasks set by your teacher</Text>
           </View>
-          {!!chatId && (
+          {!!teacherUid && (
             <TouchableOpacity style={styles.chatWithTeacherBtn} onPress={() => setChatOpen(true)}>
               <Ionicons name="chatbubble-ellipses" size={16} color={COLORS.text} style={{ marginRight: 5 }} />
               <Text style={styles.chatWithTeacherText}>Chat</Text>
@@ -950,11 +993,9 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
                 </TouchableOpacity>
               </View>
               <InlineChatView
-                student={{ uid: teacherUid, email: 'teacher', demoMessages: [] }}
+                student={{ uid: teacherUid, email: teacherEmail, demoMessages: [] }}
                 myUid={myUid}
                 isDemo={false}
-                chatId={`${teacherUid}_${myUid}`}
-                senderRole="student"
               />
             </View>
           </View>
