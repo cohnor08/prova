@@ -7,6 +7,7 @@ import { auth, db } from '../lib/firebase';
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export function useAuth() {
           const data = snap.data() || {};
           const isComplete = data.onboardingComplete === true;
           setOnboardingComplete(isComplete);
+          setRole(data.role || null);
           if (isComplete) {
             await AsyncStorage.setItem(`onboarding_${firebaseUser.uid}`, 'true');
           }
@@ -44,6 +46,7 @@ export function useAuth() {
       } else {
         setUser(null);
         setOnboardingComplete(false);
+        setRole(null);
         setLoading(false);
       }
     });
@@ -55,5 +58,5 @@ export function useAuth() {
     };
   }, []);
 
-  return { user, onboardingComplete, setOnboardingComplete, loading };
+  return { user, onboardingComplete, setOnboardingComplete, role, loading };
 }

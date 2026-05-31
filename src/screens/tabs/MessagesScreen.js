@@ -7,16 +7,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  collection, query, where, getDocs, doc,
-  addDoc, onSnapshot, orderBy, serverTimestamp, setDoc,
+  collection, query, where, getDocs,
+  onSnapshot, orderBy,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
 import { COLORS, SPACING } from '../../constants/theme';
-
-// chatId is always the two UIDs sorted and joined — same result from either side
-function makeChatId(a, b) {
-  return [a, b].sort().join('_');
-}
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -38,7 +34,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const flatRef = useRef(null);
-  const otherUid = chatId.split('_').find(u => u !== myUid);
+  const otherUid = otherUidFromChatId(chatId, myUid);
 
   useEffect(() => {
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
@@ -57,20 +53,14 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
     setSending(true);
     setText('');
     try {
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+      await sendChatMessage({
+        chatId,
         senderUid: myUid,
+        senderEmail: myEmail,
+        otherUid,
+        otherEmail,
         text: trimmed,
-        timestamp: serverTimestamp(),
       });
-
-      // Update conversation list for both participants
-      const meta = { chatId, lastMessage: trimmed, lastMessageAt: serverTimestamp(), lastSenderUid: myUid };
-      await Promise.all([
-        setDoc(doc(db, 'userChats', myUid, 'conversations', chatId),
-          { ...meta, otherUid, otherEmail }, { merge: true }),
-        setDoc(doc(db, 'userChats', otherUid, 'conversations', chatId),
-          { ...meta, otherUid: myUid, otherEmail: myEmail }, { merge: true }),
-      ]);
     } catch (err) {
       Alert.alert('Error', err.message);
       setText(trimmed);
