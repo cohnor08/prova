@@ -137,6 +137,25 @@ export async function fetchSongPreview(title, artist) {
   }
 }
 
+// Fetch album artwork for a song via Apple's free iTunes Search API. Returns a
+// ~300px square cover image URL, or null if no match is found. The artwork is
+// licensed for displaying alongside a link to the content on Apple's stores —
+// which Prova does via the "Open in Apple Music / Spotify" actions.
+export async function fetchSongArtwork(title, artist) {
+  const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
+  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+    const art = json?.results?.[0]?.artworkUrl100;
+    // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
+    return art ? art.replace('100x100bb', '300x300bb') : null;
+  } catch (e) {
+    console.warn('fetchSongArtwork failed:', e);
+    return null;
+  }
+}
+
 // Deep links to play the full song in the user's own music app (these services
 // hold the license — Prova just hands off). Both route to the installed app if
 // present, otherwise the web player.
