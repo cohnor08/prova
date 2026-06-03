@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, PanResponder, Alert, TextInput, Keyboard,
+  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { PitchDetector } from 'pitchy';
@@ -11,6 +11,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { getRecommendedSongs, getDailySong, fetchSongPreview, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -209,6 +210,16 @@ export default function PracticeScreen({ route }) {
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
 
+  // Player profile — drives level-matched song recommendations
+  const [instrument, setInstrument] = useState('Guitar');
+  const [level, setLevel] = useState('Beginner');
+
+  // Song playback — 30s in-app preview (iTunes) + "open in" deep links
+  const [playingSongId, setPlayingSongId] = useState(null);
+  const [loadingSongId, setLoadingSongId] = useState(null);
+  const songSoundRef = useRef(null);
+  const [openInSong, setOpenInSong] = useState(null); // song shown in the "Open in…" sheet
+
   // Which tool is visible: 'timer' | 'metronome' | 'tuner' | 'songs'
   const [tool, setTool] = useState('timer');
 
@@ -224,6 +235,13 @@ export default function PracticeScreen({ route }) {
       setActiveSession(route.params.activeSession);
     }
   }, [route?.params?.activeSession]);
+
+  // When navigated with a specific tool (e.g. from Today's song card), open it
+  useEffect(() => {
+    if (route?.params?.tool) {
+      setTool(route.params.tool);
+    }
+  }, [route?.params?.tool]);
 
   // Reset timer when active session changes
   useEffect(() => {
@@ -301,6 +319,7 @@ export default function PracticeScreen({ route }) {
         clearInterval(intervalRef.current);
         setIsPlaying(false);
         stopTuning();
+        stopSongPlayback();
       };
     }, [])
   );
@@ -343,6 +362,8 @@ export default function PracticeScreen({ route }) {
       setSessions(todaySessions);
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
+      if (data?.instrument) setInstrument(data.instrument);
+      if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
     } catch (err) {
       console.error(err);
@@ -379,6 +400,75 @@ export default function PracticeScreen({ route }) {
   };
 
   const removeSong = (id) => saveSongs(songs.filter((s) => s.id !== id));
+
+  // Copy a level-matched recommendation into the user's own library
+  const addRecommendedSong = (rec) => {
+    const exists = songs.some(
+      (s) => s.title.toLowerCase() === rec.title.toLowerCase()
+        && (s.artist || '').toLowerCase() === (rec.artist || '').toLowerCase()
+    );
+    if (exists) return;
+    const song = {
+      id: `song_${Date.now()}`,
+      title: rec.title,
+      artist: rec.artist || '',
+      addedAt: new Date().toISOString(),
+    };
+    saveSongs([song, ...songs]);
+  };
+
+  const stopSongPlayback = async () => {
+    if (songSoundRef.current) {
+      try { await songSoundRef.current.stopAsync(); } catch (_) {}
+      try { await songSoundRef.current.unloadAsync(); } catch (_) {}
+      songSoundRef.current = null;
+    }
+    setPlayingSongId(null);
+  };
+
+  // Play (or stop) a 30-second preview of a song in-app
+  const toggleSongPlayback = async (song) => {
+    if (playingSongId === song.id) { await stopSongPlayback(); return; }
+    await stopSongPlayback();
+    // Free up audio from the other tools first
+    if (isPlaying) { clearInterval(intervalRef.current); setIsPlaying(false); }
+    if (isTuning) await stopTuning();
+
+    setLoadingSongId(song.id);
+    try {
+      const previewUrl = await fetchSongPreview(song.title, song.artist);
+      if (!previewUrl) {
+        Alert.alert('No preview', `Couldn't find a preview for "${song.title}". Try "Open in…" to play the full song.`);
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync({ uri: previewUrl }, { shouldPlay: true });
+      songSoundRef.current = sound;
+      setPlayingSongId(song.id);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) stopSongPlayback();
+      });
+    } catch (e) {
+      console.warn('Song playback error:', e);
+      Alert.alert('Playback error', "Couldn't play this song preview.");
+    } finally {
+      setLoadingSongId(null);
+    }
+  };
+
+  // Open the full song in the user's music app
+  const openSongIn = async (song, service) => {
+    setOpenInSong(null);
+    const url = service === 'spotify'
+      ? spotifySearchUrl(song.title, song.artist)
+      : appleMusicSearchUrl(song.title, song.artist);
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      console.warn('Open in failed:', e);
+      Alert.alert('Error', `Couldn't open ${service === 'spotify' ? 'Spotify' : 'Apple Music'}.`);
+    }
+  };
 
   const stopTuning = async () => {
     isTuningRef.current = false;
@@ -458,6 +548,9 @@ export default function PracticeScreen({ route }) {
     if (next !== 'tuner' && isTuning) {
       stopTuning();
     }
+    if (next !== 'songs' && playingSongId) {
+      stopSongPlayback();
+    }
     setTool(next);
   };
 
@@ -471,15 +564,43 @@ export default function PracticeScreen({ route }) {
   const currentString = strings[stringIndex] || strings[0];
   targetFreqRef.current = currentString.freq;
 
-  // Pick one song from the library to feature today — rotates by day so it
-  // changes daily but stays the same within a single day.
-  const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
+  // Songs matched to the player's instrument + level, and the one to feature
+  // today — rotates by day across the user's library plus the recommendations.
+  const recommendedSongs = getRecommendedSongs(instrument, level);
+  const recommendedIds = new Set(
+    songs.map((s) => `${s.title.toLowerCase()}|${(s.artist || '').toLowerCase()}`)
   );
-  const songOfTheDay = songs.length ? songs[dayOfYear % songs.length] : null;
+  const songOfTheDay = getDailySong(instrument, level);
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
     : COLORS.primary;
+
+  // Preview play/pause button + an "Open in…" (full song) button
+  const renderSongControls = (song, size = 26) => {
+    const isLoading = loadingSongId === song.id;
+    const isThisPlaying = playingSongId === song.id;
+    return (
+      <View style={styles.songControls}>
+        <TouchableOpacity
+          onPress={() => toggleSongPlayback(song)}
+          disabled={isLoading}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isLoading ? 'ellipsis-horizontal-circle-outline' : isThisPlaying ? 'pause-circle' : 'play-circle'}
+            size={size}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setOpenInSong(song)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="open-outline" size={size - 6} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -560,7 +681,7 @@ export default function PracticeScreen({ route }) {
                   <Text style={styles.songTaskArtist} numberOfLines={1}>{songOfTheDay.artist}</Text>
                 )}
               </View>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+              {renderSongControls(songOfTheDay, 32)}
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.songCta} activeOpacity={0.8} onPress={() => selectTool('songs')}>
@@ -869,6 +990,7 @@ export default function PracticeScreen({ route }) {
                       {!!s.artist && <Text style={styles.songRowArtist} numberOfLines={1}>{s.artist}</Text>}
                     </View>
                     {isToday && <Text style={styles.songRowTodayTag}>TODAY</Text>}
+                    {renderSongControls(s, 24)}
                     <TouchableOpacity
                       onPress={() => removeSong(s.id)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -880,10 +1002,92 @@ export default function PracticeScreen({ route }) {
               })}
             </View>
           )}
+
+          {/* Recommended for the player's level */}
+          <View style={styles.recHeaderRow}>
+            <Ionicons name="sparkles" size={15} color={COLORS.accent} />
+            <Text style={styles.recHeading}>Picked for your level</Text>
+            <Text style={styles.recLevelTag}>{level} · {instrument}</Text>
+          </View>
+          <Text style={styles.songsSub}>
+            Songs that fit a {level.toLowerCase()} {instrument.toLowerCase()} player. Tap + to add one to your library.
+          </Text>
+          <View style={styles.songList}>
+            {recommendedSongs.map((rec) => {
+              const added = recommendedIds.has(
+                `${rec.title.toLowerCase()}|${(rec.artist || '').toLowerCase()}`
+              );
+              return (
+                <View key={rec.id} style={styles.songRow}>
+                  <View style={styles.songRowIcon}>
+                    <Ionicons name="musical-note" size={16} color={COLORS.textMuted} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.songRowTitle} numberOfLines={1}>{rec.title}</Text>
+                    {!!rec.artist && <Text style={styles.songRowArtist} numberOfLines={1}>{rec.artist}</Text>}
+                  </View>
+                  {renderSongControls(rec, 24)}
+                  <TouchableOpacity
+                    onPress={() => addRecommendedSong(rec)}
+                    disabled={added}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={added ? 'checkmark-circle' : 'add-circle-outline'}
+                      size={22}
+                      color={added ? COLORS.success : COLORS.primary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
         </View>
         )}
 
       </ScrollView>
+
+      {/* "Open in…" — play the full song in the user's music app */}
+      <Modal
+        visible={!!openInSong}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOpenInSong(null)}
+      >
+        <View style={styles.playerBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
+          <View style={styles.playerSheet}>
+            <View style={styles.playerHandle} />
+            <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
+            {!!openInSong?.artist && (
+              <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
+            )}
+            <Text style={styles.openInHint}>Play the full song in:</Text>
+
+            <TouchableOpacity
+              style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
+              onPress={() => openSongIn(openInSong, 'spotify')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="musical-notes" size={20} color="#fff" />
+              <Text style={styles.openInBtnText}>Spotify</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
+              onPress={() => openSongIn(openInSong, 'apple')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="musical-note" size={20} color="#fff" />
+              <Text style={styles.openInBtnText}>Apple Music</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
+              <Text style={styles.openInCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1008,6 +1212,24 @@ const styles = StyleSheet.create({
   // Song library panel
   songsHeading: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   songsSub: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.lg },
+  recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
+  recHeading: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  recLevelTag: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: 'auto' },
+
+  // Per-song controls (preview play/pause + open-in)
+  songControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+
+  // "Open in…" bottom sheet
+  playerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  playerSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },
+  playerHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: SPACING.lg },
+  playerTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  playerArtist: { color: COLORS.textSecondary, fontSize: 14, marginTop: 2 },
+  openInHint: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  openInBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, borderRadius: 12, paddingVertical: SPACING.md, marginTop: SPACING.sm },
+  openInBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  openInCancel: { alignItems: 'center', paddingVertical: SPACING.md, marginTop: SPACING.sm },
+  openInCancelText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
   addRow: { flexDirection: 'row', alignItems: 'stretch', gap: SPACING.sm, marginBottom: SPACING.lg },
   songInput: {
     backgroundColor: COLORS.surface, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
