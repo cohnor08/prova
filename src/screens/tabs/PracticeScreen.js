@@ -239,6 +239,7 @@ export default function PracticeScreen({ route }) {
   // Song library — songs the user wants to learn
   const [songs, setSongs] = useState([]);
   const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
+  const [songSearch, setSongSearch] = useState('');          // filter the library
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
 
@@ -807,13 +808,20 @@ export default function PracticeScreen({ route }) {
   );
   const songOfTheDay = getDailySong(instrument, level);
 
-  // Library shown alphabetically by title, collapsed to a few rows until the
-  // user taps "Show all" — keeps a big library from dominating the screen.
+  // Library shown alphabetically by title, optionally filtered by the search
+  // box, and collapsed to a few rows until expanded — keeps a big library from
+  // dominating the screen. Searching shows all matches (no collapse).
   const SONGS_COLLAPSED = 4;
+  const songQuery = songSearch.trim().toLowerCase();
   const sortedSongs = [...songs].sort((a, b) =>
     (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
   );
-  const shownSongs = songsExpanded ? sortedSongs : sortedSongs.slice(0, SONGS_COLLAPSED);
+  const filteredSongs = songQuery
+    ? sortedSongs.filter((s) =>
+        (s.title || '').toLowerCase().includes(songQuery)
+        || (s.artist || '').toLowerCase().includes(songQuery))
+    : sortedSongs;
+  const shownSongs = songQuery || songsExpanded ? filteredSongs : filteredSongs.slice(0, SONGS_COLLAPSED);
 
   // Keyed by title|artist so a song shared across the library, recommendations,
   // and "song of the day" only fetches its cover once.
@@ -1364,11 +1372,37 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           </View>
 
+          {/* Search box — appears once the library is big enough to need it */}
+          {songs.length > SONGS_COLLAPSED && (
+            <View style={styles.songSearchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.songSearchInput}
+                placeholder="Search your library"
+                placeholderTextColor={COLORS.textMuted}
+                value={songSearch}
+                onChangeText={setSongSearch}
+                returnKeyType="search"
+                autoCorrect={false}
+              />
+              {songSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setSongSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* List */}
           {songs.length === 0 ? (
             <View style={styles.songsEmpty}>
               <Ionicons name="musical-notes-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyTaskText}>No songs yet — add your first above</Text>
+            </View>
+          ) : songQuery && filteredSongs.length === 0 ? (
+            <View style={styles.songsEmpty}>
+              <Ionicons name="search-outline" size={24} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyTaskText}>No songs match “{songSearch.trim()}”</Text>
             </View>
           ) : (
             <View style={styles.songList}>
@@ -1392,7 +1426,7 @@ export default function PracticeScreen({ route }) {
                   </View>
                 );
               })}
-              {songs.length > SONGS_COLLAPSED && (
+              {!songQuery && songs.length > SONGS_COLLAPSED && (
                 <TouchableOpacity
                   style={styles.songsToggle}
                   activeOpacity={0.7}
@@ -1900,6 +1934,12 @@ const styles = StyleSheet.create({
   songAddBtnDisabled: { backgroundColor: COLORS.border },
   songsEmpty: { alignItems: 'center', paddingVertical: SPACING.lg },
   songList: { gap: SPACING.sm },
+  songSearchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md,
+  },
+  songSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
   songsToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: 10, marginTop: 2,
