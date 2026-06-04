@@ -6,6 +6,7 @@ import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateD
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { displayScore, scoreTier, formatScore } from '../../lib/score';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -29,19 +30,10 @@ const LEVEL_HOURS = { Beginner: 10, Novice: 25, Intermediate: 60, Advanced: 120,
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
 
-function computeProvaScore(streak, totalMinutes, totalSessions, lastRating) {
-  const streakPts  = Math.min(streak * 10, 300);
-  const volumePts  = Math.min(Math.floor(totalMinutes / 12), 300);
-  const sessionPts = Math.min(totalSessions * 5, 250);
-  const qualityPts = lastRating === 'just_right' ? 150
-    : lastRating === 'too_hard' ? 100
-    : lastRating === 'too_easy' ? 75 : 0;
-  return Math.min(1000, streakPts + volumePts + sessionPts + qualityPts);
-}
-
-// Prova Score for a raw user doc — used to rank leaderboards
+// Prova Score for a raw user doc — used to rank leaderboards. The score itself
+// lives in src/lib/score.js (banked per session; never decreases).
 function entryScore(e) {
-  return computeProvaScore(e.streak || 0, e.totalMinutes || 0, e.totalSessions || 0, e.lastSessionRating);
+  return displayScore(e);
 }
 
 function computeLevelXP(level, totalMinutes) {
@@ -140,27 +132,27 @@ function computeMilestones(streak, totalMinutes, totalSessions) {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ProvaScore({ score }) {
+  const { tier, into, toNext, progress } = scoreTier(score);
+  const ringColor = tier >= 10 ? '#10B981' : tier >= 4 ? COLORS.primary : '#F59E0B';
   return (
     <View style={styles.scoreCard}>
       <View style={styles.scoreRingWrapper}>
         <View style={styles.scoreRingOuter}>
-          <View style={[styles.scoreRingFill, {
-            borderColor: score > 700 ? '#10B981' : score > 400 ? COLORS.primary : '#F59E0B',
-          }]} />
+          <View style={[styles.scoreRingFill, { borderColor: ringColor }]} />
           <View style={styles.scoreCenter}>
-            <Text style={styles.scoreNumber}>{score}</Text>
-            <Text style={styles.scoreMax}>/1000</Text>
+            <Text style={styles.scoreTierLabel}>TIER</Text>
+            <Text style={styles.scoreNumber}>{tier}</Text>
           </View>
         </View>
       </View>
       <View style={styles.scoreRight}>
         <Text style={styles.scoreTitle}>Prova Score</Text>
-        <Text style={styles.scoreDesc}>Practice consistency, volume, and quality — in one number.</Text>
-        <View style={styles.scoreBadge}>
-          <Text style={styles.scoreBadgeText}>
-            {score > 700 ? '🔥 On Fire' : score > 400 ? '📈 Improving' : '🌱 Getting Started'}
-          </Text>
+        <Text style={styles.scoreValue}>{formatScore(score)} <Text style={styles.scorePts}>pts</Text></Text>
+        {/* Progress toward the next tier — always something to chase. */}
+        <View style={styles.scoreProgressTrack}>
+          <View style={[styles.scoreProgressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: ringColor }]} />
         </View>
+        <Text style={styles.scoreDesc}>{formatScore(toNext)} pts to Tier {tier + 1}</Text>
       </View>
     </View>
   );
@@ -367,7 +359,7 @@ function Milestones({ data }) {
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
 function LeaderboardRow({ entry, rank, isMe }) {
-  const score = computeProvaScore(entry.streak || 0, entry.totalMinutes || 0, entry.totalSessions || 0, entry.lastSessionRating);
+  const score = displayScore(entry);
   const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
   const initial = (name[0] || '?').toUpperCase();
   return (
@@ -560,7 +552,7 @@ export default function ProgressScreen() {
   const lastRating   = userData?.lastSessionRating;
   const avgMins      = totalSessions > 0 ? Math.round(totalMins / totalSessions) : 0;
 
-  const provaScore   = computeProvaScore(streak, totalMins, totalSessions, lastRating);
+  const provaScore   = displayScore(userData);
   const xp           = computeLevelXP(level, totalMins);
   const dailyData    = buildDailyData(logMap);
   const weeklyData   = buildWeeklyData(logMap);
@@ -638,11 +630,16 @@ const styles = StyleSheet.create({
   scoreRingOuter: { width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
   scoreRingFill: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderTopColor: 'transparent', borderRightColor: 'transparent', transform: [{ rotate: '-45deg' }] },
   scoreCenter: { alignItems: 'center' },
-  scoreNumber: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
+  scoreNumber: { color: COLORS.text, fontSize: 30, fontWeight: '900', lineHeight: 32 },
+  scoreTierLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   scoreMax: { color: COLORS.textMuted, fontSize: 11 },
   scoreRight: { flex: 1 },
-  scoreTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: SPACING.xs },
-  scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: SPACING.sm },
+  scoreTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: 2 },
+  scoreValue: { color: COLORS.text, fontSize: 24, fontWeight: '900', marginBottom: SPACING.sm },
+  scorePts: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  scoreProgressTrack: { height: 8, borderRadius: 4, backgroundColor: COLORS.surface, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  scoreProgressFill: { height: '100%', borderRadius: 4 },
+  scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginTop: SPACING.xs, marginBottom: SPACING.sm },
   scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
 

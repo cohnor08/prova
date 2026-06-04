@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated,
+  ScrollView, Modal, Animated, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
+import { sessionPoints, displayScore, formatScore } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -228,6 +229,10 @@ export default function TodayScreen({ navigation }) {
       const categories = {};
       sessions.forEach(s => { categories[s.category] = (categories[s.category] || 0) + s.duration; });
       const dateKey = new Date().toISOString().split('T')[0];
+      // Bank Prova Score for this session (XP — only ever goes up). Start from the
+      // existing total, or backfill it from lifetime stats for older accounts.
+      const earnedPoints = sessionPoints(sessionMins, newStreak, rating);
+      const newScore = displayScore(userData) + earnedPoints;
       await Promise.all([
         updateDoc(doc(db, 'users', uid), {
           lastSessionRating: rating,
@@ -235,6 +240,7 @@ export default function TodayScreen({ navigation }) {
           totalMinutes: increment(sessionMins),
           totalSessions: increment(1),
           streak: newStreak,
+          provaScore: newScore,
         }),
         setDoc(doc(db, 'sessionHistory', uid, 'logs', dateKey), {
           date: dateKey,
@@ -244,6 +250,10 @@ export default function TodayScreen({ navigation }) {
           rating,
         }, { merge: true }),
       ]);
+      Alert.alert(
+        `+${formatScore(earnedPoints)} Prova points! 🎸`,
+        `Nice work — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+      );
       adjustSessionFromRating(sessions, rating, null)
         .then(adjusted => updateDoc(doc(db, 'users', uid), {
           [`practicePlan.weeklyPlan.${TODAY_NAME}.sessions`]: adjusted,
