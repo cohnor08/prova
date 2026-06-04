@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
@@ -131,17 +132,42 @@ function computeMilestones(streak, totalMinutes, totalSessions) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
+// Circular progress ring that fills clockwise from the top based on `progress`
+// (0–1) — empty at a fresh rank, full just before the next one.
+function ScoreRing({ progress, color, size = 110, stroke = 8, children }) {
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(1, progress));
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={COLORS.border} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - clamped)}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      {children}
+    </View>
+  );
+}
+
 function ProvaScore({ score, onPress }) {
   const rank = scoreRank(score);
   return (
     <TouchableOpacity style={styles.scoreCard} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.scoreRingWrapper}>
-        <View style={styles.scoreRingOuter}>
-          <View style={[styles.scoreRingFill, { borderColor: rank.color }]} />
-          <View style={styles.scoreCenter}>
-            <Text style={styles.scoreEmoji}>{rank.emoji}</Text>
-          </View>
-        </View>
+        <ScoreRing progress={rank.progress} color={rank.color}>
+          <Text style={styles.scoreEmoji}>{rank.emoji}</Text>
+        </ScoreRing>
       </View>
       <View style={styles.scoreRight}>
         <Text style={styles.scoreTitle}>Prova Score</Text>
