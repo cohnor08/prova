@@ -10,7 +10,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
-import { sessionPoints, displayScore, formatScore } from '../../lib/score';
+import { sessionPoints, displayScore, formatScore, scoreRank } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -232,7 +232,9 @@ export default function TodayScreen({ navigation }) {
       // Bank Prova Score for this session (XP — only ever goes up). Start from the
       // existing total, or backfill it from lifetime stats for older accounts.
       const earnedPoints = sessionPoints(sessionMins, newStreak, rating);
-      const newScore = displayScore(userData) + earnedPoints;
+      const prevScore = displayScore(userData);
+      const newScore = prevScore + earnedPoints;
+      const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
       await Promise.all([
         updateDoc(doc(db, 'users', uid), {
           lastSessionRating: rating,
@@ -250,9 +252,12 @@ export default function TodayScreen({ navigation }) {
           rating,
         }, { merge: true }),
       ]);
+      const newRank = scoreRank(newScore);
       Alert.alert(
-        `+${formatScore(earnedPoints)} Prova points! 🎸`,
-        `Nice work — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : `+${formatScore(earnedPoints)} Prova points! 🎸`,
+        rankedUp
+          ? `You earned +${formatScore(earnedPoints)} and leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
+          : `Nice work — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
       );
       adjustSessionFromRating(sessions, rating, null)
         .then(adjusted => updateDoc(doc(db, 'users', uid), {

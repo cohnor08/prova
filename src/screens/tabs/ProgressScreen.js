@@ -6,7 +6,7 @@ import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateD
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { displayScore, scoreTier, formatScore } from '../../lib/score';
+import { displayScore, scoreRank, formatScore } from '../../lib/score';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -132,27 +132,30 @@ function computeMilestones(streak, totalMinutes, totalSessions) {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ProvaScore({ score }) {
-  const { tier, into, toNext, progress } = scoreTier(score);
-  const ringColor = tier >= 10 ? '#10B981' : tier >= 4 ? COLORS.primary : '#F59E0B';
+  const rank = scoreRank(score);
   return (
     <View style={styles.scoreCard}>
       <View style={styles.scoreRingWrapper}>
         <View style={styles.scoreRingOuter}>
-          <View style={[styles.scoreRingFill, { borderColor: ringColor }]} />
+          <View style={[styles.scoreRingFill, { borderColor: rank.color }]} />
           <View style={styles.scoreCenter}>
-            <Text style={styles.scoreTierLabel}>TIER</Text>
-            <Text style={styles.scoreNumber}>{tier}</Text>
+            <Text style={styles.scoreEmoji}>{rank.emoji}</Text>
           </View>
         </View>
       </View>
       <View style={styles.scoreRight}>
         <Text style={styles.scoreTitle}>Prova Score</Text>
+        <Text style={[styles.scoreRankName, { color: rank.color }]}>{rank.name}</Text>
         <Text style={styles.scoreValue}>{formatScore(score)} <Text style={styles.scorePts}>pts</Text></Text>
-        {/* Progress toward the next tier — always something to chase. */}
+        {/* Progress toward the next rank — always something to chase. */}
         <View style={styles.scoreProgressTrack}>
-          <View style={[styles.scoreProgressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: ringColor }]} />
+          <View style={[styles.scoreProgressFill, { width: `${Math.round(rank.progress * 100)}%`, backgroundColor: rank.color }]} />
         </View>
-        <Text style={styles.scoreDesc}>{formatScore(toNext)} pts to Tier {tier + 1}</Text>
+        <Text style={styles.scoreDesc}>
+          {rank.isMax
+            ? 'Max rank — you\'re a legend 🏆'
+            : `${formatScore(rank.toNext)} pts to ${rank.next.emoji} ${rank.next.name}`}
+        </Text>
       </View>
     </View>
   );
@@ -630,12 +633,11 @@ const styles = StyleSheet.create({
   scoreRingOuter: { width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
   scoreRingFill: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderTopColor: 'transparent', borderRightColor: 'transparent', transform: [{ rotate: '-45deg' }] },
   scoreCenter: { alignItems: 'center' },
-  scoreNumber: { color: COLORS.text, fontSize: 30, fontWeight: '900', lineHeight: 32 },
-  scoreTierLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  scoreMax: { color: COLORS.textMuted, fontSize: 11 },
+  scoreEmoji: { fontSize: 34 },
   scoreRight: { flex: 1 },
-  scoreTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: 2 },
-  scoreValue: { color: COLORS.text, fontSize: 24, fontWeight: '900', marginBottom: SPACING.sm },
+  scoreTitle: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
+  scoreRankName: { fontSize: 20, fontWeight: '900', marginBottom: 2 },
+  scoreValue: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginBottom: SPACING.sm },
   scorePts: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   scoreProgressTrack: { height: 8, borderRadius: 4, backgroundColor: COLORS.surface, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   scoreProgressFill: { height: '100%', borderRadius: 4 },

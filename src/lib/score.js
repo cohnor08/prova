@@ -42,14 +42,46 @@ export function displayScore(u = {}) {
   return typeof u.provaScore === 'number' ? u.provaScore : backfillScore(u);
 }
 
-// Tiers give a sense of progress on an unbounded number: every TIER_SIZE points
-// is a new tier, so there's always a "next tier" to chase.
-export const TIER_SIZE = 1000;
-export function scoreTier(score) {
-  const s = Math.max(0, Math.round(score));
-  const tier = Math.floor(s / TIER_SIZE) + 1;
-  const into = s % TIER_SIZE;
-  return { tier, into, toNext: TIER_SIZE - into, progress: into / TIER_SIZE };
+// Named ranks themed on a musician's journey — far more motivating than
+// "Tier 37". Early ranks come fast (quick dopamine hits to hook new players),
+// then the gaps stretch out so the top ranks feel genuinely earned. `min` is
+// the Prova Score needed to reach that rank.
+export const RANKS = [
+  { name: 'First Note',       min: 0,      emoji: '🎵', color: '#9CA3AF' },
+  { name: 'Bedroom Strummer', min: 300,    emoji: '🎸', color: '#A1887F' },
+  { name: 'Open Mic',         min: 800,    emoji: '🎤', color: '#CD7F32' },
+  { name: 'Garage Band',      min: 1800,   emoji: '🚐', color: '#B08D57' },
+  { name: 'Local Gig',        min: 3500,   emoji: '🍺', color: '#C0C0C0' },
+  { name: 'Soundcheck',       min: 6000,   emoji: '🔊', color: '#B0C4DE' },
+  { name: 'Headliner',        min: 10000,  emoji: '⭐', color: '#FFD700' },
+  { name: 'Touring Act',      min: 16000,  emoji: '🚌', color: '#FFC107' },
+  { name: 'Chart Climber',    min: 25000,  emoji: '📈', color: '#4FC3F7' },
+  { name: 'Platinum',         min: 40000,  emoji: '💿', color: '#E5E4E2' },
+  { name: 'Virtuoso',         min: 60000,  emoji: '🎼', color: '#7C4DFF' },
+  { name: 'Maestro',          min: 90000,  emoji: '👑', color: '#AB47BC' },
+  { name: 'Legend',           min: 130000, emoji: '🔥', color: '#FF5722' },
+  { name: 'Hall of Fame',     min: 200000, emoji: '🏆', color: '#10B981' },
+];
+
+// Resolve a score to its rank + progress toward the next one. There's always a
+// "next rank" to chase until the very top, where isMax flips on.
+export function scoreRank(score) {
+  const s = Math.max(0, Math.round(score || 0));
+  let idx = 0;
+  for (let i = 0; i < RANKS.length; i++) if (s >= RANKS[i].min) idx = i;
+  const rank = RANKS[idx];
+  const next = RANKS[idx + 1] || null;
+  const into = s - rank.min;
+  const span = next ? next.min - rank.min : 1;
+  return {
+    ...rank,
+    index: idx,
+    next,
+    isMax: !next,
+    into,
+    toNext: next ? next.min - s : 0,
+    progress: next ? into / span : 1,
+  };
 }
 
 // Thousands separators (Hermes doesn't reliably do toLocaleString formatting).
