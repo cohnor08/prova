@@ -630,15 +630,24 @@ export default function PracticeScreen({ route }) {
   // The song's real album cover (from the iTunes Search API). While it loads —
   // or for the rare song with no match — we show a generated gradient tile so
   // the layout never looks broken.
-  const renderArtwork = (song, size, radius = 10) => {
+  // `linkToStore` wraps a real cover in a tap → "Open in…" sheet, which Apple's
+  // terms require (album art must link to the content on a store). It's off only
+  // where the cover already sits inside another tap target (the carousel, whose
+  // cover taps to preview — store access there is via the per-song Add/Open-in).
+  const renderArtwork = (song, size, radius = 10, linkToStore = true) => {
     const uri = artwork[artKey(song)];
     if (uri) {
-      return (
+      const img = (
         <Image
           source={{ uri }}
           style={{ width: size, height: size, borderRadius: radius, backgroundColor: COLORS.card }}
         />
       );
+      return linkToStore ? (
+        <TouchableOpacity activeOpacity={0.8} onPress={() => setOpenInSong(song)}>
+          {img}
+        </TouchableOpacity>
+      ) : img;
     }
     const isTodaySong = songOfTheDay && song.id === songOfTheDay.id;
     const colors = ART_GRADIENTS[hashString(artKey(song)) % ART_GRADIENTS.length];
@@ -1111,7 +1120,7 @@ export default function PracticeScreen({ route }) {
                     onPress={() => toggleSongPlayback(rec)}
                     disabled={isLoading}
                   >
-                    {renderArtwork(rec, REC_ART, 12)}
+                    {renderArtwork(rec, REC_ART, 12, false)}
                     <View style={styles.recPlayOverlay}>
                       <Ionicons
                         name={isLoading ? 'ellipsis-horizontal' : isThisPlaying ? 'pause' : 'play'}
@@ -1141,6 +1150,9 @@ export default function PracticeScreen({ route }) {
               );
             })}
           </ScrollView>
+          <Text style={styles.attribution}>
+            Song previews and album artwork provided by Apple Music. Tap any cover to open the full track.
+          </Text>
         </View>
         )}
 
@@ -1307,6 +1319,7 @@ const styles = StyleSheet.create({
   // Song library panel
   songsHeading: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   songsSub: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.lg },
+  attribution: { color: COLORS.textMuted, fontSize: 11, lineHeight: 15, marginTop: SPACING.md },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
   recHeading: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   recLevelTag: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: 'auto' },

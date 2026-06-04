@@ -122,38 +122,54 @@ export function getDailySong(instrument, level) {
   return recs[getDailyIndex() % recs.length];
 }
 
+// Apple's iTunes Search API is rate-limited (~20 calls/min per IP) and its terms
+// ask that results not be persisted to disk. We keep a single in-memory result
+// per song for the life of the app session: it both honours the rate limit and
+// avoids re-querying the same cover/preview every time a card re-renders. The
+// cache is intentionally a plain module-level Map — it clears when the app does.
+const _itunesCache = new Map(); // "title|artist" → { artwork, preview }
+
+async function _lookupSong(title, artist) {
+  const key = `${(title || '').toLowerCase().trim()}|${(artist || '').toLowerCase().trim()}`;
+  if (_itunesCache.has(key)) return _itunesCache.get(key);
+
+  const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
+  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
+  let result = { artwork: null, preview: null };
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+    const hit = json?.results?.[0];
+    if (hit) {
+      // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
+      const art = hit.artworkUrl100;
+      result = {
+        artwork: art ? art.replace('100x100bb', '300x300bb') : null,
+        preview: hit.previewUrl || null,
+      };
+    }
+  } catch (e) {
+    console.warn('iTunes lookup failed:', e);
+  }
+  _itunesCache.set(key, result);
+  return result;
+}
+
 // Fetch a 30-second preview clip URL for a song using Apple's free iTunes
 // Search API (no auth required). Returns null if no match/preview is found.
 export async function fetchSongPreview(title, artist) {
-  const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
-  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
-  try {
-    const res = await fetch(url);
-    const json = await res.json();
-    return json?.results?.[0]?.previewUrl || null;
-  } catch (e) {
-    console.warn('fetchSongPreview failed:', e);
-    return null;
-  }
+  return (await _lookupSong(title, artist)).preview;
 }
 
 // Fetch album artwork for a song via Apple's free iTunes Search API. Returns a
-// ~300px square cover image URL, or null if no match is found. The artwork is
-// licensed for displaying alongside a link to the content on Apple's stores —
-// which Prova does via the "Open in Apple Music / Spotify" actions.
+// ~300px square cover image URL, or null if no match is found.
+//
+// IMPORTANT (App Store / Apple Media Services terms): album artwork must always
+// be shown *with a link to the content on an Apple store*. In the UI, tapping a
+// cover opens the "Open in Apple Music / Spotify" sheet — never display a cover
+// without that path to the store, and never download or bundle these images.
 export async function fetchSongArtwork(title, artist) {
-  const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
-  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
-  try {
-    const res = await fetch(url);
-    const json = await res.json();
-    const art = json?.results?.[0]?.artworkUrl100;
-    // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
-    return art ? art.replace('100x100bb', '300x300bb') : null;
-  } catch (e) {
-    console.warn('fetchSongArtwork failed:', e);
-    return null;
-  }
+  return (await _lookupSong(title, artist)).artwork;
 }
 
 // Deep links to play the full song in the user's own music app (these services
