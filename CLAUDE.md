@@ -89,6 +89,9 @@ users/{uid}
   totalMinutes: number
   lastSessionRating: string
   lastSessionDate: ISO string
+  songLibrary: { id, title, artist, addedAt }[]
+  setlists: { id, name, setting, audience, vibe, createdAt,
+              songs: { id, title, artist, note, fromLibrary }[] }[]
 ```
 
 ## Environment Variables
@@ -114,7 +117,7 @@ Scan the QR code with Expo Go (SDK 54) on your phone.
 - Song DNA matching
 - Voice check-in after sessions
 - Backing track library
-- Pre-gig mode
+- [x] Pre-gig mode — AI gig setlist generator + library playlists (`generateSetlist`)
 - Community + leaderboards
 - Teacher mode
 - Milestone certificates
