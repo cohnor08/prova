@@ -18,7 +18,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import {
   SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES, SPOTIFY_DISCOVERY,
-  isSpotifyConfigured, exportSetlistToSpotify,
+  SPOTIFY_EXPORT_ENABLED, isSpotifyConfigured, exportSetlistToSpotify,
 } from '../../lib/spotify';
 
 // Lets the OAuth popup hand control back to the app when Spotify redirects.
@@ -253,6 +253,7 @@ export default function PracticeScreen({ route }) {
 
   // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
   const [spotifyToken, setSpotifyToken] = useState(null);
+  const spotifyScopeRef = useRef('');
   const [exportingSetlistId, setExportingSetlistId] = useState(null);
   const pendingExportRef = useRef(null);
   const spotifyRedirectUri = AuthSession.makeRedirectUri({ scheme: 'prova' });
@@ -262,6 +263,10 @@ export default function PracticeScreen({ route }) {
       scopes: SPOTIFY_SCOPES,
       usePKCE: true,
       redirectUri: spotifyRedirectUri,
+      // Force the consent screen every time so the playlist permissions are
+      // always (re)granted — Spotify silently skips consent once authorized,
+      // which can leave a token without the needed scopes.
+      extraParams: { show_dialog: 'true' },
     },
     SPOTIFY_DISCOVERY,
   );
@@ -542,7 +547,7 @@ export default function PracticeScreen({ route }) {
   const runSpotifyExport = async (token, setlist) => {
     setExportingSetlistId(setlist.id);
     try {
-      const { url, addedCount, missed } = await exportSetlistToSpotify(token, setlist);
+      const { url, addedCount, missed } = await exportSetlistToSpotify(token, setlist, spotifyScopeRef.current);
       const missText = missed.length
         ? `\n\n${missed.length} song${missed.length === 1 ? " wasn't" : "s weren't"} found on Spotify and ${missed.length === 1 ? 'was' : 'were'} skipped.`
         : '';
@@ -577,12 +582,6 @@ export default function PracticeScreen({ route }) {
     promptSpotify();
   };
 
-  // One-time: print the OAuth redirect URI so it can be registered in the
-  // Spotify Developer Dashboard (Settings → Redirect URIs). Must match exactly.
-  useEffect(() => {
-    console.log('[Spotify] Register this Redirect URI in your Spotify app:', spotifyRedirectUri);
-  }, []);
-
   // When the Spotify login returns, exchange the code for a token (PKCE) and run
   // any export the user was waiting on.
   useEffect(() => {
@@ -599,6 +598,8 @@ export default function PracticeScreen({ route }) {
             },
             SPOTIFY_DISCOVERY,
           );
+          console.log('[Spotify] granted scopes:', tokenResult.scope || '(none returned)');
+          spotifyScopeRef.current = tokenResult.scope || '';
           setSpotifyToken(tokenResult.accessToken);
           const pending = pendingExportRef.current;
           pendingExportRef.current = null;
@@ -1593,24 +1594,26 @@ export default function PracticeScreen({ route }) {
               ))}
             </ScrollView>
 
-            <TouchableOpacity
-              style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
-              onPress={() => handleExportToSpotify(viewingSetlist)}
-              disabled={exportingSetlistId === viewingSetlist?.id}
-              activeOpacity={0.85}
-            >
-              {exportingSetlistId === viewingSetlist?.id ? (
-                <>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="musical-notes" size={18} color="#fff" />
-                  <Text style={styles.spotifyExportText}>Create this playlist in Spotify</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {SPOTIFY_EXPORT_ENABLED && (
+              <TouchableOpacity
+                style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
+                onPress={() => handleExportToSpotify(viewingSetlist)}
+                disabled={exportingSetlistId === viewingSetlist?.id}
+                activeOpacity={0.85}
+              >
+                {exportingSetlistId === viewingSetlist?.id ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="musical-notes" size={18} color="#fff" />
+                    <Text style={styles.spotifyExportText}>Create this playlist in Spotify</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.detailDeleteBtn}
