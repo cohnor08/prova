@@ -91,19 +91,43 @@ export const SONG_CATALOG = {
 
 const DEFAULT_INSTRUMENT = 'Guitar';
 const DEFAULT_LEVEL = 'Beginner';
+const LEVEL_ORDER = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 
-// Songs curated for the given instrument + level, each with a stable id so it
-// can be featured/tagged consistently across renders and screens.
-export function getRecommendedSongs(instrument, level) {
+function resolveCatalog(instrument, level) {
   const inst = SONG_CATALOG[instrument] ? instrument : DEFAULT_INSTRUMENT;
   const lvl = SONG_CATALOG[inst][level] ? level : DEFAULT_LEVEL;
-  return SONG_CATALOG[inst][lvl].map((s, i) => ({
+  return { inst, lvl };
+}
+
+// All curated songs for one exact instrument+level, each with a stable id.
+function levelSongs(inst, lvl) {
+  return (SONG_CATALOG[inst][lvl] || []).map((s, i) => ({
     id: `rec-${inst}-${lvl}-${i}`,
     recommended: true,
     instrument: inst,
     level: lvl,
     ...s,
   }));
+}
+
+// Songs for the "Picked for your level" carousel. To give plenty to scroll
+// through, this pulls the player's level first, then the level just below
+// (easier, familiar) and the level just above (a stretch), de-duped by title.
+export function getRecommendedSongs(instrument, level) {
+  const { inst, lvl } = resolveCatalog(instrument, level);
+  const i = LEVEL_ORDER.indexOf(lvl);
+  const order = [lvl, LEVEL_ORDER[i - 1], LEVEL_ORDER[i + 1]].filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const L of order) {
+    for (const song of levelSongs(inst, L)) {
+      const key = `${song.title.toLowerCase()}|${(song.artist || '').toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(song);
+    }
+  }
+  return out;
 }
 
 // Day-of-year index — changes daily but is stable within a single day.
@@ -117,7 +141,10 @@ export function getDailyIndex() {
 // rotates daily. Kept independent of the user's library so it's deterministic
 // (the same pick shows on both Today and Practice and can be safely auto-synced).
 export function getDailySong(instrument, level) {
-  const recs = getRecommendedSongs(instrument, level);
+  // Stays on the player's EXACT level (not the wider carousel set) so the daily
+  // pick is always level-appropriate.
+  const { inst, lvl } = resolveCatalog(instrument, level);
+  const recs = levelSongs(inst, lvl);
   if (!recs.length) return null;
   return recs[getDailyIndex() % recs.length];
 }
