@@ -8,6 +8,9 @@ const db = admin.firestore();
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
+// Setlist curation needs real genre/cultural knowledge and tight instruction-
+// following, so it uses a stronger model than the other (structured) calls.
+const SETLIST_MODEL = 'claude-sonnet-4-6';
 
 // ─── Rate limits ──────────────────────────────────────────────────────────────
 // Each action has a daily cap on both requests AND tokens consumed.
@@ -124,11 +127,18 @@ async function flagAbuseIfNeeded(uid, action, tokensUsed) {
 
 // ─── Claude API call ──────────────────────────────────────────────────────────
 // Returns { text, tokensIn, tokensOut } so callers can track actual spend.
-async function callClaude(apiKey, prompt, maxTokens) {
+async function callClaude(apiKey, prompt, maxTokens, opts = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
+    const body = {
+      model: opts.model || MODEL,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    };
+    if (typeof opts.temperature === 'number') body.temperature = opts.temperature;
+
     const response = await fetch(API_URL, {
       method: 'POST',
       signal: controller.signal,
@@ -137,11 +147,7 @@ async function callClaude(apiKey, prompt, maxTokens) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -394,17 +400,20 @@ THE GIG (this is what matters most — the setlist must clearly match it):
 Songs already in the player's library:
 ${libList || '(library is empty)'}
 
-How to choose the songs:
-1. The gig's genre, vibe, setting and audience are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers). Two gigs with different descriptions MUST produce clearly different setlists.
-2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
-3. Only include a library song if it GENUINELY fits the gig's genre and vibe — never force-fit library songs just because they're in the library. If a library song doesn't suit the gig, leave it out. The library is a tiebreaker, not a constraint.
-4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
+How to choose the songs — follow these strictly:
+1. GENRE IS A HARD FILTER. First name the exact genre this gig calls for, then make EVERY song fit it. If the gig says country, every track must be country (this includes classic/outlaw country like Johnny Cash, Willie Nelson, Merle Haggard, Hank Williams, Dolly Parton AND modern country/Americana like Zach Bryan, Tyler Childers, Chris Stapleton, Luke Combs). Never mix in songs from other genres.
+2. DO NOT default to the same generic stadium/classic-rock crowd-pleasers. Songs like "Don't Stop Believin'", "Free Bird", "Hotel California", "Sweet Caroline", "Mr. Brightside", "Wonderwall" must NOT appear unless the genre is explicitly classic rock. They are the wrong answer for a country, chill, jazz, folk, or older-crowd gig.
+3. MATCH THE AUDIENCE AND ENERGY. "Older crowd, chill" means mellow, era-appropriate songs that audience grew up loving — not loud, modern, high-energy hits. Read the setting and audience literally.
+4. VARY YOUR PICKS. Don't return the same list every time — draw widely from the genre's catalogue (different artists, eras, deep cuts as well as staples) so repeated generations feel fresh.
+5. Use real, well-known songs — do NOT invent songs or misattribute artists.
+6. The library is only a tiebreaker: include a library song ONLY if it genuinely fits the genre and vibe; otherwise ignore it.
+7. Match difficulty to a ${level} player where reasonable, but fit to the gig comes first.
 
-Order them to shape the night: open with something that draws this audience in, build energy through the middle, and finish on a strong closer.
+Order them to shape the night: open with something that draws THIS audience in, build through the middle, and finish on a fitting closer.
 
 Return a JSON object with this exact structure:
 {
-  "name": "a short, catchy name that reflects this gig's vibe (max 40 chars)",
+  "name": "a short, catchy name that reflects this gig's genre + vibe (max 40 chars)",
   "songs": [
     { "title": "Song title", "artist": "Artist name", "note": "its role, e.g. 'Opener — warm, familiar' (max 60 chars)" }
   ]
@@ -414,7 +423,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000, { model: SETLIST_MODEL, temperature: 0.9 });
     } catch (err) {
       await writeUsageLog(uid, 'generateSetlist', {
         tokensIn: 0, tokensOut: 0,
