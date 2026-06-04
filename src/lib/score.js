@@ -42,25 +42,33 @@ export function displayScore(u = {}) {
   return typeof u.provaScore === 'number' ? u.provaScore : backfillScore(u);
 }
 
-// Named ranks themed on a musician's journey — far more motivating than
-// "Tier 37". Early ranks come fast (quick dopamine hits to hook new players),
-// then the gaps stretch out so the top ranks feel genuinely earned. `min` is
+// Prestige ladder — 7 tiers split into III/II/I divisions, topped by Legend.
+// Early divisions are close together (rank up after a session or two for quick
+// wins); the gaps stretch out near the top so high ranks feel earned. `min` is
 // the Prova Score needed to reach that rank.
 export const RANKS = [
-  { name: 'First Note',       min: 0,      emoji: '🎵', color: '#9CA3AF' },
-  { name: 'Bedroom Strummer', min: 300,    emoji: '🎸', color: '#A1887F' },
-  { name: 'Open Mic',         min: 800,    emoji: '🎤', color: '#CD7F32' },
-  { name: 'Garage Band',      min: 1800,   emoji: '🚐', color: '#B08D57' },
-  { name: 'Local Gig',        min: 3500,   emoji: '🍺', color: '#C0C0C0' },
-  { name: 'Soundcheck',       min: 6000,   emoji: '🔊', color: '#B0C4DE' },
-  { name: 'Headliner',        min: 10000,  emoji: '⭐', color: '#FFD700' },
-  { name: 'Touring Act',      min: 16000,  emoji: '🚌', color: '#FFC107' },
-  { name: 'Chart Climber',    min: 25000,  emoji: '📈', color: '#4FC3F7' },
-  { name: 'Platinum',         min: 40000,  emoji: '💿', color: '#E5E4E2' },
-  { name: 'Virtuoso',         min: 60000,  emoji: '🎼', color: '#7C4DFF' },
-  { name: 'Maestro',          min: 90000,  emoji: '👑', color: '#AB47BC' },
-  { name: 'Legend',           min: 130000, emoji: '🔥', color: '#FF5722' },
-  { name: 'Hall of Fame',     min: 200000, emoji: '🏆', color: '#10B981' },
+  { name: 'Bronze III',     min: 0,     emoji: '🥉', color: '#CD7F32' },
+  { name: 'Bronze II',      min: 200,   emoji: '🥉', color: '#CD7F32' },
+  { name: 'Bronze I',       min: 450,   emoji: '🥉', color: '#CD7F32' },
+  { name: 'Silver III',     min: 800,   emoji: '🥈', color: '#BFC1C2' },
+  { name: 'Silver II',      min: 1200,  emoji: '🥈', color: '#BFC1C2' },
+  { name: 'Silver I',       min: 1700,  emoji: '🥈', color: '#BFC1C2' },
+  { name: 'Gold III',       min: 2400,  emoji: '🥇', color: '#FFD700' },
+  { name: 'Gold II',        min: 3200,  emoji: '🥇', color: '#FFD700' },
+  { name: 'Gold I',         min: 4200,  emoji: '🥇', color: '#FFD700' },
+  { name: 'Platinum III',   min: 5500,  emoji: '🔷', color: '#3FC1C9' },
+  { name: 'Platinum II',    min: 7000,  emoji: '🔷', color: '#3FC1C9' },
+  { name: 'Platinum I',     min: 9000,  emoji: '🔷', color: '#3FC1C9' },
+  { name: 'Diamond III',    min: 11500, emoji: '💎', color: '#5AC8FA' },
+  { name: 'Diamond II',     min: 14500, emoji: '💎', color: '#5AC8FA' },
+  { name: 'Diamond I',      min: 18000, emoji: '💎', color: '#5AC8FA' },
+  { name: 'Master III',     min: 22000, emoji: '🟣', color: '#9B59B6' },
+  { name: 'Master II',      min: 27000, emoji: '🟣', color: '#9B59B6' },
+  { name: 'Master I',       min: 33000, emoji: '🟣', color: '#9B59B6' },
+  { name: 'Grandmaster III',min: 40000, emoji: '⚔️', color: '#E74C3C' },
+  { name: 'Grandmaster II', min: 50000, emoji: '⚔️', color: '#E74C3C' },
+  { name: 'Grandmaster I',  min: 62000, emoji: '⚔️', color: '#E74C3C' },
+  { name: 'Legend',         min: 80000, emoji: '🏆', color: '#FFA000' },
 ];
 
 // Resolve a score to its rank + progress toward the next one. There's always a

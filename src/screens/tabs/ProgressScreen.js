@@ -6,7 +6,7 @@ import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateD
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { displayScore, scoreRank, formatScore } from '../../lib/score';
+import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -131,10 +131,10 @@ function computeMilestones(streak, totalMinutes, totalSessions) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function ProvaScore({ score }) {
+function ProvaScore({ score, onPress }) {
   const rank = scoreRank(score);
   return (
-    <View style={styles.scoreCard}>
+    <TouchableOpacity style={styles.scoreCard} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.scoreRingWrapper}>
         <View style={styles.scoreRingOuter}>
           <View style={[styles.scoreRingFill, { borderColor: rank.color }]} />
@@ -156,8 +156,45 @@ function ProvaScore({ score }) {
             ? 'Max rank — you\'re a legend 🏆'
             : `${formatScore(rank.toNext)} pts to ${rank.next.emoji} ${rank.next.name}`}
         </Text>
+        <Text style={styles.scoreAllLink}>View all ranks ›</Text>
       </View>
-    </View>
+    </TouchableOpacity>
+  );
+}
+
+// Full ladder viewer — every rank, its threshold, and where you stand.
+function RanksModal({ visible, score, onClose }) {
+  const current = scoreRank(score);
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.ranksBackdrop}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.ranksSheet}>
+          <View style={styles.ranksHeader}>
+            <Text style={styles.ranksTitle}>Ranks</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+            {[...RANKS].reverse().map((r) => {
+              const isCurrent = r.name === current.name;
+              const reached = score >= r.min;
+              return (
+                <View key={r.name} style={[styles.rankRow, isCurrent && styles.rankRowCurrent]}>
+                  <Text style={[styles.rankRowEmoji, !reached && { opacity: 0.35 }]}>{r.emoji}</Text>
+                  <Text style={[styles.rankRowName, { color: reached ? r.color : COLORS.textMuted }]}>
+                    {r.name}
+                  </Text>
+                  {isCurrent && <Text style={styles.rankRowYou}>YOU</Text>}
+                  <Text style={styles.rankRowMin}>{formatScore(r.min)}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -489,6 +526,7 @@ export default function ProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [worldBoard, setWorldBoard] = useState([]);
   const [friendsBoard, setFriendsBoard] = useState([]);
+  const [showRanks, setShowRanks] = useState(false);
   const lastFetchRef = useRef(0);
 
   useFocusEffect(
@@ -583,7 +621,8 @@ export default function ProgressScreen() {
           ))}
         </View>
 
-        <ProvaScore score={provaScore} />
+        <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />
+        <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
         <Leaderboard
           myUid={auth.currentUser?.uid}
           myData={userData}
@@ -641,6 +680,19 @@ const styles = StyleSheet.create({
   scorePts: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   scoreProgressTrack: { height: 8, borderRadius: 4, backgroundColor: COLORS.surface, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   scoreProgressFill: { height: '100%', borderRadius: 4 },
+  scoreAllLink: { color: COLORS.primary, fontSize: 12, fontWeight: '700', marginTop: SPACING.sm },
+
+  // Ranks ladder modal
+  ranksBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  ranksSheet: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
+  ranksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  ranksTitle: { color: COLORS.text, fontSize: 20, fontWeight: '900' },
+  rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: SPACING.sm, borderRadius: 10, gap: SPACING.md },
+  rankRowCurrent: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  rankRowEmoji: { fontSize: 22, width: 28, textAlign: 'center' },
+  rankRowName: { flex: 1, fontSize: 16, fontWeight: '800' },
+  rankRowYou: { color: COLORS.primary, fontSize: 11, fontWeight: '900', letterSpacing: 1, marginRight: SPACING.sm },
+  rankRowMin: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginTop: SPACING.xs, marginBottom: SPACING.sm },
   scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
