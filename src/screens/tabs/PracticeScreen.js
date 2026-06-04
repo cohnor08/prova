@@ -14,6 +14,15 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES, SPOTIFY_DISCOVERY,
+  isSpotifyConfigured, exportSetlistToSpotify,
+} from '../../lib/spotify';
+
+// Lets the OAuth popup hand control back to the app when Spotify redirects.
+WebBrowser.maybeCompleteAuthSession();
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -241,6 +250,21 @@ export default function PracticeScreen({ route }) {
   const [gigSongCount, setGigSongCount] = useState(10);
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+
+  // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
+  const [spotifyToken, setSpotifyToken] = useState(null);
+  const [exportingSetlistId, setExportingSetlistId] = useState(null);
+  const pendingExportRef = useRef(null);
+  const spotifyRedirectUri = AuthSession.makeRedirectUri({ scheme: 'prova' });
+  const [spotifyRequest, spotifyResponse, promptSpotify] = AuthSession.useAuthRequest(
+    {
+      clientId: SPOTIFY_CLIENT_ID,
+      scopes: SPOTIFY_SCOPES,
+      usePKCE: true,
+      redirectUri: spotifyRedirectUri,
+    },
+    SPOTIFY_DISCOVERY,
+  );
 
   // Player profile — drives level-matched song recommendations
   const [instrument, setInstrument] = useState('Guitar');
@@ -512,6 +536,86 @@ export default function PracticeScreen({ route }) {
     setOpenInSong(null);
     setViewingSetlist(null);
   };
+
+  // ── Spotify export ──
+  // Build the real Spotify playlist and report what made it / what was skipped.
+  const runSpotifyExport = async (token, setlist) => {
+    setExportingSetlistId(setlist.id);
+    try {
+      const { url, addedCount, missed } = await exportSetlistToSpotify(token, setlist);
+      const missText = missed.length
+        ? `\n\n${missed.length} song${missed.length === 1 ? " wasn't" : "s weren't"} found on Spotify and ${missed.length === 1 ? 'was' : 'were'} skipped.`
+        : '';
+      Alert.alert(
+        'Added to Spotify ✅',
+        `"${setlist.name}" — ${addedCount} song${addedCount === 1 ? '' : 's'} added.${missText}`,
+        [
+          ...(url ? [{ text: 'Open in Spotify', onPress: () => Linking.openURL(url) }] : []),
+          { text: 'Done', style: 'cancel' },
+        ],
+      );
+    } catch (e) {
+      if (String(e.message).includes('expired')) setSpotifyToken(null);
+      Alert.alert('Spotify', e.message || 'Export failed. Please try again.');
+    } finally {
+      setExportingSetlistId(null);
+    }
+  };
+
+  const handleExportToSpotify = (setlist) => {
+    if (!isSpotifyConfigured()) {
+      Alert.alert(
+        'Spotify not connected yet',
+        'Spotify export needs a one-time setup (a free Spotify Developer Client ID). Ask your developer to finish connecting Spotify, then this button will work.',
+      );
+      return;
+    }
+    if (spotifyToken) { runSpotifyExport(spotifyToken, setlist); return; }
+    // Not signed in yet — remember the setlist and launch the Spotify login.
+    pendingExportRef.current = setlist;
+    setExportingSetlistId(setlist.id);
+    promptSpotify();
+  };
+
+  // One-time: print the OAuth redirect URI so it can be registered in the
+  // Spotify Developer Dashboard (Settings → Redirect URIs). Must match exactly.
+  useEffect(() => {
+    console.log('[Spotify] Register this Redirect URI in your Spotify app:', spotifyRedirectUri);
+  }, []);
+
+  // When the Spotify login returns, exchange the code for a token (PKCE) and run
+  // any export the user was waiting on.
+  useEffect(() => {
+    if (!spotifyResponse) return;
+    if (spotifyResponse.type === 'success' && spotifyRequest?.codeVerifier) {
+      (async () => {
+        try {
+          const tokenResult = await AuthSession.exchangeCodeAsync(
+            {
+              clientId: SPOTIFY_CLIENT_ID,
+              code: spotifyResponse.params.code,
+              redirectUri: spotifyRedirectUri,
+              extraParams: { code_verifier: spotifyRequest.codeVerifier },
+            },
+            SPOTIFY_DISCOVERY,
+          );
+          setSpotifyToken(tokenResult.accessToken);
+          const pending = pendingExportRef.current;
+          pendingExportRef.current = null;
+          if (pending) await runSpotifyExport(tokenResult.accessToken, pending);
+          else setExportingSetlistId(null);
+        } catch (e) {
+          setExportingSetlistId(null);
+          pendingExportRef.current = null;
+          Alert.alert('Spotify', e.message || "Couldn't connect to Spotify.");
+        }
+      })();
+    } else {
+      // Dismissed or errored — clear the pending state.
+      setExportingSetlistId(null);
+      pendingExportRef.current = null;
+    }
+  }, [spotifyResponse]);
 
   const addSong = () => {
     const title = newTitle.trim();
@@ -1490,6 +1594,25 @@ export default function PracticeScreen({ route }) {
             </ScrollView>
 
             <TouchableOpacity
+              style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
+              onPress={() => handleExportToSpotify(viewingSetlist)}
+              disabled={exportingSetlistId === viewingSetlist?.id}
+              activeOpacity={0.85}
+            >
+              {exportingSetlistId === viewingSetlist?.id ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="musical-notes" size={18} color="#fff" />
+                  <Text style={styles.spotifyExportText}>Create this playlist in Spotify</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.detailDeleteBtn}
               onPress={() => Alert.alert(
                 'Delete setlist?',
@@ -1691,9 +1814,14 @@ const styles = StyleSheet.create({
   detailSongTitle: { color: COLORS.text, fontWeight: '600', fontSize: 15 },
   detailSongArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   detailSongNote: { color: COLORS.accent, fontSize: 11, marginTop: 2 },
+  spotifyExportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: '#1DB954', borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
+  },
+  spotifyExportText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   detailDeleteBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
-    paddingVertical: 12, marginTop: SPACING.md,
+    paddingVertical: 12, marginTop: SPACING.sm,
   },
   detailDeleteText: { color: COLORS.error, fontWeight: '600', fontSize: 14 },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
