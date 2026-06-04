@@ -384,21 +384,27 @@ exports.generateSetlist = onCall(
 
     const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
 
-The gig:
+THE GIG (this is what matters most — the setlist must clearly match it):
 - Setting: ${setting}
 - Audience: ${audience}
-- Desired vibe: ${vibe || 'not specified — use your judgement for the setting'}
+- Desired vibe / genre: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
 - Player skill level: ${level}
 - Number of songs wanted: ${songCount}
 
-Songs already in the player's library (PRIORITISE these when they fit the gig):
+Songs already in the player's library:
 ${libList || '(library is empty)'}
 
-Build an ordered setlist of exactly ${songCount} well-known, real songs that suit this setting and audience. Order them to shape the night: open with something that draws people in, build energy through the middle, and choose a strong closer. Prefer songs from the player's library when they fit; fill the rest with widely-recognised real songs appropriate to the setting. Do not invent songs.
+How to choose the songs:
+1. The gig's genre, vibe, setting and audience are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers). Two gigs with different descriptions MUST produce clearly different setlists.
+2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
+3. Only include a library song if it GENUINELY fits the gig's genre and vibe — never force-fit library songs just because they're in the library. If a library song doesn't suit the gig, leave it out. The library is a tiebreaker, not a constraint.
+4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
+
+Order them to shape the night: open with something that draws this audience in, build energy through the middle, and finish on a strong closer.
 
 Return a JSON object with this exact structure:
 {
-  "name": "a short, catchy name for this setlist (max 40 chars)",
+  "name": "a short, catchy name that reflects this gig's vibe (max 40 chars)",
   "songs": [
     { "title": "Song title", "artist": "Artist name", "note": "its role, e.g. 'Opener — warm, familiar' (max 60 chars)" }
   ]
