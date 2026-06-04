@@ -16,6 +16,7 @@ const MODEL = 'claude-haiku-4-5-20251001';
 const RATE_LIMITS = {
   generatePracticePlan:   { requests: 3,  tokens: 60000 },
   adjustSessionFromRating: { requests: 10, tokens: 15000 },
+  generateSetlist:        { requests: 15, tokens: 40000 },
 };
 
 // Check request count atomically; token ceiling is checked non-transactionally
@@ -340,5 +341,99 @@ Return only a valid JSON array, no markdown.`;
     ]).catch(() => {});
 
     return adjusted;
+  }
+);
+
+// ─── generateSetlist ──────────────────────────────────────────────────────────
+// Builds an ordered gig setlist from a description of the gig. Prioritises songs
+// already in the user's library, then fills the rest with well-known suggestions
+// that fit the setting and audience.
+exports.generateSetlist = onCall(
+  { ...BASE_OPTIONS, timeoutSeconds: 60, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const uid = request.auth.uid;
+    const appCheckPresent = !!request.app;
+    const startTime = Date.now();
+
+    await checkRateLimit(uid, 'generateSetlist');
+
+    const { instrument, level, setting, audience, vibe, songCount, library } = request.data;
+
+    // ── Validate input ──
+    if (!ALLOWED_INSTRUMENTS.has(instrument))
+      throw new HttpsError('invalid-argument', 'Invalid instrument');
+    if (!ALLOWED_LEVELS.has(level))
+      throw new HttpsError('invalid-argument', 'Invalid level');
+    if (typeof setting !== 'string' || setting.trim().length === 0 || setting.length > 300)
+      throw new HttpsError('invalid-argument', 'Setting must be 1–300 characters');
+    if (typeof audience !== 'string' || audience.trim().length === 0 || audience.length > 300)
+      throw new HttpsError('invalid-argument', 'Audience must be 1–300 characters');
+    if (vibe !== undefined && vibe !== null && (typeof vibe !== 'string' || vibe.length > 300))
+      throw new HttpsError('invalid-argument', 'Vibe too long (max 300 chars)');
+    if (typeof songCount !== 'number' || songCount < 3 || songCount > 30)
+      throw new HttpsError('invalid-argument', 'songCount must be 3–30');
+    if (!Array.isArray(library) || library.length > 200)
+      throw new HttpsError('invalid-argument', 'Invalid library');
+    const libList = library
+      .filter(s => s && typeof s.title === 'string')
+      .slice(0, 200)
+      .map(s => `- ${s.title}${s.artist ? ` — ${s.artist}` : ''}`)
+      .join('\n');
+
+    const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
+
+The gig:
+- Setting: ${setting}
+- Audience: ${audience}
+- Desired vibe: ${vibe || 'not specified — use your judgement for the setting'}
+- Player skill level: ${level}
+- Number of songs wanted: ${songCount}
+
+Songs already in the player's library (PRIORITISE these when they fit the gig):
+${libList || '(library is empty)'}
+
+Build an ordered setlist of exactly ${songCount} well-known, real songs that suit this setting and audience. Order them to shape the night: open with something that draws people in, build energy through the middle, and choose a strong closer. Prefer songs from the player's library when they fit; fill the rest with widely-recognised real songs appropriate to the setting. Do not invent songs.
+
+Return a JSON object with this exact structure:
+{
+  "name": "a short, catchy name for this setlist (max 40 chars)",
+  "songs": [
+    { "title": "Song title", "artist": "Artist name", "note": "its role, e.g. 'Opener — warm, familiar' (max 60 chars)" }
+  ]
+}
+
+Return only valid JSON, no markdown fences, no explanation.`;
+
+    let result;
+    try {
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000);
+    } catch (err) {
+      await writeUsageLog(uid, 'generateSetlist', {
+        tokensIn: 0, tokensOut: 0,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error',
+        appCheckPresent,
+      });
+      throw err;
+    }
+
+    const setlist = JSON.parse(
+      result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    );
+
+    Promise.all([
+      recordTokenUsage(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
+      writeUsageLog(uid, 'generateSetlist', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: true,
+        appCheckPresent,
+      }),
+      flagAbuseIfNeeded(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
+    ]).catch(() => {});
+
+    return setlist;
   }
 );

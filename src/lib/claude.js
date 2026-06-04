@@ -54,3 +54,9 @@ export async function generatePracticePlan(userProfile) {
 export async function adjustSessionFromRating(sessions, rating, feedback) {
   return callFunction('adjustSessionFromRating', { sessions, rating, feedback: feedback || null }, 60000);
 }
+
+// Generate an ordered gig setlist. `gig` = { instrument, level, setting,
+// audience, vibe, songCount, library }. Returns { name, songs: [{title, artist, note}] }.
+export async function generateSetlist(gig) {
+  return callFunction('generateSetlist', gig, 60000);
+}

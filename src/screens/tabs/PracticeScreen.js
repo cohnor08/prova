@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image,
+  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -13,6 +13,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
+import { generateSetlist } from '../../lib/claude';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -231,6 +232,16 @@ export default function PracticeScreen({ route }) {
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
 
+  // Gig setlists — AI-built playlists saved inside the library
+  const [setlists, setSetlists] = useState([]);
+  const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
+  const [gigSetting, setGigSetting] = useState('');
+  const [gigAudience, setGigAudience] = useState('');
+  const [gigVibe, setGigVibe] = useState('');
+  const [gigSongCount, setGigSongCount] = useState(10);
+  const [generatingSetlist, setGeneratingSetlist] = useState(false);
+  const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+
   // Player profile — drives level-matched song recommendations
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
@@ -384,6 +395,7 @@ export default function PracticeScreen({ route }) {
       setSessions(todaySessions);
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
+      setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -404,6 +416,93 @@ export default function PracticeScreen({ route }) {
       console.warn('Failed to save songs:', err);
       Alert.alert('Error', "Couldn't save your song. Check your connection and try again.");
     }
+  };
+
+  // Persist gig setlists to the user doc (same owner-only write as the library)
+  const saveSetlists = async (next) => {
+    setSetlists(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { setlists: next }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to save setlists:', err);
+      Alert.alert('Error', "Couldn't save your setlist. Check your connection and try again.");
+    }
+  };
+
+  // Ask Claude for a gig setlist, then save it as a playlist. Any suggested song
+  // not already in the library is also copied in, so previews/covers light up and
+  // the user can practise it.
+  const handleGenerateSetlist = async () => {
+    const setting = gigSetting.trim();
+    const audience = gigAudience.trim();
+    if (!setting || !audience) {
+      Alert.alert('Almost there', 'Describe the setting and the audience so Prova can tailor the setlist.');
+      return;
+    }
+    Keyboard.dismiss();
+    setGeneratingSetlist(true);
+    try {
+      const result = await generateSetlist({
+        instrument, level,
+        setting, audience,
+        vibe: gigVibe.trim() || null,
+        songCount: gigSongCount,
+        library: songs.map((s) => ({ title: s.title, artist: s.artist || '' })),
+      });
+
+      const inLibrary = (t, a) => songs.some(
+        (s) => s.title.toLowerCase() === (t || '').toLowerCase()
+          && (s.artist || '').toLowerCase() === (a || '').toLowerCase()
+      );
+      const picks = (result?.songs || [])
+        .filter((s) => s && s.title)
+        .map((s, i) => ({
+          id: `setsong_${Date.now()}_${i}`,
+          title: String(s.title).slice(0, 120),
+          artist: String(s.artist || '').slice(0, 120),
+          note: String(s.note || '').slice(0, 80),
+          fromLibrary: inLibrary(s.title, s.artist),
+        }));
+      if (picks.length === 0) {
+        Alert.alert('No setlist', "Prova couldn't build a setlist this time. Try adding more detail.");
+        return;
+      }
+
+      const setlist = {
+        id: `setlist_${Date.now()}`,
+        name: String(result?.name || 'Gig setlist').slice(0, 50),
+        setting, audience,
+        vibe: gigVibe.trim(),
+        songs: picks,
+        createdAt: new Date().toISOString(),
+      };
+      const nextSetlists = [setlist, ...setlists];
+      await saveSetlists(nextSetlists);
+
+      // Fold any brand-new songs into the library too.
+      const additions = picks
+        .filter((p) => !inLibrary(p.title, p.artist))
+        .map((p) => ({ id: p.id, title: p.title, artist: p.artist, addedAt: new Date().toISOString() }));
+      if (additions.length > 0) await saveSongs([...additions, ...songs]);
+
+      // Reset the form and jump straight into the new setlist.
+      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigSongCount(10);
+      setShowGigForm(false);
+      setViewingSetlist(setlist);
+    } catch (err) {
+      console.warn('Setlist generation failed:', err);
+      Alert.alert('Error', err.message?.includes('limit')
+        ? err.message
+        : "Couldn't build your setlist right now. Please try again.");
+    } finally {
+      setGeneratingSetlist(false);
+    }
+  };
+
+  const deleteSetlist = (id) => {
+    saveSetlists(setlists.filter((s) => s.id !== id));
+    setViewingSetlist(null);
   };
 
   const addSong = () => {
@@ -601,7 +700,7 @@ export default function PracticeScreen({ route }) {
   // Lazily pull cover art for every song currently on screen (iTunes Search).
   // The `undefined` guard means each unique song is fetched at most once.
   useEffect(() => {
-    const visible = [songOfTheDay, ...songs, ...recommendedSongs].filter(Boolean);
+    const visible = [songOfTheDay, ...songs, ...recommendedSongs, ...(viewingSetlist?.songs || [])].filter(Boolean);
     const seen = new Set();
     const missing = [];
     for (const s of visible) {
@@ -621,7 +720,7 @@ export default function PracticeScreen({ route }) {
       if (!cancelled) setArtwork((prev) => ({ ...prev, ...updates }));
     })();
     return () => { cancelled = true; };
-  }, [songs, instrument, level]);
+  }, [songs, instrument, level, viewingSetlist]);
 
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
@@ -1023,6 +1122,47 @@ export default function PracticeScreen({ route }) {
         </View>
         )}
 
+        {/* ── Gig Setlists ── */}
+        {tool === 'songs' && (
+        <View style={styles.card}>
+          <Text style={styles.songsHeading}>Gig Setlists</Text>
+          <Text style={styles.songsSub}>
+            Describe a gig and Prova builds you an ordered setlist — saved here as a playlist.
+          </Text>
+
+          <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.gigNewBtnText}>New gig setlist</Text>
+          </TouchableOpacity>
+
+          {setlists.length === 0 ? (
+            <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
+          ) : (
+            <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
+              {setlists.map((sl) => (
+                <TouchableOpacity
+                  key={sl.id}
+                  style={styles.setlistRow}
+                  activeOpacity={0.7}
+                  onPress={() => setViewingSetlist(sl)}
+                >
+                  <View style={styles.setlistIcon}>
+                    <Ionicons name="list" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.setlistName} numberOfLines={1}>{sl.name}</Text>
+                    <Text style={styles.setlistMeta} numberOfLines={1}>
+                      {sl.songs.length} songs · {sl.setting}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+        )}
+
         {/* ── Song Library ── */}
         {tool === 'songs' && (
         <View style={styles.card}>
@@ -1199,6 +1339,156 @@ export default function PracticeScreen({ route }) {
           </View>
         </View>
       </Modal>
+
+      {/* "New gig setlist" — describe the gig, Prova builds the setlist */}
+      <Modal
+        visible={showGigForm}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
+      >
+        <View style={styles.playerBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => !generatingSetlist && setShowGigForm(false)}
+          />
+          <View style={styles.gigSheet}>
+            <View style={styles.playerHandle} />
+            <Text style={styles.gigSheetTitle}>Plan a gig</Text>
+            <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
+
+            <Text style={styles.gigLabel}>Setting</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. Friday night bar, wedding reception, coffee shop"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigSetting}
+              onChangeText={setGigSetting}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Audience</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. 20–40s, up for dancing; mixed-age family crowd"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigAudience}
+              onChangeText={setGigAudience}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Vibe (optional)</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. laid-back acoustic, high-energy rock"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigVibe}
+              onChangeText={setGigVibe}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Number of songs</Text>
+            <View style={styles.gigStepper}>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.max(3, n - 1))}
+                disabled={generatingSetlist || gigSongCount <= 3}
+              >
+                <Ionicons name="remove" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+              <Text style={styles.gigStepValue}>{gigSongCount}</Text>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.min(30, n + 1))}
+                disabled={generatingSetlist || gigSongCount >= 30}
+              >
+                <Ionicons name="add" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.gigGenerateBtn, generatingSetlist && { opacity: 0.7 }]}
+              onPress={handleGenerateSetlist}
+              disabled={generatingSetlist}
+              activeOpacity={0.85}
+            >
+              {generatingSetlist ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.gigGenerateText}>Building your setlist…</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Text style={styles.gigGenerateText}>Generate setlist</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {!generatingSetlist && (
+              <TouchableOpacity style={styles.openInCancel} onPress={() => setShowGigForm(false)} activeOpacity={0.7}>
+                <Text style={styles.openInCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Setlist detail — the ordered songs, each previewable + openable */}
+      <Modal
+        visible={!!viewingSetlist}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setViewingSetlist(null)}
+      >
+        <View style={styles.detailBackdrop}>
+          <View style={styles.detailSheet}>
+            <View style={styles.playerHandle} />
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle} numberOfLines={2}>{viewingSetlist?.name}</Text>
+                <Text style={styles.detailMeta} numberOfLines={2}>
+                  {viewingSetlist?.songs?.length} songs · {viewingSetlist?.setting}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setViewingSetlist(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={26} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: SPACING.md }}>
+              {viewingSetlist?.songs?.map((s, i) => (
+                <View key={s.id || i} style={styles.detailRow}>
+                  <Text style={styles.detailNum}>{i + 1}</Text>
+                  {renderArtwork(s, 44, 8)}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailSongTitle} numberOfLines={1}>{s.title}</Text>
+                    {!!s.artist && <Text style={styles.detailSongArtist} numberOfLines={1}>{s.artist}</Text>}
+                    {!!s.note && <Text style={styles.detailSongNote} numberOfLines={1}>{s.note}</Text>}
+                  </View>
+                  {renderSongControls(s, 24)}
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.detailDeleteBtn}
+              onPress={() => Alert.alert(
+                'Delete setlist?',
+                `"${viewingSetlist?.name}" will be removed. Songs stay in your library.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteSetlist(viewingSetlist.id) },
+                ]
+              )}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+              <Text style={styles.detailDeleteText}>Delete setlist</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1320,6 +1610,68 @@ const styles = StyleSheet.create({
   songsHeading: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   songsSub: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.lg },
   attribution: { color: COLORS.textMuted, fontSize: 11, lineHeight: 15, marginTop: SPACING.md },
+
+  // ── Gig setlists ──
+  gigNewBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
+  },
+  gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  gigEmpty: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' },
+  setlistRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  setlistIcon: {
+    width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.card,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  setlistName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  setlistMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+
+  // Gig form bottom sheet
+  gigSheet: {
+    backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: SPACING.lg, paddingBottom: SPACING.xl, gap: SPACING.xs,
+  },
+  gigSheetTitle: { color: COLORS.text, fontWeight: '800', fontSize: 20, textAlign: 'center' },
+  gigSheetSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.sm },
+  gigLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginTop: SPACING.sm, marginBottom: 4 },
+  gigStepper: { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, alignSelf: 'flex-start', marginTop: 4 },
+  gigStepBtn: {
+    width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border,
+  },
+  gigStepValue: { color: COLORS.text, fontWeight: '800', fontSize: 20, minWidth: 28, textAlign: 'center' },
+  gigGenerateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.lg,
+  },
+  gigGenerateText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  // Setlist detail sheet
+  detailBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  detailSheet: {
+    backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: SPACING.lg, paddingBottom: SPACING.xl,
+  },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.md },
+  detailTitle: { color: COLORS.text, fontWeight: '800', fontSize: 19 },
+  detailMeta: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  detailRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  detailNum: { color: COLORS.textMuted, fontWeight: '700', fontSize: 13, width: 18, textAlign: 'center' },
+  detailSongTitle: { color: COLORS.text, fontWeight: '600', fontSize: 15 },
+  detailSongArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  detailSongNote: { color: COLORS.accent, fontSize: 11, marginTop: 2 },
+  detailDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    paddingVertical: 12, marginTop: SPACING.md,
+  },
+  detailDeleteText: { color: COLORS.error, fontWeight: '600', fontSize: 14 },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
   recHeading: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   recLevelTag: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: 'auto' },
