@@ -238,6 +238,7 @@ export default function PracticeScreen({ route }) {
 
   // Song library — songs the user wants to learn
   const [songs, setSongs] = useState([]);
+  const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
 
@@ -806,6 +807,14 @@ export default function PracticeScreen({ route }) {
   );
   const songOfTheDay = getDailySong(instrument, level);
 
+  // Library shown alphabetically by title, collapsed to a few rows until the
+  // user taps "Show all" — keeps a big library from dominating the screen.
+  const SONGS_COLLAPSED = 4;
+  const sortedSongs = [...songs].sort((a, b) =>
+    (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+  );
+  const shownSongs = songsExpanded ? sortedSongs : sortedSongs.slice(0, SONGS_COLLAPSED);
+
   // Keyed by title|artist so a song shared across the library, recommendations,
   // and "song of the day" only fetches its cover once.
   const artKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
@@ -1363,7 +1372,7 @@ export default function PracticeScreen({ route }) {
             </View>
           ) : (
             <View style={styles.songList}>
-              {songs.map((s) => {
+              {shownSongs.map((s) => {
                 const isToday = songOfTheDay && s.id === songOfTheDay.id;
                 return (
                   <View key={s.id} style={[styles.songRow, isToday && styles.songRowToday]}>
@@ -1383,6 +1392,22 @@ export default function PracticeScreen({ route }) {
                   </View>
                 );
               })}
+              {songs.length > SONGS_COLLAPSED && (
+                <TouchableOpacity
+                  style={styles.songsToggle}
+                  activeOpacity={0.7}
+                  onPress={() => setSongsExpanded((v) => !v)}
+                >
+                  <Text style={styles.songsToggleText}>
+                    {songsExpanded ? 'Show less' : `Show all ${songs.length} songs`}
+                  </Text>
+                  <Ionicons
+                    name={songsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1875,6 +1900,11 @@ const styles = StyleSheet.create({
   songAddBtnDisabled: { backgroundColor: COLORS.border },
   songsEmpty: { alignItems: 'center', paddingVertical: SPACING.lg },
   songList: { gap: SPACING.sm },
+  songsToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 10, marginTop: 2,
+  },
+  songsToggleText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   songRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
