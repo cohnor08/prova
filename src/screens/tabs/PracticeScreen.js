@@ -505,6 +505,14 @@ export default function PracticeScreen({ route }) {
     setViewingSetlist(null);
   };
 
+  // Closing the setlist detail stops any preview still playing and dismisses the
+  // open-in overlay, so nothing keeps running behind the scenes.
+  const closeSetlistDetail = () => {
+    stopSongPlayback();
+    setOpenInSong(null);
+    setViewingSetlist(null);
+  };
+
   const addSong = () => {
     const title = newTitle.trim();
     if (!title) return;
@@ -798,6 +806,46 @@ export default function PracticeScreen({ route }) {
       </View>
     );
   };
+
+  // The "Open in Spotify / Apple Music" bottom sheet contents. Rendered either
+  // inside a standalone Modal (from the main screen) or as a plain overlay inside
+  // the setlist detail Modal — iOS can't stack one Modal on top of another, so we
+  // never nest Modals; we drop this View into whichever surface is already open.
+  const renderOpenInSheet = () => (
+    <View style={styles.playerBackdrop}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
+      <View style={styles.playerSheet}>
+        <View style={styles.playerHandle} />
+        <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
+        {!!openInSong?.artist && (
+          <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
+        )}
+        <Text style={styles.openInHint}>Play the full song in:</Text>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
+          onPress={() => openSongIn(openInSong, 'spotify')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-notes" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Spotify</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
+          onPress={() => openSongIn(openInSong, 'apple')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-note" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Apple Music</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
+          <Text style={styles.openInCancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1298,46 +1346,16 @@ export default function PracticeScreen({ route }) {
 
       </ScrollView>
 
-      {/* "Open in…" — play the full song in the user's music app */}
+      {/* "Open in…" — play the full song in the user's music app. Suppressed
+          while the setlist detail Modal is open (iOS can't stack Modals); in that
+          case the same sheet is rendered as an overlay inside the detail Modal. */}
       <Modal
-        visible={!!openInSong}
+        visible={!!openInSong && !viewingSetlist}
         transparent
         animationType="slide"
         onRequestClose={() => setOpenInSong(null)}
       >
-        <View style={styles.playerBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
-          <View style={styles.playerSheet}>
-            <View style={styles.playerHandle} />
-            <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
-            {!!openInSong?.artist && (
-              <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
-            )}
-            <Text style={styles.openInHint}>Play the full song in:</Text>
-
-            <TouchableOpacity
-              style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
-              onPress={() => openSongIn(openInSong, 'spotify')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="musical-notes" size={20} color="#fff" />
-              <Text style={styles.openInBtnText}>Spotify</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
-              onPress={() => openSongIn(openInSong, 'apple')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="musical-note" size={20} color="#fff" />
-              <Text style={styles.openInBtnText}>Apple Music</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
-              <Text style={styles.openInCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {renderOpenInSheet()}
       </Modal>
 
       {/* "New gig setlist" — describe the gig, Prova builds the setlist */}
@@ -1439,7 +1457,7 @@ export default function PracticeScreen({ route }) {
         visible={!!viewingSetlist}
         transparent
         animationType="slide"
-        onRequestClose={() => setViewingSetlist(null)}
+        onRequestClose={closeSetlistDetail}
       >
         <View style={styles.detailBackdrop}>
           <View style={styles.detailSheet}>
@@ -1451,7 +1469,7 @@ export default function PracticeScreen({ route }) {
                   {viewingSetlist?.songs?.length} songs · {viewingSetlist?.setting}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setViewingSetlist(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={closeSetlistDetail} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={26} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -1487,6 +1505,12 @@ export default function PracticeScreen({ route }) {
               <Text style={styles.detailDeleteText}>Delete setlist</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Open-in sheet rendered in-place (not a nested Modal) so it can sit
+              on top of the setlist detail without iOS dropping it. */}
+          {!!openInSong && (
+            <View style={StyleSheet.absoluteFill}>{renderOpenInSheet()}</View>
+          )}
         </View>
       </Modal>
     </SafeAreaView>
