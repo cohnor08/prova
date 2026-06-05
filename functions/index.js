@@ -8,9 +8,10 @@ const db = admin.firestore();
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
-// Setlist curation needs real genre/cultural knowledge and tight instruction-
-// following, so it uses a stronger model than the other (structured) calls.
-const SETLIST_MODEL = 'claude-sonnet-4-6';
+// Setlist curation and concrete practice-plan writing need real musical
+// knowledge and tight instruction-following, so they use a stronger model than
+// the lighter structured calls.
+const SMART_MODEL = 'claude-sonnet-4-6';
 
 // ─── Rate limits ──────────────────────────────────────────────────────────────
 // Each action has a daily cap on both requests AND tokens consumed.
@@ -272,24 +273,28 @@ For days the user is NOT available, set the value to null instead of an object.
 Each session object:
 {
   "id": "unique_string",
-  "title": "Exercise name",
-  "description": "What to do and how",
+  "title": "Short exercise name",
+  "description": "Concrete, do-it-now instructions (see rules)",
   "duration": number_in_minutes,
   "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation"
 }
 
 Rules:
-- Total session durations must equal the daily practice time exactly
-- Be very specific (e.g. "A minor pentatonic, positions 1–3 at 60bpm" not "practice scales")
-- Always start with a warmup
-- Match difficulty to the user's level
-- Only include sessions for available days, set others to null
+- Total session durations must equal the daily practice time exactly.
+- EVERY description must be concrete enough to act on without any other knowledge. State exactly WHAT to play and WHERE: name the scale/chord/exercise, the specific frets or string(s) or positions, and a target tempo in BPM. Include how to practise it (e.g. "to a metronome, up and down, alternate picking") and a clear goal.
+  GOOD: "Play the A minor pentatonic, position 1 (root on the low-E 5th fret), ascending and descending to a metronome at 70 BPM. Use strict alternate picking; keep every note clean for 5 minutes."
+  GOOD: "Switch between G (low-E 3rd fret, A 2nd, high-E 3rd) and C (A 3rd, D 2nd, B 1st) every 2 bars, strumming quarter notes at 60 BPM."
+  BAD (never do this): "Practice scales", "Work on technique", "Play some chords", "Improve timing".
+- For ${instrument} specifically: use realistic ${instrument === 'Bass' ? 'bass fingerings, single-note lines, grooves and walking patterns' : 'guitar chord shapes, scale positions and picking patterns'}.
+- Always start the day with a warmup.
+- Match difficulty to a ${level} player (simple open chords / basic positions for Beginner; advanced techniques and faster tempos for Advanced/Elite).
+- Only include sessions for available days; set others to null.
 
 Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000, { model: SMART_MODEL });
     } catch (err) {
       await writeUsageLog(uid, 'generatePracticePlan', {
         tokensIn: 0, tokensOut: 0,
@@ -354,11 +359,13 @@ Feedback: "${feedback || 'None'}"
 
 Return an adjusted JSON array of session objects for next time. Same structure as input. Make harder if too_easy, easier if too_hard, slightly progress if just_right.
 
+Keep every "description" concrete and do-it-now: name the exact scale/chord/exercise, the specific frets/strings/positions, and a target BPM. Never return vague text like "practice scales" or "work on technique".
+
 Return only a valid JSON array, no markdown.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 1000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 1000, { model: SMART_MODEL });
     } catch (err) {
       await writeUsageLog(uid, 'adjustSessionFromRating', {
         tokensIn: 0, tokensOut: 0,
@@ -463,7 +470,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000, { model: SETLIST_MODEL, temperature: 0.9 });
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000, { model: SMART_MODEL, temperature: 0.9 });
     } catch (err) {
       await writeUsageLog(uid, 'generateSetlist', {
         tokensIn: 0, tokensOut: 0,
