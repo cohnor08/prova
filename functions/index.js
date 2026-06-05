@@ -8,6 +8,10 @@ const db = admin.firestore();
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
+// Setlist curation and concrete practice-plan writing need real musical
+// knowledge and tight instruction-following, so they use a stronger model than
+// the lighter structured calls.
+const SMART_MODEL = 'claude-sonnet-4-6';
 
 // ─── Rate limits ──────────────────────────────────────────────────────────────
 // Each action has a daily cap on both requests AND tokens consumed.
@@ -16,6 +20,7 @@ const MODEL = 'claude-haiku-4-5-20251001';
 const RATE_LIMITS = {
   generatePracticePlan:   { requests: 3,  tokens: 60000 },
   adjustSessionFromRating: { requests: 10, tokens: 15000 },
+  generateSetlist:        { requests: 15, tokens: 40000 },
 };
 
 // Check request count atomically; token ceiling is checked non-transactionally
@@ -123,11 +128,18 @@ async function flagAbuseIfNeeded(uid, action, tokensUsed) {
 
 // ─── Claude API call ──────────────────────────────────────────────────────────
 // Returns { text, tokensIn, tokensOut } so callers can track actual spend.
-async function callClaude(apiKey, prompt, maxTokens) {
+async function callClaude(apiKey, prompt, maxTokens, opts = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
+    const body = {
+      model: opts.model || MODEL,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    };
+    if (typeof opts.temperature === 'number') body.temperature = opts.temperature;
+
     const response = await fetch(API_URL, {
       method: 'POST',
       signal: controller.signal,
@@ -136,11 +148,7 @@ async function callClaude(apiKey, prompt, maxTokens) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -177,6 +185,39 @@ function validateProfile(p) {
     throw new HttpsError('invalid-argument', 'Invalid goals');
   if (!Array.isArray(p.skills) || p.skills.length > 10 || p.skills.some(s => typeof s !== 'string' || s.length > 100))
     throw new HttpsError('invalid-argument', 'Invalid skills');
+}
+
+// Force a list of sessions to sum EXACTLY to `target` minutes — the model often
+// lands a little short/over (e.g. 100 vs 120), which then shows wrong on the
+// Today screen. We adjust the longest session(s), keeping a 5-minute floor,
+// rather than trusting the model's arithmetic.
+function normalizeSessionsTo(sessions, target) {
+  if (!Array.isArray(sessions) || sessions.length === 0 || typeof target !== 'number') return;
+  sessions.forEach((s) => { s.duration = Math.max(1, Math.round(Number(s.duration) || 0)); });
+  let diff = target - sessions.reduce((a, s) => a + s.duration, 0);
+  if (diff === 0) return;
+
+  // Indices ordered longest-first, so adjustments hit the biggest blocks.
+  const order = sessions.map((_, i) => i).sort((a, b) => sessions[b].duration - sessions[a].duration);
+  for (const i of order) {
+    if (diff === 0) break;
+    if (diff > 0) { sessions[i].duration += diff; diff = 0; }       // add all surplus to the longest
+    else {
+      const canRemove = Math.min(sessions[i].duration - 5, -diff);  // trim, keeping a 5-min floor
+      if (canRemove > 0) { sessions[i].duration -= canRemove; diff += canRemove; }
+    }
+  }
+  if (diff !== 0) sessions[order[0]].duration = Math.max(1, sessions[order[0]].duration + diff);
+}
+
+// Apply the above to every day in a weekly plan.
+function normalizePlanDurations(plan, target) {
+  const days = plan && plan.weeklyPlan;
+  if (!days || typeof target !== 'number') return;
+  for (const key of Object.keys(days)) {
+    const day = days[key];
+    if (day && Array.isArray(day.sessions)) normalizeSessionsTo(day.sessions, target);
+  }
 }
 
 // ─── Shared function config ───────────────────────────────────────────────────
@@ -232,24 +273,28 @@ For days the user is NOT available, set the value to null instead of an object.
 Each session object:
 {
   "id": "unique_string",
-  "title": "Exercise name",
-  "description": "What to do and how",
+  "title": "Short exercise name",
+  "description": "Concrete, do-it-now instructions (see rules)",
   "duration": number_in_minutes,
   "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation"
 }
 
 Rules:
-- Total session durations must equal the daily practice time exactly
-- Be very specific (e.g. "A minor pentatonic, positions 1–3 at 60bpm" not "practice scales")
-- Always start with a warmup
-- Match difficulty to the user's level
-- Only include sessions for available days, set others to null
+- Total session durations must equal the daily practice time exactly.
+- EVERY description must be concrete enough to act on without any other knowledge. State exactly WHAT to play and WHERE: name the scale/chord/exercise, the specific frets or string(s) or positions, and a target tempo in BPM. Include how to practise it (e.g. "to a metronome, up and down, alternate picking") and a clear goal.
+  GOOD: "Play the A minor pentatonic, position 1 (root on the low-E 5th fret), ascending and descending to a metronome at 70 BPM. Use strict alternate picking; keep every note clean for 5 minutes."
+  GOOD: "Switch between G (low-E 3rd fret, A 2nd, high-E 3rd) and C (A 3rd, D 2nd, B 1st) every 2 bars, strumming quarter notes at 60 BPM."
+  BAD (never do this): "Practice scales", "Work on technique", "Play some chords", "Improve timing".
+- For ${instrument} specifically: use realistic ${instrument === 'Bass' ? 'bass fingerings, single-note lines, grooves and walking patterns' : 'guitar chord shapes, scale positions and picking patterns'}.
+- Always start the day with a warmup.
+- Match difficulty to a ${level} player (simple open chords / basic positions for Beginner; advanced techniques and faster tempos for Advanced/Elite).
+- Only include sessions for available days; set others to null.
 
 Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000, { model: SMART_MODEL });
     } catch (err) {
       await writeUsageLog(uid, 'generatePracticePlan', {
         tokensIn: 0, tokensOut: 0,
@@ -263,6 +308,9 @@ Return only valid JSON, no markdown fences, no explanation.`;
     const plan = JSON.parse(
       result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     );
+
+    // Guarantee each day adds up to the user's exact daily practice time.
+    normalizePlanDurations(plan, dailyDuration);
 
     // Fire-and-forget post-call accounting (never blocks the response)
     Promise.all([
@@ -311,11 +359,13 @@ Feedback: "${feedback || 'None'}"
 
 Return an adjusted JSON array of session objects for next time. Same structure as input. Make harder if too_easy, easier if too_hard, slightly progress if just_right.
 
+Keep every "description" concrete and do-it-now: name the exact scale/chord/exercise, the specific frets/strings/positions, and a target BPM. Never return vague text like "practice scales" or "work on technique".
+
 Return only a valid JSON array, no markdown.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 1000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 1000, { model: SMART_MODEL });
     } catch (err) {
       await writeUsageLog(uid, 'adjustSessionFromRating', {
         tokensIn: 0, tokensOut: 0,
@@ -327,6 +377,10 @@ Return only a valid JSON array, no markdown.`;
     }
 
     const adjusted = JSON.parse(result.text);
+
+    // Keep the day's total practice time the same as before the adjustment.
+    const dayTarget = sessions.reduce((a, s) => a + (Number(s.duration) || 0), 0);
+    if (Array.isArray(adjusted)) normalizeSessionsTo(adjusted, dayTarget);
 
     Promise.all([
       recordTokenUsage(uid, 'adjustSessionFromRating', result.tokensIn + result.tokensOut),
@@ -340,5 +394,108 @@ Return only a valid JSON array, no markdown.`;
     ]).catch(() => {});
 
     return adjusted;
+  }
+);
+
+// ─── generateSetlist ──────────────────────────────────────────────────────────
+// Builds an ordered gig setlist from a description of the gig. Prioritises songs
+// already in the user's library, then fills the rest with well-known suggestions
+// that fit the setting and audience.
+exports.generateSetlist = onCall(
+  { ...BASE_OPTIONS, timeoutSeconds: 60, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const uid = request.auth.uid;
+    const appCheckPresent = !!request.app;
+    const startTime = Date.now();
+
+    await checkRateLimit(uid, 'generateSetlist');
+
+    const { instrument, level, setting, audience, vibe, songCount, library } = request.data;
+
+    // ── Validate input ──
+    if (!ALLOWED_INSTRUMENTS.has(instrument))
+      throw new HttpsError('invalid-argument', 'Invalid instrument');
+    if (!ALLOWED_LEVELS.has(level))
+      throw new HttpsError('invalid-argument', 'Invalid level');
+    if (typeof setting !== 'string' || setting.trim().length === 0 || setting.length > 300)
+      throw new HttpsError('invalid-argument', 'Setting must be 1–300 characters');
+    if (typeof audience !== 'string' || audience.trim().length === 0 || audience.length > 300)
+      throw new HttpsError('invalid-argument', 'Audience must be 1–300 characters');
+    if (vibe !== undefined && vibe !== null && (typeof vibe !== 'string' || vibe.length > 300))
+      throw new HttpsError('invalid-argument', 'Vibe too long (max 300 chars)');
+    if (typeof songCount !== 'number' || songCount < 3 || songCount > 30)
+      throw new HttpsError('invalid-argument', 'songCount must be 3–30');
+    if (!Array.isArray(library) || library.length > 200)
+      throw new HttpsError('invalid-argument', 'Invalid library');
+    const libList = library
+      .filter(s => s && typeof s.title === 'string')
+      .slice(0, 200)
+      .map(s => `- ${s.title}${s.artist ? ` — ${s.artist}` : ''}`)
+      .join('\n');
+
+    const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
+
+THE GIG (this is what matters most — the setlist must clearly match it):
+- Setting: ${setting}
+- Audience: ${audience}
+- Desired vibe / genre: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
+- Player skill level: ${level}
+- Number of songs wanted: ${songCount}
+
+Songs already in the player's library:
+${libList || '(library is empty)'}
+
+How to choose the songs — follow these strictly:
+1. GENRE IS A HARD FILTER. First name the exact genre this gig calls for, then make EVERY song fit it. If the gig says country, every track must be country (this includes classic/outlaw country like Johnny Cash, Willie Nelson, Merle Haggard, Hank Williams, Dolly Parton AND modern country/Americana like Zach Bryan, Tyler Childers, Chris Stapleton, Luke Combs). Never mix in songs from other genres.
+2. DO NOT default to the same generic stadium/classic-rock crowd-pleasers. Songs like "Don't Stop Believin'", "Free Bird", "Hotel California", "Sweet Caroline", "Mr. Brightside", "Wonderwall" must NOT appear unless the genre is explicitly classic rock. They are the wrong answer for a country, chill, jazz, folk, or older-crowd gig.
+3. MATCH THE AUDIENCE AND ENERGY. "Older crowd, chill" means mellow, era-appropriate songs that audience grew up loving — not loud, modern, high-energy hits. Read the setting and audience literally.
+4. VARY YOUR PICKS. Don't return the same list every time — draw widely from the genre's catalogue (different artists, eras, deep cuts as well as staples) so repeated generations feel fresh.
+5. Use real, well-known songs — do NOT invent songs or misattribute artists.
+6. The library is only a tiebreaker: include a library song ONLY if it genuinely fits the genre and vibe; otherwise ignore it.
+7. Match difficulty to a ${level} player where reasonable, but fit to the gig comes first.
+
+Order them to shape the night: open with something that draws THIS audience in, build through the middle, and finish on a fitting closer.
+
+Return a JSON object with this exact structure:
+{
+  "name": "a short, catchy name that reflects this gig's genre + vibe (max 40 chars)",
+  "songs": [
+    { "title": "Song title", "artist": "Artist name", "note": "its role, e.g. 'Opener — warm, familiar' (max 60 chars)" }
+  ]
+}
+
+Return only valid JSON, no markdown fences, no explanation.`;
+
+    let result;
+    try {
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000, { model: SMART_MODEL, temperature: 0.9 });
+    } catch (err) {
+      await writeUsageLog(uid, 'generateSetlist', {
+        tokensIn: 0, tokensOut: 0,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error',
+        appCheckPresent,
+      });
+      throw err;
+    }
+
+    const setlist = JSON.parse(
+      result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    );
+
+    Promise.all([
+      recordTokenUsage(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
+      writeUsageLog(uid, 'generateSetlist', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: true,
+        appCheckPresent,
+      }),
+      flagAbuseIfNeeded(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
+    ]).catch(() => {});
+
+    return setlist;
   }
 );
