@@ -186,6 +186,39 @@ function validateProfile(p) {
     throw new HttpsError('invalid-argument', 'Invalid skills');
 }
 
+// Force a list of sessions to sum EXACTLY to `target` minutes — the model often
+// lands a little short/over (e.g. 100 vs 120), which then shows wrong on the
+// Today screen. We adjust the longest session(s), keeping a 5-minute floor,
+// rather than trusting the model's arithmetic.
+function normalizeSessionsTo(sessions, target) {
+  if (!Array.isArray(sessions) || sessions.length === 0 || typeof target !== 'number') return;
+  sessions.forEach((s) => { s.duration = Math.max(1, Math.round(Number(s.duration) || 0)); });
+  let diff = target - sessions.reduce((a, s) => a + s.duration, 0);
+  if (diff === 0) return;
+
+  // Indices ordered longest-first, so adjustments hit the biggest blocks.
+  const order = sessions.map((_, i) => i).sort((a, b) => sessions[b].duration - sessions[a].duration);
+  for (const i of order) {
+    if (diff === 0) break;
+    if (diff > 0) { sessions[i].duration += diff; diff = 0; }       // add all surplus to the longest
+    else {
+      const canRemove = Math.min(sessions[i].duration - 5, -diff);  // trim, keeping a 5-min floor
+      if (canRemove > 0) { sessions[i].duration -= canRemove; diff += canRemove; }
+    }
+  }
+  if (diff !== 0) sessions[order[0]].duration = Math.max(1, sessions[order[0]].duration + diff);
+}
+
+// Apply the above to every day in a weekly plan.
+function normalizePlanDurations(plan, target) {
+  const days = plan && plan.weeklyPlan;
+  if (!days || typeof target !== 'number') return;
+  for (const key of Object.keys(days)) {
+    const day = days[key];
+    if (day && Array.isArray(day.sessions)) normalizeSessionsTo(day.sessions, target);
+  }
+}
+
 // ─── Shared function config ───────────────────────────────────────────────────
 const BASE_OPTIONS = {
   region: 'us-central1',
@@ -271,6 +304,9 @@ Return only valid JSON, no markdown fences, no explanation.`;
       result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     );
 
+    // Guarantee each day adds up to the user's exact daily practice time.
+    normalizePlanDurations(plan, dailyDuration);
+
     // Fire-and-forget post-call accounting (never blocks the response)
     Promise.all([
       recordTokenUsage(uid, 'generatePracticePlan', result.tokensIn + result.tokensOut),
@@ -334,6 +370,10 @@ Return only a valid JSON array, no markdown.`;
     }
 
     const adjusted = JSON.parse(result.text);
+
+    // Keep the day's total practice time the same as before the adjustment.
+    const dayTarget = sessions.reduce((a, s) => a + (Number(s.duration) || 0), 0);
+    if (Array.isArray(adjusted)) normalizeSessionsTo(adjusted, dayTarget);
 
     Promise.all([
       recordTokenUsage(uid, 'adjustSessionFromRating', result.tokensIn + result.tokensOut),
