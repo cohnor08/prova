@@ -9,6 +9,7 @@ import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating } from '../../lib/claude';
+import { getDailySong } from '../../constants/songs';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -176,6 +177,25 @@ export default function TodayScreen({ navigation }) {
         data.streak = 0;
       }
 
+      // Auto-sync today's level-matched song into the user's library so it's
+      // available (and playable) in the Practice tab's song list.
+      const daily = getDailySong(data?.instrument, data?.level);
+      if (daily) {
+        const lib = Array.isArray(data?.songLibrary) ? data.songLibrary : [];
+        const exists = lib.some(
+          (s) => (s.title || '').toLowerCase() === daily.title.toLowerCase()
+            && (s.artist || '').toLowerCase() === (daily.artist || '').toLowerCase()
+        );
+        if (!exists) {
+          const nextLib = [
+            { id: `song_${Date.now()}`, title: daily.title, artist: daily.artist || '', addedAt: new Date().toISOString(), fromDaily: true },
+            ...lib,
+          ];
+          data.songLibrary = nextLib;
+          updateDoc(doc(db, 'users', uid), { songLibrary: nextLib }).catch(console.error);
+        }
+      }
+
       setUserData(data);
       const weeklyPlan = data?.practicePlan?.weeklyPlan || {};
       setPlan(weeklyPlan);
@@ -239,6 +259,7 @@ export default function TodayScreen({ navigation }) {
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
 
   if (loading) {
     return (
@@ -336,6 +357,29 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
+        {/* Song to practice — matched to the player's level */}
+        {isToday && songOfTheDay && (
+          <TouchableOpacity
+            style={styles.songCard}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Practice', { tool: 'songs' })}
+          >
+            <View style={styles.songIcon}>
+              <Ionicons name="musical-notes" size={20} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.songLabel}>
+                SONG TO PRACTICE{userData?.level ? ` · ${userData.level.toUpperCase()}` : ''}
+              </Text>
+              <Text style={styles.songTitle} numberOfLines={1}>{songOfTheDay.title}</Text>
+              {!!songOfTheDay.artist && (
+                <Text style={styles.songArtist} numberOfLines={1}>{songOfTheDay.artist}</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+
       </ScrollView>
 
       <Modal visible={showRating} transparent animationType="none">
@@ -420,6 +464,19 @@ const styles = StyleSheet.create({
   sessionMeta: { flexDirection: 'row', gap: SPACING.md },
   sessionDuration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   sessionCategory: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
+
+  songCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
+    borderLeftWidth: 4, borderLeftColor: COLORS.accent, padding: SPACING.md, marginTop: SPACING.sm,
+  },
+  songIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.accent + '18',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+  songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
 
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
