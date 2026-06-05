@@ -4,8 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -29,19 +31,10 @@ const LEVEL_HOURS = { Beginner: 10, Novice: 25, Intermediate: 60, Advanced: 120,
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
 
-function computeProvaScore(streak, totalMinutes, totalSessions, lastRating) {
-  const streakPts  = Math.min(streak * 10, 300);
-  const volumePts  = Math.min(Math.floor(totalMinutes / 12), 300);
-  const sessionPts = Math.min(totalSessions * 5, 250);
-  const qualityPts = lastRating === 'just_right' ? 150
-    : lastRating === 'too_hard' ? 100
-    : lastRating === 'too_easy' ? 75 : 0;
-  return Math.min(1000, streakPts + volumePts + sessionPts + qualityPts);
-}
-
-// Prova Score for a raw user doc — used to rank leaderboards
+// Prova Score for a raw user doc — used to rank leaderboards. The score itself
+// lives in src/lib/score.js (banked per session; never decreases).
 function entryScore(e) {
-  return computeProvaScore(e.streak || 0, e.totalMinutes || 0, e.totalSessions || 0, e.lastSessionRating);
+  return displayScore(e);
 }
 
 function computeLevelXP(level, totalMinutes) {
@@ -139,30 +132,95 @@ function computeMilestones(streak, totalMinutes, totalSessions) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function ProvaScore({ score }) {
+// Circular progress ring that fills clockwise from the top based on `progress`
+// (0–1) — empty at a fresh rank, full just before the next one.
+function ScoreRing({ progress, color, size = 110, stroke = 8, children }) {
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(1, progress));
   return (
-    <View style={styles.scoreCard}>
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={COLORS.border} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - clamped)}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      {children}
+    </View>
+  );
+}
+
+function ProvaScore({ score, onPress }) {
+  const rank = scoreRank(score);
+  return (
+    <TouchableOpacity style={styles.scoreCard} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.scoreRingWrapper}>
-        <View style={styles.scoreRingOuter}>
-          <View style={[styles.scoreRingFill, {
-            borderColor: score > 700 ? '#10B981' : score > 400 ? COLORS.primary : '#F59E0B',
-          }]} />
-          <View style={styles.scoreCenter}>
-            <Text style={styles.scoreNumber}>{score}</Text>
-            <Text style={styles.scoreMax}>/1000</Text>
-          </View>
-        </View>
+        <ScoreRing progress={rank.progress} color={rank.color}>
+          <Text style={styles.scoreEmoji}>{rank.emoji}</Text>
+        </ScoreRing>
       </View>
       <View style={styles.scoreRight}>
         <Text style={styles.scoreTitle}>Prova Score</Text>
-        <Text style={styles.scoreDesc}>Practice consistency, volume, and quality — in one number.</Text>
-        <View style={styles.scoreBadge}>
-          <Text style={styles.scoreBadgeText}>
-            {score > 700 ? '🔥 On Fire' : score > 400 ? '📈 Improving' : '🌱 Getting Started'}
-          </Text>
+        <Text style={[styles.scoreRankName, { color: rank.color }]}>{rank.name}</Text>
+        <Text style={styles.scoreValue}>{formatScore(score)} <Text style={styles.scorePts}>pts</Text></Text>
+        {/* Progress toward the next rank — always something to chase. */}
+        <View style={styles.scoreProgressTrack}>
+          <View style={[styles.scoreProgressFill, { width: `${Math.round(rank.progress * 100)}%`, backgroundColor: rank.color }]} />
+        </View>
+        <Text style={styles.scoreDesc}>
+          {rank.isMax
+            ? 'Max rank — you\'re a legend 🏆'
+            : `${formatScore(rank.toNext)} pts to ${rank.next.emoji} ${rank.next.name}`}
+        </Text>
+        <Text style={styles.scoreAllLink}>View all ranks ›</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Full ladder viewer — every rank, its threshold, and where you stand.
+function RanksModal({ visible, score, onClose }) {
+  const current = scoreRank(score);
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.ranksBackdrop}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.ranksSheet}>
+          <View style={styles.ranksHeader}>
+            <Text style={styles.ranksTitle}>Ranks</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+            {[...RANKS].reverse().map((r) => {
+              const isCurrent = r.name === current.name;
+              const reached = score >= r.min;
+              return (
+                <View key={r.name} style={[styles.rankRow, isCurrent && styles.rankRowCurrent]}>
+                  <Text style={[styles.rankRowEmoji, !reached && { opacity: 0.35 }]}>{r.emoji}</Text>
+                  <Text style={[styles.rankRowName, { color: reached ? r.color : COLORS.textMuted }]}>
+                    {r.name}
+                  </Text>
+                  {isCurrent && <Text style={styles.rankRowYou}>YOU</Text>}
+                  <Text style={styles.rankRowMin}>{formatScore(r.min)}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -367,7 +425,7 @@ function Milestones({ data }) {
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
 function LeaderboardRow({ entry, rank, isMe }) {
-  const score = computeProvaScore(entry.streak || 0, entry.totalMinutes || 0, entry.totalSessions || 0, entry.lastSessionRating);
+  const score = displayScore(entry);
   const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
   const initial = (name[0] || '?').toUpperCase();
   return (
@@ -494,6 +552,7 @@ export default function ProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [worldBoard, setWorldBoard] = useState([]);
   const [friendsBoard, setFriendsBoard] = useState([]);
+  const [showRanks, setShowRanks] = useState(false);
   const lastFetchRef = useRef(0);
 
   useFocusEffect(
@@ -560,7 +619,7 @@ export default function ProgressScreen() {
   const lastRating   = userData?.lastSessionRating;
   const avgMins      = totalSessions > 0 ? Math.round(totalMins / totalSessions) : 0;
 
-  const provaScore   = computeProvaScore(streak, totalMins, totalSessions, lastRating);
+  const provaScore   = displayScore(userData);
   const xp           = computeLevelXP(level, totalMins);
   const dailyData    = buildDailyData(logMap);
   const weeklyData   = buildWeeklyData(logMap);
@@ -588,7 +647,8 @@ export default function ProgressScreen() {
           ))}
         </View>
 
-        <ProvaScore score={provaScore} />
+        <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />
+        <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
         <Leaderboard
           myUid={auth.currentUser?.uid}
           myData={userData}
@@ -638,11 +698,28 @@ const styles = StyleSheet.create({
   scoreRingOuter: { width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
   scoreRingFill: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 8, borderTopColor: 'transparent', borderRightColor: 'transparent', transform: [{ rotate: '-45deg' }] },
   scoreCenter: { alignItems: 'center' },
-  scoreNumber: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
-  scoreMax: { color: COLORS.textMuted, fontSize: 11 },
+  scoreEmoji: { fontSize: 34 },
   scoreRight: { flex: 1 },
-  scoreTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: SPACING.xs },
-  scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: SPACING.sm },
+  scoreTitle: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
+  scoreRankName: { fontSize: 20, fontWeight: '900', marginBottom: 2 },
+  scoreValue: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginBottom: SPACING.sm },
+  scorePts: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  scoreProgressTrack: { height: 8, borderRadius: 4, backgroundColor: COLORS.surface, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  scoreProgressFill: { height: '100%', borderRadius: 4 },
+  scoreAllLink: { color: COLORS.primary, fontSize: 12, fontWeight: '700', marginTop: SPACING.sm },
+
+  // Ranks ladder modal
+  ranksBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  ranksSheet: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
+  ranksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  ranksTitle: { color: COLORS.text, fontSize: 20, fontWeight: '900' },
+  rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: SPACING.sm, borderRadius: 10, gap: SPACING.md },
+  rankRowCurrent: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  rankRowEmoji: { fontSize: 22, width: 28, textAlign: 'center' },
+  rankRowName: { flex: 1, fontSize: 16, fontWeight: '800' },
+  rankRowYou: { color: COLORS.primary, fontSize: 11, fontWeight: '900', letterSpacing: 1, marginRight: SPACING.sm },
+  rankRowMin: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  scoreDesc: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginTop: SPACING.xs, marginBottom: SPACING.sm },
   scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
 
