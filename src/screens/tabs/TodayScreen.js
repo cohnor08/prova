@@ -10,6 +10,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
+import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { sessionPoints, displayScore, formatScore, scoreRank } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -269,12 +270,54 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  // Daily challenge — banks bonus points and counts as activity for the day, so
+  // it keeps the streak alive even without a full session (the "streak-saver").
+  const handleCompleteChallenge = async () => {
+    if (challengeDoneToday) return;
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const now = new Date();
+      const todayStr = now.toDateString();
+      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+      const lastStr = userData?.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
+      const newStreak = lastStr === todayStr
+        ? (userData?.streak || 1)
+        : lastStr === yesterdayStr ? (userData?.streak || 0) + 1 : 1;
+      const prevScore = displayScore(userData);
+      const newScore = prevScore + CHALLENGE_POINTS;
+      const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
+
+      const updates = {
+        provaScore: newScore,
+        lastChallengeDate: now.toISOString(),
+        lastSessionDate: now.toISOString(), // counts as activity → preserves streak
+        streak: newStreak,
+      };
+      await updateDoc(doc(db, 'users', uid), updates);
+      setUserData((p) => ({ ...p, ...updates }));
+
+      const newRank = scoreRank(newScore);
+      Alert.alert(
+        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : 'Challenge complete! 🔥',
+        `+${formatScore(CHALLENGE_POINTS)} Prova points${newStreak > 1 ? ` · 🔥 ${newStreak}-day streak kept!` : ''}.`,
+      );
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', "Couldn't save your challenge. Please try again.");
+    }
+  };
+
   const isToday = selectedDay === TODAY_NAME;
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
+
+  const dailyChallenge = getDailyChallenge();
+  const challengeDoneToday = !!userData?.lastChallengeDate
+    && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
 
   if (loading) {
     return (
@@ -345,6 +388,32 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Text style={styles.progressLabel}>{completedIds.length} of {sessions.length} completed</Text>
           </>
+        )}
+
+        {/* Daily challenge — bonus task that keeps the streak alive */}
+        {isToday && (
+          <View style={styles.challengeCard}>
+            <View style={styles.challengeHeader}>
+              <View style={styles.challengeIcon}>
+                <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
+              </View>
+              <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
+              <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>
+            </View>
+            <Text style={styles.challengeTitle}>{dailyChallenge.title}</Text>
+            <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
+            {challengeDoneToday ? (
+              <View style={styles.challengeDone}>
+                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={styles.challengeBtnText}>Mark complete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* Sessions */}
@@ -446,6 +515,28 @@ const styles = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginBottom: SPACING.xs, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
   progressLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginBottom: SPACING.lg },
+
+  // Daily challenge card
+  challengeCard: {
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.accent + '55',
+  },
+  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  challengeIcon: {
+    width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  challengeKicker: { flex: 1, color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
+  challengeTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
+  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
+  challengeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 12,
+  },
+  challengeBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  challengeDone: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 4 },
+  challengeDoneText: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
 
   card: { backgroundColor: COLORS.card, borderRadius: 16, marginBottom: SPACING.md, flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   cardCompleted: { opacity: 0.45 },

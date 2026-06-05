@@ -90,6 +90,7 @@ users/{uid}
   totalMinutes: number
   lastSessionRating: string
   lastSessionDate: ISO string
+  lastChallengeDate: ISO string (daily challenge — src/constants/challenges.js)
   songLibrary: { id, title, artist, addedAt }[]
   setlists: { id, name, setting, audience, vibe, createdAt,
               songs: { id, title, artist, note, fromLibrary }[] }[]
@@ -122,7 +123,7 @@ Scan the QR code with Expo Go (SDK 54) on your phone.
 - Community + leaderboards
 - Teacher mode
 - Milestone certificates
-- Daily challenge (streak-saver)
+- [x] Daily challenge (streak-saver) — bonus task on Today, banks points + keeps the streak (`src/constants/challenges.js`)
 - Push notification reminders
 
 ## GitHub
