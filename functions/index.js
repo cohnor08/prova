@@ -8,13 +8,16 @@ const db = admin.firestore();
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
+// Sonnet for tasks that need genuinely specific, reasoned output (practice plans,
+// setlists). Haiku tends to default to generic phrasing for these.
+const MODEL_SMART = 'claude-sonnet-4-6';
 
 // ─── Rate limits ──────────────────────────────────────────────────────────────
 // Each action has a daily cap on both requests AND tokens consumed.
 // Tokens are tracked using the actual usage reported by the Claude API,
 // so one expensive prompt costs proportionally more quota.
 const RATE_LIMITS = {
-  generatePracticePlan:   { requests: 3,  tokens: 60000 },
+  generatePracticePlan:   { requests: 15, tokens: 250000 },
   adjustSessionFromRating: { requests: 10, tokens: 15000 },
   generateSetlist:        { requests: 15, tokens: 40000 },
 };
@@ -124,9 +127,9 @@ async function flagAbuseIfNeeded(uid, action, tokensUsed) {
 
 // ─── Claude API call ──────────────────────────────────────────────────────────
 // Returns { text, tokensIn, tokensOut } so callers can track actual spend.
-async function callClaude(apiKey, prompt, maxTokens) {
+async function callClaude(apiKey, prompt, maxTokens, model = MODEL, timeoutMs = 120000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(API_URL, {
@@ -138,7 +141,7 @@ async function callClaude(apiKey, prompt, maxTokens) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -149,8 +152,12 @@ async function callClaude(apiKey, prompt, maxTokens) {
     }
 
     const data = await response.json();
+    const textBlock = Array.isArray(data.content)
+      ? data.content.find(b => b.type === 'text')
+      : null;
     return {
-      text: data.content[0].text,
+      text: textBlock?.text || '',
+      stopReason: data.stop_reason || null,
       tokensIn:  data.usage?.input_tokens  || 0,
       tokensOut: data.usage?.output_tokens || 0,
     };
@@ -190,7 +197,7 @@ const BASE_OPTIONS = {
 
 // ─── generatePracticePlan ─────────────────────────────────────────────────────
 exports.generatePracticePlan = onCall(
-  { ...BASE_OPTIONS, timeoutSeconds: 180, memory: '256MiB' },
+  { ...BASE_OPTIONS, timeoutSeconds: 300, memory: '256MiB' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
@@ -234,14 +241,29 @@ Each session object:
 {
   "id": "unique_string",
   "title": "Exercise name",
-  "description": "What to do and how",
+  "description": "Exact, physical, step-by-step instructions — see the specificity rules below",
   "duration": number_in_minutes,
-  "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation"
+  "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation",
+  "reference": "a YouTube SEARCH PHRASE (not a URL) the player can look up to see this exact exercise demonstrated"
 }
 
-Rules:
+SPECIFICITY RULES — these are the most important rules. A ${level} player must be able to do the exercise from the description ALONE, without already knowing it:
+- Name the exact notes, strings, and fret numbers. Write tab-style where useful, e.g. "low E string: 0-3-5, 0-3-6-5".
+- For chords, give the full fingering by string and fret, e.g. "G major = low-E 3rd fret, A 2nd fret, high-E 3rd fret" — never just "play a G chord".
+- For scales/licks, give the starting string + fret and the position, e.g. "A minor pentatonic position 1, starting low-E 5th fret".
+- Always give a concrete tempo in BPM and a rep count or duration, e.g. "loop at 70 BPM for 3 min" or "10 clean reps".
+- ${instrument === 'Bass' ? 'This is a BASS player — use bass strings (E A D G), bass-appropriate notes and basslines.' : 'This is a GUITAR player — use guitar chord shapes and all 6 strings (E A D G B e).'}
+- Reference real, well-known songs/riffs by name where they fit (e.g. "the riff from Smoke on the Water"), so the player can recognise it.
+
+The "reference" field: write a specific YouTube search phrase that would surface a tutorial for THIS exercise, e.g. "G to C chord change beginner guitar lesson" or "A minor pentatonic position 1 guitar". Do NOT invent a URL or a channel name — just the search phrase.
+
+This is the REQUIRED level of detail for a description — match it (do not copy it verbatim):
+"On the low E string play frets 1-2-3-4 with index-middle-ring-pinky, one note per click at 60 BPM, then move that same 1-2-3-4 shape across to the A, D, G, B and high-E strings and back. Keep every note clean and even — 3 min."
+A BAD description (never write like this): "Warm up your fingers" / "Practice some chords" / "Work on the A minor scale".
+Keep each description to ONE or TWO sentences — specific and exact, but concise. Do NOT write long paragraphs.
+
+Other rules:
 - Total session durations must equal the daily practice time exactly
-- Be very specific (e.g. "A minor pentatonic, positions 1–3 at 60bpm" not "practice scales")
 - Always start with a warmup
 - Match difficulty to the user's level
 - Only include sessions for available days, set others to null
@@ -250,7 +272,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 8000, MODEL_SMART, 170000);
     } catch (err) {
       await writeUsageLog(uid, 'generatePracticePlan', {
         tokensIn: 0, tokensOut: 0,
@@ -261,9 +283,34 @@ Return only valid JSON, no markdown fences, no explanation.`;
       throw err;
     }
 
-    const plan = JSON.parse(
-      result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    );
+    let plan;
+    try {
+      let s = (result.text || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // If the model wrapped the JSON in any prose, slice to the outermost object.
+      const first = s.indexOf('{');
+      const last = s.lastIndexOf('}');
+      if (first !== -1 && last > first) s = s.slice(first, last + 1);
+      if (!s) throw new Error('empty response');
+      plan = JSON.parse(s);
+    } catch (parseErr) {
+      console.error('Plan parse failed', {
+        stopReason: result.stopReason,
+        textLen: (result.text || '').length,
+        snippet: (result.text || '').slice(0, 120),
+      });
+      await writeUsageLog(uid, 'generatePracticePlan', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'parse_error',
+        appCheckPresent,
+      });
+      throw new HttpsError(
+        'internal',
+        result.stopReason === 'max_tokens'
+          ? 'The plan was too long to finish. Please try again.'
+          : 'The AI response was incomplete. Please try again.'
+      );
+    }
 
     // Fire-and-forget post-call accounting (never blocks the response)
     Promise.all([

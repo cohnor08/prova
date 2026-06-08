@@ -48,7 +48,7 @@ async function callFunction(name, data, timeoutMs = 120000) {
 }
 
 export async function generatePracticePlan(userProfile) {
-  return callFunction('generatePracticePlan', userProfile, 180000);
+  return callFunction('generatePracticePlan', userProfile, 240000);
 }
 
 export async function adjustSessionFromRating(sessions, rating, feedback) {

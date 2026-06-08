@@ -476,6 +476,25 @@ export default function ProfileScreen() {
               <Text style={styles.rowArrow}>›</Text>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.row}
+            disabled={regenerating}
+            onPress={() => Alert.alert(
+              'Regenerate Plan?',
+              'Build a fresh practice plan from your current settings. Your existing plan will be replaced.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Regenerate', onPress: () => handleRegenerate(userData) },
+              ]
+            )}
+          >
+            <Text style={styles.rowLabel}>Regenerate Plan</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{regenerating ? 'Building…' : 'Rebuild now'}</Text>
+              <Text style={styles.rowArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Account */}

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated, Alert,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { adjustSessionFromRating } from '../../lib/claude';
+import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { sessionPoints, displayScore, formatScore, scoreRank } from '../../lib/score';
@@ -45,6 +45,22 @@ function SkeletonBlock({ width, height, style }) {
   return <Animated.View style={[{ width, height, borderRadius: 8, backgroundColor: COLORS.card, opacity: anim }, style]} />;
 }
 
+// Opens a YouTube search for the exercise. We build a search URL (never a
+// hard-coded video link) so it always resolves to real, current results.
+function ReferenceLink({ reference }) {
+  if (!reference) return null;
+  const open = () => {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(reference)}`;
+    Linking.openURL(url).catch(() => {});
+  };
+  return (
+    <TouchableOpacity style={styles.refRow} onPress={open} activeOpacity={0.7}>
+      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+      <Text style={styles.refText} numberOfLines={1}>Watch: {reference}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function SessionCard({ session, onComplete, completed, onStart }) {
   const [timerActive, setTimerActive] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
@@ -78,6 +94,7 @@ function SessionCard({ session, onComplete, completed, onStart }) {
         </View>
         <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted]}>{session.title}</Text>
         <Text style={styles.sessionDesc}>{session.description}</Text>
+        <ReferenceLink reference={session.reference} />
         {!completed && (
           <View>
             {timerActive && (
@@ -135,6 +152,7 @@ function PlanCard({ session }) {
       <View style={styles.planRight}>
         <Text style={styles.sessionTitle}>{session.title}</Text>
         <Text style={styles.sessionDesc}>{session.description}</Text>
+        <ReferenceLink reference={session.reference} />
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionDuration}>{session.duration} min</Text>
           <Text style={[styles.sessionCategory, { color }]}>{session.category.replace('_', ' ')}</Text>
@@ -152,6 +170,7 @@ export default function TodayScreen({ navigation }) {
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
+  const [regenerating, setRegenerating] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => { loadData(); }, []);
@@ -207,6 +226,39 @@ export default function TodayScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const runRegenerate = async () => {
+    if (regenerating || !userData) return;
+    setRegenerating(true);
+    try {
+      const uid = auth.currentUser.uid;
+      const newPlan = await generatePracticePlan(userData);
+      await setDoc(doc(db, 'users', uid), {
+        practicePlan: newPlan,
+        planGeneratedAt: new Date().toISOString(),
+      }, { merge: true });
+      const weeklyPlan = newPlan?.weeklyPlan || {};
+      setPlan(weeklyPlan);
+      setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
+      setCompletedIds([]);
+      Alert.alert('Done!', 'Your fresh practice plan is ready.');
+    } catch (err) {
+      Alert.alert('Could not regenerate', err.message || 'Please try again.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleRegeneratePlan = () => {
+    Alert.alert(
+      'Regenerate plan?',
+      'Build a fresh practice plan from your current settings. This replaces your existing plan.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Regenerate', onPress: runRegenerate },
+      ]
+    );
   };
 
   const handleComplete = (sessionId) => {
@@ -338,9 +390,25 @@ export default function TodayScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
 
         <Text style={styles.date}>{todayLabel.toUpperCase()}</Text>
-        <Text style={styles.title}>
-          {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>
+            {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+          </Text>
+          <TouchableOpacity
+            style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
+            onPress={handleRegeneratePlan}
+            disabled={regenerating}
+            activeOpacity={0.8}
+          >
+            {regenerating
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <Ionicons name="refresh" size={15} color={COLORS.primary} />}
+            <Text style={styles.regenBtnText}>{regenerating ? 'Building…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
+        </View>
+        {regenerating && (
+          <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
+        )}
 
         {/* Day picker */}
         <ScrollView
@@ -402,6 +470,7 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Text style={styles.challengeTitle}>{dailyChallenge.title}</Text>
             <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
+            <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
             {challengeDoneToday ? (
               <View style={styles.challengeDone}>
                 <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
@@ -496,7 +565,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', flexShrink: 1 },
+  regenBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999,
+    backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '40',
+  },
+  regenBtnDisabled: { opacity: 0.6 },
+  regenBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: -SPACING.sm, marginBottom: SPACING.md, fontStyle: 'italic' },
 
   dayScroll: { marginHorizontal: -SPACING.xl, marginBottom: SPACING.lg },
   dayScrollContent: { paddingHorizontal: SPACING.xl, gap: SPACING.sm },
@@ -548,7 +626,9 @@ const styles = StyleSheet.create({
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
   sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
-  sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
+  sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.sm },
+  refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
+  refText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
   timerProgress: { height: 3, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: SPACING.sm, overflow: 'hidden' },
   timerProgressFill: { height: '100%', borderRadius: 2 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
