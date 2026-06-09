@@ -1718,6 +1718,11 @@ export default function PracticeScreen({ route }) {
         <PerformanceMode
           setlist={performingSetlist}
           tipLink={tipLink}
+          onUpdateSongs={(newSongs) => {
+            const next = { ...performingSetlist, songs: newSongs };
+            setPerformingSetlist(next);
+            saveSetlists(setlists.map((s) => (s.id === next.id ? next : s)));
+          }}
           onClose={() => { stopSongPlayback(); setPerformingSetlist(null); }}
           playingSongId={playingSongId}
           loadingSongId={loadingSongId}

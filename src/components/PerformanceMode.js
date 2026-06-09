@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar, ActivityIndicator, Linking,
+  View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar, ActivityIndicator, Linking, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +25,7 @@ const openTabs = (song) => {
 // cards, tap to advance, a running set timer + per-song timer, and the screen
 // stays awake the whole time.
 export default function PerformanceMode({
-  setlist, onClose, tipLink,
+  setlist, onClose, tipLink, onUpdateSongs,
   playingSongId, loadingSongId, onTogglePreview, onStopPreview, onOpenSpotify,
 }) {
   useKeepAwake();
@@ -57,27 +57,40 @@ export default function PerformanceMode({
   // A few fake requests so the feature is visible without anyone scanning.
   const seedRequests = useMemo(() => {
     if (!SEED_DEMO_REQUESTS) return [];
-    const counts = [3, 2, 1];
+    const demo = [
+      { title: 'Mr. Brightside', artist: 'The Killers', n: 4 },
+      { title: 'Sweet Child O\' Mine', artist: 'Guns N\' Roses', n: 2 },
+      { title: 'Hey Jude', artist: 'The Beatles', n: 1 },
+    ];
     const out = [];
-    songs.slice(0, 3).forEach((s, i) => {
-      for (let n = 0; n < counts[i]; n++) out.push({ title: s.title, artist: s.artist });
-    });
+    demo.forEach((d) => { for (let i = 0; i < d.n; i++) out.push({ title: d.title, artist: d.artist }); });
     return out;
-  }, [songs]);
+  }, []);
   const allRequests = [...seedRequests, ...requests];
 
-  // Tally requests per song title, most-requested first.
-  const requestCounts = {};
-  allRequests.forEach((r) => { const k = r.title || ''; requestCounts[k] = (requestCounts[k] || 0) + 1; });
-  const rankedRequests = Object.entries(requestCounts)
-    .map(([title, count]) => ({ title, count }))
-    .sort((a, b) => b.count - a.count);
+  // Tally requests per song title (keeping artist), most-requested first.
+  const reqMap = {};
+  allRequests.forEach((r) => {
+    const k = r.title || '';
+    if (!reqMap[k]) reqMap[k] = { title: k, artist: r.artist || '', count: 0 };
+    reqMap[k].count += 1;
+  });
+  const rankedRequests = Object.values(reqMap).sort((a, b) => b.count - a.count);
+
+  const inSet = (title) => songs.some((s) => (s.title || '').toLowerCase() === (title || '').toLowerCase());
+  const addToSet = (r) => onUpdateSongs?.([...songs, { id: `req_${Date.now()}`, title: r.title, artist: r.artist || '' }]);
+  const removeFromSet = (r) => onUpdateSongs?.(songs.filter((s) => (s.title || '').toLowerCase() !== (r.title || '').toLowerCase()));
 
   useEffect(() => {
     if (!running || ended) return;
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, [running, ended]);
+
+  // Keep the current index valid if songs get added/removed mid-set.
+  useEffect(() => {
+    if (index > songs.length - 1) setIndex(Math.max(0, songs.length - 1));
+  }, [songs.length]);
 
   const goNext = () => {
     onStopPreview?.();
@@ -219,6 +232,7 @@ export default function PerformanceMode({
                 </TouchableOpacity>
               </View>
 
+              <ScrollView contentContainerStyle={{ paddingBottom: SPACING.xl }}>
               <View style={styles.qrWrap}>
                 {gigId ? (
                   <>
@@ -237,13 +251,28 @@ export default function PerformanceMode({
               {rankedRequests.length === 0 ? (
                 <Text style={styles.reqEmpty}>No requests yet — they'll appear here live.</Text>
               ) : (
-                rankedRequests.map((r) => (
-                  <View key={r.title} style={styles.reqRow}>
-                    <Text style={styles.reqRowTitle} numberOfLines={1}>{r.title}</Text>
-                    <View style={styles.reqCount}><Text style={styles.reqCountText}>{r.count}</Text></View>
-                  </View>
-                ))
+                rankedRequests.map((r) => {
+                  const here = inSet(r.title);
+                  return (
+                    <View key={r.title} style={styles.reqRow}>
+                      <View style={styles.reqCount}><Text style={styles.reqCountText}>{r.count}</Text></View>
+                      <View style={styles.reqInfo}>
+                        <Text style={styles.reqRowTitle} numberOfLines={1}>{r.title}</Text>
+                        {!!r.artist && <Text style={styles.reqRowArtist} numberOfLines={1}>{r.artist}</Text>}
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.reqActionBtn, here && styles.reqRemoveBtn]}
+                        onPress={() => (here ? removeFromSet(r) : addToSet(r))}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name={here ? 'remove' : 'add'} size={16} color={here ? COLORS.error : COLORS.text} />
+                        <Text style={[styles.reqActionText, here && { color: COLORS.error }]}>{here ? 'Remove' : 'Add'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
               )}
+              </ScrollView>
             </SafeAreaView>
           </View>
         )}
@@ -273,10 +302,15 @@ const styles = StyleSheet.create({
   qrCode: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.xs, fontWeight: '600' },
   reqListLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginTop: SPACING.lg, marginBottom: SPACING.sm },
   reqEmpty: { color: COLORS.textMuted, fontSize: 14 },
-  reqRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  reqRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '600', flex: 1, marginRight: SPACING.md },
+  reqRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  reqInfo: { flex: 1, minWidth: 0 },
+  reqRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  reqRowArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   reqCount: { minWidth: 28, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   reqCountText: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
+  reqActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  reqRemoveBtn: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.error + '66' },
+  reqActionText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   progressTrack: { height: 4, backgroundColor: COLORS.card, marginHorizontal: SPACING.lg, marginTop: SPACING.md, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: COLORS.primary, borderRadius: 2 },
 
