@@ -13,6 +13,7 @@ import {
 import { auth, db } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
 import { COLORS, SPACING } from '../../constants/theme';
+import VideoMessageBubble from '../../components/VideoMessageBubble';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -100,6 +101,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
           }
           renderItem={({ item }) => {
             const isMe = item.senderUid === myUid;
+            if (item.videoUrl) return <VideoMessageBubble item={item} isMe={isMe} />;
             return (
               <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
                 <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
