@@ -54,21 +54,19 @@ export default function PerformanceMode({
     return () => { unsub(); if (activeGigId) endLiveGig(activeGigId); };
   }, []);
 
-  // A few fake requests so the feature is visible without anyone scanning.
-  // Includes a couple of songs already in the set (so "Remove" shows) plus
-  // outside crowd requests (so "Add" shows).
+  // A few fake audience suggestions so the feature is visible without scanning.
   const seedRequests = useMemo(() => {
     if (!SEED_DEMO_REQUESTS) return [];
     const out = [];
     const push = (title, artist, n) => { for (let i = 0; i < n; i++) out.push({ title, artist }); };
-    const mine = setlist?.songs || [];
-    if (mine[0]) push(mine[0].title, mine[0].artist, 3);
-    if (mine[1]) push(mine[1].title, mine[1].artist, 2);
     push('Mr. Brightside', 'The Killers', 4);
+    push('Sweet Child O\' Mine', 'Guns N\' Roses', 2);
     push('Hey Jude', 'The Beatles', 1);
     return out;
-  }, [setlist?.songs?.[0]?.title, setlist?.songs?.[1]?.title]);
-  const allRequests = [...seedRequests, ...requests];
+  }, []);
+  const [dismissed, setDismissed] = useState({});
+
+  const allRequests = [...seedRequests, ...requests].filter((r) => !dismissed[r.title || '']);
 
   // Tally requests per song title (keeping artist), most-requested first.
   const reqMap = {};
@@ -81,7 +79,7 @@ export default function PerformanceMode({
 
   const inSet = (title) => songs.some((s) => (s.title || '').toLowerCase() === (title || '').toLowerCase());
   const addToSet = (r) => onUpdateSongs?.([...songs, { id: `req_${Date.now()}`, title: r.title, artist: r.artist || '' }]);
-  const removeFromSet = (r) => onUpdateSongs?.(songs.filter((s) => (s.title || '').toLowerCase() !== (r.title || '').toLowerCase()));
+  const dismiss = (r) => setDismissed((d) => ({ ...d, [r.title || '']: true }));
 
   useEffect(() => {
     if (!running || ended) return;
@@ -254,7 +252,7 @@ export default function PerformanceMode({
                 <Text style={styles.reqEmpty}>No requests yet — they'll appear here live.</Text>
               ) : (
                 rankedRequests.map((r) => {
-                  const here = inSet(r.title);
+                  const added = inSet(r.title);
                   return (
                     <View key={r.title} style={styles.reqRow}>
                       <View style={styles.reqCount}><Text style={styles.reqCountText}>{r.count}</Text></View>
@@ -262,13 +260,19 @@ export default function PerformanceMode({
                         <Text style={styles.reqRowTitle} numberOfLines={1}>{r.title}</Text>
                         {!!r.artist && <Text style={styles.reqRowArtist} numberOfLines={1}>{r.artist}</Text>}
                       </View>
-                      <TouchableOpacity
-                        style={[styles.reqActionBtn, here && styles.reqRemoveBtn]}
-                        onPress={() => (here ? removeFromSet(r) : addToSet(r))}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name={here ? 'remove' : 'add'} size={16} color={here ? COLORS.error : COLORS.text} />
-                        <Text style={[styles.reqActionText, here && { color: COLORS.error }]}>{here ? 'Remove' : 'Add'}</Text>
+                      {added ? (
+                        <View style={[styles.reqActionBtn, styles.reqAddedBtn]}>
+                          <Ionicons name="checkmark" size={16} color={COLORS.success} />
+                          <Text style={[styles.reqActionText, { color: COLORS.success }]}>Added</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={styles.reqActionBtn} onPress={() => addToSet(r)} activeOpacity={0.8}>
+                          <Ionicons name="add" size={16} color={COLORS.text} />
+                          <Text style={styles.reqActionText}>Add</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity style={styles.reqDismiss} onPress={() => dismiss(r)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="close" size={20} color={COLORS.textMuted} />
                       </TouchableOpacity>
                     </View>
                   );
@@ -311,8 +315,9 @@ const styles = StyleSheet.create({
   reqCount: { minWidth: 28, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   reqCountText: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
   reqActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
-  reqRemoveBtn: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.error + '66' },
+  reqAddedBtn: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.success + '66' },
   reqActionText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  reqDismiss: { padding: 2 },
   progressTrack: { height: 4, backgroundColor: COLORS.card, marginHorizontal: SPACING.lg, marginTop: SPACING.md, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: COLORS.primary, borderRadius: 2 },
 
