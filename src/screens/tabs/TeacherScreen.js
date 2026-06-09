@@ -17,10 +17,10 @@ import { COLORS, SPACING } from '../../constants/theme';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
-const DEMO_MODE = false;
+export const DEMO_MODE = true;
 
 const _now = Date.now();
-const DEMO_STUDENTS_DATA = [
+export const DEMO_STUDENTS_DATA = [
   {
     uid: 'demo_1',
     name: 'Jamie Robertson',
@@ -112,51 +112,6 @@ const DEMO_STUDENTS_DATA = [
     demoMessages: [
       { id: 'm1', senderRole: 'student', text: 'My fingers keep buzzing on the E chord.', ts: _now - 259200000 },
       { id: 'm2', senderRole: 'teacher', text: 'Completely normal at this stage. Make sure your fingertip is right behind the fret. Slow it right down.', ts: _now - 255600000 },
-    ],
-  },
-  {
-    uid: 'demo_5',
-    name: 'Kai Daniels',
-    email: 'kai.d@email.com',
-    level: 'Intermediate',
-    instrument: 'Bass',
-    streak: 7,
-    totalMinutes: 1320,
-    lastSessionDate: new Date(_now - 86400000).toISOString(),
-    lastSessionMins: 60,
-    lastSessionNote: 'Slap bass, groove exercise in E minor',
-    availableDays: ['monday', 'wednesday', 'friday'],
-    assignedTasks: [
-      { id: 'd5_1', title: 'Slap bass fundamentals', completed: true },
-      { id: 'd5_2', title: 'Groove exercise in E minor', completed: true },
-      { id: 'd5_3', title: 'Walking bassline over 12-bar blues', completed: false },
-    ],
-    lastSessionRating: 'Good',
-    demoMessages: [
-      { id: 'm1', senderRole: 'student', text: 'Slap is coming along — managed the pop technique finally.', ts: _now - 172800000 },
-      { id: 'm2', senderRole: 'teacher', text: "That is a big milestone. Send me a recording when you can.", ts: _now - 169200000 },
-      { id: 'm3', senderRole: 'student', text: 'Will do after tomorrow\'s session.', ts: _now - 165600000 },
-    ],
-  },
-  {
-    uid: 'demo_6',
-    name: 'Sam Torres',
-    email: 'sam.t@email.com',
-    level: 'Beginner',
-    instrument: 'Guitar',
-    streak: 1,
-    totalMinutes: 120,
-    lastSessionDate: new Date(_now - 3600000).toISOString(),
-    lastSessionMins: 20,
-    lastSessionNote: 'Names of open strings',
-    availableDays: ['tuesday', 'thursday', 'saturday'],
-    assignedTasks: [
-      { id: 'd6_1', title: 'Learn names of open strings', completed: false },
-    ],
-    lastSessionRating: 'First session',
-    demoMessages: [
-      { id: 'm1', senderRole: 'student', text: 'Hi! Just downloaded the app. Really excited to start learning.', ts: _now - 3600000 },
-      { id: 'm2', senderRole: 'teacher', text: "Welcome Sam. We will start with the basics and build from there.", ts: _now - 3000000 },
     ],
   },
 ];

@@ -19,6 +19,8 @@ import TodayScreen from './src/screens/tabs/TodayScreen';
 import ProgressScreen from './src/screens/tabs/ProgressScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
+import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
+import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
@@ -30,7 +32,9 @@ const TAB_ICONS = {
   Practice: ['options', 'options-outline'],
   Progress: ['trending-up', 'trending-up-outline'],
   Messages: ['chatbubbles', 'chatbubbles-outline'],
+  Home: ['home', 'home-outline'],
   Teacher: ['school', 'school-outline'],
+  Resources: ['library', 'library-outline'],
   Profile: ['person', 'person-outline'],
 };
 
@@ -38,7 +42,7 @@ function MainTabs({ role }) {
   const isTeacher = role === 'teacher';
   return (
     <Tab.Navigator
-      initialRouteName={isTeacher ? 'Teacher' : 'Today'}
+      initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -61,7 +65,9 @@ function MainTabs({ role }) {
     >
       {isTeacher ? (
         <>
+          <Tab.Screen name="Home" component={TeacherHomeScreen} />
           <Tab.Screen name="Teacher" component={TeacherScreen} options={{ tabBarLabel: 'Students' }} />
+          <Tab.Screen name="Resources" component={ResourceLibraryScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
           <Tab.Screen name="Profile" component={ProfileScreen} />
         </>
@@ -71,7 +77,6 @@ function MainTabs({ role }) {
           <Tab.Screen name="Practice" component={PracticeScreen} />
           <Tab.Screen name="Progress" component={ProgressScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
-          <Tab.Screen name="Teacher" component={TeacherScreen} />
           <Tab.Screen name="Profile" component={ProfileScreen} />
         </>
       )}

@@ -414,6 +414,8 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Practice settings + goals are student-only — teachers don't have a practice plan */}
+        {userData?.role !== 'teacher' && (<>
         {/* Practice Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>PRACTICE SETTINGS</Text>
@@ -496,6 +498,7 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
         </View>
+        </>)}
 
         {/* Account */}
         <View style={styles.section}>
