@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
-import { pickMedia, uploadChatMedia } from '../../lib/media';
+import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 
@@ -417,9 +417,9 @@ function InlineChatView({ student, myUid, isDemo }) {
     }
   };
 
-  const handleAttach = async () => {
+  const handleMedia = async (getMedia) => {
     if (uploading || sending) return;
-    const picked = await pickMedia();
+    const picked = await getMedia();
     if (!picked) return;
     if (picked.error) { Alert.alert('Photos', picked.error); return; }
     const caption = text.trim();
@@ -476,7 +476,14 @@ function InlineChatView({ student, myUid, isDemo }) {
       <View style={styles.chatInputRow}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
-          onPress={handleAttach}
+          onPress={() => handleMedia(captureMedia)}
+          disabled={sending || uploading}
+        >
+          <Ionicons name="camera" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.chatVideoBtn}
+          onPress={() => handleMedia(pickMedia)}
           disabled={sending || uploading}
         >
           {uploading

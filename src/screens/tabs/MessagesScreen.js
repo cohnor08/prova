@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
-import { pickMedia, uploadChatMedia } from '../../lib/media';
+import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 
@@ -39,9 +39,9 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
 
-  const handleAttach = async () => {
+  const handleMedia = async (getMedia) => {
     if (uploading || sending) return;
-    const picked = await pickMedia();
+    const picked = await getMedia();
     if (!picked) return;
     if (picked.error) { Alert.alert('Photos', picked.error); return; }
     const caption = text.trim();
@@ -137,7 +137,14 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
         <View style={styles.inputRow}>
           <TouchableOpacity
             style={styles.attachBtn}
-            onPress={handleAttach}
+            onPress={() => handleMedia(captureMedia)}
+            disabled={sending || uploading}
+          >
+            <Ionicons name="camera" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={() => handleMedia(pickMedia)}
             disabled={sending || uploading}
           >
             {uploading

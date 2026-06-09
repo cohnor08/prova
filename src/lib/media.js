@@ -20,6 +20,24 @@ export async function pickMedia() {
   return { uri: asset.uri, type };
 }
 
+// Opens the camera to take a photo or record a video, then returns it the same
+// shape as pickMedia. Returns null if cancelled, or { error } if denied.
+export async function captureMedia() {
+  const perm = await ImagePicker.requestCameraPermissionsAsync();
+  if (!perm.granted) {
+    return { error: 'Camera access is required to record.' };
+  }
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images', 'videos'],
+    quality: 0.7,
+    videoMaxDuration: 120,
+  });
+  if (result.canceled || !result.assets?.length) return null;
+  const asset = result.assets[0];
+  const type = asset.type === 'video' ? 'video' : 'image';
+  return { uri: asset.uri, type };
+}
+
 // Uploads a local file URI to Firebase Storage under the chat's folder and
 // returns the public download URL.
 export async function uploadChatMedia(uri, chatId, type) {
