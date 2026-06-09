@@ -5,7 +5,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
+import QRCode from 'react-native-qrcode-svg';
 import { COLORS, SPACING } from '../constants/theme';
+import { startLiveGig, endLiveGig, watchGigRequests, gigRequestUrl } from '../lib/livegig';
+
+const GIG_DOMAIN = 'prova-583c9.web.app';
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -18,7 +22,7 @@ const openTabs = (song) => {
 // cards, tap to advance, a running set timer + per-song timer, and the screen
 // stays awake the whole time.
 export default function PerformanceMode({
-  setlist, onClose,
+  setlist, onClose, tipLink,
   playingSongId, loadingSongId, onTogglePreview, onStopPreview, onOpenSpotify,
 }) {
   useKeepAwake();
@@ -29,6 +33,30 @@ export default function PerformanceMode({
   const [running, setRunning] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const songStart = useRef(0);
+
+  // Audience requests: publish a live gig, stream incoming requests.
+  const [gigId, setGigId] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [showAudience, setShowAudience] = useState(false);
+
+  useEffect(() => {
+    let unsub = () => {};
+    let activeGigId = null;
+    startLiveGig(setlist, tipLink).then((id) => {
+      if (!id) return;
+      activeGigId = id;
+      setGigId(id);
+      unsub = watchGigRequests(id, setRequests);
+    }).catch(() => {});
+    return () => { unsub(); if (activeGigId) endLiveGig(activeGigId); };
+  }, []);
+
+  // Tally requests per song title, most-requested first.
+  const requestCounts = {};
+  requests.forEach((r) => { const k = r.title || ''; requestCounts[k] = (requestCounts[k] || 0) + 1; });
+  const rankedRequests = Object.entries(requestCounts)
+    .map(([title, count]) => ({ title, count }))
+    .sort((a, b) => b.count - a.count);
 
   useEffect(() => {
     if (!running || ended) return;
@@ -68,7 +96,15 @@ export default function PerformanceMode({
             <Text style={styles.setTimerLabel}>SET</Text>
             <Text style={styles.setTimerValue}>{fmt(elapsed)}</Text>
           </View>
-          <Text style={styles.position}>{ended ? `${songs.length}/${songs.length}` : `${index + 1}/${songs.length}`}</Text>
+          <View style={styles.topRight}>
+            <TouchableOpacity onPress={() => setShowAudience(true)} style={styles.audienceBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="people" size={20} color={COLORS.text} />
+              {requests.length > 0 && (
+                <View style={styles.reqBadge}><Text style={styles.reqBadgeText}>{requests.length}</Text></View>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.position}>{ended ? `${songs.length}/${songs.length}` : `${index + 1}/${songs.length}`}</Text>
+          </View>
         </View>
 
         {/* Progress bar */}
@@ -157,6 +193,45 @@ export default function PerformanceMode({
             </View>
           </>
         )}
+
+        {showAudience && (
+          <View style={styles.audienceOverlay}>
+            <SafeAreaView style={{ flex: 1 }}>
+              <View style={styles.audienceHeader}>
+                <Text style={styles.audienceTitle}>Audience requests</Text>
+                <TouchableOpacity onPress={() => setShowAudience(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <Ionicons name="close" size={26} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.qrWrap}>
+                {gigId ? (
+                  <>
+                    <View style={styles.qrBox}>
+                      <QRCode value={gigRequestUrl(gigId)} size={180} backgroundColor="#fff" />
+                    </View>
+                    <Text style={styles.qrHint}>Point the crowd here — scan to request a song{tipLink ? ' or tip you' : ''}.</Text>
+                    <Text style={styles.qrCode}>{GIG_DOMAIN} · code {gigId}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.qrHint}>Publishing your set…</Text>
+                )}
+              </View>
+
+              <Text style={styles.reqListLabel}>{requests.length} REQUEST{requests.length === 1 ? '' : 'S'}</Text>
+              {rankedRequests.length === 0 ? (
+                <Text style={styles.reqEmpty}>No requests yet — they'll appear here live.</Text>
+              ) : (
+                rankedRequests.map((r) => (
+                  <View key={r.title} style={styles.reqRow}>
+                    <Text style={styles.reqRowTitle} numberOfLines={1}>{r.title}</Text>
+                    <View style={styles.reqCount}><Text style={styles.reqCountText}>{r.count}</Text></View>
+                  </View>
+                ))
+              )}
+            </SafeAreaView>
+          </View>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -168,7 +243,25 @@ const styles = StyleSheet.create({
   setTimer: { alignItems: 'center' },
   setTimerLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 2 },
   setTimerValue: { color: COLORS.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  position: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700', minWidth: 40, textAlign: 'right' },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  audienceBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  reqBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  reqBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  position: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700', textAlign: 'right' },
+
+  audienceOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#08090C', paddingHorizontal: SPACING.lg },
+  audienceHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.md },
+  audienceTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
+  qrWrap: { alignItems: 'center', marginVertical: SPACING.md },
+  qrBox: { backgroundColor: '#fff', padding: 14, borderRadius: 16 },
+  qrHint: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginTop: SPACING.md, paddingHorizontal: SPACING.lg },
+  qrCode: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.xs, fontWeight: '600' },
+  reqListLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  reqEmpty: { color: COLORS.textMuted, fontSize: 14 },
+  reqRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  reqRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '600', flex: 1, marginRight: SPACING.md },
+  reqCount: { minWidth: 28, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  reqCountText: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
   progressTrack: { height: 4, backgroundColor: COLORS.card, marginHorizontal: SPACING.lg, marginTop: SPACING.md, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: COLORS.primary, borderRadius: 2 },
 

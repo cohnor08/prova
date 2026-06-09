@@ -247,6 +247,9 @@ export default function ProfileScreen() {
   const [usernameModal, setUsernameModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
+  const [tipModal, setTipModal] = useState(false);
+  const [tipInput, setTipInput] = useState('');
+  const [savingTip, setSavingTip] = useState(false);
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
@@ -325,6 +328,29 @@ export default function ProfileScreen() {
       Alert.alert('Error', e.message);
     } finally {
       setSavingUsername(false);
+    }
+  };
+
+  const openTipModal = () => {
+    setTipInput(userData?.tipLink || '');
+    setTipModal(true);
+  };
+
+  const handleSaveTip = async () => {
+    const trimmed = tipInput.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      Alert.alert('Invalid link', 'Paste a full link starting with https:// (e.g. your Venmo, PayPal, or Cash App link).');
+      return;
+    }
+    setSavingTip(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { tipLink: trimmed });
+      setUserData(prev => ({ ...prev, tipLink: trimmed }));
+      setTipModal(false);
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingTip(false);
     }
   };
 
@@ -510,6 +536,13 @@ export default function ProfileScreen() {
               <Text style={styles.rowArrow}>›</Text>
             </View>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.row} onPress={openTipModal}>
+            <Text style={styles.rowLabel}>Tip link</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue} numberOfLines={1}>{userData?.tipLink ? 'Set' : 'Tap to set'}</Text>
+              <Text style={styles.rowArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Email</Text>
             <Text style={styles.rowValue}>{auth.currentUser?.email}</Text>
@@ -598,6 +631,40 @@ export default function ProfileScreen() {
                 disabled={savingUsername}
               >
                 {savingUsername
+                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  : <Text style={styles.modalSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={tipModal} transparent animationType="slide" onRequestClose={() => setTipModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Tip link</Text>
+            <TextInput
+              style={styles.usernameInput}
+              placeholder="https://venmo.com/u/yourname"
+              placeholderTextColor={COLORS.textMuted}
+              value={tipInput}
+              onChangeText={setTipInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              autoFocus
+            />
+            <Text style={styles.usernameHint}>Your Venmo / PayPal / Cash App link. The crowd can tip you by scanning the audience QR in Performance Mode.</Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setTipModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, savingTip && { opacity: 0.6 }]}
+                onPress={handleSaveTip}
+                disabled={savingTip}
+              >
+                {savingTip
                   ? <ActivityIndicator color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>

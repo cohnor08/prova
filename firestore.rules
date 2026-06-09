@@ -47,6 +47,25 @@ service cloud.firestore {
       );
     }
 
+    // Live gigs (audience song requests) ─────────────────────────────────────
+    // The gig doc is public-read so the audience web page can load the setlist
+    // without signing in; only the owner can create/change/end it. Anyone may
+    // submit a request (anonymous audience); only the owner reads them back.
+    match /liveGigs/{gigId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      match /requests/{reqId} {
+        allow create: if request.resource.data.keys().hasOnly(['title', 'artist', 'ts'])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 120;
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/liveGigs/$(gigId)).data.ownerUid == request.auth.uid;
+      }
+    }
+
     // Backend-only collections ───────────────────────────────────────────────
     // These are written exclusively by Cloud Functions via the Firebase Admin
     // SDK, which bypasses security rules entirely. Block all direct client

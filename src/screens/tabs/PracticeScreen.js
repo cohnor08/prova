@@ -254,6 +254,7 @@ export default function PracticeScreen({ route }) {
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
   const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
+  const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
 
   // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
   const [spotifyToken, setSpotifyToken] = useState(null);
@@ -429,6 +430,7 @@ export default function PracticeScreen({ route }) {
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
+      setTipLink(data?.tipLink || '');
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -1715,6 +1717,7 @@ export default function PracticeScreen({ route }) {
       {performingSetlist && (
         <PerformanceMode
           setlist={performingSetlist}
+          tipLink={tipLink}
           onClose={() => { stopSongPlayback(); setPerformingSetlist(null); }}
           playingSongId={playingSongId}
           loadingSongId={loadingSongId}
