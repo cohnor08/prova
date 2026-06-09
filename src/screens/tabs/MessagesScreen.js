@@ -8,10 +8,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
-  onSnapshot, orderBy,
+  onSnapshot, orderBy, doc,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
+import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -36,8 +36,21 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
+
+  // Watch the other participant's read marker.
+  useEffect(() => {
+    return onSnapshot(doc(db, 'chats', chatId), (snap) => {
+      setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
+    });
+  }, [chatId, otherUid]);
+
+  // Mark this chat read whenever it's open and new messages arrive.
+  useEffect(() => {
+    markChatRead(chatId, myUid).catch(() => {});
+  }, [chatId, myUid, messages.length]);
 
   const handleMedia = async (getMedia) => {
     if (uploading || sending) return;
@@ -122,14 +135,23 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
               <Text style={styles.emptyChatText}>No messages yet — say hello!</Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isMe = item.senderUid === myUid;
-            if (item.mediaUrl) return <MediaMessageBubble item={item} isMe={isMe} />;
+            const showReceipt = isMe && index === messages.length - 1;
+            const body = item.mediaUrl
+              ? <MediaMessageBubble item={item} isMe={isMe} />
+              : (
+                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                  <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                    {item.text}
+                  </Text>
+                </View>
+              );
+            if (!showReceipt) return body;
             return (
-              <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                  {item.text}
-                </Text>
+              <View>
+                {body}
+                <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>
               </View>
             );
           }}
@@ -383,6 +405,7 @@ const styles = StyleSheet.create({
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   attachBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  receipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // New chat modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

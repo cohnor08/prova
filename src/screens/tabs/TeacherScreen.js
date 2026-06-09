@@ -12,7 +12,7 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { makeChatId, sendChatMessage } from '../../lib/chat';
+import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -373,7 +373,16 @@ function InlineChatView({ student, myUid, isDemo }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Demo chats simulate the student having caught up; real chats read the
+  // student's actual lastRead marker.
+  const [otherReadAt, setOtherReadAt] = useState(isDemo ? Date.now() : null);
   const flatRef = useRef(null);
+
+  // After the teacher sends in a demo chat, flip the receipt to "Read" shortly
+  // after, so it behaves like a real conversation.
+  const bumpDemoRead = () => {
+    if (isDemo) setTimeout(() => setOtherReadAt(Date.now()), 1200);
+  };
 
   useEffect(() => {
     if (isDemo) return;
@@ -383,6 +392,19 @@ function InlineChatView({ student, myUid, isDemo }) {
     });
     return unsub;
   }, [isDemo, chatId]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    const unsub = onSnapshot(doc(db, 'chats', chatId), (snap) => {
+      setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
+    });
+    return unsub;
+  }, [isDemo, chatId, otherUid]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    markChatRead(chatId, myUid).catch(() => {});
+  }, [isDemo, chatId, myUid, messages.length]);
 
   useEffect(() => {
     if (messages.length > 0) flatRef.current?.scrollToEnd({ animated: true });
@@ -399,6 +421,7 @@ function InlineChatView({ student, myUid, isDemo }) {
           { id: `local_${Date.now()}`, senderUid: myUid, text: trimmed, ts: Date.now() },
         ]);
         setText('');
+        bumpDemoRead();
       } else {
         setText('');
         await sendChatMessage({
@@ -433,6 +456,7 @@ function InlineChatView({ student, myUid, isDemo }) {
           ...prev,
           { id: `local_${Date.now()}`, senderUid: myUid, text: caption, mediaUrl: url, mediaType: picked.type, ts: Date.now() },
         ]);
+        bumpDemoRead();
       } else {
         await sendChatMessage({
           chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail,
@@ -455,14 +479,23 @@ function InlineChatView({ student, myUid, isDemo }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatMessages}
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const isMe = item.senderUid === myUid;
-          if (item.mediaUrl) return <MediaMessageBubble item={item} isMe={isMe} />;
+          const showReceipt = isMe && index === messages.length - 1;
+          const body = item.mediaUrl
+            ? <MediaMessageBubble item={item} isMe={isMe} />
+            : (
+              <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                  {item.text}
+                </Text>
+              </View>
+            );
+          if (!showReceipt) return body;
           return (
-            <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-              <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                {item.text}
-              </Text>
+            <View>
+              {body}
+              <Text style={styles.chatReceipt}>{receiptStatus(item, otherReadAt)}</Text>
             </View>
           );
         }}
@@ -1179,6 +1212,7 @@ const styles = StyleSheet.create({
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   chatSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   chatVideoBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  chatReceipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // Chat modal (student side)
   chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
