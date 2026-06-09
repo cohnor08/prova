@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar,
+  View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,10 +9,18 @@ import { COLORS, SPACING } from '../constants/theme';
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+const openTabs = (song) => {
+  const q = `${song.title || ''} ${song.artist || ''} guitar tab`.trim();
+  Linking.openURL(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`).catch(() => {});
+};
+
 // Full-screen "stage view" for performing a setlist live: big glanceable song
 // cards, tap to advance, a running set timer + per-song timer, and the screen
 // stays awake the whole time.
-export default function PerformanceMode({ setlist, onClose }) {
+export default function PerformanceMode({
+  setlist, onClose,
+  playingSongId, loadingSongId, onTogglePreview, onStopPreview, onOpenSpotify,
+}) {
   useKeepAwake();
   const songs = setlist?.songs || [];
 
@@ -29,12 +37,14 @@ export default function PerformanceMode({ setlist, onClose }) {
   }, [running, ended]);
 
   const goNext = () => {
+    onStopPreview?.();
     if (index >= songs.length - 1) { setEnded(true); setRunning(false); return; }
     songStart.current = elapsed;
     setIndex((i) => i + 1);
   };
   const goPrev = () => {
     if (index === 0) return;
+    onStopPreview?.();
     songStart.current = elapsed;
     setIndex((i) => i - 1);
   };
@@ -42,6 +52,8 @@ export default function PerformanceMode({ setlist, onClose }) {
   const song = songs[index] || {};
   const next = songs[index + 1];
   const onSong = elapsed - songStart.current;
+  const isPreviewing = playingSongId === song.id;
+  const isPreviewLoading = loadingSongId === song.id;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -85,8 +97,39 @@ export default function PerformanceMode({ setlist, onClose }) {
                   <Text style={styles.noteText}>{song.note}</Text>
                 </View>
               )}
+
+              <View style={styles.songActions}>
+                <TouchableOpacity
+                  style={styles.songActionBtn}
+                  onPress={() => onTogglePreview?.(song)}
+                  disabled={isPreviewLoading}
+                  activeOpacity={0.8}
+                >
+                  {isPreviewLoading
+                    ? <ActivityIndicator size="small" color={COLORS.text} />
+                    : <Ionicons name={isPreviewing ? 'pause' : 'play'} size={18} color={COLORS.text} />}
+                  <Text style={styles.songActionText}>{isPreviewing ? 'Stop' : 'Preview'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.songActionBtn, styles.spotifyBtn]}
+                  onPress={() => onOpenSpotify?.(song)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="musical-notes" size={18} color="#fff" />
+                  <Text style={[styles.songActionText, { color: '#fff' }]}>Spotify</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.songActionBtn}
+                  onPress={() => openTabs(song)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                  <Text style={styles.songActionText}>Tabs</Text>
+                </TouchableOpacity>
+              </View>
+
               <Text style={styles.onSong}>on this song · {fmt(onSong)}</Text>
-              <Text style={styles.tapHint}>tap anywhere to advance →</Text>
+              <Text style={styles.tapHint}>tap the card to advance →</Text>
             </TouchableOpacity>
 
             {/* Next-up preview */}
@@ -135,7 +178,11 @@ const styles = StyleSheet.create({
   songArtist: { color: COLORS.textSecondary, fontSize: 20, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm },
   notePill: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary + '55', borderWidth: 1, borderRadius: 999, paddingHorizontal: SPACING.lg, paddingVertical: 8, marginTop: SPACING.lg },
   noteText: { color: COLORS.primary, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  onSong: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.xl, fontVariant: ['tabular-nums'] },
+  songActions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.xl, justifyContent: 'center' },
+  songActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 10, justifyContent: 'center' },
+  spotifyBtn: { backgroundColor: '#1DB954', borderColor: '#1DB954' },
+  songActionText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  onSong: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.lg, fontVariant: ['tabular-nums'] },
   tapHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.xs },
 
   nextRow: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },

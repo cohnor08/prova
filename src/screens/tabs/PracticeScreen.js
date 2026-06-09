@@ -1715,7 +1715,12 @@ export default function PracticeScreen({ route }) {
       {performingSetlist && (
         <PerformanceMode
           setlist={performingSetlist}
-          onClose={() => setPerformingSetlist(null)}
+          onClose={() => { stopSongPlayback(); setPerformingSetlist(null); }}
+          playingSongId={playingSongId}
+          loadingSongId={loadingSongId}
+          onTogglePreview={toggleSongPlayback}
+          onStopPreview={stopSongPlayback}
+          onOpenSpotify={(song) => openSongIn(song, 'spotify')}
         />
       )}
     </SafeAreaView>
