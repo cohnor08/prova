@@ -11,7 +11,7 @@ import {
   collection, query, where, getDocs,
   onSnapshot, orderBy, doc,
 } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -46,7 +46,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
   useEffect(() => {
     return onSnapshot(doc(db, 'chats', chatId), (snap) => {
       setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
-    });
+    }, ignorePermissionDenied);
   }, [chatId, otherUid]);
 
   // Mark this chat read whenever it's open and new messages arrive.
@@ -79,7 +79,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
     return onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, ignorePermissionDenied);
   }, [chatId]);
 
   useEffect(() => {

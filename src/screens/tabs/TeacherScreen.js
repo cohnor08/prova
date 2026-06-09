@@ -12,7 +12,7 @@ import {
   collection, query, where, getDocs, doc, getDoc,
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
 } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -391,7 +391,7 @@ function InlineChatView({ student, myUid, isDemo }) {
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    }, ignorePermissionDenied);
     return unsub;
   }, [isDemo, chatId]);
 
@@ -399,7 +399,7 @@ function InlineChatView({ student, myUid, isDemo }) {
     if (isDemo) return;
     const unsub = onSnapshot(doc(db, 'chats', chatId), (snap) => {
       setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
-    });
+    }, ignorePermissionDenied);
     return unsub;
   }, [isDemo, chatId, otherUid]);
 
@@ -580,7 +580,7 @@ function TeacherDashboard() {
       const map = {};
       snap.docs.forEach((d) => { map[d.id] = d.data(); });
       setConvoMap(map);
-    });
+    }, ignorePermissionDenied);
   }, [myUid]);
 
   const loadStudents = async () => {

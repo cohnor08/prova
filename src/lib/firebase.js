@@ -28,3 +28,10 @@ if (getApps().length === 0) {
 export { app, auth };
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// onSnapshot error handler: a snapshot listener that's still attached when the
+// user signs out fails with permission-denied — that's expected, so swallow it
+// and only surface genuine errors.
+export function ignorePermissionDenied(err) {
+  if (err?.code !== 'permission-denied') console.warn('Snapshot error:', err);
+}
