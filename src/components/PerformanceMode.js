@@ -55,17 +55,19 @@ export default function PerformanceMode({
   }, []);
 
   // A few fake requests so the feature is visible without anyone scanning.
+  // Includes a couple of songs already in the set (so "Remove" shows) plus
+  // outside crowd requests (so "Add" shows).
   const seedRequests = useMemo(() => {
     if (!SEED_DEMO_REQUESTS) return [];
-    const demo = [
-      { title: 'Mr. Brightside', artist: 'The Killers', n: 4 },
-      { title: 'Sweet Child O\' Mine', artist: 'Guns N\' Roses', n: 2 },
-      { title: 'Hey Jude', artist: 'The Beatles', n: 1 },
-    ];
     const out = [];
-    demo.forEach((d) => { for (let i = 0; i < d.n; i++) out.push({ title: d.title, artist: d.artist }); });
+    const push = (title, artist, n) => { for (let i = 0; i < n; i++) out.push({ title, artist }); };
+    const mine = setlist?.songs || [];
+    if (mine[0]) push(mine[0].title, mine[0].artist, 3);
+    if (mine[1]) push(mine[1].title, mine[1].artist, 2);
+    push('Mr. Brightside', 'The Killers', 4);
+    push('Hey Jude', 'The Beatles', 1);
     return out;
-  }, []);
+  }, [setlist?.songs?.[0]?.title, setlist?.songs?.[1]?.title]);
   const allRequests = [...seedRequests, ...requests];
 
   // Tally requests per song title (keeping artist), most-requested first.
