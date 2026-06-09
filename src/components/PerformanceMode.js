@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar, ActivityIndicator, Linking,
 } from 'react-native';
@@ -10,6 +10,9 @@ import { COLORS, SPACING } from '../constants/theme';
 import { startLiveGig, endLiveGig, watchGigRequests, gigRequestUrl } from '../lib/livegig';
 
 const GIG_DOMAIN = 'prova-583c9.web.app';
+// Demo: pre-populate a few audience requests so the panel isn't empty when
+// showing the feature. Set to false before real launch.
+const SEED_DEMO_REQUESTS = true;
 
 const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -51,9 +54,21 @@ export default function PerformanceMode({
     return () => { unsub(); if (activeGigId) endLiveGig(activeGigId); };
   }, []);
 
+  // A few fake requests so the feature is visible without anyone scanning.
+  const seedRequests = useMemo(() => {
+    if (!SEED_DEMO_REQUESTS) return [];
+    const counts = [3, 2, 1];
+    const out = [];
+    songs.slice(0, 3).forEach((s, i) => {
+      for (let n = 0; n < counts[i]; n++) out.push({ title: s.title, artist: s.artist });
+    });
+    return out;
+  }, [songs]);
+  const allRequests = [...seedRequests, ...requests];
+
   // Tally requests per song title, most-requested first.
   const requestCounts = {};
-  requests.forEach((r) => { const k = r.title || ''; requestCounts[k] = (requestCounts[k] || 0) + 1; });
+  allRequests.forEach((r) => { const k = r.title || ''; requestCounts[k] = (requestCounts[k] || 0) + 1; });
   const rankedRequests = Object.entries(requestCounts)
     .map(([title, count]) => ({ title, count }))
     .sort((a, b) => b.count - a.count);
@@ -99,8 +114,8 @@ export default function PerformanceMode({
           <View style={styles.topRight}>
             <TouchableOpacity onPress={() => setShowAudience(true)} style={styles.audienceBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="people" size={20} color={COLORS.text} />
-              {requests.length > 0 && (
-                <View style={styles.reqBadge}><Text style={styles.reqBadgeText}>{requests.length}</Text></View>
+              {allRequests.length > 0 && (
+                <View style={styles.reqBadge}><Text style={styles.reqBadgeText}>{allRequests.length}</Text></View>
               )}
             </TouchableOpacity>
             <Text style={styles.position}>{ended ? `${songs.length}/${songs.length}` : `${index + 1}/${songs.length}`}</Text>
@@ -218,7 +233,7 @@ export default function PerformanceMode({
                 )}
               </View>
 
-              <Text style={styles.reqListLabel}>{requests.length} REQUEST{requests.length === 1 ? '' : 'S'}</Text>
+              <Text style={styles.reqListLabel}>{allRequests.length} REQUEST{allRequests.length === 1 ? '' : 'S'}</Text>
               {rankedRequests.length === 0 ? (
                 <Text style={styles.reqEmpty}>No requests yet — they'll appear here live.</Text>
               ) : (
