@@ -16,19 +16,19 @@ export function otherUidFromChatId(chatId, myUid) {
 
 // Sends a message and updates both participants' conversation lists so the
 // thread shows up in everyone's Messages views regardless of where it started.
-export async function sendChatMessage({ chatId, senderUid, senderEmail, otherUid, otherEmail, text, videoUrl, videoTitle }) {
+export async function sendChatMessage({ chatId, senderUid, senderEmail, otherUid, otherEmail, text, media }) {
   const trimmed = (text || '').trim();
-  const hasVideo = !!(videoUrl && videoUrl.trim());
-  if (!trimmed && !hasVideo) return;
+  const hasMedia = !!(media && media.url);
+  if (!trimmed && !hasMedia) return;
 
   await addDoc(collection(db, 'chats', chatId, 'messages'), {
     senderUid,
     text: trimmed,
-    ...(hasVideo ? { videoUrl: videoUrl.trim(), videoTitle: (videoTitle || '').trim() } : {}),
+    ...(hasMedia ? { mediaUrl: media.url, mediaType: media.type || 'image' } : {}),
     timestamp: serverTimestamp(),
   });
 
-  const preview = hasVideo ? `🎥 ${(videoTitle || 'Video help').trim()}` : trimmed;
+  const preview = hasMedia ? (media.type === 'video' ? '🎥 Video' : '📷 Photo') : trimmed;
   const meta = {
     chatId,
     lastMessage: preview,

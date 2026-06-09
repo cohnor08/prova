@@ -13,8 +13,9 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
+import { pickMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
-import VideoMessageBubble from '../../components/VideoMessageBubble';
+import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
@@ -371,10 +372,7 @@ function InlineChatView({ student, myUid, isDemo }) {
   const [messages, setMessages] = useState(initMessages);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [videoModal, setVideoModal] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
-  const [videoTitle, setVideoTitle] = useState('');
-  const [videoNote, setVideoNote] = useState('');
+  const [uploading, setUploading] = useState(false);
   const flatRef = useRef(null);
 
   useEffect(() => {
@@ -419,29 +417,33 @@ function InlineChatView({ student, myUid, isDemo }) {
     }
   };
 
-  const sendVideo = async () => {
-    const url = videoUrl.trim();
-    if (!url) { Alert.alert('Add a link', 'Paste a YouTube or video link to send.'); return; }
-    const title = videoTitle.trim() || 'Video help';
-    const note = videoNote.trim();
-    setSending(true);
+  const handleAttach = async () => {
+    if (uploading || sending) return;
+    const picked = await pickMedia();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Photos', picked.error); return; }
+    const caption = text.trim();
+    setUploading(true);
     try {
+      // Demo chats are local-only, so the on-device file URI displays fine
+      // without an upload. Real chats upload so the student can load it.
+      const url = isDemo ? picked.uri : await uploadChatMedia(picked.uri, chatId, picked.type);
       if (isDemo) {
         setMessages((prev) => [
           ...prev,
-          { id: `local_${Date.now()}`, senderUid: myUid, text: note, videoUrl: url, videoTitle: title, ts: Date.now() },
+          { id: `local_${Date.now()}`, senderUid: myUid, text: caption, mediaUrl: url, mediaType: picked.type, ts: Date.now() },
         ]);
       } else {
         await sendChatMessage({
           chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail,
-          text: note, videoUrl: url, videoTitle: title,
+          text: caption, media: { url, type: picked.type },
         });
       }
-      setVideoUrl(''); setVideoTitle(''); setVideoNote(''); setVideoModal(false);
+      setText('');
     } catch (err) {
-      Alert.alert('Error', err.message);
+      Alert.alert('Upload failed', err.message);
     } finally {
-      setSending(false);
+      setUploading(false);
     }
   };
 
@@ -455,7 +457,7 @@ function InlineChatView({ student, myUid, isDemo }) {
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
         renderItem={({ item }) => {
           const isMe = item.senderUid === myUid;
-          if (item.videoUrl) return <VideoMessageBubble item={item} isMe={isMe} />;
+          if (item.mediaUrl) return <MediaMessageBubble item={item} isMe={isMe} />;
           return (
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
@@ -474,10 +476,12 @@ function InlineChatView({ student, myUid, isDemo }) {
       <View style={styles.chatInputRow}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
-          onPress={() => setVideoModal(true)}
-          disabled={sending}
+          onPress={handleAttach}
+          disabled={sending || uploading}
         >
-          <Ionicons name="videocam" size={20} color={COLORS.primary} />
+          {uploading
+            ? <ActivityIndicator color={COLORS.primary} size="small" />
+            : <Ionicons name="image" size={20} color={COLORS.primary} />}
         </TouchableOpacity>
         <TextInput
           style={styles.chatInput}
@@ -498,58 +502,6 @@ function InlineChatView({ student, myUid, isDemo }) {
             : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
         </TouchableOpacity>
       </View>
-
-      <Modal visible={videoModal} transparent animationType="fade" onRequestClose={() => setVideoModal(false)}>
-        <View style={styles.videoModalBackdrop}>
-          <View style={styles.videoModalCard}>
-            <View style={styles.videoModalHeader}>
-              <Ionicons name="videocam" size={18} color={COLORS.primary} />
-              <Text style={styles.videoModalTitle}>Send video help</Text>
-              <TouchableOpacity onPress={() => setVideoModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.videoModalLabel}>What's it for? (title)</Text>
-            <TextInput
-              style={styles.videoModalInput}
-              placeholder="e.g. Fixing your F barre chord"
-              placeholderTextColor={COLORS.textMuted}
-              value={videoTitle}
-              onChangeText={setVideoTitle}
-              maxLength={60}
-            />
-            <Text style={styles.videoModalLabel}>Video link</Text>
-            <TextInput
-              style={styles.videoModalInput}
-              placeholder="Paste a YouTube or video URL"
-              placeholderTextColor={COLORS.textMuted}
-              value={videoUrl}
-              onChangeText={setVideoUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.videoModalLabel}>Note (optional)</Text>
-            <TextInput
-              style={[styles.videoModalInput, { height: 64, textAlignVertical: 'top' }]}
-              placeholder="Add a short message…"
-              placeholderTextColor={COLORS.textMuted}
-              value={videoNote}
-              onChangeText={setVideoNote}
-              multiline
-              maxLength={300}
-            />
-            <TouchableOpacity
-              style={[styles.videoModalSend, (!videoUrl.trim() || sending) && { opacity: 0.4 }]}
-              onPress={sendVideo}
-              disabled={!videoUrl.trim() || sending}
-            >
-              {sending
-                ? <ActivityIndicator color={COLORS.text} size="small" />
-                : <Text style={styles.videoModalSendText}>Send to student</Text>}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1220,14 +1172,6 @@ const styles = StyleSheet.create({
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   chatSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   chatVideoBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
-  videoModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.lg },
-  videoModalCard: { backgroundColor: COLORS.surface, borderRadius: 18, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
-  videoModalHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
-  videoModalTitle: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: '800' },
-  videoModalLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6, marginTop: SPACING.sm },
-  videoModalInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
-  videoModalSend: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.lg },
-  videoModalSendText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
 
   // Chat modal (student side)
   chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

@@ -12,8 +12,9 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
+import { pickMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
-import VideoMessageBubble from '../../components/VideoMessageBubble';
+import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -34,8 +35,30 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
+
+  const handleAttach = async () => {
+    if (uploading || sending) return;
+    const picked = await pickMedia();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Photos', picked.error); return; }
+    const caption = text.trim();
+    setUploading(true);
+    try {
+      const url = await uploadChatMedia(picked.uri, chatId, picked.type);
+      await sendChatMessage({
+        chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail,
+        text: caption, media: { url, type: picked.type },
+      });
+      setText('');
+    } catch (err) {
+      Alert.alert('Upload failed', err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
@@ -101,7 +124,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
           }
           renderItem={({ item }) => {
             const isMe = item.senderUid === myUid;
-            if (item.videoUrl) return <VideoMessageBubble item={item} isMe={isMe} />;
+            if (item.mediaUrl) return <MediaMessageBubble item={item} isMe={isMe} />;
             return (
               <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
                 <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
@@ -112,6 +135,15 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
           }}
         />
         <View style={styles.inputRow}>
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={handleAttach}
+            disabled={sending || uploading}
+          >
+            {uploading
+              ? <ActivityIndicator color={COLORS.primary} size="small" />
+              : <Ionicons name="image" size={20} color={COLORS.primary} />}
+          </TouchableOpacity>
           <TextInput
             style={styles.chatInput}
             placeholder="Message..."
@@ -343,6 +375,7 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm, padding: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  attachBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
 
   // New chat modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

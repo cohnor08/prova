@@ -10,7 +10,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument."
+        "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument.",
+        "NSPhotoLibraryUsageDescription": "Prova lets you attach photos and videos to your chats."
       }
     },
     "android": {
@@ -25,7 +26,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Prova lets you attach photos and videos to your chats."
+        }
+      ]
     ]
   }
 }
