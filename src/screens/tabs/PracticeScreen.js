@@ -14,6 +14,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
+import PerformanceMode from '../../components/PerformanceMode';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -252,6 +253,7 @@ export default function PracticeScreen({ route }) {
   const [gigSongCount, setGigSongCount] = useState(10);
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+  const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
 
   // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
   const [spotifyToken, setSpotifyToken] = useState(null);
@@ -1653,6 +1655,17 @@ export default function PracticeScreen({ route }) {
               ))}
             </ScrollView>
 
+            {viewingSetlist?.songs?.length > 0 && (
+              <TouchableOpacity
+                style={styles.goLiveBtn}
+                onPress={() => { const sl = viewingSetlist; setViewingSetlist(null); setPerformingSetlist(sl); }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="radio" size={18} color={COLORS.text} />
+                <Text style={styles.goLiveText}>Go live — perform this set</Text>
+              </TouchableOpacity>
+            )}
+
             {SPOTIFY_EXPORT_ENABLED && (
               <TouchableOpacity
                 style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
@@ -1698,6 +1711,13 @@ export default function PracticeScreen({ route }) {
           )}
         </View>
       </Modal>
+
+      {performingSetlist && (
+        <PerformanceMode
+          setlist={performingSetlist}
+          onClose={() => setPerformingSetlist(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1881,6 +1901,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1DB954', borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
   },
   spotifyExportText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  goLiveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
+  },
+  goLiveText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
   detailDeleteBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     paddingVertical: 12, marginTop: SPACING.sm,
