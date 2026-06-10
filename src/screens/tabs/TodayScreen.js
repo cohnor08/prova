@@ -15,6 +15,10 @@ import { sessionPoints, displayScore, formatScore, scoreRank } from '../../lib/s
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
+// Demo: show a sample teacher-assigned task on Today so the feature is visible
+// without a real teacher assigning one. Set to false before launch.
+const SEED_DEMO_TEACHER_TASK = true;
+
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
   technique: '#3B82F6',
@@ -171,6 +175,7 @@ export default function TodayScreen({ navigation }) {
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [regenerating, setRegenerating] = useState(false);
+  const [demoTaskDone, setDemoTaskDone] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => { loadData(); }, []);
@@ -360,7 +365,31 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  // Mark a teacher-assigned task complete (writes back so the teacher sees it).
+  const completeAssignedTask = async (taskId) => {
+    if (taskId === 'demo_teacher_task') { setDemoTaskDone(true); return; }
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const next = (userData?.assignedTasks || []).map((t) =>
+      t.id === taskId ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+    );
+    setUserData((p) => ({ ...p, assignedTasks: next }));
+    try {
+      await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't save. Please try again.");
+    }
+  };
+
   const isToday = selectedDay === TODAY_NAME;
+  const assignedTasks = (userData?.assignedTasks?.length)
+    ? userData.assignedTasks
+    : (SEED_DEMO_TEACHER_TASK ? [{
+        id: 'demo_teacher_task',
+        title: 'Practice the F barre chord transition',
+        description: 'Switch F → C cleanly, 8 reps at 70 BPM. Film one take for me.',
+        completed: demoTaskDone,
+      }] : []);
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
@@ -485,6 +514,31 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
+        {/* Tasks assigned by the student's teacher */}
+        {isToday && assignedTasks.length > 0 && (
+          <View style={styles.teacherCard}>
+            <View style={styles.teacherHeader}>
+              <Ionicons name="school" size={16} color={COLORS.primary} />
+              <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+            </View>
+            {assignedTasks.map((t) => (
+              <View key={t.id} style={styles.teacherTask}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={2}>{t.title}</Text>
+                  {!!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
+                </View>
+                {t.completed ? (
+                  <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+                ) : (
+                  <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
+                    <Text style={styles.teacherDoneText}>Done</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Sessions */}
         {selectedSessions.length === 0 ? (
           <View style={styles.restDay}>
@@ -599,6 +653,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
     borderWidth: 1, borderColor: COLORS.accent + '55',
   },
+
+  // Teacher-assigned tasks
+  teacherCard: {
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.primary + '55',
+  },
+  teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
+  teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  teacherTask: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
+  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
   challengeIcon: {
     width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
