@@ -12,6 +12,35 @@ export const STREAK_DAY_BONUS = 10;  // × your current streak day — long stre
 
 const QUALITY_BONUS = { just_right: 30, too_hard: 20, too_easy: 15 };
 
+// How hard a task is, by category — multiplies its per-minute points so a hard
+// technique drill is worth more than the same minutes of warming up.
+const TASK_DIFFICULTY = {
+  warmup: 1.0,
+  theory: 1.1,
+  ear_training: 1.2,
+  repertoire: 1.2,
+  technique: 1.3,
+  improvisation: 1.4,
+};
+export const TASK_BASE = 5; // flat reward for finishing any single task
+
+// Points for completing ONE task right now — scales with how long (duration)
+// and how hard (category) it is. Banked the moment its timer finishes.
+export function taskPoints(session = {}) {
+  const mult = TASK_DIFFICULTY[session.category] || 1.1;
+  return Math.round((session.duration || 0) * POINTS_PER_MIN * mult) + TASK_BASE;
+}
+
+// The end-of-day bonus, on top of the per-task points already banked: a finish
+// reward + the streak term + the quality (rating) bonus.
+export function completionBonus(streakDay, rating) {
+  return Math.round(
+    SESSION_BONUS
+    + (streakDay || 0) * STREAK_DAY_BONUS
+    + (QUALITY_BONUS[rating] || 0),
+  );
+}
+
 // Points earned for completing ONE session right now. The streak term means a
 // 20-day streak session is worth far more than a day-1 one — so the longer your
 // streak, the more it stings to break it (that's the hook).

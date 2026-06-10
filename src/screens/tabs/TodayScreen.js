@@ -11,7 +11,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { sessionPoints, displayScore, formatScore, scoreRank } from '../../lib/score';
+import { taskPoints, completionBonus, displayScore, formatScore, scoreRank } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -277,8 +277,21 @@ export default function TodayScreen({ navigation }) {
   };
 
   const handleComplete = (sessionId) => {
+    if (completedIds.includes(sessionId)) return;
     const next = [...completedIds, sessionId];
     setCompletedIds(next);
+
+    // Bank this task's own points immediately, based on how long + hard it is.
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+      const pts = taskPoints(session);
+      const newScore = displayScore(userData) + pts;
+      setUserData(p => ({ ...p, provaScore: newScore }));
+      const uid = auth.currentUser?.uid;
+      if (uid) updateDoc(doc(db, 'users', uid), { provaScore: newScore }).catch(() => {});
+      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+    }
+
     if (sessions.every(s => next.includes(s.id))) setShowRating(true);
   };
 
@@ -297,9 +310,9 @@ export default function TodayScreen({ navigation }) {
       const categories = {};
       sessions.forEach(s => { categories[s.category] = (categories[s.category] || 0) + s.duration; });
       const dateKey = new Date().toISOString().split('T')[0];
-      // Bank Prova Score for this session (XP — only ever goes up). Start from the
-      // existing total, or backfill it from lifetime stats for older accounts.
-      const earnedPoints = sessionPoints(sessionMins, newStreak, rating);
+      // Per-task points are already banked on completion; here we add the
+      // end-of-day bonus (finish reward + streak + quality rating).
+      const earnedPoints = completionBonus(newStreak, rating);
       const prevScore = displayScore(userData);
       const newScore = prevScore + earnedPoints;
       const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
@@ -322,10 +335,10 @@ export default function TodayScreen({ navigation }) {
       ]);
       const newRank = scoreRank(newScore);
       Alert.alert(
-        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : `+${formatScore(earnedPoints)} Prova points! 🎸`,
+        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : `+${formatScore(earnedPoints)} finish bonus! 🎸`,
         rankedUp
-          ? `You earned +${formatScore(earnedPoints)} and leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
-          : `Nice work — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+          ? `Session complete — you leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
+          : `Session complete — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
       );
       adjustSessionFromRating(sessions, rating, null)
         .then(adjusted => updateDoc(doc(db, 'users', uid), {
