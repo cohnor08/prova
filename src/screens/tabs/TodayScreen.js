@@ -176,6 +176,7 @@ export default function TodayScreen({ navigation }) {
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [regenerating, setRegenerating] = useState(false);
   const [demoTaskDone, setDemoTaskDone] = useState(false);
+  const [expandedTask, setExpandedTask] = useState(null);
   const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => { loadData(); }, []);
@@ -521,21 +522,31 @@ export default function TodayScreen({ navigation }) {
               <Ionicons name="school" size={16} color={COLORS.primary} />
               <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
             </View>
-            {assignedTasks.map((t) => (
-              <View key={t.id} style={styles.teacherTask}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={2}>{t.title}</Text>
-                  {!!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
+            {assignedTasks.map((t) => {
+              const open = expandedTask === t.id;
+              return (
+                <View key={t.id} style={styles.teacherTask}>
+                  <View style={styles.teacherTaskRow}>
+                    <TouchableOpacity
+                      style={styles.teacherTaskMain}
+                      onPress={() => setExpandedTask(open ? null : t.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+                      <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
+                    </TouchableOpacity>
+                    {t.completed ? (
+                      <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+                    ) : (
+                      <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
+                        <Text style={styles.teacherDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {open && !!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
                 </View>
-                {t.completed ? (
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                ) : (
-                  <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
-                    <Text style={styles.teacherDoneText}>Done</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -661,10 +672,12 @@ const styles = StyleSheet.create({
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  teacherTask: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
-  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
+  teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', flex: 1 },
   teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
-  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
   teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
