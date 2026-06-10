@@ -16,6 +16,10 @@ export function useAuth() {
 
     const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeout);
+      // Tear down any listener from a previous session before (re)subscribing,
+      // so signing out doesn't leave a listener attached that then fails with
+      // permission-denied once the user is no longer authenticated.
+      if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
       if (firebaseUser) {
         setUser(firebaseUser);
 
@@ -42,6 +46,9 @@ export function useAuth() {
               .catch((err) => console.warn('Email normalise failed:', err));
           }
           setLoading(false);
+        }, (err) => {
+          // permission-denied is expected briefly during sign-out — ignore it.
+          if (err.code !== 'permission-denied') console.warn('User snapshot error:', err);
         });
       } else {
         setUser(null);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
@@ -6,21 +6,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
 } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
-import { makeChatId, sendChatMessage } from '../../lib/chat';
+import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
+import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
-const DEMO_MODE = false;
+export const DEMO_MODE = true;
 
 const _now = Date.now();
-const DEMO_STUDENTS_DATA = [
+export const DEMO_STUDENTS_DATA = [
   {
     uid: 'demo_1',
     name: 'Jamie Robertson',
@@ -112,51 +115,6 @@ const DEMO_STUDENTS_DATA = [
     demoMessages: [
       { id: 'm1', senderRole: 'student', text: 'My fingers keep buzzing on the E chord.', ts: _now - 259200000 },
       { id: 'm2', senderRole: 'teacher', text: 'Completely normal at this stage. Make sure your fingertip is right behind the fret. Slow it right down.', ts: _now - 255600000 },
-    ],
-  },
-  {
-    uid: 'demo_5',
-    name: 'Kai Daniels',
-    email: 'kai.d@email.com',
-    level: 'Intermediate',
-    instrument: 'Bass',
-    streak: 7,
-    totalMinutes: 1320,
-    lastSessionDate: new Date(_now - 86400000).toISOString(),
-    lastSessionMins: 60,
-    lastSessionNote: 'Slap bass, groove exercise in E minor',
-    availableDays: ['monday', 'wednesday', 'friday'],
-    assignedTasks: [
-      { id: 'd5_1', title: 'Slap bass fundamentals', completed: true },
-      { id: 'd5_2', title: 'Groove exercise in E minor', completed: true },
-      { id: 'd5_3', title: 'Walking bassline over 12-bar blues', completed: false },
-    ],
-    lastSessionRating: 'Good',
-    demoMessages: [
-      { id: 'm1', senderRole: 'student', text: 'Slap is coming along — managed the pop technique finally.', ts: _now - 172800000 },
-      { id: 'm2', senderRole: 'teacher', text: "That is a big milestone. Send me a recording when you can.", ts: _now - 169200000 },
-      { id: 'm3', senderRole: 'student', text: 'Will do after tomorrow\'s session.', ts: _now - 165600000 },
-    ],
-  },
-  {
-    uid: 'demo_6',
-    name: 'Sam Torres',
-    email: 'sam.t@email.com',
-    level: 'Beginner',
-    instrument: 'Guitar',
-    streak: 1,
-    totalMinutes: 120,
-    lastSessionDate: new Date(_now - 3600000).toISOString(),
-    lastSessionMins: 20,
-    lastSessionNote: 'Names of open strings',
-    availableDays: ['tuesday', 'thursday', 'saturday'],
-    assignedTasks: [
-      { id: 'd6_1', title: 'Learn names of open strings', completed: false },
-    ],
-    lastSessionRating: 'First session',
-    demoMessages: [
-      { id: 'm1', senderRole: 'student', text: 'Hi! Just downloaded the app. Really excited to start learning.', ts: _now - 3600000 },
-      { id: 'm2', senderRole: 'teacher', text: "Welcome Sam. We will start with the basics and build from there.", ts: _now - 3000000 },
     ],
   },
 ];
@@ -412,19 +370,43 @@ function InlineChatView({ student, myUid, isDemo }) {
     }));
   };
 
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState(initMessages);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  // Demo chats simulate the student having caught up; real chats read the
+  // student's actual lastRead marker.
+  const [otherReadAt, setOtherReadAt] = useState(isDemo ? Date.now() : null);
   const flatRef = useRef(null);
+
+  // After the teacher sends in a demo chat, flip the receipt to "Read" shortly
+  // after, so it behaves like a real conversation.
+  const bumpDemoRead = () => {
+    if (isDemo) setTimeout(() => setOtherReadAt(Date.now()), 1200);
+  };
 
   useEffect(() => {
     if (isDemo) return;
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    }, ignorePermissionDenied);
     return unsub;
   }, [isDemo, chatId]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    const unsub = onSnapshot(doc(db, 'chats', chatId), (snap) => {
+      setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
+    }, ignorePermissionDenied);
+    return unsub;
+  }, [isDemo, chatId, otherUid]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    markChatRead(chatId, myUid).catch(() => {});
+  }, [isDemo, chatId, myUid, messages.length]);
 
   useEffect(() => {
     if (messages.length > 0) flatRef.current?.scrollToEnd({ animated: true });
@@ -441,6 +423,7 @@ function InlineChatView({ student, myUid, isDemo }) {
           { id: `local_${Date.now()}`, senderUid: myUid, text: trimmed, ts: Date.now() },
         ]);
         setText('');
+        bumpDemoRead();
       } else {
         setText('');
         await sendChatMessage({
@@ -459,21 +442,66 @@ function InlineChatView({ student, myUid, isDemo }) {
     }
   };
 
+  const handleMedia = async (getMedia) => {
+    if (uploading || sending) return;
+    const picked = await getMedia();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Photos', picked.error); return; }
+    const caption = text.trim();
+    setUploading(true);
+    try {
+      // Demo chats are local-only, so the on-device file URI displays fine
+      // without an upload. Real chats upload so the student can load it.
+      const url = isDemo ? picked.uri : await uploadChatMedia(picked.uri, chatId, picked.type);
+      if (isDemo) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `local_${Date.now()}`, senderUid: myUid, text: caption, mediaUrl: url, mediaType: picked.type, ts: Date.now() },
+        ]);
+        bumpDemoRead();
+      } else {
+        await sendChatMessage({
+          chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail,
+          text: caption, media: { url, type: picked.type },
+        });
+      }
+      setText('');
+    } catch (err) {
+      Alert.alert('Upload failed', err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={tabBarHeight}
+    >
       <FlatList
         ref={flatRef}
         data={messages}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatMessages}
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const isMe = item.senderUid === myUid;
+          const showReceipt = isMe && index === messages.length - 1;
+          const body = item.mediaUrl
+            ? <MediaMessageBubble item={item} isMe={isMe} />
+            : (
+              <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                  {item.text}
+                </Text>
+              </View>
+            );
+          if (!showReceipt) return body;
           return (
-            <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-              <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                {item.text}
-              </Text>
+            <View>
+              {body}
+              <Text style={styles.chatReceipt}>{receiptStatus(item, otherReadAt)}</Text>
             </View>
           );
         }}
@@ -485,6 +513,22 @@ function InlineChatView({ student, myUid, isDemo }) {
         }
       />
       <View style={styles.chatInputRow}>
+        <TouchableOpacity
+          style={styles.chatVideoBtn}
+          onPress={() => handleMedia(captureMedia)}
+          disabled={sending || uploading}
+        >
+          <Ionicons name="camera" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.chatVideoBtn}
+          onPress={() => handleMedia(pickMedia)}
+          disabled={sending || uploading}
+        >
+          {uploading
+            ? <ActivityIndicator color={COLORS.primary} size="small" />
+            : <Ionicons name="image" size={20} color={COLORS.primary} />}
+        </TouchableOpacity>
         <TextInput
           style={styles.chatInput}
           placeholder="Message..."
@@ -536,7 +580,7 @@ function TeacherDashboard() {
       const map = {};
       snap.docs.forEach((d) => { map[d.id] = d.data(); });
       setConvoMap(map);
-    });
+    }, ignorePermissionDenied);
   }, [myUid]);
 
   const loadStudents = async () => {
@@ -1173,6 +1217,8 @@ const styles = StyleSheet.create({
   chatInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm, padding: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   chatSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  chatVideoBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  chatReceipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // Chat modal (student side)
   chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

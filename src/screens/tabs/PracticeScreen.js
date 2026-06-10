@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image,
+  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -13,6 +13,17 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
+import { generateSetlist } from '../../lib/claude';
+import PerformanceMode from '../../components/PerformanceMode';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES, SPOTIFY_DISCOVERY,
+  SPOTIFY_EXPORT_ENABLED, isSpotifyConfigured, exportSetlistToSpotify,
+} from '../../lib/spotify';
+
+// Lets the OAuth popup hand control back to the app when Spotify redirects.
+WebBrowser.maybeCompleteAuthSession();
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -228,8 +239,42 @@ export default function PracticeScreen({ route }) {
 
   // Song library — songs the user wants to learn
   const [songs, setSongs] = useState([]);
+  const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
+  const [songSearch, setSongSearch] = useState('');          // filter the library
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
+
+  // Gig setlists — AI-built playlists saved inside the library
+  const [setlists, setSetlists] = useState([]);
+  const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
+  const [gigSetting, setGigSetting] = useState('');
+  const [gigAudience, setGigAudience] = useState('');
+  const [gigVibe, setGigVibe] = useState('');
+  const [gigSongCount, setGigSongCount] = useState(10);
+  const [generatingSetlist, setGeneratingSetlist] = useState(false);
+  const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+  const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
+  const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
+
+  // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
+  const [spotifyToken, setSpotifyToken] = useState(null);
+  const spotifyScopeRef = useRef('');
+  const [exportingSetlistId, setExportingSetlistId] = useState(null);
+  const pendingExportRef = useRef(null);
+  const spotifyRedirectUri = AuthSession.makeRedirectUri({ scheme: 'prova' });
+  const [spotifyRequest, spotifyResponse, promptSpotify] = AuthSession.useAuthRequest(
+    {
+      clientId: SPOTIFY_CLIENT_ID,
+      scopes: SPOTIFY_SCOPES,
+      usePKCE: true,
+      redirectUri: spotifyRedirectUri,
+      // Force the consent screen every time so the playlist permissions are
+      // always (re)granted — Spotify silently skips consent once authorized,
+      // which can leave a token without the needed scopes.
+      extraParams: { show_dialog: 'true' },
+    },
+    SPOTIFY_DISCOVERY,
+  );
 
   // Player profile — drives level-matched song recommendations
   const [instrument, setInstrument] = useState('Guitar');
@@ -384,6 +429,8 @@ export default function PracticeScreen({ route }) {
       setSessions(todaySessions);
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
+      setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
+      setTipLink(data?.tipLink || '');
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -405,6 +452,177 @@ export default function PracticeScreen({ route }) {
       Alert.alert('Error', "Couldn't save your song. Check your connection and try again.");
     }
   };
+
+  // Persist gig setlists to the user doc (same owner-only write as the library)
+  const saveSetlists = async (next) => {
+    setSetlists(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { setlists: next }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to save setlists:', err);
+      Alert.alert('Error', "Couldn't save your setlist. Check your connection and try again.");
+    }
+  };
+
+  // Ask Claude for a gig setlist, then save it as a playlist. Any suggested song
+  // not already in the library is also copied in, so previews/covers light up and
+  // the user can practise it.
+  const handleGenerateSetlist = async () => {
+    const setting = gigSetting.trim();
+    const audience = gigAudience.trim();
+    if (!setting || !audience) {
+      Alert.alert('Almost there', 'Describe the setting and the audience so Prova can tailor the setlist.');
+      return;
+    }
+    Keyboard.dismiss();
+    setGeneratingSetlist(true);
+    try {
+      const result = await generateSetlist({
+        instrument, level,
+        setting, audience,
+        vibe: gigVibe.trim() || null,
+        songCount: gigSongCount,
+        library: songs.map((s) => ({ title: s.title, artist: s.artist || '' })),
+      });
+
+      const inLibrary = (t, a) => songs.some(
+        (s) => s.title.toLowerCase() === (t || '').toLowerCase()
+          && (s.artist || '').toLowerCase() === (a || '').toLowerCase()
+      );
+      const picks = (result?.songs || [])
+        .filter((s) => s && s.title)
+        .map((s, i) => ({
+          id: `setsong_${Date.now()}_${i}`,
+          title: String(s.title).slice(0, 120),
+          artist: String(s.artist || '').slice(0, 120),
+          note: String(s.note || '').slice(0, 80),
+          fromLibrary: inLibrary(s.title, s.artist),
+        }));
+      if (picks.length === 0) {
+        Alert.alert('No setlist', "Prova couldn't build a setlist this time. Try adding more detail.");
+        return;
+      }
+
+      const setlist = {
+        id: `setlist_${Date.now()}`,
+        name: String(result?.name || 'Gig setlist').slice(0, 50),
+        setting, audience,
+        vibe: gigVibe.trim(),
+        songs: picks,
+        createdAt: new Date().toISOString(),
+      };
+      const nextSetlists = [setlist, ...setlists];
+      await saveSetlists(nextSetlists);
+
+      // Fold any brand-new songs into the library too.
+      const additions = picks
+        .filter((p) => !inLibrary(p.title, p.artist))
+        .map((p) => ({ id: p.id, title: p.title, artist: p.artist, addedAt: new Date().toISOString() }));
+      if (additions.length > 0) await saveSongs([...additions, ...songs]);
+
+      // Reset the form and jump straight into the new setlist.
+      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigSongCount(10);
+      setShowGigForm(false);
+      setViewingSetlist(setlist);
+    } catch (err) {
+      console.warn('Setlist generation failed:', err);
+      Alert.alert('Error', err.message?.includes('limit')
+        ? err.message
+        : "Couldn't build your setlist right now. Please try again.");
+    } finally {
+      setGeneratingSetlist(false);
+    }
+  };
+
+  const deleteSetlist = (id) => {
+    saveSetlists(setlists.filter((s) => s.id !== id));
+    setViewingSetlist(null);
+  };
+
+  // Closing the setlist detail stops any preview still playing and dismisses the
+  // open-in overlay, so nothing keeps running behind the scenes.
+  const closeSetlistDetail = () => {
+    stopSongPlayback();
+    setOpenInSong(null);
+    setViewingSetlist(null);
+  };
+
+  // ── Spotify export ──
+  // Build the real Spotify playlist and report what made it / what was skipped.
+  const runSpotifyExport = async (token, setlist) => {
+    setExportingSetlistId(setlist.id);
+    try {
+      const { url, addedCount, missed } = await exportSetlistToSpotify(token, setlist, spotifyScopeRef.current);
+      const missText = missed.length
+        ? `\n\n${missed.length} song${missed.length === 1 ? " wasn't" : "s weren't"} found on Spotify and ${missed.length === 1 ? 'was' : 'were'} skipped.`
+        : '';
+      Alert.alert(
+        'Added to Spotify ✅',
+        `"${setlist.name}" — ${addedCount} song${addedCount === 1 ? '' : 's'} added.${missText}`,
+        [
+          ...(url ? [{ text: 'Open in Spotify', onPress: () => Linking.openURL(url) }] : []),
+          { text: 'Done', style: 'cancel' },
+        ],
+      );
+    } catch (e) {
+      if (String(e.message).includes('expired')) setSpotifyToken(null);
+      Alert.alert('Spotify', e.message || 'Export failed. Please try again.');
+    } finally {
+      setExportingSetlistId(null);
+    }
+  };
+
+  const handleExportToSpotify = (setlist) => {
+    if (!isSpotifyConfigured()) {
+      Alert.alert(
+        'Spotify not connected yet',
+        'Spotify export needs a one-time setup (a free Spotify Developer Client ID). Ask your developer to finish connecting Spotify, then this button will work.',
+      );
+      return;
+    }
+    if (spotifyToken) { runSpotifyExport(spotifyToken, setlist); return; }
+    // Not signed in yet — remember the setlist and launch the Spotify login.
+    pendingExportRef.current = setlist;
+    setExportingSetlistId(setlist.id);
+    promptSpotify();
+  };
+
+  // When the Spotify login returns, exchange the code for a token (PKCE) and run
+  // any export the user was waiting on.
+  useEffect(() => {
+    if (!spotifyResponse) return;
+    if (spotifyResponse.type === 'success' && spotifyRequest?.codeVerifier) {
+      (async () => {
+        try {
+          const tokenResult = await AuthSession.exchangeCodeAsync(
+            {
+              clientId: SPOTIFY_CLIENT_ID,
+              code: spotifyResponse.params.code,
+              redirectUri: spotifyRedirectUri,
+              extraParams: { code_verifier: spotifyRequest.codeVerifier },
+            },
+            SPOTIFY_DISCOVERY,
+          );
+          console.log('[Spotify] granted scopes:', tokenResult.scope || '(none returned)');
+          spotifyScopeRef.current = tokenResult.scope || '';
+          setSpotifyToken(tokenResult.accessToken);
+          const pending = pendingExportRef.current;
+          pendingExportRef.current = null;
+          if (pending) await runSpotifyExport(tokenResult.accessToken, pending);
+          else setExportingSetlistId(null);
+        } catch (e) {
+          setExportingSetlistId(null);
+          pendingExportRef.current = null;
+          Alert.alert('Spotify', e.message || "Couldn't connect to Spotify.");
+        }
+      })();
+    } else {
+      // Dismissed or errored — clear the pending state.
+      setExportingSetlistId(null);
+      pendingExportRef.current = null;
+    }
+  }, [spotifyResponse]);
 
   const addSong = () => {
     const title = newTitle.trim();
@@ -594,6 +812,21 @@ export default function PracticeScreen({ route }) {
   );
   const songOfTheDay = getDailySong(instrument, level);
 
+  // Library shown alphabetically by title, optionally filtered by the search
+  // box, and collapsed to a few rows until expanded — keeps a big library from
+  // dominating the screen. Searching shows all matches (no collapse).
+  const SONGS_COLLAPSED = 4;
+  const songQuery = songSearch.trim().toLowerCase();
+  const sortedSongs = [...songs].sort((a, b) =>
+    (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+  );
+  const filteredSongs = songQuery
+    ? sortedSongs.filter((s) =>
+        (s.title || '').toLowerCase().includes(songQuery)
+        || (s.artist || '').toLowerCase().includes(songQuery))
+    : sortedSongs;
+  const shownSongs = songQuery || songsExpanded ? filteredSongs : filteredSongs.slice(0, SONGS_COLLAPSED);
+
   // Keyed by title|artist so a song shared across the library, recommendations,
   // and "song of the day" only fetches its cover once.
   const artKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
@@ -601,7 +834,7 @@ export default function PracticeScreen({ route }) {
   // Lazily pull cover art for every song currently on screen (iTunes Search).
   // The `undefined` guard means each unique song is fetched at most once.
   useEffect(() => {
-    const visible = [songOfTheDay, ...songs, ...recommendedSongs].filter(Boolean);
+    const visible = [songOfTheDay, ...songs, ...recommendedSongs, ...(viewingSetlist?.songs || [])].filter(Boolean);
     const seen = new Set();
     const missing = [];
     for (const s of visible) {
@@ -621,7 +854,7 @@ export default function PracticeScreen({ route }) {
       if (!cancelled) setArtwork((prev) => ({ ...prev, ...updates }));
     })();
     return () => { cancelled = true; };
-  }, [songs, instrument, level]);
+  }, [songs, instrument, level, viewingSetlist]);
 
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
@@ -699,6 +932,46 @@ export default function PracticeScreen({ route }) {
       </View>
     );
   };
+
+  // The "Open in Spotify / Apple Music" bottom sheet contents. Rendered either
+  // inside a standalone Modal (from the main screen) or as a plain overlay inside
+  // the setlist detail Modal — iOS can't stack one Modal on top of another, so we
+  // never nest Modals; we drop this View into whichever surface is already open.
+  const renderOpenInSheet = () => (
+    <View style={styles.playerBackdrop}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
+      <View style={styles.playerSheet}>
+        <View style={styles.playerHandle} />
+        <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
+        {!!openInSong?.artist && (
+          <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
+        )}
+        <Text style={styles.openInHint}>Play the full song in:</Text>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
+          onPress={() => openSongIn(openInSong, 'spotify')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-notes" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Spotify</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
+          onPress={() => openSongIn(openInSong, 'apple')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-note" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Apple Music</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
+          <Text style={styles.openInCancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1023,6 +1296,47 @@ export default function PracticeScreen({ route }) {
         </View>
         )}
 
+        {/* ── Gig Setlists ── */}
+        {tool === 'songs' && (
+        <View style={styles.card}>
+          <Text style={styles.songsHeading}>Gig Setlists</Text>
+          <Text style={styles.songsSub}>
+            Describe a gig and Prova builds you an ordered setlist — saved here as a playlist.
+          </Text>
+
+          <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.gigNewBtnText}>New gig setlist</Text>
+          </TouchableOpacity>
+
+          {setlists.length === 0 ? (
+            <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
+          ) : (
+            <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
+              {setlists.map((sl) => (
+                <TouchableOpacity
+                  key={sl.id}
+                  style={styles.setlistRow}
+                  activeOpacity={0.7}
+                  onPress={() => setViewingSetlist(sl)}
+                >
+                  <View style={styles.setlistIcon}>
+                    <Ionicons name="list" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.setlistName} numberOfLines={1}>{sl.name}</Text>
+                    <Text style={styles.setlistMeta} numberOfLines={1}>
+                      {sl.songs.length} songs · {sl.setting}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+        )}
+
         {/* ── Song Library ── */}
         {tool === 'songs' && (
         <View style={styles.card}>
@@ -1062,15 +1376,41 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           </View>
 
+          {/* Search box — appears once the library is big enough to need it */}
+          {songs.length > SONGS_COLLAPSED && (
+            <View style={styles.songSearchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.songSearchInput}
+                placeholder="Search your library"
+                placeholderTextColor={COLORS.textMuted}
+                value={songSearch}
+                onChangeText={setSongSearch}
+                returnKeyType="search"
+                autoCorrect={false}
+              />
+              {songSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setSongSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* List */}
           {songs.length === 0 ? (
             <View style={styles.songsEmpty}>
               <Ionicons name="musical-notes-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyTaskText}>No songs yet — add your first above</Text>
             </View>
+          ) : songQuery && filteredSongs.length === 0 ? (
+            <View style={styles.songsEmpty}>
+              <Ionicons name="search-outline" size={24} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyTaskText}>No songs match “{songSearch.trim()}”</Text>
+            </View>
           ) : (
             <View style={styles.songList}>
-              {songs.map((s) => {
+              {shownSongs.map((s) => {
                 const isToday = songOfTheDay && s.id === songOfTheDay.id;
                 return (
                   <View key={s.id} style={[styles.songRow, isToday && styles.songRowToday]}>
@@ -1090,6 +1430,22 @@ export default function PracticeScreen({ route }) {
                   </View>
                 );
               })}
+              {!songQuery && songs.length > SONGS_COLLAPSED && (
+                <TouchableOpacity
+                  style={styles.songsToggle}
+                  activeOpacity={0.7}
+                  onPress={() => setSongsExpanded((v) => !v)}
+                >
+                  <Text style={styles.songsToggleText}>
+                    {songsExpanded ? 'Show less' : `Show all ${songs.length} songs`}
+                  </Text>
+                  <Ionicons
+                    name={songsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1158,47 +1514,223 @@ export default function PracticeScreen({ route }) {
 
       </ScrollView>
 
-      {/* "Open in…" — play the full song in the user's music app */}
+      {/* "Open in…" — play the full song in the user's music app. Suppressed
+          while the setlist detail Modal is open (iOS can't stack Modals); in that
+          case the same sheet is rendered as an overlay inside the detail Modal. */}
       <Modal
-        visible={!!openInSong}
+        visible={!!openInSong && !viewingSetlist}
         transparent
         animationType="slide"
         onRequestClose={() => setOpenInSong(null)}
       >
+        {renderOpenInSheet()}
+      </Modal>
+
+      {/* "New gig setlist" — describe the gig, Prova builds the setlist */}
+      <Modal
+        visible={showGigForm}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
+      >
         <View style={styles.playerBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
-          <View style={styles.playerSheet}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => !generatingSetlist && setShowGigForm(false)}
+          />
+          <View style={styles.gigSheet}>
             <View style={styles.playerHandle} />
-            <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
-            {!!openInSong?.artist && (
-              <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
+            <Text style={styles.gigSheetTitle}>Plan a gig</Text>
+            <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
+
+            <Text style={styles.gigLabel}>Setting</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. Friday night bar, wedding reception, coffee shop"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigSetting}
+              onChangeText={setGigSetting}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Audience</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. 20–40s, up for dancing; mixed-age family crowd"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigAudience}
+              onChangeText={setGigAudience}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Vibe (optional)</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. laid-back acoustic, high-energy rock"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigVibe}
+              onChangeText={setGigVibe}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Number of songs</Text>
+            <View style={styles.gigStepper}>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.max(3, n - 1))}
+                disabled={generatingSetlist || gigSongCount <= 3}
+              >
+                <Ionicons name="remove" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+              <Text style={styles.gigStepValue}>{gigSongCount}</Text>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.min(30, n + 1))}
+                disabled={generatingSetlist || gigSongCount >= 30}
+              >
+                <Ionicons name="add" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.gigGenerateBtn, generatingSetlist && { opacity: 0.7 }]}
+              onPress={handleGenerateSetlist}
+              disabled={generatingSetlist}
+              activeOpacity={0.85}
+            >
+              {generatingSetlist ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.gigGenerateText}>Building your setlist…</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Text style={styles.gigGenerateText}>Generate setlist</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {!generatingSetlist && (
+              <TouchableOpacity style={styles.openInCancel} onPress={() => setShowGigForm(false)} activeOpacity={0.7}>
+                <Text style={styles.openInCancelText}>Cancel</Text>
+              </TouchableOpacity>
             )}
-            <Text style={styles.openInHint}>Play the full song in:</Text>
-
-            <TouchableOpacity
-              style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
-              onPress={() => openSongIn(openInSong, 'spotify')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="musical-notes" size={20} color="#fff" />
-              <Text style={styles.openInBtnText}>Spotify</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
-              onPress={() => openSongIn(openInSong, 'apple')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="musical-note" size={20} color="#fff" />
-              <Text style={styles.openInBtnText}>Apple Music</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
-              <Text style={styles.openInCancelText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* Setlist detail — the ordered songs, each previewable + openable */}
+      <Modal
+        visible={!!viewingSetlist}
+        transparent
+        animationType="slide"
+        onRequestClose={closeSetlistDetail}
+      >
+        <View style={styles.detailBackdrop}>
+          <View style={styles.detailSheet}>
+            <View style={styles.playerHandle} />
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle} numberOfLines={2}>{viewingSetlist?.name}</Text>
+                <Text style={styles.detailMeta} numberOfLines={2}>
+                  {viewingSetlist?.songs?.length} songs · {viewingSetlist?.setting}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closeSetlistDetail} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={26} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: SPACING.md }}>
+              {viewingSetlist?.songs?.map((s, i) => (
+                <View key={s.id || i} style={styles.detailRow}>
+                  <Text style={styles.detailNum}>{i + 1}</Text>
+                  {renderArtwork(s, 44, 8)}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailSongTitle} numberOfLines={1}>{s.title}</Text>
+                    {!!s.artist && <Text style={styles.detailSongArtist} numberOfLines={1}>{s.artist}</Text>}
+                    {!!s.note && <Text style={styles.detailSongNote} numberOfLines={1}>{s.note}</Text>}
+                  </View>
+                  {renderSongControls(s, 24)}
+                </View>
+              ))}
+            </ScrollView>
+
+            {viewingSetlist?.songs?.length > 0 && (
+              <TouchableOpacity
+                style={styles.goLiveBtn}
+                onPress={() => { const sl = viewingSetlist; setViewingSetlist(null); setPerformingSetlist(sl); }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="radio" size={18} color={COLORS.text} />
+                <Text style={styles.goLiveText}>Go live — perform this set</Text>
+              </TouchableOpacity>
+            )}
+
+            {SPOTIFY_EXPORT_ENABLED && (
+              <TouchableOpacity
+                style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
+                onPress={() => handleExportToSpotify(viewingSetlist)}
+                disabled={exportingSetlistId === viewingSetlist?.id}
+                activeOpacity={0.85}
+              >
+                {exportingSetlistId === viewingSetlist?.id ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="musical-notes" size={18} color="#fff" />
+                    <Text style={styles.spotifyExportText}>Create this playlist in Spotify</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.detailDeleteBtn}
+              onPress={() => Alert.alert(
+                'Delete setlist?',
+                `"${viewingSetlist?.name}" will be removed. Songs stay in your library.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteSetlist(viewingSetlist.id) },
+                ]
+              )}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+              <Text style={styles.detailDeleteText}>Delete setlist</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Open-in sheet rendered in-place (not a nested Modal) so it can sit
+              on top of the setlist detail without iOS dropping it. */}
+          {!!openInSong && (
+            <View style={StyleSheet.absoluteFill}>{renderOpenInSheet()}</View>
+          )}
+        </View>
+      </Modal>
+
+      {performingSetlist && (
+        <PerformanceMode
+          setlist={performingSetlist}
+          tipLink={tipLink}
+          onUpdateSongs={(newSongs) => {
+            const next = { ...performingSetlist, songs: newSongs };
+            setPerformingSetlist(next);
+            saveSetlists(setlists.map((s) => (s.id === next.id ? next : s)));
+          }}
+          onClose={() => { stopSongPlayback(); setPerformingSetlist(null); }}
+          playingSongId={playingSongId}
+          loadingSongId={loadingSongId}
+          onTogglePreview={toggleSongPlayback}
+          onStopPreview={stopSongPlayback}
+          onOpenSpotify={(song) => openSongIn(song, 'spotify')}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1320,6 +1852,78 @@ const styles = StyleSheet.create({
   songsHeading: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   songsSub: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.lg },
   attribution: { color: COLORS.textMuted, fontSize: 11, lineHeight: 15, marginTop: SPACING.md },
+
+  // ── Gig setlists ──
+  gigNewBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
+  },
+  gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  gigEmpty: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' },
+  setlistRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  setlistIcon: {
+    width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.card,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  setlistName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  setlistMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+
+  // Gig form bottom sheet
+  gigSheet: {
+    backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: SPACING.lg, paddingBottom: SPACING.xl, gap: SPACING.xs,
+  },
+  gigSheetTitle: { color: COLORS.text, fontWeight: '800', fontSize: 20, textAlign: 'center' },
+  gigSheetSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.sm },
+  gigLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginTop: SPACING.sm, marginBottom: 4 },
+  gigStepper: { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, alignSelf: 'flex-start', marginTop: 4 },
+  gigStepBtn: {
+    width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border,
+  },
+  gigStepValue: { color: COLORS.text, fontWeight: '800', fontSize: 20, minWidth: 28, textAlign: 'center' },
+  gigGenerateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.lg,
+  },
+  gigGenerateText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  // Setlist detail sheet
+  detailBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  detailSheet: {
+    backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: SPACING.lg, paddingBottom: SPACING.xl,
+  },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.md },
+  detailTitle: { color: COLORS.text, fontWeight: '800', fontSize: 19 },
+  detailMeta: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  detailRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  detailNum: { color: COLORS.textMuted, fontWeight: '700', fontSize: 13, width: 18, textAlign: 'center' },
+  detailSongTitle: { color: COLORS.text, fontWeight: '600', fontSize: 15 },
+  detailSongArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  detailSongNote: { color: COLORS.accent, fontSize: 11, marginTop: 2 },
+  spotifyExportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: '#1DB954', borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
+  },
+  spotifyExportText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  goLiveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
+  },
+  goLiveText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
+  detailDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    paddingVertical: 12, marginTop: SPACING.sm,
+  },
+  detailDeleteText: { color: COLORS.error, fontWeight: '600', fontSize: 14 },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
   recHeading: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   recLevelTag: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: 'auto' },
@@ -1368,6 +1972,17 @@ const styles = StyleSheet.create({
   songAddBtnDisabled: { backgroundColor: COLORS.border },
   songsEmpty: { alignItems: 'center', paddingVertical: SPACING.lg },
   songList: { gap: SPACING.sm },
+  songSearchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md,
+  },
+  songSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
+  songsToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 10, marginTop: 2,
+  },
+  songsToggleText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   songRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,

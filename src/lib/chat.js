@@ -14,21 +14,45 @@ export function otherUidFromChatId(chatId, myUid) {
   return chatId.split('_').find((u) => u !== myUid);
 }
 
+// Marks the chat as read up to now for this user, so the other participant can
+// see "Read" under the messages they sent. Stored as a lastRead map on the
+// chat doc, keyed by uid.
+export async function markChatRead(chatId, uid) {
+  await setDoc(
+    doc(db, 'chats', chatId),
+    { lastRead: { [uid]: serverTimestamp() } },
+    { merge: true },
+  );
+}
+
+// Returns 'Read' | 'Sent' for one of MY messages, given the other user's
+// lastRead value (a Firestore Timestamp or ms number) and the message's own
+// timestamp. Used to render the receipt under the last sent message.
+export function receiptStatus(message, otherReadAt) {
+  const toMs = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : (typeof v === 'number' ? v : null));
+  const readMs = toMs(otherReadAt);
+  const msgMs = toMs(message.timestamp) ?? (typeof message.ts === 'number' ? message.ts : null);
+  return readMs != null && msgMs != null && readMs >= msgMs ? 'Read' : 'Sent';
+}
+
 // Sends a message and updates both participants' conversation lists so the
 // thread shows up in everyone's Messages views regardless of where it started.
-export async function sendChatMessage({ chatId, senderUid, senderEmail, otherUid, otherEmail, text }) {
-  const trimmed = text.trim();
-  if (!trimmed) return;
+export async function sendChatMessage({ chatId, senderUid, senderEmail, otherUid, otherEmail, text, media }) {
+  const trimmed = (text || '').trim();
+  const hasMedia = !!(media && media.url);
+  if (!trimmed && !hasMedia) return;
 
   await addDoc(collection(db, 'chats', chatId, 'messages'), {
     senderUid,
     text: trimmed,
+    ...(hasMedia ? { mediaUrl: media.url, mediaType: media.type || 'image' } : {}),
     timestamp: serverTimestamp(),
   });
 
+  const preview = hasMedia ? (media.type === 'video' ? '🎥 Video' : '📷 Photo') : trimmed;
   const meta = {
     chatId,
-    lastMessage: trimmed,
+    lastMessage: preview,
     lastMessageAt: serverTimestamp(),
     lastSenderUid: senderUid,
   };

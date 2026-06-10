@@ -3,13 +3,16 @@
     "name": "prova",
     "slug": "prova",
     "version": "1.0.0",
+    "scheme": "prova",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument."
+        "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument and record video messages.",
+        "NSPhotoLibraryUsageDescription": "Prova lets you attach photos and videos to your chats.",
+        "NSCameraUsageDescription": "Prova uses the camera to take photos and record videos for your chats."
       }
     },
     "android": {
@@ -22,6 +25,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Prova lets you attach photos and videos to your chats.",
+          "cameraPermission": "Prova uses the camera to take photos and record videos for your chats."
+        }
+      ]
+    ]
   }
 }

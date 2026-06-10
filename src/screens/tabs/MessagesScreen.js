@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
   Platform, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
-  onSnapshot, orderBy,
+  onSnapshot, orderBy, doc,
 } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
-import { makeChatId, otherUidFromChatId, sendChatMessage } from '../../lib/chat';
+import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
+import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -30,17 +33,53 @@ function formatTime(ts) {
 // ─── Chat View ────────────────────────────────────────────────────────────────
 
 function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
+
+  // Watch the other participant's read marker.
+  useEffect(() => {
+    return onSnapshot(doc(db, 'chats', chatId), (snap) => {
+      setOtherReadAt(snap.data()?.lastRead?.[otherUid] || null);
+    }, ignorePermissionDenied);
+  }, [chatId, otherUid]);
+
+  // Mark this chat read whenever it's open and new messages arrive.
+  useEffect(() => {
+    markChatRead(chatId, myUid).catch(() => {});
+  }, [chatId, myUid, messages.length]);
+
+  const handleMedia = async (getMedia) => {
+    if (uploading || sending) return;
+    const picked = await getMedia();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Photos', picked.error); return; }
+    const caption = text.trim();
+    setUploading(true);
+    try {
+      const url = await uploadChatMedia(picked.uri, chatId, picked.type);
+      await sendChatMessage({
+        chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail,
+        text: caption, media: { url, type: picked.type },
+      });
+      setText('');
+    } catch (err) {
+      Alert.alert('Upload failed', err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
     return onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, ignorePermissionDenied);
   }, [chatId]);
 
   useEffect(() => {
@@ -85,7 +124,11 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
         <View style={{ width: 90 }} />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={tabBarHeight}
+      >
         <FlatList
           ref={flatRef}
           data={messages}
@@ -98,18 +141,44 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
               <Text style={styles.emptyChatText}>No messages yet — say hello!</Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isMe = item.senderUid === myUid;
+            const showReceipt = isMe && index === messages.length - 1;
+            const body = item.mediaUrl
+              ? <MediaMessageBubble item={item} isMe={isMe} />
+              : (
+                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                  <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                    {item.text}
+                  </Text>
+                </View>
+              );
+            if (!showReceipt) return body;
             return (
-              <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                  {item.text}
-                </Text>
+              <View>
+                {body}
+                <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>
               </View>
             );
           }}
         />
         <View style={styles.inputRow}>
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={() => handleMedia(captureMedia)}
+            disabled={sending || uploading}
+          >
+            <Ionicons name="camera" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={() => handleMedia(pickMedia)}
+            disabled={sending || uploading}
+          >
+            {uploading
+              ? <ActivityIndicator color={COLORS.primary} size="small" />
+              : <Ionicons name="image" size={20} color={COLORS.primary} />}
+          </TouchableOpacity>
           <TextInput
             style={styles.chatInput}
             placeholder="Message..."
@@ -341,6 +410,8 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm, padding: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
   chatInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 22, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  attachBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  receipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // New chat modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

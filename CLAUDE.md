@@ -86,9 +86,14 @@ users/{uid}
   practicePlan: { weeklyPlan: { monday: {...}, ... } }
   planGeneratedAt: ISO string
   streak: number
+  provaScore: number (ever-increasing XP, banked per session — see src/lib/score.js)
   totalMinutes: number
   lastSessionRating: string
   lastSessionDate: ISO string
+  lastChallengeDate: ISO string (daily challenge — src/constants/challenges.js)
+  songLibrary: { id, title, artist, addedAt }[]
+  setlists: { id, name, setting, audience, vibe, createdAt,
+              songs: { id, title, artist, note, fromLibrary }[] }[]
 ```
 
 ## Environment Variables
@@ -110,15 +115,15 @@ Scan the QR code with Expo Go (SDK 54) on your phone.
 - [x] Progress screen (streak, hours, level)
 
 ## Phase 2 Features (not yet built)
-- Prova Score (single number out of 1000)
+- [x] Prova Score — ever-increasing XP score, banked per session (`src/lib/score.js`)
 - Song DNA matching
 - Voice check-in after sessions
 - Backing track library
-- Pre-gig mode
+- [x] Pre-gig mode — AI gig setlist generator + library playlists (`generateSetlist`)
 - Community + leaderboards
 - Teacher mode
 - Milestone certificates
-- Daily challenge (streak-saver)
+- [x] Daily challenge (streak-saver) — bonus task on Today, banks points + keeps the streak (`src/constants/challenges.js`)
 - Push notification reminders
 
 ## GitHub

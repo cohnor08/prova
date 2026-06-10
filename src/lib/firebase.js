@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
@@ -26,3 +27,11 @@ if (getApps().length === 0) {
 
 export { app, auth };
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+// onSnapshot error handler: a snapshot listener that's still attached when the
+// user signs out fails with permission-denied — that's expected, so swallow it
+// and only surface genuine errors.
+export function ignorePermissionDenied(err) {
+  if (err?.code !== 'permission-denied') console.warn('Snapshot error:', err);
+}

@@ -8,6 +8,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read:  if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
+      // A teacher who has this student may update ONLY their assignedTasks
+      // (so the teacher can assign tasks to the student's own record).
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedTasks'])
+        && (userId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.students);
     }
 
     // Session history — written by the app when a session is rated,
@@ -26,6 +31,15 @@ service cloud.firestore {
       );
     }
 
+    // Chat-level state (read receipts) — a `lastRead` map keyed by uid.
+    // Either participant may read both sides and write their own marker.
+    match /chats/{chatId} {
+      allow read, write: if request.auth != null && (
+        chatId.matches(request.auth.uid + '_.*') ||
+        chatId.matches('.*_' + request.auth.uid)
+      );
+    }
+
     // Conversation metadata — used to list a user's chats ───────────────────
     // Each participant can read their own list; either participant can write
     // (so sending a message updates both users' conversation lists).
@@ -36,6 +50,25 @@ service cloud.firestore {
         chatId.matches(request.auth.uid + '_.*') ||
         chatId.matches('.*_' + request.auth.uid)
       );
+    }
+
+    // Live gigs (audience song requests) ─────────────────────────────────────
+    // The gig doc is public-read so the audience web page can load the setlist
+    // without signing in; only the owner can create/change/end it. Anyone may
+    // submit a request (anonymous audience); only the owner reads them back.
+    match /liveGigs/{gigId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      match /requests/{reqId} {
+        allow create: if request.resource.data.keys().hasOnly(['title', 'artist', 'ts'])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 120;
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/liveGigs/$(gigId)).data.ownerUid == request.auth.uid;
+      }
     }
 
     // Backend-only collections ───────────────────────────────────────────────

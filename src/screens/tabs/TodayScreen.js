@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { adjustSessionFromRating } from '../../lib/claude';
+import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
+import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
+import { taskPoints, completionBonus, displayScore, formatScore, scoreRank } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+// Demo: show a sample teacher-assigned task on Today so the feature is visible
+// without a real teacher assigning one. Set to false before launch.
+const SEED_DEMO_TEACHER_TASK = true;
 
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
@@ -43,9 +49,26 @@ function SkeletonBlock({ width, height, style }) {
   return <Animated.View style={[{ width, height, borderRadius: 8, backgroundColor: COLORS.card, opacity: anim }, style]} />;
 }
 
+// Opens a YouTube search for the exercise. We build a search URL (never a
+// hard-coded video link) so it always resolves to real, current results.
+function ReferenceLink({ reference }) {
+  if (!reference) return null;
+  const open = () => {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(reference)}`;
+    Linking.openURL(url).catch(() => {});
+  };
+  return (
+    <TouchableOpacity style={styles.refRow} onPress={open} activeOpacity={0.7}>
+      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+      <Text style={styles.refText} numberOfLines={1}>Watch: {reference}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function SessionCard({ session, onComplete, completed, onStart }) {
   const [timerActive, setTimerActive] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
+  const [expanded, setExpanded] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -66,16 +89,24 @@ function SessionCard({ session, onComplete, completed, onStart }) {
     <View style={[styles.card, completed && styles.cardCompleted]}>
       <View style={[styles.categoryBar, { backgroundColor: categoryColor }]} />
       <View style={styles.cardContent}>
-        <View style={styles.cardHeader}>
-          <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
-            <Text style={[styles.categoryText, { color: categoryColor }]}>
-              {session.category.replace('_', ' ').toUpperCase()}
-            </Text>
+        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.7}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
+              <Text style={[styles.categoryText, { color: categoryColor }]}>
+                {session.category.replace('_', ' ').toUpperCase()}
+              </Text>
+            </View>
+            <Text style={styles.duration}>{session.duration} min</Text>
           </View>
-          <Text style={styles.duration}>{session.duration} min</Text>
-        </View>
-        <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted]}>{session.title}</Text>
+          <View style={styles.sessionTitleRow}>
+            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>{session.title}</Text>
+            {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
+          </View>
+        </TouchableOpacity>
+        {expanded && (<>
         <Text style={styles.sessionDesc}>{session.description}</Text>
+        <ReferenceLink reference={session.reference} />
         {!completed && (
           <View>
             {timerActive && (
@@ -117,6 +148,7 @@ function SessionCard({ session, onComplete, completed, onStart }) {
             <Text style={styles.completedBadge}>Completed</Text>
           </View>
         )}
+        </>)}
       </View>
     </View>
   );
@@ -133,6 +165,7 @@ function PlanCard({ session }) {
       <View style={styles.planRight}>
         <Text style={styles.sessionTitle}>{session.title}</Text>
         <Text style={styles.sessionDesc}>{session.description}</Text>
+        <ReferenceLink reference={session.reference} />
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionDuration}>{session.duration} min</Text>
           <Text style={[styles.sessionCategory, { color }]}>{session.category.replace('_', ' ')}</Text>
@@ -150,6 +183,9 @@ export default function TodayScreen({ navigation }) {
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
+  const [regenerating, setRegenerating] = useState(false);
+  const [demoTaskDone, setDemoTaskDone] = useState(false);
+  const [expandedTask, setExpandedTask] = useState(null);
   const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => { loadData(); }, []);
@@ -207,9 +243,55 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  const runRegenerate = async () => {
+    if (regenerating || !userData) return;
+    setRegenerating(true);
+    try {
+      const uid = auth.currentUser.uid;
+      const newPlan = await generatePracticePlan(userData);
+      await setDoc(doc(db, 'users', uid), {
+        practicePlan: newPlan,
+        planGeneratedAt: new Date().toISOString(),
+      }, { merge: true });
+      const weeklyPlan = newPlan?.weeklyPlan || {};
+      setPlan(weeklyPlan);
+      setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
+      setCompletedIds([]);
+      Alert.alert('Done!', 'Your fresh practice plan is ready.');
+    } catch (err) {
+      Alert.alert('Could not regenerate', err.message || 'Please try again.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleRegeneratePlan = () => {
+    Alert.alert(
+      'Regenerate plan?',
+      'Build a fresh practice plan from your current settings. This replaces your existing plan.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Regenerate', onPress: runRegenerate },
+      ]
+    );
+  };
+
   const handleComplete = (sessionId) => {
+    if (completedIds.includes(sessionId)) return;
     const next = [...completedIds, sessionId];
     setCompletedIds(next);
+
+    // Bank this task's own points immediately, based on how long + hard it is.
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+      const pts = taskPoints(session);
+      const newScore = displayScore(userData) + pts;
+      setUserData(p => ({ ...p, provaScore: newScore }));
+      const uid = auth.currentUser?.uid;
+      if (uid) updateDoc(doc(db, 'users', uid), { provaScore: newScore }).catch(() => {});
+      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+    }
+
     if (sessions.every(s => next.includes(s.id))) setShowRating(true);
   };
 
@@ -228,6 +310,12 @@ export default function TodayScreen({ navigation }) {
       const categories = {};
       sessions.forEach(s => { categories[s.category] = (categories[s.category] || 0) + s.duration; });
       const dateKey = new Date().toISOString().split('T')[0];
+      // Per-task points are already banked on completion; here we add the
+      // end-of-day bonus (finish reward + streak + quality rating).
+      const earnedPoints = completionBonus(newStreak, rating);
+      const prevScore = displayScore(userData);
+      const newScore = prevScore + earnedPoints;
+      const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
       await Promise.all([
         updateDoc(doc(db, 'users', uid), {
           lastSessionRating: rating,
@@ -235,6 +323,7 @@ export default function TodayScreen({ navigation }) {
           totalMinutes: increment(sessionMins),
           totalSessions: increment(1),
           streak: newStreak,
+          provaScore: newScore,
         }),
         setDoc(doc(db, 'sessionHistory', uid, 'logs', dateKey), {
           date: dateKey,
@@ -244,6 +333,13 @@ export default function TodayScreen({ navigation }) {
           rating,
         }, { merge: true }),
       ]);
+      const newRank = scoreRank(newScore);
+      Alert.alert(
+        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : `+${formatScore(earnedPoints)} finish bonus! 🎸`,
+        rankedUp
+          ? `Session complete — you leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
+          : `Session complete — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+      );
       adjustSessionFromRating(sessions, rating, null)
         .then(adjusted => updateDoc(doc(db, 'users', uid), {
           [`practicePlan.weeklyPlan.${TODAY_NAME}.sessions`]: adjusted,
@@ -254,12 +350,78 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  // Daily challenge — banks bonus points and counts as activity for the day, so
+  // it keeps the streak alive even without a full session (the "streak-saver").
+  const handleCompleteChallenge = async () => {
+    if (challengeDoneToday) return;
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const now = new Date();
+      const todayStr = now.toDateString();
+      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+      const lastStr = userData?.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
+      const newStreak = lastStr === todayStr
+        ? (userData?.streak || 1)
+        : lastStr === yesterdayStr ? (userData?.streak || 0) + 1 : 1;
+      const prevScore = displayScore(userData);
+      const newScore = prevScore + CHALLENGE_POINTS;
+      const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
+
+      const updates = {
+        provaScore: newScore,
+        lastChallengeDate: now.toISOString(),
+        lastSessionDate: now.toISOString(), // counts as activity → preserves streak
+        streak: newStreak,
+      };
+      await updateDoc(doc(db, 'users', uid), updates);
+      setUserData((p) => ({ ...p, ...updates }));
+
+      const newRank = scoreRank(newScore);
+      Alert.alert(
+        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : 'Challenge complete! 🔥',
+        `+${formatScore(CHALLENGE_POINTS)} Prova points${newStreak > 1 ? ` · 🔥 ${newStreak}-day streak kept!` : ''}.`,
+      );
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', "Couldn't save your challenge. Please try again.");
+    }
+  };
+
+  // Mark a teacher-assigned task complete (writes back so the teacher sees it).
+  const completeAssignedTask = async (taskId) => {
+    if (taskId === 'demo_teacher_task') { setDemoTaskDone(true); return; }
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const next = (userData?.assignedTasks || []).map((t) =>
+      t.id === taskId ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+    );
+    setUserData((p) => ({ ...p, assignedTasks: next }));
+    try {
+      await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't save. Please try again.");
+    }
+  };
+
   const isToday = selectedDay === TODAY_NAME;
+  const assignedTasks = (userData?.assignedTasks?.length)
+    ? userData.assignedTasks
+    : (SEED_DEMO_TEACHER_TASK ? [{
+        id: 'demo_teacher_task',
+        title: 'Practice the F barre chord transition',
+        description: 'Switch F → C cleanly, 8 reps at 70 BPM. Film one take for me.',
+        completed: demoTaskDone,
+      }] : []);
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
+
+  const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
+  const challengeDoneToday = !!userData?.lastChallengeDate
+    && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
 
   if (loading) {
     return (
@@ -280,9 +442,25 @@ export default function TodayScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
 
         <Text style={styles.date}>{todayLabel.toUpperCase()}</Text>
-        <Text style={styles.title}>
-          {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>
+            {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+          </Text>
+          <TouchableOpacity
+            style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
+            onPress={handleRegeneratePlan}
+            disabled={regenerating}
+            activeOpacity={0.8}
+          >
+            {regenerating
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <Ionicons name="refresh" size={15} color={COLORS.primary} />}
+            <Text style={styles.regenBtnText}>{regenerating ? 'Building…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
+        </View>
+        {regenerating && (
+          <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
+        )}
 
         {/* Day picker */}
         <ScrollView
@@ -330,6 +508,68 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Text style={styles.progressLabel}>{completedIds.length} of {sessions.length} completed</Text>
           </>
+        )}
+
+        {/* Daily challenge — bonus task that keeps the streak alive */}
+        {isToday && (
+          <View style={styles.challengeCard}>
+            <View style={styles.challengeHeader}>
+              <View style={styles.challengeIcon}>
+                <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
+              </View>
+              <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
+              <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>
+            </View>
+            <Text style={styles.challengeTitle}>{dailyChallenge.title}</Text>
+            <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
+            <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
+            {challengeDoneToday ? (
+              <View style={styles.challengeDone}>
+                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={styles.challengeBtnText}>Mark complete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Tasks assigned by the student's teacher */}
+        {isToday && assignedTasks.length > 0 && (
+          <View style={styles.teacherCard}>
+            <View style={styles.teacherHeader}>
+              <Ionicons name="school" size={16} color={COLORS.primary} />
+              <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+            </View>
+            {assignedTasks.map((t) => {
+              const open = expandedTask === t.id;
+              return (
+                <View key={t.id} style={styles.teacherTask}>
+                  <View style={styles.teacherTaskRow}>
+                    <TouchableOpacity
+                      style={styles.teacherTaskMain}
+                      onPress={() => setExpandedTask(open ? null : t.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+                      <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
+                    </TouchableOpacity>
+                    {t.completed ? (
+                      <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+                    ) : (
+                      <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
+                        <Text style={styles.teacherDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {open && !!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
+                </View>
+              );
+            })}
+          </View>
         )}
 
         {/* Sessions */}
@@ -412,7 +652,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', flexShrink: 1 },
+  regenBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999,
+    backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '40',
+  },
+  regenBtnDisabled: { opacity: 0.6 },
+  regenBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: -SPACING.sm, marginBottom: SPACING.md, fontStyle: 'italic' },
 
   dayScroll: { marginHorizontal: -SPACING.xl, marginBottom: SPACING.lg },
   dayScrollContent: { paddingHorizontal: SPACING.xl, gap: SPACING.sm },
@@ -432,6 +681,44 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
   progressLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginBottom: SPACING.lg },
 
+  // Daily challenge card
+  challengeCard: {
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.accent + '55',
+  },
+
+  // Teacher-assigned tasks
+  teacherCard: {
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.primary + '55',
+  },
+  teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
+  teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
+  teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
+  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
+  teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  challengeIcon: {
+    width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  challengeKicker: { flex: 1, color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
+  challengeTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
+  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
+  challengeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 12,
+  },
+  challengeBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  challengeDone: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 4 },
+  challengeDoneText: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
+
   card: { backgroundColor: COLORS.card, borderRadius: 16, marginBottom: SPACING.md, flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   cardCompleted: { opacity: 0.45 },
   categoryBar: { width: 4 },
@@ -441,8 +728,11 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
+  sessionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
-  sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
+  sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.sm },
+  refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
+  refText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
   timerProgress: { height: 3, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: SPACING.sm, overflow: 'hidden' },
   timerProgressFill: { height: '100%', borderRadius: 2 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
