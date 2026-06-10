@@ -7,9 +7,11 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from './src/hooks/useAuth';
+import { useMaintenance } from './src/hooks/useMaintenance';
 import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS } from './src/constants/theme';
 
+import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import SignupScreen from './src/screens/auth/SignupScreen';
@@ -96,14 +98,24 @@ function AuthStack() {
 
 export default function App() {
   const { user, onboardingComplete, setOnboardingComplete, role, loading } = useAuth();
+  const { isUnderMaintenance, message, loading: maintenanceLoading } = useMaintenance();
 
-  if (loading) {
+  if (loading || maintenanceLoading) {
     return (
       <View style={styles.loading}>
         <StatusBar style="light" />
         <Text style={styles.loadingLogo}>PROVA</Text>
         <ActivityIndicator color={COLORS.primary} size="small" />
       </View>
+    );
+  }
+
+  if (isUnderMaintenance) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <MaintenanceScreen message={message} />
+      </>
     );
   }
 
