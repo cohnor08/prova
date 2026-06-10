@@ -68,6 +68,7 @@ function ReferenceLink({ reference }) {
 function SessionCard({ session, onComplete, completed, onStart }) {
   const [timerActive, setTimerActive] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
+  const [expanded, setExpanded] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -88,15 +89,22 @@ function SessionCard({ session, onComplete, completed, onStart }) {
     <View style={[styles.card, completed && styles.cardCompleted]}>
       <View style={[styles.categoryBar, { backgroundColor: categoryColor }]} />
       <View style={styles.cardContent}>
-        <View style={styles.cardHeader}>
-          <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
-            <Text style={[styles.categoryText, { color: categoryColor }]}>
-              {session.category.replace('_', ' ').toUpperCase()}
-            </Text>
+        <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.7}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
+              <Text style={[styles.categoryText, { color: categoryColor }]}>
+                {session.category.replace('_', ' ').toUpperCase()}
+              </Text>
+            </View>
+            <Text style={styles.duration}>{session.duration} min</Text>
           </View>
-          <Text style={styles.duration}>{session.duration} min</Text>
-        </View>
-        <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted]}>{session.title}</Text>
+          <View style={styles.sessionTitleRow}>
+            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>{session.title}</Text>
+            {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
+          </View>
+        </TouchableOpacity>
+        {expanded && (<>
         <Text style={styles.sessionDesc}>{session.description}</Text>
         <ReferenceLink reference={session.reference} />
         {!completed && (
@@ -140,6 +148,7 @@ function SessionCard({ session, onComplete, completed, onStart }) {
             <Text style={styles.completedBadge}>Completed</Text>
           </View>
         )}
+        </>)}
       </View>
     </View>
   );
@@ -706,6 +715,7 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
+  sessionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
   sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.sm },
   refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
