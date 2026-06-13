@@ -479,7 +479,8 @@ function LeaderboardRow({ entry, rank, isMe }) {
 
 function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
   const [tab, setTab] = useState('world');
-  const [open, setOpen] = useState(true); // collapsible section
+  const [open, setOpen] = useState(true);     // collapsible section
+  const [showAll, setShowAll] = useState(false); // expand the row list past the top few
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
@@ -508,6 +509,14 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
   const rows = tab === 'world' ? worldBoard : friendsBoard;
   const isEmpty = rows.length === 0;
 
+  // Collapse long boards to the top few, with a "Show all" toggle. If the
+  // current user is ranked below the cutoff, pin their row so they can always
+  // see where they stand.
+  const LB_COLLAPSED = 3;
+  const myIndex = rows.findIndex(e => e.uid === myUid);
+  const visibleRows = showAll ? rows : rows.slice(0, LB_COLLAPSED);
+  const pinMe = !showAll && myIndex >= LB_COLLAPSED;
+
   return (
     <View style={styles.section}>
       {/* Collapsible header */}
@@ -521,7 +530,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
           {/* Tab toggle */}
           <View style={styles.lbTabs}>
             {['world', 'friends'].map(t => (
-              <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => setTab(t)}>
+              <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => { setTab(t); setShowAll(false); }}>
                 <Ionicons name={t === 'world' ? 'globe-outline' : 'people-outline'} size={14} color={tab === t ? COLORS.text : COLORS.textMuted} style={{ marginRight: 5 }} />
                 <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]}>
                   {t === 'world' ? 'World' : 'Friends'}
@@ -540,11 +549,27 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
                 </Text>
               </View>
             ) : (
-              rows.map((entry, i) => (
-                <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
-              ))
+              <>
+                {visibleRows.map((entry, i) => (
+                  <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
+                ))}
+                {pinMe && (
+                  <>
+                    <View style={styles.lbGap}><Text style={styles.lbGapText}>•••</Text></View>
+                    <LeaderboardRow entry={rows[myIndex]} rank={myIndex + 1} isMe />
+                  </>
+                )}
+              </>
             )}
           </View>
+
+          {/* Show all / less (only when the board is longer than the cutoff) */}
+          {rows.length > LB_COLLAPSED && (
+            <TouchableOpacity style={styles.lbShowAll} onPress={() => setShowAll(s => !s)} activeOpacity={0.7}>
+              <Text style={styles.lbShowAllText}>{showAll ? 'Show less' : `Show all ${rows.length}`}</Text>
+              <Ionicons name={showAll ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
 
           {/* Add friend button (friends tab) */}
           {tab === 'friends' && (
@@ -858,6 +883,11 @@ const styles = StyleSheet.create({
   lbEmpty: { alignItems: 'center', paddingVertical: SPACING.xxl },
   lbEmptyIcon: { fontSize: 36, marginBottom: SPACING.sm },
   lbEmptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
+
+  lbGap: { alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border + '66' },
+  lbGapText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '800', letterSpacing: 2 },
+  lbShowAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: SPACING.sm, marginBottom: SPACING.sm },
+  lbShowAllText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
 
   addFriendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, backgroundColor: COLORS.primary + '15', borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '33' },
   addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
