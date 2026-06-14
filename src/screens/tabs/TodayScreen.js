@@ -11,7 +11,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { taskPoints, completionBonus, displayScore, formatScore, scoreRank } from '../../lib/score';
+import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore } from '../../lib/score';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -189,6 +189,18 @@ export default function TodayScreen({ navigation }) {
   const slideAnim = useRef(new Animated.Value(300)).current;
 
   useEffect(() => { loadData(); }, []);
+
+  // Persist restore bookkeeping (monthly reset, baseline init, earned grants).
+  // Converges: applying the updates changes the keys below, re-runs, then no-ops.
+  useEffect(() => {
+    if (!userData) return;
+    const { updates } = restoreState(userData);
+    if (Object.keys(updates).length === 0) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    updateDoc(doc(db, 'users', uid), updates).catch(() => {});
+    setUserData((p) => ({ ...p, ...updates }));
+  }, [userData?.provaScore, userData?.restoreMonth, userData?.restoreBaseline]);
 
   useEffect(() => {
     if (showRating) {
@@ -404,6 +416,28 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  // Spend a restore to save a streak after one missed day. Backfills yesterday's
+  // activity marker so practising today continues the chain instead of resetting.
+  const handleRestoreStreak = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const updates = spendRestore(userData || {});
+    if (!updates) {
+      Alert.alert('No restores left', 'You\'re out of streak restores this month. Earn another by reaching the next 1,000 Prova points.');
+      return;
+    }
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    updates.lastSessionDate = yesterday.toISOString();
+    setUserData((p) => ({ ...p, ...updates }));
+    try {
+      await updateDoc(doc(db, 'users', uid), updates);
+      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practise today to keep it going.`);
+    } catch (e) {
+      Alert.alert('Error', "Couldn't restore your streak. Please try again.");
+    }
+  };
+
   const isToday = selectedDay === TODAY_NAME;
   const assignedTasks = (userData?.assignedTasks?.length)
     ? userData.assignedTasks
@@ -422,6 +456,16 @@ export default function TodayScreen({ navigation }) {
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
+
+  // Streak restore — offered when exactly one day was missed (last practised 2
+  // calendar days ago) and the user has a streak worth saving + a restore to spend.
+  const restore = restoreState(userData || {});
+  const streakVal = userData?.streak || 0;
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const lastDay = userData?.lastSessionDate ? new Date(userData.lastSessionDate) : null;
+  if (lastDay) lastDay.setHours(0, 0, 0, 0);
+  const daysSinceLast = lastDay ? Math.round((startOfToday - lastDay) / 86400000) : null;
+  const canRestore = isToday && daysSinceLast === 2 && streakVal >= 2 && restore.total > 0;
 
   if (loading) {
     return (
@@ -466,6 +510,29 @@ export default function TodayScreen({ navigation }) {
             );
           })}
         </View>
+
+        {/* Streak restore — one missed day, save it before it resets */}
+        {canRestore && (
+          <View style={styles.restoreCard}>
+            <View style={styles.restoreHeader}>
+              <Ionicons name="flame" size={18} color={COLORS.error} />
+              <Text style={styles.restoreKicker}>STREAK AT RISK</Text>
+            </View>
+            <Text style={styles.restoreTitle}>You missed yesterday</Text>
+            <Text style={styles.restoreDetail}>
+              Restore your {streakVal}-day streak before it resets to zero.
+            </Text>
+            <TouchableOpacity style={styles.restoreBtn} onPress={handleRestoreStreak} activeOpacity={0.85}>
+              <Ionicons name="flame" size={16} color="#fff" />
+              <Text style={styles.restoreBtnText}>Restore streak</Text>
+            </TouchableOpacity>
+            <Text style={styles.restoreSub}>
+              You have {restore.total} restore{restore.total === 1 ? '' : 's'} left
+              {' · '}{restore.freeRemaining} free this month
+              {restore.earned > 0 ? ` + ${restore.earned} earned` : ''}
+            </Text>
+          </View>
+        )}
 
         {/* Today's progress — one cohesive summary card */}
         {isToday && sessions.length > 0 && (
@@ -691,6 +758,16 @@ const styles = StyleSheet.create({
   progressLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
 
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm },
+
+  // Streak restore
+  restoreCard: { backgroundColor: COLORS.error + '12', borderRadius: 16, borderWidth: 1, borderColor: COLORS.error + '55', padding: SPACING.lg, marginBottom: SPACING.lg },
+  restoreHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
+  restoreKicker: { color: COLORS.error, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  restoreTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
+  restoreDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
+  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.error, borderRadius: 10, paddingVertical: 12 },
+  restoreBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  restoreSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm },
 
   // Daily challenge card
   challengeCard: {
