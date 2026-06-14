@@ -441,34 +441,13 @@ export default function TodayScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
 
-        <Text style={styles.date}>{todayLabel.toUpperCase()}</Text>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>
-            {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
-          </Text>
-          <TouchableOpacity
-            style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
-            onPress={handleRegeneratePlan}
-            disabled={regenerating}
-            activeOpacity={0.8}
-          >
-            {regenerating
-              ? <ActivityIndicator size="small" color={COLORS.primary} />
-              : <Ionicons name="refresh" size={15} color={COLORS.primary} />}
-            <Text style={styles.regenBtnText}>{regenerating ? 'Building…' : 'Regenerate'}</Text>
-          </TouchableOpacity>
-        </View>
-        {regenerating && (
-          <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
-        )}
+        <Text style={[styles.date, styles.headerCentered]}>{todayLabel.toUpperCase()}</Text>
+        <Text style={[styles.title, styles.headerCentered]}>
+          {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+        </Text>
 
         {/* Day picker */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.dayScroll}
-          contentContainerStyle={styles.dayScrollContent}
-        >
+        <View style={styles.dayRow}>
           {DAY_ORDER.map((day) => {
             const hasSessions = plan?.[day]?.sessions?.length > 0;
             const isSelected = day === selectedDay;
@@ -486,28 +465,33 @@ export default function TodayScreen({ navigation }) {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
 
-        {/* Stats + progress — today only */}
-        {isToday && (
-          <>
-            <View style={styles.statsRow}>
+        {/* Today's progress — one cohesive summary card */}
+        {isToday && sessions.length > 0 && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryStats}>
               {[
                 { value: totalMins, label: 'MINUTES' },
                 { value: sessions.length, label: 'EXERCISES' },
                 { value: completedIds.length, label: 'DONE' },
-              ].map(stat => (
-                <View key={stat.label} style={styles.stat}>
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                </View>
+              ].map((stat, i) => (
+                <React.Fragment key={stat.label}>
+                  {i > 0 && <View style={styles.summaryDivider} />}
+                  <View style={styles.summaryStat}>
+                    <Text style={styles.summaryStatValue}>{stat.value}</Text>
+                    <Text style={styles.summaryStatLabel}>{stat.label}</Text>
+                  </View>
+                </React.Fragment>
               ))}
             </View>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
-            <Text style={styles.progressLabel}>{completedIds.length} of {sessions.length} completed</Text>
-          </>
+            <Text style={styles.progressLabel}>
+              {completedIds.length} of {sessions.length} completed · {Math.round(progress * 100)}%
+            </Text>
+          </View>
         )}
 
         {/* Daily challenge — bonus task that keeps the streak alive */}
@@ -573,6 +557,9 @@ export default function TodayScreen({ navigation }) {
         )}
 
         {/* Sessions */}
+        {selectedSessions.length > 0 && (
+          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
+        )}
         {selectedSessions.length === 0 ? (
           <View style={styles.restDay}>
             <View style={styles.restIconWrap}>
@@ -620,6 +607,26 @@ export default function TodayScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
+        {/* Regenerate plan — rebuilds the AI plan from your current settings */}
+        {isToday && (
+          <>
+            <TouchableOpacity
+              style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
+              onPress={handleRegeneratePlan}
+              disabled={regenerating}
+              activeOpacity={0.8}
+            >
+              {regenerating
+                ? <ActivityIndicator size="small" color={COLORS.primary} />
+                : <Ionicons name="refresh" size={16} color={COLORS.primary} />}
+              <Text style={styles.regenBtnText}>{regenerating ? 'Building your plan…' : 'Regenerate plan'}</Text>
+            </TouchableOpacity>
+            {regenerating && (
+              <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
+            )}
+          </>
+        )}
+
       </ScrollView>
 
       <Modal visible={showRating} transparent animationType="none">
@@ -652,45 +659,49 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', flexShrink: 1 },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.xl },
+  headerCentered: { textAlign: 'center', alignSelf: 'center' },
   regenBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    alignSelf: 'center', marginTop: SPACING.lg,
+    paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999,
     backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '40',
   },
   regenBtnDisabled: { opacity: 0.6 },
-  regenBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: -SPACING.sm, marginBottom: SPACING.md, fontStyle: 'italic' },
+  regenBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center', fontStyle: 'italic' },
 
-  dayScroll: { marginHorizontal: -SPACING.xl, marginBottom: SPACING.lg },
-  dayScrollContent: { paddingHorizontal: SPACING.xl, gap: SPACING.sm },
-  dayBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.card, alignItems: 'center', minWidth: 52, borderWidth: 1, borderColor: COLORS.border },
+  dayRow: { flexDirection: 'row', gap: 6, marginBottom: SPACING.lg },
+  dayBtn: { flex: 1, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.card, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   dayBtnSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   dayBtnToday: { borderColor: COLORS.primary },
-  dayBtnText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  dayBtnText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
   dayBtnTextSelected: { color: COLORS.text },
   dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted, marginTop: 3 },
   dayDotSelected: { backgroundColor: COLORS.text },
 
-  statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
-  stat: { flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-  statValue: { color: COLORS.primary, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  statLabel: { color: COLORS.textMuted, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginTop: 2 },
-  progressBar: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginBottom: SPACING.xs, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
-  progressLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginBottom: SPACING.lg },
+  summaryCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: SPACING.lg },
+  summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
+  summaryStat: { flex: 1, alignItems: 'center' },
+  summaryDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  summaryStatValue: { color: COLORS.text, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  summaryStatLabel: { color: COLORS.textMuted, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginTop: 3 },
+  progressBar: { height: 8, backgroundColor: COLORS.border, borderRadius: 4, marginBottom: SPACING.sm, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
+  progressLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+
+  sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm },
 
   // Daily challenge card
   challengeCard: {
     backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
-    borderWidth: 1, borderColor: COLORS.accent + '55',
+    borderWidth: 1, borderColor: COLORS.border,
   },
 
   // Teacher-assigned tasks
   teacherCard: {
     backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
-    borderWidth: 1, borderColor: COLORS.primary + '55',
+    borderWidth: 1, borderColor: COLORS.border,
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
