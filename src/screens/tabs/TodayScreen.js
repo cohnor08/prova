@@ -186,9 +186,27 @@ export default function TodayScreen({ navigation }) {
   const [regenerating, setRegenerating] = useState(false);
   const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
+  const restorePromptedRef = useRef(false); // pop the restore modal once per app open
 
   useEffect(() => { loadData(); }, []);
+
+  // When the app opens and the user missed exactly one day (with a streak worth
+  // saving + a restore available), pop the "you lost your streak" modal once.
+  useEffect(() => {
+    if (!userData || restorePromptedRef.current) return;
+    const streakVal = userData.streak || 0;
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const lastDay = userData.lastSessionDate ? new Date(userData.lastSessionDate) : null;
+    if (lastDay) lastDay.setHours(0, 0, 0, 0);
+    const daysSinceLast = lastDay ? Math.round((startOfToday - lastDay) / 86400000) : null;
+    const { total } = restoreState(userData);
+    if (selectedDay === TODAY_NAME && daysSinceLast === 2 && streakVal >= 2 && total > 0) {
+      restorePromptedRef.current = true;
+      setShowRestoreModal(true);
+    }
+  }, [userData, selectedDay]);
 
   // Persist restore bookkeeping (monthly reset, baseline init, earned grants).
   // Converges: applying the updates changes the keys below, re-runs, then no-ops.
@@ -423,9 +441,11 @@ export default function TodayScreen({ navigation }) {
     if (!uid) return;
     const updates = spendRestore(userData || {});
     if (!updates) {
+      setShowRestoreModal(false);
       Alert.alert('No restores left', 'You\'re out of streak restores this month. Earn another by reaching the next 1,000 Prova points.');
       return;
     }
+    setShowRestoreModal(false);
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     updates.lastSessionDate = yesterday.toISOString();
@@ -457,15 +477,9 @@ export default function TodayScreen({ navigation }) {
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
 
-  // Streak restore — offered when exactly one day was missed (last practised 2
-  // calendar days ago) and the user has a streak worth saving + a restore to spend.
+  // Restore balance for the modal (detection of "missed a day" is in the effect).
   const restore = restoreState(userData || {});
   const streakVal = userData?.streak || 0;
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const lastDay = userData?.lastSessionDate ? new Date(userData.lastSessionDate) : null;
-  if (lastDay) lastDay.setHours(0, 0, 0, 0);
-  const daysSinceLast = lastDay ? Math.round((startOfToday - lastDay) / 86400000) : null;
-  const canRestore = isToday && daysSinceLast === 2 && streakVal >= 2 && restore.total > 0;
 
   if (loading) {
     return (
@@ -510,29 +524,6 @@ export default function TodayScreen({ navigation }) {
             );
           })}
         </View>
-
-        {/* Streak restore — one missed day, save it before it resets */}
-        {canRestore && (
-          <View style={styles.restoreCard}>
-            <View style={styles.restoreHeader}>
-              <Ionicons name="flame" size={18} color={COLORS.error} />
-              <Text style={styles.restoreKicker}>STREAK AT RISK</Text>
-            </View>
-            <Text style={styles.restoreTitle}>You missed yesterday</Text>
-            <Text style={styles.restoreDetail}>
-              Restore your {streakVal}-day streak before it resets to zero.
-            </Text>
-            <TouchableOpacity style={styles.restoreBtn} onPress={handleRestoreStreak} activeOpacity={0.85}>
-              <Ionicons name="flame" size={16} color="#fff" />
-              <Text style={styles.restoreBtnText}>Restore streak</Text>
-            </TouchableOpacity>
-            <Text style={styles.restoreSub}>
-              You have {restore.total} restore{restore.total === 1 ? '' : 's'} left
-              {' · '}{restore.freeRemaining} free this month
-              {restore.earned > 0 ? ` + ${restore.earned} earned` : ''}
-            </Text>
-          </View>
-        )}
 
         {/* Today's progress — one cohesive summary card */}
         {isToday && sessions.length > 0 && (
@@ -718,6 +709,35 @@ export default function TodayScreen({ navigation }) {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Streak-lost pop-up — shown once on open when a day was missed */}
+      <Modal visible={showRestoreModal} transparent animationType="fade" onRequestClose={() => setShowRestoreModal(false)}>
+        <View style={styles.restoreModalBackdrop}>
+          <View style={styles.restoreModalCard}>
+            <View style={styles.restoreModalIcon}>
+              <Ionicons name="flame" size={34} color={COLORS.error} />
+            </View>
+            <Text style={styles.restoreModalTitle}>You lost your streak!</Text>
+            <Text style={styles.restoreModalBody}>
+              You missed a day, so your {streakVal}-day streak is about to reset to zero. Spend a restore to keep it alive.
+            </Text>
+            <View style={styles.restoreModalCountWrap}>
+              <Ionicons name="snow" size={15} color={COLORS.primary} />
+              <Text style={styles.restoreModalCount}>
+                {restore.total} restore{restore.total === 1 ? '' : 's'} left
+                {restore.freeRemaining > 0 ? ` (${restore.freeRemaining} free this month)` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.restoreModalBtn} onPress={handleRestoreStreak} activeOpacity={0.85}>
+              <Ionicons name="flame" size={16} color="#fff" />
+              <Text style={styles.restoreModalBtnText}>Restore my streak</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowRestoreModal(false)} activeOpacity={0.7} style={styles.restoreModalDismissBtn}>
+              <Text style={styles.restoreModalDismiss}>No thanks, let it reset</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -759,15 +779,18 @@ const styles = StyleSheet.create({
 
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm },
 
-  // Streak restore
-  restoreCard: { backgroundColor: COLORS.error + '12', borderRadius: 16, borderWidth: 1, borderColor: COLORS.error + '55', padding: SPACING.lg, marginBottom: SPACING.lg },
-  restoreHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
-  restoreKicker: { color: COLORS.error, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  restoreTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
-  restoreDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
-  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.error, borderRadius: 10, paddingVertical: 12 },
-  restoreBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  restoreSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm },
+  // Streak-lost pop-up
+  restoreModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center', padding: SPACING.xl },
+  restoreModalCard: { width: '100%', backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.xl, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  restoreModalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.error + '1A', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
+  restoreModalTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', textAlign: 'center', marginBottom: SPACING.sm },
+  restoreModalBody: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'center', marginBottom: SPACING.md },
+  restoreModalCountWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.lg },
+  restoreModalCount: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  restoreModalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.error, borderRadius: 12, paddingVertical: 14, width: '100%' },
+  restoreModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  restoreModalDismissBtn: { paddingVertical: SPACING.md },
+  restoreModalDismiss: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
 
   // Daily challenge card
   challengeCard: {
