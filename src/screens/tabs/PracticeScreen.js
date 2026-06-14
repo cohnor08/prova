@@ -206,11 +206,6 @@ const stepperStyles = StyleSheet.create({
 
 const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
 
-// Local YYYY-MM-DD (avoids the timezone shift that toISOString() introduces).
-function ymd(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 // Whole days from today until a YYYY-MM-DD date (0 = today, negative = past).
 function daysUntil(dateStr) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -224,86 +219,6 @@ function countdownLabel(days) {
   if (days === 1) return 'Tomorrow';
   return `in ${days} days`;
 }
-
-// Tap-a-day month calendar — no external date-picker dependency.
-function MiniCalendar({ selected, onSelect }) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const year = view.getFullYear();
-  const month = view.getMonth();
-  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mon = 0
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const cells = [];
-  for (let i = 0; i < firstDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
-
-  const atCurrentMonth = year === today.getFullYear() && month === today.getMonth();
-  const step = (delta) => setView(new Date(year, month + delta, 1));
-
-  return (
-    <View style={calStyles.wrap}>
-      <View style={calStyles.header}>
-        <TouchableOpacity onPress={() => step(-1)} disabled={atCurrentMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chevron-back" size={20} color={atCurrentMonth ? COLORS.border : COLORS.textSecondary} />
-        </TouchableOpacity>
-        <Text style={calStyles.monthLabel}>
-          {view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        </Text>
-        <TouchableOpacity onPress={() => step(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-      </View>
-      <View style={calStyles.dowRow}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-          <Text key={i} style={calStyles.dowLabel}>{d}</Text>
-        ))}
-      </View>
-      <View style={calStyles.grid}>
-        {cells.map((day, i) => {
-          if (!day) return <View key={i} style={calStyles.cell} />;
-          const key = ymd(day);
-          const isPast = day < today;
-          const isSelected = key === selected;
-          return (
-            <TouchableOpacity
-              key={i}
-              style={calStyles.cell}
-              disabled={isPast}
-              onPress={() => onSelect(key)}
-              activeOpacity={0.7}
-            >
-              <View style={[calStyles.dayDot, isSelected && calStyles.dayDotSelected]}>
-                <Text style={[
-                  calStyles.dayText,
-                  isPast && calStyles.dayTextPast,
-                  isSelected && calStyles.dayTextSelected,
-                ]}>
-                  {day.getDate()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-const calStyles = StyleSheet.create({
-  wrap: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm },
-  monthLabel: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
-  dowRow: { flexDirection: 'row', marginBottom: 4 },
-  dowLabel: { width: `${100 / 7}%`, textAlign: 'center', color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
-  dayDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  dayDotSelected: { backgroundColor: COLORS.primary },
-  dayText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
-  dayTextPast: { color: COLORS.border },
-  dayTextSelected: { color: COLORS.text, fontWeight: '800' },
-});
 
 // ─── Pitch detection ──────────────────────────────────────────────────────────
 
@@ -382,7 +297,7 @@ const TUNER_RECORDING_OPTIONS = {
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function PracticeScreen({ route }) {
+export default function PracticeScreen({ route, navigation }) {
   // Tasks
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -407,13 +322,9 @@ export default function PracticeScreen({ route }) {
   const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
   const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
 
-  // Upcoming gigs (events) — drive Pre-Gig Mode. Distinct from the AI setlist
-  // generator state above (gigSetting/gigAudience/…), which builds playlists.
+  // Upcoming gigs (events) — drive Pre-Gig Mode. Loaded read-only here; the
+  // managing UI (add/remove) lives on the pushed Gigs & Setlists screen.
   const [gigs, setGigs] = useState([]);
-  const [showAddGig, setShowAddGig] = useState(false);
-  const [newGigName, setNewGigName] = useState('');
-  const [newGigDate, setNewGigDate] = useState('');         // YYYY-MM-DD
-  const [newGigSetlistId, setNewGigSetlistId] = useState(null);
 
   // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
   const [spotifyToken, setSpotifyToken] = useState(null);
@@ -640,41 +551,6 @@ export default function PracticeScreen({ route }) {
       Alert.alert('Error', "Couldn't save your song. Check your connection and try again.");
     }
   };
-
-  // Persist upcoming gigs to the user doc (owner-only write)
-  const saveGigs = async (next) => {
-    setGigs(next);
-    try {
-      const uid = auth.currentUser?.uid;
-      if (uid) await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true });
-    } catch (err) {
-      console.warn('Failed to save gigs:', err);
-      Alert.alert('Error', "Couldn't save your gig. Check your connection and try again.");
-    }
-  };
-
-  const addGig = () => {
-    const name = newGigName.trim();
-    if (!name || !newGigDate) {
-      Alert.alert('Almost there', 'Add a name and pick a date for the gig.');
-      return;
-    }
-    const gig = {
-      id: `gig_${Date.now()}`,
-      name: name.slice(0, 60),
-      date: newGigDate,
-      setlistId: newGigSetlistId || null,
-      createdAt: new Date().toISOString(),
-    };
-    saveGigs([...gigs, gig].sort((a, b) => a.date.localeCompare(b.date)));
-    setNewGigName('');
-    setNewGigDate('');
-    setNewGigSetlistId(null);
-    setShowAddGig(false);
-    Keyboard.dismiss();
-  };
-
-  const removeGig = (id) => saveGigs(gigs.filter((g) => g.id !== id));
 
   // Persist gig setlists to the user doc (same owner-only write as the library)
   const saveSetlists = async (next) => {
@@ -1229,7 +1105,7 @@ export default function PracticeScreen({ route }) {
           <TouchableOpacity
             style={styles.preGigBanner}
             activeOpacity={0.85}
-            onPress={() => (nextGigSetlist ? setViewingSetlist(nextGigSetlist) : selectTool('gigs'))}
+            onPress={() => (nextGigSetlist ? setViewingSetlist(nextGigSetlist) : navigation.navigate('Gigs'))}
           >
             <View style={styles.preGigIcon}>
               <Ionicons name="megaphone" size={20} color="#fff" />
@@ -1385,12 +1261,12 @@ export default function PracticeScreen({ route }) {
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
             { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
             { key: 'songs', label: 'Songs', icon: 'list-outline' },
-            { key: 'gigs', label: 'Gigs', icon: 'calendar-outline' },
+            { key: 'gigs', label: 'Gigs', icon: 'calendar-outline', nav: true },
           ].map((t) => (
             <TouchableOpacity
               key={t.key}
               style={[styles.toolBtn, tool === t.key && styles.toolBtnActive]}
-              onPress={() => selectTool(t.key)}
+              onPress={() => (t.nav ? navigation.navigate('Gigs') : selectTool(t.key))}
               activeOpacity={0.8}
             >
               <Ionicons name={t.icon} size={22} color={tool === t.key ? COLORS.text : COLORS.textMuted} />
@@ -1610,113 +1486,6 @@ export default function PracticeScreen({ route }) {
             </View>
           );
         })()}
-
-        {/* ── Gigs (Pre-Gig Mode) ── */}
-        {tool === 'gigs' && (
-        <View style={styles.card}>
-          <Text style={styles.songsHeading}>Upcoming gigs</Text>
-          <Text style={styles.songsSub}>
-            Add a performance date and Prova flips into Pre-Gig Mode {PRE_GIG_WINDOW} days before —
-            your song tasks jump to the top of Practice.
-          </Text>
-
-          {/* Add-gig form */}
-          {showAddGig ? (
-            <View style={styles.gigForm}>
-              <TextInput
-                style={styles.gigInput}
-                placeholder="Gig name (e.g. Sarah's wedding)"
-                placeholderTextColor={COLORS.textMuted}
-                value={newGigName}
-                onChangeText={setNewGigName}
-                maxLength={60}
-              />
-              <Text style={styles.gigFormLabel}>Date</Text>
-              <MiniCalendar selected={newGigDate} onSelect={setNewGigDate} />
-
-              {setlists.length > 0 && (
-                <>
-                  <Text style={styles.gigFormLabel}>Setlist (optional)</Text>
-                  <View style={styles.gigSetlistChips}>
-                    {setlists.map((s) => {
-                      const on = newGigSetlistId === s.id;
-                      return (
-                        <TouchableOpacity
-                          key={s.id}
-                          style={[styles.gigChip, on && styles.gigChipOn]}
-                          onPress={() => setNewGigSetlistId(on ? null : s.id)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
-
-              <View style={styles.gigFormBtns}>
-                <TouchableOpacity
-                  style={styles.gigCancelBtn}
-                  onPress={() => { setShowAddGig(false); setNewGigName(''); setNewGigDate(''); setNewGigSetlistId(null); }}
-                >
-                  <Text style={styles.gigCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.gigSaveBtn} onPress={addGig} activeOpacity={0.85}>
-                  <Text style={styles.gigSaveText}>Add gig</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowAddGig(true)}>
-              <Ionicons name="add" size={18} color="#fff" />
-              <Text style={styles.gigNewBtnText}>Add a gig</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Upcoming list */}
-          {upcomingGigs.length === 0 ? (
-            !showAddGig && (
-              <View style={styles.gigEmptyBox}>
-                <Ionicons name="calendar-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
-                <Text style={styles.gigEmptyBoxText}>No gigs yet — add one to unlock Pre-Gig Mode.</Text>
-              </View>
-            )
-          ) : (
-            <View style={{ marginTop: SPACING.md }}>
-              {upcomingGigs.map((g) => {
-                const days = daysUntil(g.date);
-                const soon = days <= PRE_GIG_WINDOW;
-                const sl = g.setlistId ? setlists.find((s) => s.id === g.setlistId) : null;
-                const dateLabel = new Date(`${g.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                return (
-                  <View key={g.id} style={[styles.gigRow, soon && styles.gigRowSoon]}>
-                    <View style={[styles.gigCountdown, soon && styles.gigCountdownSoon]}>
-                      <Text style={[styles.gigCountdownNum, soon && { color: COLORS.primary }]}>{days}</Text>
-                      <Text style={styles.gigCountdownUnit}>{days === 1 ? 'day' : 'days'}</Text>
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.gigName} numberOfLines={1}>{g.name}</Text>
-                      <Text style={styles.gigMeta} numberOfLines={1}>
-                        {dateLabel}{sl ? ` · ${sl.name}` : ''}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => Alert.alert('Remove gig?', g.name, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Remove', style: 'destructive', onPress: () => removeGig(g.id) },
-                      ])}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-        )}
 
         {/* ── Gig Setlists ── */}
         {tool === 'songs' && (

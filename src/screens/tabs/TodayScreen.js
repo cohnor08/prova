@@ -633,7 +633,7 @@ export default function TodayScreen({ navigation }) {
               session={session}
               onComplete={handleComplete}
               completed={completedIds.includes(session.id)}
-              onStart={(s) => navigation.navigate('Practice', { activeSession: s })}
+              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
             />
           ))
         ) : (
@@ -647,7 +647,7 @@ export default function TodayScreen({ navigation }) {
           <TouchableOpacity
             style={styles.songCard}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Practice', { tool: 'songs' })}
+            onPress={() => navigation.navigate('Practice', { screen: 'PracticeHome', params: { tool: 'songs' } })}
           >
             <View style={styles.songIcon}>
               <Ionicons name="musical-notes" size={20} color={COLORS.accent} />
