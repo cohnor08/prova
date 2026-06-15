@@ -260,7 +260,7 @@ The "reference" field: write a specific YouTube search phrase that would surface
 This is the REQUIRED level of detail for a description — match it (do not copy it verbatim):
 "On the low E string play frets 1-2-3-4 with index-middle-ring-pinky, one note per click at 60 BPM, then move that same 1-2-3-4 shape across to the A, D, G, B and high-E strings and back. Keep every note clean and even — 3 min."
 A BAD description (never write like this): "Warm up your fingers" / "Practice some chords" / "Work on the A minor scale".
-Keep each description to ONE or TWO sentences — specific and exact, but concise. Do NOT write long paragraphs.
+HARD LIMIT: keep EVERY description to ONE sentence, maximum ~160 characters — exact and physical but terse. Never write two sentences or a paragraph; long descriptions will be rejected.
 
 Other rules:
 - Total session durations must equal the daily practice time exactly
@@ -272,7 +272,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 8000, MODEL_SMART, 170000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL_SMART, 220000);
     } catch (err) {
       await writeUsageLog(uid, 'generatePracticePlan', {
         tokensIn: 0, tokensOut: 0,
