@@ -647,7 +647,7 @@ export default function TodayScreen({ navigation }) {
           <TouchableOpacity
             style={styles.songCard}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Practice', { screen: 'PracticeHome', params: { tool: 'songs' } })}
+            onPress={() => navigation.navigate('Practice', { screen: 'Songs' })}
           >
             <View style={styles.songIcon}>
               <Ionicons name="musical-notes" size={20} color={COLORS.accent} />

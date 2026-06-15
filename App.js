@@ -25,6 +25,7 @@ import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import GigsScreen from './src/screens/tabs/GigsScreen';
+import SongsScreen from './src/screens/tabs/SongsScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
 const Stack = createNativeStackNavigator();
@@ -38,11 +39,23 @@ function PracticeStackScreen() {
     <PracticeStack.Navigator screenOptions={{ headerShown: false }}>
       <PracticeStack.Screen name="PracticeHome" component={PracticeScreen} />
       <PracticeStack.Screen
+        name="Songs"
+        component={SongsScreen}
+        options={{
+          headerShown: true,
+          title: 'Songs & Setlists',
+          headerStyle: { backgroundColor: COLORS.surface },
+          headerTintColor: COLORS.text,
+          headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
+          headerShadowVisible: false,
+        }}
+      />
+      <PracticeStack.Screen
         name="Gigs"
         component={GigsScreen}
         options={{
           headerShown: true,
-          title: 'Gigs & Setlists',
+          title: 'Gigs',
           headerStyle: { backgroundColor: COLORS.surface },
           headerTintColor: COLORS.text,
           headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
