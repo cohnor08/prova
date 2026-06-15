@@ -71,6 +71,62 @@ export function displayScore(u = {}) {
   return typeof u.provaScore === 'number' ? u.provaScore : backfillScore(u);
 }
 
+// ─── Streak restores ─────────────────────────────────────────────────────────
+// A streak survives one missed day if the user spends a "restore". You get a few
+// free each month (TikTok-style) plus one earned per chunk of Prova Score, so an
+// occasional off-day doesn't nuke a long streak — but quitting still does.
+
+export const FREE_RESTORES_PER_MONTH  = 3;
+export const POINTS_PER_EARNED_RESTORE = 1000;
+export const MAX_EARNED_RESTORES      = 3; // cap the earned bank so they can't be hoarded
+
+const monthKeyOf = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+// Current restore availability for a user doc. Applies a lazy monthly reset and
+// grants earned restores for every POINTS_PER_EARNED_RESTORE crossed since the
+// baseline (set to their score the first time we see them, so past points don't
+// grant a flood). Returns the view + any field `updates` the caller should save.
+export function restoreState(u = {}) {
+  const monthKey = monthKeyOf();
+  const score = displayScore(u);
+
+  const freeUsed = u.restoreMonth === monthKey ? (u.freeRestoresUsed || 0) : 0;
+
+  let baseline = typeof u.restoreBaseline === 'number' ? u.restoreBaseline : score;
+  let earned = u.earnedRestores || 0;
+  const newlyEarned = Math.floor((score - baseline) / POINTS_PER_EARNED_RESTORE);
+  if (newlyEarned > 0) {
+    earned = Math.min(MAX_EARNED_RESTORES, earned + newlyEarned);
+    baseline += newlyEarned * POINTS_PER_EARNED_RESTORE;
+  }
+
+  const freeRemaining = Math.max(0, FREE_RESTORES_PER_MONTH - freeUsed);
+
+  const updates = {};
+  if (u.restoreMonth !== monthKey) { updates.restoreMonth = monthKey; updates.freeRestoresUsed = freeUsed; }
+  if (typeof u.restoreBaseline !== 'number' || newlyEarned > 0) updates.restoreBaseline = baseline;
+  if (newlyEarned > 0) updates.earnedRestores = earned;
+
+  return { monthKey, freeRemaining, earned, freeUsed, baseline, total: freeRemaining + earned, updates };
+}
+
+// Field updates for spending one restore (free first, then earned), or null if
+// none are available. Does NOT touch the streak itself — the caller backfills
+// the missed day so the chain continues.
+export function spendRestore(u = {}) {
+  const st = restoreState(u);
+  if (st.total <= 0) return null;
+  const updates = { ...st.updates };
+  if (st.freeRemaining > 0) {
+    updates.restoreMonth = st.monthKey;
+    updates.freeRestoresUsed = st.freeUsed + 1;
+  } else {
+    updates.earnedRestores = Math.max(0, st.earned - 1);
+  }
+  return updates;
+}
+
 // Prestige ladder — 7 tiers split into III/II/I divisions, topped by Legend.
 // Early divisions are close together (rank up after a session or two for quick
 // wins); the gaps stretch out near the top so high ranks feel earned. `min` is

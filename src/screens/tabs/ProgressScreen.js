@@ -15,6 +15,11 @@ const GRAPH_H = 120;
 const GRAPH_PAD = 8;
 const CACHE_TTL = 5 * 60 * 1000;
 
+// Practice heatmap: 12 weeks of small squares (GitHub-contributions style)
+const HEATMAP_WEEKS = 12;
+const HEAT_CELL = 14;
+const HEAT_GAP = 3;
+
 const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 
 const CATEGORY_COLORS = {
@@ -80,26 +85,30 @@ function buildWeeklyData(logMap) {
   return weeks;
 }
 
+// Build a 7-row (Mon→Sun) × N-week grid of intensity buckets, oldest week first.
+// Buckets: -1 future · 0 none · 1 <15m · 2 15–30m · 3 30m+. Also returns how many
+// days were practised in the window and the hours logged, for the footer.
 function buildHeatmapData(logMap) {
   const today = new Date();
-  const dow = (today.getDay() + 6) % 7;
+  const dow = (today.getDay() + 6) % 7; // 0 = Mon
   const monStart = new Date(today);
   monStart.setDate(today.getDate() - dow);
   monStart.setHours(0, 0, 0, 0);
 
-  const weeks = [];
-  for (let w = 4; w >= 0; w--) {
-    const row = [];
+  const rows = Array.from({ length: 7 }, () => []);
+  let daysPracticed = 0;
+  let totalMins = 0;
+  for (let w = HEATMAP_WEEKS - 1; w >= 0; w--) {
     for (let d = 0; d < 7; d++) {
       const day = new Date(monStart);
       day.setDate(monStart.getDate() - w * 7 + d);
-      if (day > today) { row.push(-1); continue; }
+      if (day > today) { rows[d].push(-1); continue; }
       const mins = logMap[day.toISOString().split('T')[0]]?.totalMinutes || 0;
-      row.push(mins === 0 ? 0 : mins < 20 ? 0.5 : 1);
+      if (mins > 0) { daysPracticed++; totalMins += mins; }
+      rows[d].push(mins === 0 ? 0 : mins < 15 ? 1 : mins < 30 ? 2 : 3);
     }
-    weeks.push(row);
   }
-  return weeks;
+  return { rows, daysPracticed, totalHours: Math.round(totalMins / 60) };
 }
 
 function buildCategoryData(logMap) {
@@ -319,32 +328,57 @@ function WeeklyBarChart({ data }) {
   );
 }
 
-function ActivityHeatmap({ data }) {
-  const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+function HeatCell({ val }) {
+  return (
+    <View style={[
+      styles.heatCell,
+      val === 0 && styles.heatCell0,
+      val === 1 && styles.heatCell1,
+      val === 2 && styles.heatCell2,
+      val === 3 && styles.heatCell3,
+      val === -1 && styles.heatCellFuture,
+    ]} />
+  );
+}
+
+function ActivityHeatmap({ data, streak }) {
+  const DAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', '']; // sparse, GitHub-style
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>ACTIVITY — LAST 5 WEEKS</Text>
-      <View style={styles.heatmapDays}>
-        {DAYS.map((d, i) => <Text key={i} style={styles.heatmapDayLabel}>{d}</Text>)}
+      <View style={styles.heatHeader}>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>PRACTICE — LAST 12 WEEKS</Text>
+        {streak > 0 && (
+          <Text style={styles.heatStreak}>🔥 {streak} day{streak === 1 ? '' : 's'}</Text>
+        )}
       </View>
-      {data.map((week, wi) => (
-        <View key={wi} style={styles.heatmapRow}>
-          {week.map((val, di) => (
-            <View key={di} style={[
-              styles.heatmapCell,
-              val === 1 && styles.heatmapCellFull,
-              val === 0.5 && styles.heatmapCellHalf,
-              val === -1 && styles.heatmapCellFuture,
-            ]} />
+
+      <View style={styles.heatGrid}>
+        {/* Weekday labels down the left */}
+        <View style={styles.heatDayCol}>
+          {DAY_LABELS.map((l, i) => <Text key={i} style={styles.heatDayLabel}>{l}</Text>)}
+        </View>
+        {/* 7 rows (Mon→Sun), each a week's worth of cells across */}
+        <View>
+          {data.rows.map((row, ri) => (
+            <View key={ri} style={styles.heatRow}>
+              {row.map((val, ci) => <HeatCell key={ci} val={val} />)}
+            </View>
           ))}
         </View>
-      ))}
-      <View style={styles.heatmapLegend}>
-        <Text style={styles.heatmapLegendText}>Less</Text>
-        <View style={styles.heatmapCell} />
-        <View style={[styles.heatmapCell, styles.heatmapCellHalf]} />
-        <View style={[styles.heatmapCell, styles.heatmapCellFull]} />
-        <Text style={styles.heatmapLegendText}>More</Text>
+      </View>
+
+      <View style={styles.heatFooter}>
+        <Text style={styles.heatFooterText}>
+          {data.daysPracticed} of last {HEATMAP_WEEKS * 7} days · {data.totalHours} hrs
+        </Text>
+        <View style={styles.heatLegend}>
+          <Text style={styles.heatLegendText}>Less</Text>
+          <HeatCell val={0} />
+          <HeatCell val={1} />
+          <HeatCell val={2} />
+          <HeatCell val={3} />
+          <Text style={styles.heatLegendText}>More</Text>
+        </View>
       </View>
     </View>
   );
@@ -445,6 +479,8 @@ function LeaderboardRow({ entry, rank, isMe }) {
 
 function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
   const [tab, setTab] = useState('world');
+  const [open, setOpen] = useState(true);     // collapsible section
+  const [showAll, setShowAll] = useState(false); // expand the row list past the top few
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
@@ -473,44 +509,76 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
   const rows = tab === 'world' ? worldBoard : friendsBoard;
   const isEmpty = rows.length === 0;
 
+  // Collapse long boards to the top few, with a "Show all" toggle. If the
+  // current user is ranked below the cutoff, pin their row so they can always
+  // see where they stand.
+  const LB_COLLAPSED = 3;
+  const myIndex = rows.findIndex(e => e.uid === myUid);
+  const visibleRows = showAll ? rows : rows.slice(0, LB_COLLAPSED);
+  const pinMe = !showAll && myIndex >= LB_COLLAPSED;
+
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>LEADERBOARD</Text>
+      {/* Collapsible header */}
+      <TouchableOpacity style={styles.lbHeader} onPress={() => setOpen(o => !o)} activeOpacity={0.7}>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>LEADERBOARD</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
 
-      {/* Tab toggle */}
-      <View style={styles.lbTabs}>
-        {['world', 'friends'].map(t => (
-          <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => setTab(t)}>
-            <Ionicons name={t === 'world' ? 'globe-outline' : 'people-outline'} size={14} color={tab === t ? COLORS.text : COLORS.textMuted} style={{ marginRight: 5 }} />
-            <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]}>
-              {t === 'world' ? 'World' : 'Friends'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Board */}
-      <View style={styles.lbCard}>
-        {isEmpty ? (
-          <View style={styles.lbEmpty}>
-            <Text style={styles.lbEmptyIcon}>{tab === 'friends' ? '👥' : '🌍'}</Text>
-            <Text style={styles.lbEmptyText}>
-              {tab === 'friends' ? 'Add friends to see how you stack up' : 'No data yet'}
-            </Text>
+      {open && (
+        <>
+          {/* Tab toggle */}
+          <View style={styles.lbTabs}>
+            {['world', 'friends'].map(t => (
+              <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => { setTab(t); setShowAll(false); }}>
+                <Ionicons name={t === 'world' ? 'globe-outline' : 'people-outline'} size={14} color={tab === t ? COLORS.text : COLORS.textMuted} style={{ marginRight: 5 }} />
+                <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]}>
+                  {t === 'world' ? 'World' : 'Friends'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        ) : (
-          rows.map((entry, i) => (
-            <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
-          ))
-        )}
-      </View>
 
-      {/* Add friend button (friends tab) */}
-      {tab === 'friends' && (
-        <TouchableOpacity style={styles.addFriendBtn} onPress={() => setShowAdd(true)}>
-          <Ionicons name="person-add-outline" size={15} color={COLORS.primary} />
-          <Text style={styles.addFriendText}>Add Friend by Email</Text>
-        </TouchableOpacity>
+          {/* Board */}
+          <View style={styles.lbCard}>
+            {isEmpty ? (
+              <View style={styles.lbEmpty}>
+                <Text style={styles.lbEmptyIcon}>{tab === 'friends' ? '👥' : '🌍'}</Text>
+                <Text style={styles.lbEmptyText}>
+                  {tab === 'friends' ? 'Add friends to see how you stack up' : 'No data yet'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {visibleRows.map((entry, i) => (
+                  <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
+                ))}
+                {pinMe && (
+                  <>
+                    <View style={styles.lbGap}><Text style={styles.lbGapText}>•••</Text></View>
+                    <LeaderboardRow entry={rows[myIndex]} rank={myIndex + 1} isMe />
+                  </>
+                )}
+              </>
+            )}
+          </View>
+
+          {/* Show all / less (only when the board is longer than the cutoff) */}
+          {rows.length > LB_COLLAPSED && (
+            <TouchableOpacity style={styles.lbShowAll} onPress={() => setShowAll(s => !s)} activeOpacity={0.7}>
+              <Text style={styles.lbShowAllText}>{showAll ? 'Show less' : `Show all ${rows.length}`}</Text>
+              <Ionicons name={showAll ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+
+          {/* Add friend button (friends tab) */}
+          {tab === 'friends' && (
+            <TouchableOpacity style={styles.addFriendBtn} onPress={() => setShowAdd(true)}>
+              <Ionicons name="person-add-outline" size={15} color={COLORS.primary} />
+              <Text style={styles.addFriendText}>Add Friend by Email</Text>
+            </TouchableOpacity>
+          )}
+        </>
       )}
 
       {/* Add friend modal */}
@@ -568,7 +636,7 @@ export default function ProgressScreen() {
 
       const [userSnap, logsSnap, boardSnap] = await Promise.all([
         getDoc(doc(db, 'users', uid)),
-        getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), orderBy('date', 'desc'), limit(35))),
+        getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), orderBy('date', 'desc'), limit(HEATMAP_WEEKS * 7))),
         getDocs(query(collection(db, 'users'), orderBy('totalMinutes', 'desc'), limit(20))),
       ]);
 
@@ -659,7 +727,7 @@ export default function ProgressScreen() {
         <LevelProgress level={level} xp={xp} />
         <LineGraph data={dailyData} />
         <WeeklyBarChart data={weeklyData} />
-        <ActivityHeatmap data={heatmapData} />
+        <ActivityHeatmap data={heatmapData} streak={streak} />
         <CategoryBreakdown data={categoryData} />
         <Milestones data={milestones} />
 
@@ -760,15 +828,22 @@ const styles = StyleSheet.create({
   barFillActive: { shadowColor: COLORS.primary, shadowOpacity: 0.4, shadowRadius: 8 },
   barLabel: { color: COLORS.textMuted, fontSize: 9, marginTop: 6, textAlign: 'center' },
 
-  heatmapDays: { flexDirection: 'row', marginBottom: SPACING.xs },
-  heatmapDayLabel: { flex: 1, color: COLORS.textMuted, fontSize: 10, textAlign: 'center' },
-  heatmapRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
-  heatmapCell: { flex: 1, height: 28, borderRadius: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  heatmapCellHalf: { backgroundColor: COLORS.primary + '55', borderColor: COLORS.primary + '44' },
-  heatmapCellFull: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  heatmapCellFuture: { backgroundColor: 'transparent', borderColor: 'transparent' },
-  heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, justifyContent: 'flex-end' },
-  heatmapLegendText: { color: COLORS.textMuted, fontSize: 10 },
+  heatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  heatStreak: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
+  heatGrid: { flexDirection: 'row' },
+  heatDayCol: { marginRight: 6, justifyContent: 'flex-start' },
+  heatDayLabel: { height: HEAT_CELL, lineHeight: HEAT_CELL, marginBottom: HEAT_GAP, color: COLORS.textMuted, fontSize: 9, fontWeight: '600' },
+  heatRow: { flexDirection: 'row', gap: HEAT_GAP, marginBottom: HEAT_GAP },
+  heatCell: { width: HEAT_CELL, height: HEAT_CELL, borderRadius: 3 },
+  heatCell0: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  heatCell1: { backgroundColor: COLORS.primary + '40' },
+  heatCell2: { backgroundColor: COLORS.primary + '80' },
+  heatCell3: { backgroundColor: COLORS.primary },
+  heatCellFuture: { backgroundColor: 'transparent' },
+  heatFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md, flexWrap: 'wrap', gap: SPACING.sm },
+  heatFooterText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
+  heatLegend: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  heatLegendText: { color: COLORS.textMuted, fontSize: 10 },
 
   catRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm },
   catLabel: { color: COLORS.textSecondary, fontSize: 12, width: 90 },
@@ -787,6 +862,7 @@ const styles = StyleSheet.create({
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   goalText: { color: COLORS.text, fontSize: 15 },
 
+  lbHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   lbTabs: { flexDirection: 'row', backgroundColor: COLORS.card, borderRadius: 12, padding: 4, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
   lbTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 9 },
   lbTabActive: { backgroundColor: COLORS.surface },
@@ -807,6 +883,11 @@ const styles = StyleSheet.create({
   lbEmpty: { alignItems: 'center', paddingVertical: SPACING.xxl },
   lbEmptyIcon: { fontSize: 36, marginBottom: SPACING.sm },
   lbEmptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
+
+  lbGap: { alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border + '66' },
+  lbGapText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '800', letterSpacing: 2 },
+  lbShowAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: SPACING.sm, marginBottom: SPACING.sm },
+  lbShowAllText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
 
   addFriendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, backgroundColor: COLORS.primary + '15', borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '33' },
   addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },

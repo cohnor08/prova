@@ -165,6 +165,146 @@ const sliderStyles = StyleSheet.create({
   },
 });
 
+// ─── Stepper (−/+ number control) ───────────────────────────────────────────
+
+function Stepper({ value, min, max, step, suffix, onChange }) {
+  return (
+    <View style={stepperStyles.row}>
+      <TouchableOpacity
+        style={stepperStyles.btn}
+        onPress={() => onChange(Math.max(min, value - step))}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="remove" size={18} color={COLORS.text} />
+      </TouchableOpacity>
+      <Text style={stepperStyles.val}>
+        {value}<Text style={stepperStyles.suffix}> {suffix}</Text>
+      </Text>
+      <TouchableOpacity
+        style={stepperStyles.btn}
+        onPress={() => onChange(Math.min(max, value + step))}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="add" size={18} color={COLORS.text} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const stepperStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  btn: {
+    width: 30, height: 30, borderRadius: 8,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  val: { color: COLORS.text, fontSize: 15, fontWeight: '700', minWidth: 78, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  suffix: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+});
+
+// ─── Gigs / Pre-Gig Mode ───────────────────────────────────────────────────────
+
+const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
+
+// Local YYYY-MM-DD (avoids the timezone shift that toISOString() introduces).
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Whole days from today until a YYYY-MM-DD date (0 = today, negative = past).
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(`${dateStr}T00:00:00`);
+  return Math.round((d - today) / 86400000);
+}
+
+function countdownLabel(days) {
+  if (days < 0) return 'Past';
+  if (days === 0) return 'Today 🎤';
+  if (days === 1) return 'Tomorrow';
+  return `in ${days} days`;
+}
+
+// Tap-a-day month calendar — no external date-picker dependency.
+function MiniCalendar({ selected, onSelect }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mon = 0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+
+  const atCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+  const step = (delta) => setView(new Date(year, month + delta, 1));
+
+  return (
+    <View style={calStyles.wrap}>
+      <View style={calStyles.header}>
+        <TouchableOpacity onPress={() => step(-1)} disabled={atCurrentMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="chevron-back" size={20} color={atCurrentMonth ? COLORS.border : COLORS.textSecondary} />
+        </TouchableOpacity>
+        <Text style={calStyles.monthLabel}>
+          {view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity onPress={() => step(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      <View style={calStyles.dowRow}>
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <Text key={i} style={calStyles.dowLabel}>{d}</Text>
+        ))}
+      </View>
+      <View style={calStyles.grid}>
+        {cells.map((day, i) => {
+          if (!day) return <View key={i} style={calStyles.cell} />;
+          const key = ymd(day);
+          const isPast = day < today;
+          const isSelected = key === selected;
+          return (
+            <TouchableOpacity
+              key={i}
+              style={calStyles.cell}
+              disabled={isPast}
+              onPress={() => onSelect(key)}
+              activeOpacity={0.7}
+            >
+              <View style={[calStyles.dayDot, isSelected && calStyles.dayDotSelected]}>
+                <Text style={[
+                  calStyles.dayText,
+                  isPast && calStyles.dayTextPast,
+                  isSelected && calStyles.dayTextSelected,
+                ]}>
+                  {day.getDate()}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const calStyles = StyleSheet.create({
+  wrap: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm },
+  monthLabel: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  dowRow: { flexDirection: 'row', marginBottom: 4 },
+  dowLabel: { width: `${100 / 7}%`, textAlign: 'center', color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
+  dayDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  dayDotSelected: { backgroundColor: COLORS.primary },
+  dayText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  dayTextPast: { color: COLORS.border },
+  dayTextSelected: { color: COLORS.text, fontWeight: '800' },
+});
+
 // ─── Pitch detection ──────────────────────────────────────────────────────────
 
 function parseWavSamples(arrayBuffer) {
@@ -203,8 +343,19 @@ function detectPitchHz(int16Samples, sampleRate) {
   return pitch;
 }
 
-function centsOff(detectedHz, targetHz) {
-  return Math.round(1200 * Math.log2(detectedHz / targetHz));
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Map any frequency to its nearest musical note + how many cents sharp/flat it is.
+// This is what makes the tuner chromatic: it figures out which note you played
+// instead of needing you to pick a string first.
+function hzToNote(hz) {
+  const midi = Math.round(69 + 12 * Math.log2(hz / 440));
+  const refHz = 440 * Math.pow(2, (midi - 69) / 12);
+  return {
+    name: NOTE_NAMES[((midi % 12) + 12) % 12],
+    octave: Math.floor(midi / 12) - 1,
+    cents: Math.round(1200 * Math.log2(hz / refHz)),
+  };
 }
 
 const TUNER_RECORDING_OPTIONS = {
@@ -256,6 +407,14 @@ export default function PracticeScreen({ route }) {
   const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
   const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
 
+  // Upcoming gigs (events) — drive Pre-Gig Mode. Distinct from the AI setlist
+  // generator state above (gigSetting/gigAudience/…), which builds playlists.
+  const [gigs, setGigs] = useState([]);
+  const [showAddGig, setShowAddGig] = useState(false);
+  const [newGigName, setNewGigName] = useState('');
+  const [newGigDate, setNewGigDate] = useState('');         // YYYY-MM-DD
+  const [newGigSetlistId, setNewGigSetlistId] = useState(null);
+
   // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
   const [spotifyToken, setSpotifyToken] = useState(null);
   const spotifyScopeRef = useRef('');
@@ -287,8 +446,9 @@ export default function PracticeScreen({ route }) {
   const [openInSong, setOpenInSong] = useState(null); // song shown in the "Open in…" sheet
   const [artwork, setArtwork] = useState({}); // "title|artist" → cover URL (null once fetched, none found)
 
-  // Which tool is visible: 'timer' | 'metronome' | 'tuner' | 'songs'
-  const [tool, setTool] = useState('timer');
+  // Which tool is visible: 'metronome' | 'tuner' | 'songs'
+  // (the practice timer now lives inline on the task card above)
+  const [tool, setTool] = useState('metronome');
 
   // Timer — declared before effects so closures always capture the right bindings
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -355,15 +515,25 @@ export default function PracticeScreen({ route }) {
   const accentSound = useRef(null);
   const beatRef = useRef(0);
 
+  // Speed trainer — auto-ramps the tempo as you play (start → target, step every N bars)
+  const [trainerOn, setTrainerOn] = useState(false);
+  const [trainerStart, setTrainerStart] = useState(60);
+  const [trainerTarget, setTrainerTarget] = useState(120);
+  const [trainerStep, setTrainerStep] = useState(5);
+  const [trainerBars, setTrainerBars] = useState(2);
+  const [atTarget, setAtTarget] = useState(false); // reached target → show "✓ at target"
+  const barCountRef = useRef(0);
+  const trainerRef = useRef({ on: false, target: 120, step: 5, bars: 2 });
+  useEffect(() => {
+    trainerRef.current = { on: trainerOn, target: trainerTarget, step: trainerStep, bars: trainerBars };
+  }, [trainerOn, trainerTarget, trainerStep, trainerBars]);
+
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
-  const [stringIndex, setStringIndex] = useState(0);
   const [isTuning, setIsTuning] = useState(false);
-  const [detectedHz, setDetectedHz] = useState(null);
-  const [tunerCents, setTunerCents] = useState(0);
+  const [detectedHz, setDetectedHz] = useState(null); // smoothed, auto-detected pitch
   const isTuningRef = useRef(false);
   const recordingRef = useRef(null);
-  const targetFreqRef = useRef(0);
   const smoothedHzRef = useRef(null);
 
   // Load click sounds once on mount
@@ -408,6 +578,23 @@ export default function PracticeScreen({ route }) {
         sound.replayAsync().catch(() => {});
       }
 
+      // Speed trainer: every downbeat completes a bar — step the tempo up once
+      // we've counted enough bars, until we reach the target.
+      if (isAccent) {
+        const t = trainerRef.current;
+        if (t.on) {
+          barCountRef.current += 1;
+          if (barCountRef.current >= t.bars) {
+            barCountRef.current = 0;
+            setBpm((b) => {
+              const next = Math.min(t.target, b + t.step);
+              if (next >= t.target) setAtTarget(true);
+              return next;
+            });
+          }
+        }
+      }
+
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.25, duration: 55, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 90, useNativeDriver: true }),
@@ -430,6 +617,7 @@ export default function PracticeScreen({ route }) {
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
+      setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       setTipLink(data?.tipLink || '');
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
@@ -452,6 +640,41 @@ export default function PracticeScreen({ route }) {
       Alert.alert('Error', "Couldn't save your song. Check your connection and try again.");
     }
   };
+
+  // Persist upcoming gigs to the user doc (owner-only write)
+  const saveGigs = async (next) => {
+    setGigs(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to save gigs:', err);
+      Alert.alert('Error', "Couldn't save your gig. Check your connection and try again.");
+    }
+  };
+
+  const addGig = () => {
+    const name = newGigName.trim();
+    if (!name || !newGigDate) {
+      Alert.alert('Almost there', 'Add a name and pick a date for the gig.');
+      return;
+    }
+    const gig = {
+      id: `gig_${Date.now()}`,
+      name: name.slice(0, 60),
+      date: newGigDate,
+      setlistId: newGigSetlistId || null,
+      createdAt: new Date().toISOString(),
+    };
+    saveGigs([...gigs, gig].sort((a, b) => a.date.localeCompare(b.date)));
+    setNewGigName('');
+    setNewGigDate('');
+    setNewGigSetlistId(null);
+    setShowAddGig(false);
+    Keyboard.dismiss();
+  };
+
+  const removeGig = (id) => saveGigs(gigs.filter((g) => g.id !== id));
 
   // Persist gig setlists to the user doc (same owner-only write as the library)
   const saveSetlists = async (next) => {
@@ -736,13 +959,14 @@ export default function PracticeScreen({ route }) {
   };
 
   const tunerLoop = async () => {
+    let misses = 0;
     while (isTuningRef.current) {
       try {
         const rec = new Audio.Recording();
         await rec.prepareToRecordAsync(TUNER_RECORDING_OPTIONS);
         recordingRef.current = rec;
         await rec.startAsync();
-        await new Promise(r => setTimeout(r, 350));
+        await new Promise(r => setTimeout(r, 240)); // shorter window = snappier readings
         if (!isTuningRef.current) { try { await rec.stopAndUnloadAsync(); } catch (_) {} break; }
         await rec.stopAndUnloadAsync();
         recordingRef.current = null;
@@ -751,31 +975,37 @@ export default function PracticeScreen({ route }) {
         const resp = await fetch(uri);
         const buf = await resp.arrayBuffer();
         const parsed = parseWavSamples(buf);
-        if (parsed) {
-          const hz = detectPitchHz(parsed.samples, parsed.sampleRate);
-          if (hz && isTuningRef.current) {
-            // Smooth readings with an EMA, but snap if the pitch jumps (new string)
-            const prev = smoothedHzRef.current;
-            const smoothed = (prev && Math.abs(hz - prev) / prev < 0.15)
-              ? prev * 0.6 + hz * 0.4
-              : hz;
-            smoothedHzRef.current = smoothed;
-            setDetectedHz(smoothed);
-            setTunerCents(centsOff(smoothed, targetFreqRef.current));
-          } else {
-            smoothedHzRef.current = null;
-            setDetectedHz(null);
-          }
+        const hz = parsed ? detectPitchHz(parsed.samples, parsed.sampleRate) : null;
+        if (hz && isTuningRef.current) {
+          misses = 0;
+          // Smooth readings with an EMA, but snap if the pitch jumps (new string)
+          const prev = smoothedHzRef.current;
+          const smoothed = (prev && Math.abs(hz - prev) / prev < 0.15)
+            ? prev * 0.5 + hz * 0.5
+            : hz;
+          smoothedHzRef.current = smoothed;
+          setDetectedHz(smoothed);
+        } else if (++misses >= 4) {
+          // A few empty windows in a row before we drop the note — keeps the
+          // display from flickering to "listening" between pluck and ring-out.
+          smoothedHzRef.current = null;
+          setDetectedHz(null);
         }
       } catch (e) {
         console.warn('Tuner loop error:', e);
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 300));
       }
     }
   };
 
   const togglePlay = () => {
     setBeat(0);
+    // Starting fresh with the trainer on? Reset to the start tempo and bar count.
+    if (!isPlaying && trainerOn) {
+      barCountRef.current = 0;
+      setAtTarget(false);
+      setBpm(trainerStart);
+    }
     setIsPlaying((p) => !p);
   };
 
@@ -801,8 +1031,24 @@ export default function PracticeScreen({ route }) {
   };
 
   const strings = tunerInstrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS;
-  const currentString = strings[stringIndex] || strings[0];
-  targetFreqRef.current = currentString.freq;
+
+  // ── Pre-Gig Mode ──
+  // Soonest upcoming gig; if it's within the window, the Practice tab flips
+  // into Pre-Gig Mode (banner + song tasks pulled to the front). No AI.
+  const upcomingGigs = [...gigs]
+    .filter((g) => daysUntil(g.date) >= 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const nextGig = upcomingGigs[0] || null;
+  const daysToNextGig = nextGig ? daysUntil(nextGig.date) : null;
+  const preGig = !!nextGig && daysToNextGig <= PRE_GIG_WINDOW;
+  const nextGigSetlist = nextGig?.setlistId ? setlists.find((s) => s.id === nextGig.setlistId) : null;
+
+  // In Pre-Gig Mode, surface song/performance tasks first (repertoire + improv).
+  const SONG_TASK_CATEGORIES = new Set(['repertoire', 'improvisation']);
+  const displaySessions = preGig
+    ? [...sessions].sort((a, b) =>
+        (SONG_TASK_CATEGORIES.has(b.category) ? 1 : 0) - (SONG_TASK_CATEGORIES.has(a.category) ? 1 : 0))
+    : sessions;
 
   // Songs matched to the player's instrument + level, and the one to feature
   // today — rotates by day across the user's library plus the recommendations.
@@ -978,8 +1224,33 @@ export default function PracticeScreen({ route }) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
 
+        {/* ── Pre-Gig Mode banner ── */}
+        {preGig && (
+          <TouchableOpacity
+            style={styles.preGigBanner}
+            activeOpacity={0.85}
+            onPress={() => (nextGigSetlist ? setViewingSetlist(nextGigSetlist) : selectTool('gigs'))}
+          >
+            <View style={styles.preGigIcon}>
+              <Ionicons name="megaphone" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.preGigLabel}>PRE-GIG MODE · {countdownLabel(daysToNextGig).toUpperCase()}</Text>
+              <Text style={styles.preGigTitle} numberOfLines={1}>{nextGig.name}</Text>
+              <Text style={styles.preGigSub} numberOfLines={1}>
+                {nextGigSetlist
+                  ? `Setlist: ${nextGigSetlist.name} · tap to rehearse`
+                  : 'Focus on your songs — tap to manage gigs'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        )}
+
         {/* ── Task Instructions ── */}
-        <Text style={styles.sectionLabel}>CURRENT TASK</Text>
+        <Text style={styles.sectionLabel}>
+          {preGig ? 'CURRENT TASK · SONGS FIRST' : 'CURRENT TASK'}
+        </Text>
 
         {loadingTasks ? (
           <View style={styles.taskPlaceholder} />
@@ -997,7 +1268,7 @@ export default function PracticeScreen({ route }) {
                 contentContainerStyle={styles.pillsRow}
                 style={{ marginBottom: SPACING.md }}
               >
-                {sessions.map((s) => (
+                {displaySessions.map((s) => (
                   <TouchableOpacity
                     key={s.id}
                     style={[styles.taskPill, activeSession?.id === s.id && styles.taskPillActive]}
@@ -1029,6 +1300,54 @@ export default function PracticeScreen({ route }) {
                 </View>
                 <Text style={styles.taskTitle}>{activeSession.title}</Text>
                 <Text style={styles.taskDesc}>{activeSession.description}</Text>
+
+                {/* Inline practice timer */}
+                <View style={[styles.inlineTimerBox, { backgroundColor: categoryColor + '14', borderColor: categoryColor + '33' }]}>
+                  <View style={styles.inlineTimer}>
+                    <View style={styles.inlineTimerLeft}>
+                      <Ionicons name="time-outline" size={18} color={categoryColor} />
+                      <Text style={[styles.inlineTimerTime, { color: timerActive ? categoryColor : COLORS.text }]}>
+                        {formatTime(timerSeconds)}
+                      </Text>
+                      <Text style={styles.inlineTimerTotal}>/ {activeSession.duration} min</Text>
+                    </View>
+                    <View style={styles.inlineTimerControls}>
+                      <TouchableOpacity
+                        style={styles.inlineResetBtn}
+                        onPress={() => {
+                          clearInterval(timerRef.current);
+                          setTimerActive(false);
+                          setTimerSeconds(activeSession.duration * 60);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.inlinePlayBtn, { backgroundColor: timerActive ? COLORS.error : categoryColor, shadowColor: timerActive ? COLORS.error : categoryColor }]}
+                        onPress={() => setTimerActive((p) => !p)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name={timerActive ? 'pause' : 'play'} size={20} color={COLORS.text} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Thin progress bar */}
+                  <View style={styles.inlineTimerBarTrack}>
+                    <View
+                      style={[
+                        styles.inlineTimerBarFill,
+                        {
+                          width: activeSession.duration * 60 > 0
+                            ? `${(1 - timerSeconds / (activeSession.duration * 60)) * 100}%`
+                            : '0%',
+                          backgroundColor: categoryColor,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
               </View>
             )}
           </>
@@ -1063,10 +1382,10 @@ export default function PracticeScreen({ route }) {
         {/* ── Tool selector ── */}
         <View style={styles.toolSelector}>
           {[
-            { key: 'timer', label: 'Timer', icon: 'timer-outline' },
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
             { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
             { key: 'songs', label: 'Songs', icon: 'list-outline' },
+            { key: 'gigs', label: 'Gigs', icon: 'calendar-outline' },
           ].map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -1079,58 +1398,6 @@ export default function PracticeScreen({ route }) {
             </TouchableOpacity>
           ))}
         </View>
-
-        {/* ── Timer ── */}
-        {tool === 'timer' && (
-          activeSession ? (
-            <View style={styles.card}>
-              {/* Progress bar */}
-              <View style={styles.timerBarTrack}>
-                <View
-                  style={[
-                    styles.timerBarFill,
-                    {
-                      width: activeSession.duration * 60 > 0
-                        ? `${(1 - timerSeconds / (activeSession.duration * 60)) * 100}%`
-                        : '0%',
-                      backgroundColor: categoryColor,
-                    },
-                  ]}
-                />
-              </View>
-
-              {/* Countdown */}
-              <Text style={styles.timerCountdown}>{formatTime(timerSeconds)}</Text>
-              <Text style={styles.timerTotal}>{activeSession.duration} min total</Text>
-
-              {/* Controls */}
-              <View style={styles.timerControls}>
-                <TouchableOpacity
-                  style={styles.timerResetBtn}
-                  onPress={() => {
-                    clearInterval(timerRef.current);
-                    setTimerActive(false);
-                    setTimerSeconds(activeSession.duration * 60);
-                  }}
-                >
-                  <Ionicons name="refresh" size={18} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.timerPlayBtn, { backgroundColor: timerActive ? COLORS.error : categoryColor }]}
-                  onPress={() => setTimerActive((p) => !p)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name={timerActive ? 'pause' : 'play'} size={26} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.emptyTask}>
-              <Ionicons name="musical-notes-outline" size={28} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-              <Text style={styles.emptyTaskText}>Pick a task above to start the timer</Text>
-            </View>
-          )
-        )}
 
         {/* ── Metronome ── */}
         {tool === 'metronome' && (
@@ -1187,6 +1454,51 @@ export default function PracticeScreen({ route }) {
             </View>
           </View>
 
+          {/* Speed trainer */}
+          <View style={[styles.trainerBox, trainerOn && styles.trainerBoxOn]}>
+            <TouchableOpacity
+              style={styles.trainerHeader}
+              onPress={() => setTrainerOn((o) => !o)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.trainerTitleWrap}>
+                <Ionicons name="trending-up" size={16} color={trainerOn ? COLORS.primary : COLORS.textMuted} />
+                <Text style={[styles.trainerTitle, trainerOn && { color: COLORS.text }]}>Speed trainer</Text>
+              </View>
+              <View style={[styles.trainerSwitch, trainerOn && styles.trainerSwitchOn]}>
+                <View style={[styles.trainerKnob, trainerOn && styles.trainerKnobOn]} />
+              </View>
+            </TouchableOpacity>
+
+            {trainerOn && (
+              <View style={styles.trainerBody}>
+                <Text style={styles.trainerHint}>
+                  {isPlaying
+                    ? atTarget
+                      ? `✓ At target — holding ${trainerTarget} BPM`
+                      : `Ramping ${trainerStart} → ${trainerTarget} BPM`
+                    : 'Speeds up automatically as you play'}
+                </Text>
+                <View style={styles.trainerRow}>
+                  <Text style={styles.trainerLabel}>From</Text>
+                  <Stepper value={trainerStart} min={BPM_MIN} max={BPM_MAX} step={5} suffix="BPM" onChange={setTrainerStart} />
+                </View>
+                <View style={styles.trainerRow}>
+                  <Text style={styles.trainerLabel}>To</Text>
+                  <Stepper value={trainerTarget} min={BPM_MIN} max={BPM_MAX} step={5} suffix="BPM" onChange={setTrainerTarget} />
+                </View>
+                <View style={styles.trainerRow}>
+                  <Text style={styles.trainerLabel}>Increase by</Text>
+                  <Stepper value={trainerStep} min={1} max={20} step={1} suffix="BPM" onChange={setTrainerStep} />
+                </View>
+                <View style={styles.trainerRow}>
+                  <Text style={styles.trainerLabel}>Every</Text>
+                  <Stepper value={trainerBars} min={1} max={16} step={1} suffix="bars" onChange={setTrainerBars} />
+                </View>
+              </View>
+            )}
+          </View>
+
           {/* Play */}
           <TouchableOpacity
             style={[styles.playBtn, isPlaying && styles.playBtnActive]}
@@ -1198,101 +1510,211 @@ export default function PracticeScreen({ route }) {
         </View>
         )}
 
-        {/* ── Tuner ── */}
-        {tool === 'tuner' && (
-        <View style={styles.card}>
+        {/* ── Tuner (chromatic, auto-detecting) ── */}
+        {tool === 'tuner' && (() => {
+          const note = detectedHz ? hzToNote(detectedHz) : null;
+          const cents = note ? Math.max(-50, Math.min(50, note.cents)) : 0;
+          const ratio = (cents + 50) / 100; // 0 (−50¢) … 1 (+50¢)
+          const inTune = note && Math.abs(note.cents) <= 5;
+          const close = note && Math.abs(note.cents) <= 15;
+          const color = !note ? COLORS.textMuted : inTune ? COLORS.success : close ? '#F59E0B' : COLORS.error;
+          // Which standard string are you nearest to? (closest by pitch, octave-aware)
+          const nearest = note
+            ? strings.reduce((best, s) => {
+                const d = Math.abs(1200 * Math.log2(detectedHz / s.freq));
+                return !best || d < best.d ? { num: s.number, d } : best;
+              }, null)
+            : null;
 
-          {/* Guitar / Bass toggle */}
-          <View style={styles.instRow}>
-            {['Guitar', 'Bass'].map((inst) => (
-              <TouchableOpacity
-                key={inst}
-                style={[styles.instBtn, tunerInstrument === inst && styles.instBtnActive]}
-                onPress={() => { setTunerInstrument(inst); setStringIndex(0); }}
-              >
-                <Text style={[styles.instBtnText, tunerInstrument === inst && styles.instBtnTextActive]}>
-                  {inst}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Note display */}
-          <View style={styles.tunerDisplay}>
-            <TouchableOpacity
-              style={styles.tunerArrow}
-              onPress={() => setStringIndex((i) => (i - 1 + strings.length) % strings.length)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="chevron-back" size={32} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-            <View style={styles.tunerNoteWrap}>
-              <Text style={styles.tunerNote}>{currentString.note}</Text>
-              <Text style={styles.tunerOctave}>{currentString.octave}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.tunerArrow}
-              onPress={() => setStringIndex((i) => (i + 1) % strings.length)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="chevron-forward" size={32} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.tunerFreq}>{currentString.label}</Text>
-
-          {/* String dots */}
-          <View style={styles.tunerDots}>
-            {strings.map((_, i) => (
-              <TouchableOpacity key={i} onPress={() => setStringIndex(i)}>
-                <View style={[styles.tunerDot, i === stringIndex && styles.tunerDotActive]} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Needle — only shown when tuning */}
-          {isTuning && (
-            <View style={styles.needleWrap}>
-              {detectedHz ? (() => {
-                const cents = Math.max(-50, Math.min(50, tunerCents));
-                const ratio = (cents + 50) / 100;
-                const inTune = Math.abs(cents) <= 5;
-                const color = inTune ? COLORS.success : Math.abs(cents) <= 20 ? '#F59E0B' : COLORS.error;
-                return (
-                  <>
-                    <Text style={[styles.needleHz, { color }]}>
-                      {inTune ? '✓ In tune' : tunerCents < 0 ? 'Tune up ↑' : 'Tune down ↓'}
+          return (
+            <View style={styles.card}>
+              {/* Guitar / Bass toggle */}
+              <View style={styles.instRow}>
+                {['Guitar', 'Bass'].map((inst) => (
+                  <TouchableOpacity
+                    key={inst}
+                    style={[styles.instBtn, tunerInstrument === inst && styles.instBtnActive]}
+                    onPress={() => setTunerInstrument(inst)}
+                  >
+                    <Text style={[styles.instBtnText, tunerInstrument === inst && styles.instBtnTextActive]}>
+                      {inst}
                     </Text>
-                    <View style={styles.needleTrack}>
-                      <View style={styles.needleCenter} />
-                      <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Big auto-detected note */}
+              <View style={styles.tunerNoteBlock}>
+                <Text style={[styles.tunerBigNote, { color }]}>
+                  {note ? note.name : '–'}
+                  {note && <Text style={styles.tunerBigOctave}>{note.octave}</Text>}
+                </Text>
+                <Text style={[styles.tunerStatus, { color }]}>
+                  {!isTuning
+                    ? 'Tap Start, then play a string'
+                    : !note
+                      ? 'Listening…'
+                      : inTune
+                        ? '✓ In tune'
+                        : note.cents < 0
+                          ? `${Math.abs(note.cents)}¢ flat · tune up`
+                          : `${note.cents}¢ sharp · tune down`}
+                </Text>
+              </View>
+
+              {/* Needle / cents meter */}
+              <View style={styles.needleWrap}>
+                <View style={styles.needleTrack}>
+                  {/* in-tune zone */}
+                  <View style={styles.needleZone} />
+                  <View style={styles.needleCenter} />
+                  {note && (
+                    <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
+                  )}
+                </View>
+                <View style={styles.needleLabels}>
+                  <Text style={styles.needleLabel}>♭</Text>
+                  <Text style={styles.needleLabel}>0</Text>
+                  <Text style={styles.needleLabel}>♯</Text>
+                </View>
+              </View>
+
+              {/* Standard-tuning reference — highlights the string you're playing */}
+              <View style={styles.tunerStringRow}>
+                {strings.map((s) => {
+                  const on = nearest?.num === s.number;
+                  return (
+                    <View
+                      key={s.number}
+                      style={[styles.tunerStringChip, on && { borderColor: color, backgroundColor: color + '22' }]}
+                    >
+                      <Text style={[styles.tunerStringChipText, on && { color }]}>{s.note}</Text>
                     </View>
-                    <View style={styles.needleLabels}>
-                      <Text style={styles.needleLabel}>flat</Text>
-                      <Text style={styles.needleLabel}>♪</Text>
-                      <Text style={styles.needleLabel}>sharp</Text>
-                    </View>
-                  </>
-                );
-              })() : (
-                <Text style={styles.needleListening}>Listening… play a note</Text>
-              )}
+                  );
+                })}
+              </View>
+
+              {/* Start / Stop */}
+              <TouchableOpacity
+                style={[styles.tunerBtn, isTuning && styles.tunerBtnActive]}
+                onPress={isTuning ? stopTuning : startTuning}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
+                <Text style={styles.tunerBtnText}>{isTuning ? 'Stop' : 'Start Tuning'}</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.tunerCaption}>
+                Auto-detects any note · Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'}
+              </Text>
             </View>
+          );
+        })()}
+
+        {/* ── Gigs (Pre-Gig Mode) ── */}
+        {tool === 'gigs' && (
+        <View style={styles.card}>
+          <Text style={styles.songsHeading}>Upcoming gigs</Text>
+          <Text style={styles.songsSub}>
+            Add a performance date and Prova flips into Pre-Gig Mode {PRE_GIG_WINDOW} days before —
+            your song tasks jump to the top of Practice.
+          </Text>
+
+          {/* Add-gig form */}
+          {showAddGig ? (
+            <View style={styles.gigForm}>
+              <TextInput
+                style={styles.gigInput}
+                placeholder="Gig name (e.g. Sarah's wedding)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newGigName}
+                onChangeText={setNewGigName}
+                maxLength={60}
+              />
+              <Text style={styles.gigFormLabel}>Date</Text>
+              <MiniCalendar selected={newGigDate} onSelect={setNewGigDate} />
+
+              {setlists.length > 0 && (
+                <>
+                  <Text style={styles.gigFormLabel}>Setlist (optional)</Text>
+                  <View style={styles.gigSetlistChips}>
+                    {setlists.map((s) => {
+                      const on = newGigSetlistId === s.id;
+                      return (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={[styles.gigChip, on && styles.gigChipOn]}
+                          onPress={() => setNewGigSetlistId(on ? null : s.id)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              <View style={styles.gigFormBtns}>
+                <TouchableOpacity
+                  style={styles.gigCancelBtn}
+                  onPress={() => { setShowAddGig(false); setNewGigName(''); setNewGigDate(''); setNewGigSetlistId(null); }}
+                >
+                  <Text style={styles.gigCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.gigSaveBtn} onPress={addGig} activeOpacity={0.85}>
+                  <Text style={styles.gigSaveText}>Add gig</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowAddGig(true)}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.gigNewBtnText}>Add a gig</Text>
+            </TouchableOpacity>
           )}
 
-          {/* Start / Stop tuning button */}
-          <TouchableOpacity
-            style={[styles.tunerBtn, isTuning && styles.tunerBtnActive]}
-            onPress={isTuning ? stopTuning : startTuning}
-            activeOpacity={0.8}
-          >
-            <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
-            <Text style={styles.tunerBtnText}>{isTuning ? 'Stop Tuning' : 'Start Tuning'}</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.tunerCaption}>
-            Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'} tuning
-          </Text>
+          {/* Upcoming list */}
+          {upcomingGigs.length === 0 ? (
+            !showAddGig && (
+              <View style={styles.gigEmptyBox}>
+                <Ionicons name="calendar-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
+                <Text style={styles.gigEmptyBoxText}>No gigs yet — add one to unlock Pre-Gig Mode.</Text>
+              </View>
+            )
+          ) : (
+            <View style={{ marginTop: SPACING.md }}>
+              {upcomingGigs.map((g) => {
+                const days = daysUntil(g.date);
+                const soon = days <= PRE_GIG_WINDOW;
+                const sl = g.setlistId ? setlists.find((s) => s.id === g.setlistId) : null;
+                const dateLabel = new Date(`${g.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                return (
+                  <View key={g.id} style={[styles.gigRow, soon && styles.gigRowSoon]}>
+                    <View style={[styles.gigCountdown, soon && styles.gigCountdownSoon]}>
+                      <Text style={[styles.gigCountdownNum, soon && { color: COLORS.primary }]}>{days}</Text>
+                      <Text style={styles.gigCountdownUnit}>{days === 1 ? 'day' : 'days'}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.gigName} numberOfLines={1}>{g.name}</Text>
+                      <Text style={styles.gigMeta} numberOfLines={1}>
+                        {dateLabel}{sl ? ` · ${sl.name}` : ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => Alert.alert('Remove gig?', g.name, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Remove', style: 'destructive', onPress: () => removeGig(g.id) },
+                      ])}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
         )}
 
@@ -1768,14 +2190,17 @@ const styles = StyleSheet.create({
   taskTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700', marginBottom: SPACING.xs },
   taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
 
-  // Timer
-  timerBarTrack: { height: 3, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: SPACING.md, overflow: 'hidden' },
-  timerBarFill: { height: '100%', borderRadius: 2 },
-  timerCountdown: { color: COLORS.text, fontSize: 38, fontWeight: '900', textAlign: 'center', fontVariant: ['tabular-nums'], lineHeight: 44 },
-  timerTotal: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', textAlign: 'center', letterSpacing: 1, marginBottom: SPACING.md },
-  timerControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.lg },
-  timerResetBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
-  timerPlayBtn: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  // Inline practice timer (lives on the task card)
+  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1 },
+  inlineTimer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  inlineTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  inlineTimerTime: { fontSize: 27, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
+  inlineTimerTotal: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 1 },
+  inlineTimerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  inlineResetBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  inlineTimerBarTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, marginTop: SPACING.sm + 2, overflow: 'hidden' },
+  inlineTimerBarFill: { height: '100%', borderRadius: 2 },
 
   // Metronome
   beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
@@ -1801,6 +2226,21 @@ const styles = StyleSheet.create({
   playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   playBtnActive: { backgroundColor: COLORS.error },
 
+  // Speed trainer
+  trainerBox: { marginTop: SPACING.lg, marginBottom: SPACING.md, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, overflow: 'hidden' },
+  trainerBoxOn: { borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
+  trainerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2 },
+  trainerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  trainerTitle: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  trainerSwitch: { width: 42, height: 24, borderRadius: 12, backgroundColor: COLORS.border, padding: 2, justifyContent: 'center' },
+  trainerSwitchOn: { backgroundColor: COLORS.primary },
+  trainerKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.text },
+  trainerKnobOn: { alignSelf: 'flex-end' },
+  trainerBody: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md, gap: SPACING.sm },
+  trainerHint: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  trainerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trainerLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+
   // Tuner
   instRow: { flexDirection: 'row', backgroundColor: COLORS.surface, borderRadius: 10, padding: 3, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
   instBtn: { flex: 1, paddingVertical: SPACING.sm, alignItems: 'center', borderRadius: 8 },
@@ -1808,26 +2248,24 @@ const styles = StyleSheet.create({
   instBtnText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   instBtnTextActive: { color: COLORS.text },
 
-  tunerDisplay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm },
-  tunerArrow: { padding: SPACING.md },
-  tunerNoteWrap: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 100, justifyContent: 'center' },
-  tunerNote: { color: COLORS.text, fontSize: 72, fontWeight: '900', lineHeight: 80 },
-  tunerOctave: { color: COLORS.textMuted, fontSize: 22, fontWeight: '700', marginTop: 10 },
-  tunerFreq: { color: COLORS.primary, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  tunerDots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: SPACING.md },
-  tunerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.border },
-  tunerDotActive: { backgroundColor: COLORS.primary, width: 20, borderRadius: 4 },
+  tunerNoteBlock: { alignItems: 'center', marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  tunerBigNote: { fontSize: 76, fontWeight: '900', lineHeight: 84, letterSpacing: 1 },
+  tunerBigOctave: { fontSize: 26, fontWeight: '700', color: COLORS.textMuted },
+  tunerStatus: { fontSize: 14, fontWeight: '700', marginTop: 2 },
+
+  tunerStringRow: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.md, marginBottom: SPACING.xs },
+  tunerStringChip: { minWidth: 38, paddingVertical: 6, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, alignItems: 'center' },
+  tunerStringChipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '800' },
 
   tunerCaption: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', letterSpacing: 0.5, marginTop: SPACING.sm },
 
-  needleWrap: { marginVertical: SPACING.md },
-  needleHz: { fontSize: 13, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
-  needleTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, position: 'relative', marginBottom: 4 },
-  needleCenter: { position: 'absolute', left: '50%', top: -4, width: 2, height: 12, backgroundColor: COLORS.textMuted, borderRadius: 1 },
-  needleIndicator: { position: 'absolute', width: 14, height: 14, borderRadius: 7, top: -5, marginLeft: -7, borderWidth: 2, borderColor: COLORS.background },
-  needleLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  needleLabel: { color: COLORS.textMuted, fontSize: 10 },
-  needleListening: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.md, fontStyle: 'italic' },
+  needleWrap: { marginVertical: SPACING.md, paddingHorizontal: 4 },
+  needleTrack: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, position: 'relative', marginBottom: 6 },
+  needleZone: { position: 'absolute', left: '44%', width: '12%', top: 0, bottom: 0, backgroundColor: COLORS.success + '40', borderRadius: 3 },
+  needleCenter: { position: 'absolute', left: '50%', top: -5, width: 2, height: 16, backgroundColor: COLORS.textSecondary, borderRadius: 1, marginLeft: -1 },
+  needleIndicator: { position: 'absolute', width: 18, height: 18, borderRadius: 9, top: -6, marginLeft: -9, borderWidth: 3, borderColor: COLORS.background },
+  needleLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2 },
+  needleLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
 
   tunerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm, marginTop: SPACING.md },
   tunerBtnActive: { backgroundColor: COLORS.error },
@@ -1847,6 +2285,42 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed', padding: SPACING.md, marginTop: SPACING.md,
   },
   songCtaText: { color: COLORS.textSecondary, fontSize: 13, flex: 1, lineHeight: 18 },
+
+  // ── Pre-Gig Mode banner ──
+  preGigBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.primary + '18', borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '55',
+    padding: SPACING.md,
+  },
+  preGigIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  preGigLabel: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 1 },
+  preGigTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  preGigSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
+
+  // ── Gigs (Pre-Gig Mode) ──
+  gigForm: { gap: SPACING.sm, marginBottom: SPACING.md },
+  gigInput: { backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
+  gigFormLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginTop: SPACING.xs },
+  gigSetlistChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  gigChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, maxWidth: '100%' },
+  gigChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
+  gigChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  gigChipTextOn: { color: COLORS.primary },
+  gigFormBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+  gigCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  gigCancelText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
+  gigSaveBtn: { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
+  gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  gigEmptyBox: { alignItems: 'center', paddingVertical: SPACING.xl },
+  gigEmptyBoxText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
+  gigRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  gigRowSoon: {},
+  gigCountdown: { width: 46, height: 46, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  gigCountdownSoon: { borderColor: COLORS.primary + '66', backgroundColor: COLORS.primary + '14' },
+  gigCountdownNum: { color: COLORS.text, fontSize: 18, fontWeight: '900', lineHeight: 20 },
+  gigCountdownUnit: { color: COLORS.textMuted, fontSize: 9, fontWeight: '600' },
+  gigName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  gigMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Song library panel
   songsHeading: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
