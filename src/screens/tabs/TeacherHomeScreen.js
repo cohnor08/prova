@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { ensureTeacherCode } from '../../lib/teacher';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -60,6 +61,19 @@ function ChecklistRow({ done, label, onPress }) {
 export default function TeacherHomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
+  const [joinCode, setJoinCode] = useState(null);
+
+  // Make sure this teacher has a join code (students use it to connect).
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    ensureTeacherCode(uid).then(setJoinCode).catch(() => {});
+  }, []);
+
+  const shareCode = () => {
+    if (!joinCode) return;
+    Share.share({ message: `Add me as your Prova teacher with this code: ${joinCode}` }).catch(() => {});
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -98,6 +112,20 @@ export default function TeacherHomeScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.kicker}>TEACHER HOME</Text>
         <Text style={styles.title}>Welcome back, coach 👋</Text>
+
+        {joinCode && (
+          <View style={styles.codeCard}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.codeLabel}>YOUR JOIN CODE</Text>
+              <Text style={styles.codeValue}>{joinCode}</Text>
+              <Text style={styles.codeHint}>Students enter this in their Profile to connect with you.</Text>
+            </View>
+            <TouchableOpacity style={styles.codeShareBtn} onPress={shareCode} activeOpacity={0.85}>
+              <Ionicons name="share-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.codeShareText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
@@ -146,6 +174,17 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.lg },
   kicker: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800', marginBottom: SPACING.lg },
+  codeCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.primary + '14', borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '44',
+    padding: SPACING.lg,
+  },
+  codeLabel: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 2 },
+  codeValue: { color: COLORS.text, fontSize: 28, fontWeight: '900', letterSpacing: 4, fontVariant: ['tabular-nums'] },
+  codeHint: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 16, marginTop: 4 },
+  codeShareBtn: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  codeShareText: { color: COLORS.primary, fontSize: 11, fontWeight: '700' },
+
   statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   statCard: {
     flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md,

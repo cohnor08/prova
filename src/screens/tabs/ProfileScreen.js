@@ -4,11 +4,13 @@ import {
   Alert, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
+import { linkTeacherByCode } from '../../lib/teacher';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
@@ -250,7 +252,27 @@ export default function ProfileScreen() {
   const [tipModal, setTipModal] = useState(false);
   const [tipInput, setTipInput] = useState('');
   const [savingTip, setSavingTip] = useState(false);
+  const [teacherCodeInput, setTeacherCodeInput] = useState('');
+  const [linkingTeacher, setLinkingTeacher] = useState(false);
+  const [teacherName, setTeacherName] = useState(null);
   useEffect(() => { loadUser(); }, []);
+
+  const handleLinkTeacher = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setLinkingTeacher(true);
+    try {
+      const { uid: tUid, name } = await linkTeacherByCode(uid, teacherCodeInput);
+      setUserData((p) => ({ ...p, teacherUid: tUid }));
+      setTeacherName(name);
+      setTeacherCodeInput('');
+      Alert.alert('Connected! 🎉', `You're now linked with ${name}. They can assign you practice tasks.`);
+    } catch (e) {
+      Alert.alert('Could not connect', e.message);
+    } finally {
+      setLinkingTeacher(false);
+    }
+  };
 
   const loadUser = async () => {
     try {
@@ -442,6 +464,44 @@ export default function ProfileScreen() {
 
         {/* Practice settings + goals are student-only — teachers don't have a practice plan */}
         {userData?.role !== 'teacher' && (<>
+        {/* My Teacher */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>MY TEACHER</Text>
+          {userData?.teacherUid ? (
+            <View style={styles.row}>
+              <Ionicons name="school" size={18} color={COLORS.primary} style={styles.rowIcon} />
+              <Text style={styles.rowLabel}>Connected</Text>
+              <Text style={[styles.rowValue, { color: COLORS.success }]}>✓ {teacherName || 'Linked'}</Text>
+            </View>
+          ) : (
+            <View style={styles.teacherConnect}>
+              <Text style={styles.teacherConnectHint}>Got a code from your teacher? Enter it to connect.</Text>
+              <View style={styles.teacherConnectRow}>
+                <TextInput
+                  style={styles.teacherCodeInput}
+                  placeholder="ABC123"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={teacherCodeInput}
+                  onChangeText={(t) => setTeacherCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={6}
+                />
+                <TouchableOpacity
+                  style={[styles.teacherConnectBtn, (linkingTeacher || teacherCodeInput.length < 6) && { opacity: 0.5 }]}
+                  onPress={handleLinkTeacher}
+                  disabled={linkingTeacher || teacherCodeInput.length < 6}
+                  activeOpacity={0.85}
+                >
+                  {linkingTeacher
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.teacherConnectBtnText}>Connect</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Practice Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>PRACTICE SETTINGS</Text>
@@ -696,6 +756,18 @@ const styles = StyleSheet.create({
 
   section: { marginBottom: SPACING.xl },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.sm },
+
+  // Connect-to-teacher (student)
+  teacherConnect: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.sm },
+  teacherConnectHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  teacherConnectRow: { flexDirection: 'row', gap: SPACING.sm },
+  teacherCodeInput: {
+    flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 10,
+    paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 18, fontWeight: '800',
+    letterSpacing: 3, borderWidth: 1, borderColor: COLORS.border,
+  },
+  teacherConnectBtn: { justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: SPACING.lg },
+  teacherConnectBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
