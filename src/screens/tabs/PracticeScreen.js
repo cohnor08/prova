@@ -269,6 +269,7 @@ export default function PracticeScreen({ route, navigation }) {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const hasLoadedRef = useRef(false); // skip the loading flash on re-focus
 
 
   // Gig setlists — AI-built playlists saved inside the library
@@ -437,7 +438,9 @@ export default function PracticeScreen({ route, navigation }) {
   }, [isPlaying, bpm, beatsPerBar]);
 
   const loadData = async () => {
-    setLoadingTasks(true);
+    // Only show the loading placeholder on the very first load. On later focuses
+    // (e.g. returning from the Songs/Gigs screens) refresh silently — no flash.
+    if (!hasLoadedRef.current) setLoadingTasks(true);
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
@@ -454,6 +457,7 @@ export default function PracticeScreen({ route, navigation }) {
       console.error(err);
     } finally {
       setLoadingTasks(false);
+      hasLoadedRef.current = true;
     }
   };
 
