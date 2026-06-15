@@ -10,7 +10,7 @@ import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
-  updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
+  updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { ensureTeacherCode } from '../../lib/teacher';
@@ -558,6 +558,81 @@ function InlineChatView({ student, myUid, isDemo }) {
 
 // ─── Teacher Dashboard ────────────────────────────────────────────────────────
 
+// Compact 5-week practice heatmap for one student — fetched lazily when their
+// card is expanded. Reads sessionHistory (allowed for the linked teacher).
+function buildStudentWeeks(logMap) {
+  const today = new Date();
+  const dow = (today.getDay() + 6) % 7; // Mon = 0
+  const monStart = new Date(today);
+  monStart.setDate(today.getDate() - dow);
+  monStart.setHours(0, 0, 0, 0);
+  const rows = Array.from({ length: 7 }, () => []);
+  for (let w = 4; w >= 0; w--) {
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(monStart);
+      day.setDate(monStart.getDate() - w * 7 + d);
+      if (day > today) { rows[d].push(-1); continue; }
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      const mins = logMap[key]?.totalMinutes || 0;
+      rows[d].push(mins === 0 ? 0 : mins < 15 ? 1 : mins < 30 ? 2 : 3);
+    }
+  }
+  return rows;
+}
+
+function StudentHeatmap({ studentUid }) {
+  const [logMap, setLogMap] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDocs(query(
+          collection(db, 'sessionHistory', studentUid, 'logs'),
+          orderBy('date', 'desc'), limit(35),
+        ));
+        const map = {};
+        snap.forEach((d) => { map[d.id] = d.data(); });
+        if (!cancelled) setLogMap(map);
+      } catch (e) {
+        if (!cancelled) setLogMap({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentUid]);
+
+  if (logMap === null) {
+    return <ActivityIndicator size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
+  }
+  const rows = buildStudentWeeks(logMap);
+  const practiced = Object.values(logMap).filter((l) => (l.totalMinutes || 0) > 0).length;
+
+  return (
+    <View style={styles.studentHeat}>
+      <Text style={styles.taskSectionLabel}>PRACTICE — LAST 5 WEEKS · {practiced} days</Text>
+      <View>
+        {rows.map((row, ri) => (
+          <View key={ri} style={styles.heatRow}>
+            {row.map((v, ci) => (
+              <View
+                key={ci}
+                style={[
+                  styles.heatCell,
+                  v === 0 && styles.heatCell0,
+                  v === 1 && styles.heatCell1,
+                  v === 2 && styles.heatCell2,
+                  v === 3 && styles.heatCell3,
+                  v === -1 && styles.heatCellFuture,
+                ]}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -810,6 +885,9 @@ function TeacherDashboard() {
                           <Text style={styles.statLabel}>tasks done</Text>
                         </View>
                       </View>
+
+                      {/* Practice heatmap — last 5 weeks */}
+                      <StudentHeatmap studentUid={student.uid} />
 
                       {/* Last session note */}
                       {!!student.lastSessionNote && (
@@ -1201,6 +1279,17 @@ const styles = StyleSheet.create({
   // Assigned tasks mini list
   taskSection: { gap: 6 },
   taskSectionLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+
+  // Per-student practice heatmap
+  studentHeat: { gap: 4 },
+  heatRow: { flexDirection: 'row', gap: 3, marginBottom: 3 },
+  heatCell: { width: 14, height: 14, borderRadius: 3 },
+  heatCell0: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  heatCell1: { backgroundColor: COLORS.primary + '40' },
+  heatCell2: { backgroundColor: COLORS.primary + '80' },
+  heatCell3: { backgroundColor: COLORS.primary },
+  heatCellFuture: { backgroundColor: 'transparent' },
+
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
