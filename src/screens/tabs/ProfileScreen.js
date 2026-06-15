@@ -274,6 +274,25 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDisconnectTeacher = () => {
+    Alert.alert('Disconnect from teacher?', 'They will no longer see your progress or assign you tasks. You can reconnect anytime with their code.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect', style: 'destructive', onPress: async () => {
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+          try {
+            await updateDoc(doc(db, 'users', uid), { teacherUid: null });
+            setUserData((p) => ({ ...p, teacherUid: null }));
+            setTeacherName(null);
+          } catch (e) {
+            Alert.alert('Error', "Couldn't disconnect. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
   const loadUser = async () => {
     try {
       const uid = auth.currentUser?.uid;
@@ -468,11 +487,11 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>MY TEACHER</Text>
           {userData?.teacherUid ? (
-            <View style={styles.row}>
+            <TouchableOpacity style={styles.row} onPress={handleDisconnectTeacher} activeOpacity={0.7}>
               <Ionicons name="school" size={18} color={COLORS.primary} style={styles.rowIcon} />
-              <Text style={styles.rowLabel}>Connected</Text>
-              <Text style={[styles.rowValue, { color: COLORS.success }]}>✓ {teacherName || 'Linked'}</Text>
-            </View>
+              <Text style={styles.rowLabel}>Connected{teacherName ? ` to ${teacherName}` : ' to a teacher'}</Text>
+              <Text style={[styles.rowValue, { color: COLORS.error }]}>Disconnect</Text>
+            </TouchableOpacity>
           ) : (
             <View style={styles.teacherConnect}>
               <Text style={styles.teacherConnectHint}>Got a code from your teacher? Enter it to connect.</Text>

@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
@@ -87,12 +87,9 @@ export default function TeacherHomeScreen({ navigation }) {
         try {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
-          const me = await getDoc(doc(db, 'users', uid));
-          const studentUids = me.data()?.students || [];
-          const docs = await Promise.all(
-            studentUids.map((suid) => getDoc(doc(db, 'users', suid)).then((s) => (s.exists() ? s.data() : null)))
-          );
-          const students = docs.filter(Boolean);
+          // Students who connected carry teacherUid === my uid.
+          const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
+          const students = snap.docs.map((d) => d.data());
           if (!cancelled) setStats(computeStats(students));
         } catch (e) {
           console.error(e);

@@ -8,11 +8,18 @@ service cloud.firestore {
     match /users/{userId} {
       allow read:  if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
-      // A teacher who has this student may update ONLY their assignedTasks
-      // (so the teacher can assign tasks to the student's own record).
+      // The student's linked teacher (student.teacherUid == teacher) may update
+      // ONLY their assignedTasks — so the teacher can assign tasks to the
+      // student's own record. The student links/unlinks via their own teacherUid
+      // (owner write), so the teacher never writes that field.
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedTasks'])
-        && (userId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.students);
+        && resource.data.teacherUid == request.auth.uid;
+      // The linked teacher may also unlink a student (clear teacherUid only).
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teacherUid'])
+        && resource.data.teacherUid == request.auth.uid
+        && request.resource.data.teacherUid == null;
     }
 
     // Session history — written by the app when a session is rated,

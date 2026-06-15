@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -13,6 +13,7 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -20,7 +21,10 @@ import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
-export const DEMO_MODE = true;
+// Real teacher mode: students connect via the teacher's join code (their
+// teacherUid is set). Flip back to true only to populate the screens with the
+// sample students below for a screenshot/pitch.
+export const DEMO_MODE = false;
 
 const _now = Date.now();
 export const DEMO_STUDENTS_DATA = [
@@ -564,8 +568,19 @@ function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
+  const [joinCode, setJoinCode] = useState(null);
 
   const myUid = auth.currentUser?.uid;
+
+  useEffect(() => {
+    if (!myUid) return;
+    ensureTeacherCode(myUid).then(setJoinCode).catch(() => {});
+  }, [myUid]);
+
+  const shareCode = () => {
+    if (!joinCode) return;
+    Share.share({ message: `Add me as your Prova teacher with this code: ${joinCode}` }).catch(() => {});
+  };
   const todayName = WEEK_DAYS[new Date().getDay()];
 
   useFocusEffect(
@@ -592,15 +607,10 @@ function TeacherDashboard() {
         return;
       }
       const uid = auth.currentUser.uid;
-      const snap = await getDoc(doc(db, 'users', uid));
-      const studentUids = snap.data()?.students || [];
-      const data = await Promise.all(
-        studentUids.map(async (suid) => {
-          const s = await getDoc(doc(db, 'users', suid));
-          return s.exists() ? { uid: suid, ...s.data() } : null;
-        })
-      );
-      setStudents(data.filter(Boolean));
+      // Students who connected (via my join code, or an accepted request) carry
+      // teacherUid === my uid.
+      const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
+      setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
     } catch (err) {
       console.error(err);
     } finally {
@@ -633,14 +643,18 @@ function TeacherDashboard() {
 
   const removeStudent = (studentUid, name) => {
     if (DEMO_MODE) { Alert.alert('Demo mode', 'Removing students is disabled in demo mode.'); return; }
-    Alert.alert('Remove Student', `Remove ${name}?`, [
+    Alert.alert('Remove Student', `Remove ${name}? They can reconnect later with your code.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive', onPress: async () => {
-          const uid = auth.currentUser.uid;
-          await updateDoc(doc(db, 'users', uid), { students: arrayRemove(studentUid) });
-          await updateDoc(doc(db, 'users', studentUid), { teacherUid: null });
-          setStudents((prev) => prev.filter((s) => s.uid !== studentUid));
+          try {
+            // Unlink the student (clear their teacherUid). Allowed for the
+            // linked teacher by the Firestore rule.
+            await updateDoc(doc(db, 'users', studentUid), { teacherUid: null });
+            setStudents((prev) => prev.filter((s) => s.uid !== studentUid));
+          } catch (e) {
+            Alert.alert('Error', "Couldn't remove this student. Please try again.");
+          }
         },
       },
     ]);
@@ -722,22 +736,24 @@ function TeacherDashboard() {
                 <Text style={styles.demoBannerText}>Demo — sample student data</Text>
               </View>
             ) : (
-              <View style={styles.inviteCard}>
-                <Text style={styles.inviteLabel}>Add student by email</Text>
-                <View style={styles.inviteRow}>
-                  <TextInput
-                    style={styles.inviteInput}
-                    placeholder="student@email.com"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={inviteEmail}
-                    onChangeText={setInviteEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity style={[styles.inviteBtn, inviting && { opacity: 0.6 }]} onPress={addStudent} disabled={inviting}>
-                    {inviting ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.inviteBtnText}>Add</Text>}
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.codeCard}>
+                <Text style={styles.inviteLabel}>YOUR JOIN CODE</Text>
+                <Text style={styles.codeBig}>{joinCode || '······'}</Text>
+                <Text style={styles.codeHint}>
+                  Students enter this in their Profile → My Teacher to connect with you instantly.
+                </Text>
+                <TouchableOpacity style={styles.shareCodeBtn} onPress={shareCode} activeOpacity={0.85}>
+                  <Ionicons name="share-outline" size={16} color="#fff" />
+                  <Text style={styles.shareCodeText}>Share code</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!DEMO_MODE && !loading && students.length === 0 && (
+              <View style={styles.emptyStudents}>
+                <Ionicons name="people-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyStudentsText}>No students yet</Text>
+                <Text style={styles.emptyStudentsSub}>Share your join code above — students appear here the moment they connect.</Text>
               </View>
             )}
 
@@ -1135,6 +1151,15 @@ const styles = StyleSheet.create({
   // Invite
   inviteCard: { backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },
   inviteLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: 1 },
+
+  codeCard: { backgroundColor: COLORS.primary + '14', borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '44', padding: SPACING.lg, marginBottom: SPACING.lg },
+  codeBig: { color: COLORS.text, fontSize: 34, fontWeight: '900', letterSpacing: 6, marginVertical: 4 },
+  codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
+  shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
+  shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  emptyStudents: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg },
+  emptyStudentsText: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  emptyStudentsSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
