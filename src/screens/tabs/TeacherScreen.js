@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform, Share,
+  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -316,42 +316,50 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Assign Task</Text>
-          <Text style={styles.modalSubtitle}>To: {student?.name || student?.email}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Task title"
-            placeholderTextColor={COLORS.textMuted}
-            value={title}
-            onChangeText={setTitle}
-          />
-          <TextInput
-            style={[styles.input, styles.inputMulti]}
-            placeholder="Description (optional)"
-            placeholderTextColor={COLORS.textMuted}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={3}
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
-              onPress={handleAssign}
-              disabled={!title.trim() || loading}
-            >
-              {loading
-                ? <ActivityIndicator color={COLORS.text} size="small" />
-                : <Text style={styles.modalAssignText}>Assign</Text>}
-            </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Assign Task</Text>
+              <Text style={styles.modalSubtitle}>To: {student?.name || student?.email}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Task title"
+                placeholderTextColor={COLORS.textMuted}
+                value={title}
+                onChangeText={setTitle}
+                returnKeyType="next"
+              />
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                placeholder="Description (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+              />
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); onClose(); }}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
+                  onPress={handleAssign}
+                  disabled={!title.trim() || loading}
+                >
+                  {loading
+                    ? <ActivityIndicator color={COLORS.text} size="small" />
+                    : <Text style={styles.modalAssignText}>Assign</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
