@@ -662,11 +662,11 @@ export default function PracticeScreen({ route, navigation }) {
                 <Text style={styles.taskDesc}>{activeSession.description}</Text>
 
                 {/* Inline practice timer */}
-                <View style={[styles.inlineTimerBox, { backgroundColor: categoryColor + '14', borderColor: categoryColor + '33' }]}>
+                <View style={styles.inlineTimerBox}>
                   <View style={styles.inlineTimer}>
                     <View style={styles.inlineTimerLeft}>
-                      <Ionicons name="time-outline" size={18} color={categoryColor} />
-                      <Text style={[styles.inlineTimerTime, { color: timerActive ? categoryColor : COLORS.text }]}>
+                      <Ionicons name="time-outline" size={18} color={COLORS.textMuted} />
+                      <Text style={[styles.inlineTimerTime, { color: COLORS.text }]}>
                         {formatTime(timerSeconds)}
                       </Text>
                       <Text style={styles.inlineTimerTotal}>/ {activeSession.duration} min</Text>
@@ -684,7 +684,7 @@ export default function PracticeScreen({ route, navigation }) {
                         <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.inlinePlayBtn, { backgroundColor: timerActive ? COLORS.error : categoryColor, shadowColor: timerActive ? COLORS.error : categoryColor }]}
+                        style={[styles.inlinePlayBtn, { backgroundColor: timerActive ? COLORS.error : COLORS.primaryDark }]}
                         onPress={() => setTimerActive((p) => !p)}
                         activeOpacity={0.85}
                       >
@@ -702,7 +702,7 @@ export default function PracticeScreen({ route, navigation }) {
                           width: activeSession.duration * 60 > 0
                             ? `${(1 - timerSeconds / (activeSession.duration * 60)) * 100}%`
                             : '0%',
-                          backgroundColor: categoryColor,
+                          backgroundColor: COLORS.primaryDark,
                         },
                       ]}
                     />
@@ -984,14 +984,14 @@ const styles = StyleSheet.create({
   taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
 
   // Inline practice timer (lives on the task card)
-  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1 },
+  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1, backgroundColor: COLORS.surface, borderColor: COLORS.border },
   inlineTimer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inlineTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   inlineTimerTime: { fontSize: 27, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
   inlineTimerTotal: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 1 },
   inlineTimerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   inlineResetBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
-  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   inlineTimerBarTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, marginTop: SPACING.sm + 2, overflow: 'hidden' },
   inlineTimerBarFill: { height: '100%', borderRadius: 2 },
 
