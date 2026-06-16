@@ -125,16 +125,25 @@ export const DEMO_STUDENTS_DATA = [
 
 const WEEK_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-// Due-date label for an assigned task — null when there's no due date.
-function taskDueLabel(dueDate) {
-  if (!dueDate) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(`${dueDate}T00:00:00`);
-  const days = Math.round((due - today) / 86400000);
-  if (days < 0) return { text: 'Overdue', overdue: true };
-  if (days === 0) return { text: 'Due today', overdue: false };
+// Full "Sat, Jun 20 · 5:00 PM" for the assign-task due field.
+function formatDueFull(due) {
+  const d = new Date(due);
+  if (isNaN(d)) return 'No due date';
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+// Short due badge for a task (ISO datetime) — null when there's no due date.
+function taskDueLabel(due) {
+  if (!due) return null;
+  const d = new Date(due);
+  if (isNaN(d)) return null;
+  if (d < new Date()) return { text: 'Overdue', overdue: true };
+  const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = Math.round((d0 - t0) / 86400000);
+  if (days === 0) return { text: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), overdue: false };
   if (days === 1) return { text: 'Tomorrow', overdue: false };
-  return { text: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
+  return { text: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
 }
 
 function getStudentStatus(student) {
@@ -295,16 +304,109 @@ function PaywallScreen({ onUnlock }) {
 
 // ─── Assign Task Modal ────────────────────────────────────────────────────────
 
+// Calendar + time picker for a task due date (no external dependency). Rendered
+// as an in-place overlay (not a Modal) so it can sit over the assign sheet —
+// iOS won't reliably stack two Modals.
+function DueDatePicker({ initial, onClose, onSet }) {
+  const base = initial ? new Date(initial) : null;
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const [day, setDay] = useState(() => {
+    const d = base ? new Date(base) : new Date();
+    d.setHours(0, 0, 0, 0); return d;
+  });
+  const [view, setView] = useState(() => new Date((base || new Date()).getFullYear(), (base || new Date()).getMonth(), 1));
+  const [hour24, setHour24] = useState(base ? base.getHours() : 17);
+  const [minute, setMinute] = useState(base ? base.getMinutes() : 0);
+
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+  const atCurMonth = year === today0.getFullYear() && month === today0.getMonth();
+
+  const h12 = hour24 % 12 || 12;
+  const ampm = hour24 < 12 ? 'AM' : 'PM';
+  const stepHour = (n) => setHour24((h) => (h + n + 24) % 24);
+  const stepMin = (n) => setMinute((m) => (m + n + 60) % 60);
+
+  const confirm = () => {
+    const d = new Date(day);
+    d.setHours(hour24, minute, 0, 0);
+    onSet(d.toISOString());
+    onClose();
+  };
+
+  return (
+    <View style={styles.dpBackdrop}>
+        <View style={styles.dpCard}>
+          <View style={styles.dpHeader}>
+            <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} disabled={atCurMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chevron-back" size={20} color={atCurMonth ? COLORS.border : COLORS.textSecondary} />
+            </TouchableOpacity>
+            <Text style={styles.dpMonth}>{view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+            <TouchableOpacity onPress={() => setView(new Date(year, month + 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.dpDowRow}>
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={styles.dpDow}>{d}</Text>)}
+          </View>
+          <View style={styles.dpGrid}>
+            {cells.map((d, i) => {
+              if (!d) return <View key={i} style={styles.dpCell} />;
+              const past = d < today0;
+              const sel = d.getTime() === day.getTime();
+              return (
+                <TouchableOpacity key={i} style={styles.dpCell} disabled={past} onPress={() => setDay(d)} activeOpacity={0.7}>
+                  <View style={[styles.dpDayDot, sel && styles.dpDaySel]}>
+                    <Text style={[styles.dpDayText, past && styles.dpDayPast, sel && styles.dpDaySelText]}>{d.getDate()}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.dpTimeRow}>
+            <Text style={styles.dpTimeLabel}>Time</Text>
+            <View style={styles.dpTimeCtrls}>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepHour(1)}><Ionicons name="chevron-up" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpTimeVal}>{h12}</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepHour(-1)}><Ionicons name="chevron-down" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpColon}>:</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepMin(5)}><Ionicons name="chevron-up" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpTimeVal}>{String(minute).padStart(2, '0')}</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepMin(-5)}><Ionicons name="chevron-down" size={14} color={COLORS.text} /></TouchableOpacity>
+              <TouchableOpacity style={styles.dpAmPm} onPress={() => stepHour(12)}><Text style={styles.dpAmPmText}>{ampm}</Text></TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.dpBtns}>
+            <TouchableOpacity style={styles.dpClear} onPress={() => { onSet(null); onClose(); }}>
+              <Text style={styles.dpClearText}>No due date</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dpSet} onPress={confirm} activeOpacity={0.85}>
+              <Text style={styles.dpSetText}>Set</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+    </View>
+  );
+}
+
 function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [youtube, setYoutube] = useState('');
   const [song, setSong] = useState('');
-  const [dueDays, setDueDays] = useState(null); // null = no due date, else days from today
+  const [dueDate, setDueDate] = useState(null); // ISO datetime or null
+  const [showDuePicker, setShowDuePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
-  const close = () => { setJustAdded(0); setDueDays(null); onClose(); };
+  const close = () => { setJustAdded(0); setDueDate(null); onClose(); };
 
   const handleAssign = async () => {
     if (!title.trim()) return;
@@ -315,11 +417,6 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
     Keyboard.dismiss();
     setLoading(true);
     try {
-      let dueDate = null;
-      if (dueDays != null) {
-        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + dueDays);
-        dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      }
       const task = {
         id: Date.now().toString(),
         title: title.trim(),
@@ -333,7 +430,7 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
       };
       await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDays(null);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null);
       setJustAdded((n) => n + 1);
       onAssigned();
     } catch (err) {
@@ -391,26 +488,13 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
               />
 
               <Text style={styles.dueLabel}>DUE</Text>
-              <View style={styles.dueChips}>
-                {[
-                  { label: 'No due date', days: null },
-                  { label: 'Tomorrow', days: 1 },
-                  { label: 'In 3 days', days: 3 },
-                  { label: 'Next week', days: 7 },
-                ].map((opt) => {
-                  const on = dueDays === opt.days;
-                  return (
-                    <TouchableOpacity
-                      key={opt.label}
-                      style={[styles.dueChip, on && styles.dueChipOn]}
-                      onPress={() => setDueDays(opt.days)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.dueChipText, on && styles.dueChipTextOn]}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <TouchableOpacity style={styles.dueField} onPress={() => { Keyboard.dismiss(); setShowDuePicker(true); }} activeOpacity={0.8}>
+                <Ionicons name="calendar-outline" size={16} color={dueDate ? COLORS.primary : COLORS.textMuted} />
+                <Text style={[styles.dueFieldText, dueDate && { color: COLORS.text }]} numberOfLines={1}>
+                  {dueDate ? formatDueFull(dueDate) : 'No due date — tap to set'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
 
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
@@ -427,6 +511,13 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 </TouchableOpacity>
               </View>
             </View>
+            {showDuePicker && (
+              <DueDatePicker
+                initial={dueDate}
+                onClose={() => setShowDuePicker(false)}
+                onSet={setDueDate}
+              />
+            )}
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -1476,11 +1567,36 @@ const styles = StyleSheet.create({
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   inputMulti: { height: 80, textAlignVertical: 'top' },
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
-  dueChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
-  dueChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
-  dueChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  dueChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  dueChipTextOn: { color: '#fff' },
+  dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  dueFieldText: { flex: 1, color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+
+  // Due date+time picker overlay
+  dpBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  dpCard: { width: '100%', maxWidth: 340, backgroundColor: COLORS.surface, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  dpHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  dpMonth: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  dpDowRow: { flexDirection: 'row', marginBottom: 4 },
+  dpDow: { width: `${100 / 7}%`, textAlign: 'center', color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  dpGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dpCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
+  dpDayDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dpDaySel: { backgroundColor: COLORS.primary },
+  dpDayText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  dpDayPast: { color: COLORS.border },
+  dpDaySelText: { color: '#fff', fontWeight: '800' },
+  dpTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
+  dpTimeLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  dpTimeCtrls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dpStep: { width: 26, height: 26, borderRadius: 8, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  dpTimeVal: { color: COLORS.text, fontSize: 18, fontWeight: '800', minWidth: 26, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  dpColon: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  dpAmPm: { marginLeft: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primary + '22', borderWidth: 1, borderColor: COLORS.primary + '44' },
+  dpAmPmText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  dpBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
+  dpClear: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  dpClearText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
+  dpSet: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
+  dpSetText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   modalBtns: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm },
   modalCancelBtn: { flex: 1, padding: SPACING.md, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },

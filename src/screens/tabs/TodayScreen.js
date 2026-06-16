@@ -36,16 +36,19 @@ const RATING_OPTIONS = [
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
-// Due label for an assigned (teacher) task — null when there's no due date.
-function assignedDueLabel(dueDate) {
-  if (!dueDate) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(`${dueDate}T00:00:00`);
-  const days = Math.round((due - today) / 86400000);
-  if (days < 0) return { text: 'Overdue', overdue: true };
-  if (days === 0) return { text: 'Due today', overdue: false };
-  if (days === 1) return { text: 'Tomorrow', overdue: false };
-  return { text: `Due ${due.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
+// Due label for an assigned (teacher) task (ISO datetime) — null when no due date.
+function assignedDueLabel(due) {
+  if (!due) return null;
+  const d = new Date(due);
+  if (isNaN(d)) return null;
+  if (d < new Date()) return { text: 'Overdue', overdue: true };
+  const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = Math.round((d0 - t0) / 86400000);
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (days === 0) return { text: `Due ${time}`, overdue: false };
+  if (days === 1) return { text: `Tomorrow ${time}`, overdue: false };
+  return { text: `Due ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
 }
 
 function SkeletonBlock({ width, height, style }) {

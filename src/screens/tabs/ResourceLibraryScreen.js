@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../../constants/theme';
-import { RESOURCES, RESOURCE_LEVELS, CATEGORY_META } from '../../constants/resources';
+import { RESOURCES, RESOURCE_LEVELS, RESOURCE_LEVEL_FALLBACK, CATEGORY_META } from '../../constants/resources';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
 
@@ -45,7 +45,8 @@ export default function ResourceLibraryScreen() {
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
 
-  const data = RESOURCES[instrument]?.[level] || {};
+  const effLevel = RESOURCES[instrument]?.[level] ? level : (RESOURCE_LEVEL_FALLBACK[level] || level);
+  const data = RESOURCES[instrument]?.[effLevel] || {};
   const categories = Object.keys(CATEGORY_META).filter((c) => (data[c] || []).length > 0);
 
   return (
