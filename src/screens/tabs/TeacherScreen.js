@@ -125,6 +125,18 @@ export const DEMO_STUDENTS_DATA = [
 
 const WEEK_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+// Due-date label for an assigned task — null when there's no due date.
+function taskDueLabel(dueDate) {
+  if (!dueDate) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(`${dueDate}T00:00:00`);
+  const days = Math.round((due - today) / 86400000);
+  if (days < 0) return { text: 'Overdue', overdue: true };
+  if (days === 0) return { text: 'Due today', overdue: false };
+  if (days === 1) return { text: 'Tomorrow', overdue: false };
+  return { text: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
+}
+
 function getStudentStatus(student) {
   if (!student.lastSessionDate) {
     return { text: 'No sessions yet', color: COLORS.textMuted };
@@ -288,10 +300,11 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [description, setDescription] = useState('');
   const [youtube, setYoutube] = useState('');
   const [song, setSong] = useState('');
+  const [dueDays, setDueDays] = useState(null); // null = no due date, else days from today
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
-  const close = () => { setJustAdded(0); onClose(); };
+  const close = () => { setJustAdded(0); setDueDays(null); onClose(); };
 
   const handleAssign = async () => {
     if (!title.trim()) return;
@@ -302,19 +315,25 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
     Keyboard.dismiss();
     setLoading(true);
     try {
+      let dueDate = null;
+      if (dueDays != null) {
+        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + dueDays);
+        dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
       const task = {
         id: Date.now().toString(),
         title: title.trim(),
         description: description.trim(),
         youtube: youtube.trim(),
         song: song.trim(),
+        dueDate,
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
       };
       await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong('');
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDays(null);
       setJustAdded((n) => n + 1);
       onAssigned();
     } catch (err) {
@@ -370,6 +389,29 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 value={song}
                 onChangeText={setSong}
               />
+
+              <Text style={styles.dueLabel}>DUE</Text>
+              <View style={styles.dueChips}>
+                {[
+                  { label: 'No due date', days: null },
+                  { label: 'Tomorrow', days: 1 },
+                  { label: 'In 3 days', days: 3 },
+                  { label: 'Next week', days: 7 },
+                ].map((opt) => {
+                  const on = dueDays === opt.days;
+                  return (
+                    <TouchableOpacity
+                      key={opt.label}
+                      style={[styles.dueChip, on && styles.dueChipOn]}
+                      onPress={() => setDueDays(opt.days)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.dueChipText, on && styles.dueChipTextOn]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
                   <Text style={styles.modalCancelText}>{justAdded > 0 ? 'Done' : 'Cancel'}</Text>
@@ -988,6 +1030,10 @@ Sent from Prova`;
                               >
                                 {t.title}
                               </Text>
+                              {!t.completed && (() => {
+                                const d = taskDueLabel(t.dueDate);
+                                return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
+                              })()}
                             </View>
                           ))}
                         </View>
@@ -1373,6 +1419,8 @@ const styles = StyleSheet.create({
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
+  miniDueOverdue: { color: COLORS.error },
 
   // Action row
   actionRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
@@ -1427,6 +1475,12 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   inputMulti: { height: 80, textAlignVertical: 'top' },
+  dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
+  dueChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  dueChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
+  dueChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  dueChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  dueChipTextOn: { color: '#fff' },
   modalBtns: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm },
   modalCancelBtn: { flex: 1, padding: SPACING.md, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },

@@ -36,6 +36,18 @@ const RATING_OPTIONS = [
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
+// Due label for an assigned (teacher) task — null when there's no due date.
+function assignedDueLabel(dueDate) {
+  if (!dueDate) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(`${dueDate}T00:00:00`);
+  const days = Math.round((due - today) / 86400000);
+  if (days < 0) return { text: 'Overdue', overdue: true };
+  if (days === 0) return { text: 'Due today', overdue: false };
+  if (days === 1) return { text: 'Tomorrow', overdue: false };
+  return { text: `Due ${due.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
+}
+
 function SkeletonBlock({ width, height, style }) {
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
@@ -610,6 +622,10 @@ export default function TodayScreen({ navigation }) {
                       <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
                       <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
                     </TouchableOpacity>
+                    {!t.completed && (() => {
+                      const d = assignedDueLabel(t.dueDate);
+                      return d ? <Text style={[styles.teacherDue, d.overdue && styles.teacherDueOverdue]}>{d.text}</Text> : null;
+                    })()}
                     {t.completed ? (
                       <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
                     ) : (
@@ -836,6 +852,8 @@ const styles = StyleSheet.create({
   teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
+  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginRight: SPACING.sm },
+  teacherDueOverdue: { color: COLORS.error },
   teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
