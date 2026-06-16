@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
@@ -83,6 +83,38 @@ function buildWeeklyData(logMap) {
     weeks.push({ week: label, hours: Math.round(mins / 60 * 10) / 10 });
   }
   return weeks;
+}
+
+// Weekly practice hours over the last N weeks (oldest first) for the trend graph.
+function buildWeeklySeries(logMap, weeks = 12) {
+  const today = new Date();
+  const dow = (today.getDay() + 6) % 7;
+  const monStart = new Date(today);
+  monStart.setDate(today.getDate() - dow);
+  monStart.setHours(0, 0, 0, 0);
+  const out = [];
+  for (let w = weeks - 1; w >= 0; w--) {
+    let mins = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(monStart);
+      day.setDate(monStart.getDate() - w * 7 + d);
+      if (day <= today) mins += logMap[day.toISOString().split('T')[0]]?.totalMinutes || 0;
+    }
+    out.push({ hours: Math.round(mins / 60 * 10) / 10 });
+  }
+  return out;
+}
+
+// Smooth cubic path through points (flat control handles at segment midpoints).
+function smoothLinePath(pts) {
+  if (!pts.length) return '';
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i]; const p1 = pts[i + 1];
+    const cx = (p0.x + p1.x) / 2;
+    d += ` C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`;
+  }
+  return d;
 }
 
 // Build a 7-row (Mon→Sun) × N-week grid of intensity buckets, oldest week first.
@@ -341,45 +373,54 @@ function HeatCell({ val }) {
   );
 }
 
-function ActivityHeatmap({ data, streak }) {
-  const DAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', '']; // sparse, GitHub-style
+// Smooth SVG area chart of weekly practice hours over 12 weeks.
+function ActivityGraph({ data, streak }) {
+  const H = 120;
+  const PAD_TOP = 14;
+  const PAD_BOTTOM = 10;
+  const W = CHART_W - 2; // inside the card's 1px border
+  const n = data.length;
+  const hasData = data.some((d) => d.hours > 0);
+  const maxH = Math.max(1, ...data.map((d) => d.hours));
+  const totalH = Math.round(data.reduce((s, d) => s + d.hours, 0) * 10) / 10;
+  const peak = Math.round(Math.max(0, ...data.map((d) => d.hours)) * 10) / 10;
+  const stepX = n > 1 ? (W - 8) / (n - 1) : 0;
+  const pts = data.map((d, i) => ({
+    x: 4 + i * stepX,
+    y: PAD_TOP + (1 - d.hours / maxH) * (H - PAD_TOP - PAD_BOTTOM),
+  }));
+  const line = smoothLinePath(pts);
+  const area = n ? `${line} L ${pts[n - 1].x} ${H} L ${pts[0].x} ${H} Z` : '';
+  const last = pts[n - 1] || { x: 0, y: 0 };
+
   return (
     <View style={styles.section}>
       <View style={styles.heatHeader}>
-        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>PRACTICE — LAST 12 WEEKS</Text>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>PRACTICE TREND · 12 WEEKS</Text>
         {streak > 0 && (
           <Text style={styles.heatStreak}>🔥 {streak} day{streak === 1 ? '' : 's'}</Text>
         )}
       </View>
 
-      <View style={styles.heatGrid}>
-        {/* Weekday labels down the left */}
-        <View style={styles.heatDayCol}>
-          {DAY_LABELS.map((l, i) => <Text key={i} style={styles.heatDayLabel}>{l}</Text>)}
+      {hasData ? (
+        <View style={styles.trendWrap}>
+          <Svg width={W} height={H}>
+            <Defs>
+              <SvgGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={COLORS.primary} stopOpacity="0.45" />
+                <Stop offset="1" stopColor={COLORS.primary} stopOpacity="0" />
+              </SvgGradient>
+            </Defs>
+            <Path d={area} fill="url(#trendFill)" />
+            <Path d={line} stroke={COLORS.primary} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <Circle cx={last.x} cy={last.y} r={8} fill={COLORS.primary} opacity={0.2} />
+            <Circle cx={last.x} cy={last.y} r={4} fill={COLORS.primary} />
+          </Svg>
+          <Text style={styles.trendSummary}>{totalH}h total · peak {peak}h/week</Text>
         </View>
-        {/* 7 rows (Mon→Sun), each a week's worth of cells across */}
-        <View>
-          {data.rows.map((row, ri) => (
-            <View key={ri} style={styles.heatRow}>
-              {row.map((val, ci) => <HeatCell key={ci} val={val} />)}
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.heatFooter}>
-        <Text style={styles.heatFooterText}>
-          {data.daysPracticed} of last {HEATMAP_WEEKS * 7} days · {data.totalHours} hrs
-        </Text>
-        <View style={styles.heatLegend}>
-          <Text style={styles.heatLegendText}>Less</Text>
-          <HeatCell val={0} />
-          <HeatCell val={1} />
-          <HeatCell val={2} />
-          <HeatCell val={3} />
-          <Text style={styles.heatLegendText}>More</Text>
-        </View>
-      </View>
+      ) : (
+        <View style={styles.emptyChart}><Text style={styles.emptyText}>Practice to see your trend graph</Text></View>
+      )}
     </View>
   );
 }
@@ -691,7 +732,7 @@ export default function ProgressScreen() {
   const xp           = computeLevelXP(level, totalMins);
   const dailyData    = buildDailyData(logMap);
   const weeklyData   = buildWeeklyData(logMap);
-  const heatmapData  = buildHeatmapData(logMap);
+  const weeklyTrend  = buildWeeklySeries(logMap);
   const categoryData = buildCategoryData(logMap);
   const milestones   = computeMilestones(streak, totalMins, totalSessions);
 
@@ -727,7 +768,7 @@ export default function ProgressScreen() {
         <LevelProgress level={level} xp={xp} />
         <LineGraph data={dailyData} />
         <WeeklyBarChart data={weeklyData} />
-        <ActivityHeatmap data={heatmapData} streak={streak} />
+        <ActivityGraph data={weeklyTrend} streak={streak} />
         <CategoryBreakdown data={categoryData} />
         <Milestones data={milestones} />
 
@@ -830,6 +871,8 @@ const styles = StyleSheet.create({
 
   heatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   heatStreak: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
+  trendWrap: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  trendSummary: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600', paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm, paddingTop: 2 },
   heatGrid: { flexDirection: 'row' },
   heatDayCol: { marginRight: 6, justifyContent: 'flex-start' },
   heatDayLabel: { height: HEAT_CELL, lineHeight: HEAT_CELL, marginBottom: HEAT_GAP, color: COLORS.textMuted, fontSize: 9, fontWeight: '600' },
