@@ -743,6 +743,41 @@ function TeacherDashboard() {
     ]);
   };
 
+  // One-tap parent report: compile this week's practice + share it.
+  const sendParentReport = async (student) => {
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'sessionHistory', student.uid, 'logs'),
+        orderBy('date', 'desc'), limit(7),
+      ));
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); cutoff.setHours(0, 0, 0, 0);
+      let weekMins = 0; let daysPracticed = 0;
+      snap.forEach((d) => {
+        const data = d.data();
+        const day = new Date(`${d.id}T00:00:00`);
+        if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
+      });
+      const name = student.name || student.email?.split('@')[0] || 'Your student';
+      const streak = student.streak || 0;
+      const assigned = student.assignedTasks?.length || 0;
+      const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
+      const h = Math.floor(weekMins / 60); const m = weekMins % 60;
+      const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      const report =
+`🎸 Prova practice report — ${name}
+
+This week: practised ${daysPracticed} of 7 days · ${timeStr} total
+Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
+Assigned tasks: ${done} of ${assigned} completed
+Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})
+
+Sent from Prova`;
+      await Share.share({ message: report });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't build the report. Please try again.");
+    }
+  };
+
   const openChat = (student) => {
     setActiveChatStudent(student);
     setActiveTab('chats');
@@ -953,6 +988,12 @@ function TeacherDashboard() {
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
                       </View>
+
+                      {/* Parent progress report */}
+                      <TouchableOpacity style={styles.parentReportBtn} onPress={() => sendParentReport(student)} activeOpacity={0.85}>
+                        <Ionicons name="share-outline" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
+                        <Text style={styles.parentReportText}>Send progress to parents</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -1287,6 +1328,13 @@ const styles = StyleSheet.create({
   // Assigned tasks mini list
   taskSection: { gap: 6 },
   taskSectionLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+
+  parentReportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 11, borderRadius: 10, backgroundColor: COLORS.primary + '15',
+    borderWidth: 1, borderColor: COLORS.primary + '33',
+  },
+  parentReportText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
   // Per-student practice heatmap
   studentHeat: { gap: 4 },
