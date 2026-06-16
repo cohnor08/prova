@@ -286,7 +286,12 @@ function PaywallScreen({ onUnlock }) {
 function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [youtube, setYoutube] = useState('');
+  const [song, setSong] = useState('');
   const [loading, setLoading] = useState(false);
+  const [justAdded, setJustAdded] = useState(0); // count assigned this session
+
+  const close = () => { setJustAdded(0); onClose(); };
 
   const handleAssign = async () => {
     if (!title.trim()) return;
@@ -294,19 +299,24 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
       return;
     }
+    Keyboard.dismiss();
     setLoading(true);
     try {
       const task = {
         id: Date.now().toString(),
         title: title.trim(),
         description: description.trim(),
+        youtube: youtube.trim(),
+        song: song.trim(),
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
       };
       await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
-      setTitle(''); setDescription('');
-      onAssigned(); onClose();
+      // Keep the modal open so the teacher can assign several in a row.
+      setTitle(''); setDescription(''); setYoutube(''); setSong('');
+      setJustAdded((n) => n + 1);
+      onAssigned();
     } catch (err) {
       Alert.alert('Error', err.message);
     } finally {
@@ -324,7 +334,9 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Assign Task</Text>
-              <Text style={styles.modalSubtitle}>To: {student?.name || student?.email}</Text>
+              <Text style={styles.modalSubtitle}>
+                To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
+              </Text>
               <TextInput
                 style={styles.input}
                 placeholder="Task title"
@@ -342,9 +354,25 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 multiline
                 numberOfLines={3}
               />
+              <TextInput
+                style={styles.input}
+                placeholder="YouTube link or search (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={youtube}
+                onChangeText={setYoutube}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Song — e.g. Wonderwall — Oasis (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={song}
+                onChangeText={setSong}
+              />
               <View style={styles.modalBtns}>
-                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); onClose(); }}>
-                  <Text style={styles.modalCancelText}>Cancel</Text>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
+                  <Text style={styles.modalCancelText}>{justAdded > 0 ? 'Done' : 'Cancel'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
@@ -353,7 +381,7 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 >
                   {loading
                     ? <ActivityIndicator color={COLORS.text} size="small" />
-                    : <Text style={styles.modalAssignText}>Assign</Text>}
+                    : <Text style={styles.modalAssignText}>Assign task</Text>}
                 </TouchableOpacity>
               </View>
             </View>
