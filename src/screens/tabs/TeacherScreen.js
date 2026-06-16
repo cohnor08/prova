@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -10,9 +10,10 @@ import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
-  updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy,
+  updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -20,7 +21,10 @@ import MediaMessageBubble from '../../components/MediaMessageBubble';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
-export const DEMO_MODE = true;
+// Real teacher mode: students connect via the teacher's join code (their
+// teacherUid is set). Flip back to true only to populate the screens with the
+// sample students below for a screenshot/pitch.
+export const DEMO_MODE = false;
 
 const _now = Date.now();
 export const DEMO_STUDENTS_DATA = [
@@ -120,6 +124,27 @@ export const DEMO_STUDENTS_DATA = [
 ];
 
 const WEEK_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+// Full "Sat, Jun 20 · 5:00 PM" for the assign-task due field.
+function formatDueFull(due) {
+  const d = new Date(due);
+  if (isNaN(d)) return 'No due date';
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+// Short due badge for a task (ISO datetime) — null when there's no due date.
+function taskDueLabel(due) {
+  if (!due) return null;
+  const d = new Date(due);
+  if (isNaN(d)) return null;
+  if (d < new Date()) return { text: 'Overdue', overdue: true };
+  const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = Math.round((d0 - t0) / 86400000);
+  if (days === 0) return { text: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), overdue: false };
+  if (days === 1) return { text: 'Tomorrow', overdue: false };
+  return { text: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
+}
 
 function getStudentStatus(student) {
   if (!student.lastSessionDate) {
@@ -279,10 +304,109 @@ function PaywallScreen({ onUnlock }) {
 
 // ─── Assign Task Modal ────────────────────────────────────────────────────────
 
+// Calendar + time picker for a task due date (no external dependency). Rendered
+// as an in-place overlay (not a Modal) so it can sit over the assign sheet —
+// iOS won't reliably stack two Modals.
+function DueDatePicker({ initial, onClose, onSet }) {
+  const base = initial ? new Date(initial) : null;
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const [day, setDay] = useState(() => {
+    const d = base ? new Date(base) : new Date();
+    d.setHours(0, 0, 0, 0); return d;
+  });
+  const [view, setView] = useState(() => new Date((base || new Date()).getFullYear(), (base || new Date()).getMonth(), 1));
+  const [hour24, setHour24] = useState(base ? base.getHours() : 17);
+  const [minute, setMinute] = useState(base ? base.getMinutes() : 0);
+
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+  const atCurMonth = year === today0.getFullYear() && month === today0.getMonth();
+
+  const h12 = hour24 % 12 || 12;
+  const ampm = hour24 < 12 ? 'AM' : 'PM';
+  const stepHour = (n) => setHour24((h) => (h + n + 24) % 24);
+  const stepMin = (n) => setMinute((m) => (m + n + 60) % 60);
+
+  const confirm = () => {
+    const d = new Date(day);
+    d.setHours(hour24, minute, 0, 0);
+    onSet(d.toISOString());
+    onClose();
+  };
+
+  return (
+    <View style={styles.dpBackdrop}>
+        <View style={styles.dpCard}>
+          <View style={styles.dpHeader}>
+            <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} disabled={atCurMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chevron-back" size={20} color={atCurMonth ? COLORS.border : COLORS.textSecondary} />
+            </TouchableOpacity>
+            <Text style={styles.dpMonth}>{view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+            <TouchableOpacity onPress={() => setView(new Date(year, month + 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.dpDowRow}>
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={styles.dpDow}>{d}</Text>)}
+          </View>
+          <View style={styles.dpGrid}>
+            {cells.map((d, i) => {
+              if (!d) return <View key={i} style={styles.dpCell} />;
+              const past = d < today0;
+              const sel = d.getTime() === day.getTime();
+              return (
+                <TouchableOpacity key={i} style={styles.dpCell} disabled={past} onPress={() => setDay(d)} activeOpacity={0.7}>
+                  <View style={[styles.dpDayDot, sel && styles.dpDaySel]}>
+                    <Text style={[styles.dpDayText, past && styles.dpDayPast, sel && styles.dpDaySelText]}>{d.getDate()}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.dpTimeRow}>
+            <Text style={styles.dpTimeLabel}>Time</Text>
+            <View style={styles.dpTimeCtrls}>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepHour(1)}><Ionicons name="chevron-up" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpTimeVal}>{h12}</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepHour(-1)}><Ionicons name="chevron-down" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpColon}>:</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepMin(5)}><Ionicons name="chevron-up" size={14} color={COLORS.text} /></TouchableOpacity>
+              <Text style={styles.dpTimeVal}>{String(minute).padStart(2, '0')}</Text>
+              <TouchableOpacity style={styles.dpStep} onPress={() => stepMin(-5)}><Ionicons name="chevron-down" size={14} color={COLORS.text} /></TouchableOpacity>
+              <TouchableOpacity style={styles.dpAmPm} onPress={() => stepHour(12)}><Text style={styles.dpAmPmText}>{ampm}</Text></TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.dpBtns}>
+            <TouchableOpacity style={styles.dpClear} onPress={() => { onSet(null); onClose(); }}>
+              <Text style={styles.dpClearText}>No due date</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dpSet} onPress={confirm} activeOpacity={0.85}>
+              <Text style={styles.dpSetText}>Set</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+    </View>
+  );
+}
+
 function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [youtube, setYoutube] = useState('');
+  const [song, setSong] = useState('');
+  const [dueDate, setDueDate] = useState(null); // ISO datetime or null
+  const [showDuePicker, setShowDuePicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [justAdded, setJustAdded] = useState(0); // count assigned this session
+
+  const close = () => { setJustAdded(0); setDueDate(null); onClose(); };
 
   const handleAssign = async () => {
     if (!title.trim()) return;
@@ -290,19 +414,25 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
       return;
     }
+    Keyboard.dismiss();
     setLoading(true);
     try {
       const task = {
         id: Date.now().toString(),
         title: title.trim(),
         description: description.trim(),
+        youtube: youtube.trim(),
+        song: song.trim(),
+        dueDate,
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
       };
       await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
-      setTitle(''); setDescription('');
-      onAssigned(); onClose();
+      // Keep the modal open so the teacher can assign several in a row.
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null);
+      setJustAdded((n) => n + 1);
+      onAssigned();
     } catch (err) {
       Alert.alert('Error', err.message);
     } finally {
@@ -312,42 +442,85 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Assign Task</Text>
-          <Text style={styles.modalSubtitle}>To: {student?.name || student?.email}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Task title"
-            placeholderTextColor={COLORS.textMuted}
-            value={title}
-            onChangeText={setTitle}
-          />
-          <TextInput
-            style={[styles.input, styles.inputMulti]}
-            placeholder="Description (optional)"
-            placeholderTextColor={COLORS.textMuted}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={3}
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
-              onPress={handleAssign}
-              disabled={!title.trim() || loading}
-            >
-              {loading
-                ? <ActivityIndicator color={COLORS.text} size="small" />
-                : <Text style={styles.modalAssignText}>Assign</Text>}
-            </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Assign Task</Text>
+              <Text style={styles.modalSubtitle}>
+                To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Task title"
+                placeholderTextColor={COLORS.textMuted}
+                value={title}
+                onChangeText={setTitle}
+                returnKeyType="next"
+              />
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                placeholder="Description (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="YouTube link or search (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={youtube}
+                onChangeText={setYoutube}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Song — e.g. Wonderwall — Oasis (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={song}
+                onChangeText={setSong}
+              />
+
+              <Text style={styles.dueLabel}>DUE</Text>
+              <TouchableOpacity style={styles.dueField} onPress={() => { Keyboard.dismiss(); setShowDuePicker(true); }} activeOpacity={0.8}>
+                <Ionicons name="calendar-outline" size={16} color={dueDate ? COLORS.primary : COLORS.textMuted} />
+                <Text style={[styles.dueFieldText, dueDate && { color: COLORS.text }]} numberOfLines={1}>
+                  {dueDate ? formatDueFull(dueDate) : 'No due date — tap to set'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
+                  <Text style={styles.modalCancelText}>{justAdded > 0 ? 'Done' : 'Cancel'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
+                  onPress={handleAssign}
+                  disabled={!title.trim() || loading}
+                >
+                  {loading
+                    ? <ActivityIndicator color={COLORS.text} size="small" />
+                    : <Text style={styles.modalAssignText}>Assign task</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+            {showDuePicker && (
+              <DueDatePicker
+                initial={dueDate}
+                onClose={() => setShowDuePicker(false)}
+                onSet={setDueDate}
+              />
+            )}
           </View>
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -554,6 +727,75 @@ function InlineChatView({ student, myUid, isDemo }) {
 
 // ─── Teacher Dashboard ────────────────────────────────────────────────────────
 
+const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+// Per-student practice bar chart — daily minutes over the last 2 weeks. Fetched
+// lazily when their card expands. Reads sessionHistory (allowed for the teacher).
+function StudentActivityChart({ studentUid }) {
+  const [logMap, setLogMap] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDocs(query(
+          collection(db, 'sessionHistory', studentUid, 'logs'),
+          orderBy('date', 'desc'), limit(20),
+        ));
+        const map = {};
+        snap.forEach((d) => { map[d.id] = d.data(); });
+        if (!cancelled) setLogMap(map);
+      } catch (e) {
+        if (!cancelled) setLogMap({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentUid]);
+
+  if (logMap === null) {
+    return <ActivityIndicator size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
+  }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    days.push({ mins: logMap[key]?.totalMinutes || 0, dow: DOW_LABELS[d.getDay()], isToday: i === 0 });
+  }
+  const maxMins = Math.max(30, ...days.map((d) => d.mins));
+  const totalMins = days.reduce((s, d) => s + d.mins, 0);
+  const practiced = days.filter((d) => d.mins > 0).length;
+  const h = Math.floor(totalMins / 60); const m = totalMins % 60;
+  const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+  return (
+    <View style={styles.chartWrap}>
+      <View style={styles.chartHeader}>
+        <Text style={styles.taskSectionLabel}>PRACTICE · LAST 2 WEEKS</Text>
+        <Text style={styles.chartSummary}>{practiced}/14 days · {timeStr}</Text>
+      </View>
+      <View style={styles.chartBars}>
+        {days.map((d, i) => (
+          <View key={i} style={styles.chartCol}>
+            <View style={styles.chartTrack}>
+              <View
+                style={[
+                  styles.chartBar,
+                  { height: `${d.mins > 0 ? Math.max(10, (d.mins / maxMins) * 100) : 0}%` },
+                  d.isToday && styles.chartBarToday,
+                ]}
+              />
+            </View>
+            <Text style={[styles.chartTick, d.isToday && styles.chartTickToday]}>{d.dow}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -564,8 +806,19 @@ function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
+  const [joinCode, setJoinCode] = useState(null);
 
   const myUid = auth.currentUser?.uid;
+
+  useEffect(() => {
+    if (!myUid) return;
+    ensureTeacherCode(myUid).then(setJoinCode).catch(() => {});
+  }, [myUid]);
+
+  const shareCode = () => {
+    if (!joinCode) return;
+    Share.share({ message: `Add me as your Prova teacher with this code: ${joinCode}` }).catch(() => {});
+  };
   const todayName = WEEK_DAYS[new Date().getDay()];
 
   useFocusEffect(
@@ -592,15 +845,10 @@ function TeacherDashboard() {
         return;
       }
       const uid = auth.currentUser.uid;
-      const snap = await getDoc(doc(db, 'users', uid));
-      const studentUids = snap.data()?.students || [];
-      const data = await Promise.all(
-        studentUids.map(async (suid) => {
-          const s = await getDoc(doc(db, 'users', suid));
-          return s.exists() ? { uid: suid, ...s.data() } : null;
-        })
-      );
-      setStudents(data.filter(Boolean));
+      // Students who connected (via my join code, or an accepted request) carry
+      // teacherUid === my uid.
+      const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
+      setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
     } catch (err) {
       console.error(err);
     } finally {
@@ -633,17 +881,56 @@ function TeacherDashboard() {
 
   const removeStudent = (studentUid, name) => {
     if (DEMO_MODE) { Alert.alert('Demo mode', 'Removing students is disabled in demo mode.'); return; }
-    Alert.alert('Remove Student', `Remove ${name}?`, [
+    Alert.alert('Remove Student', `Remove ${name}? They can reconnect later with your code.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive', onPress: async () => {
-          const uid = auth.currentUser.uid;
-          await updateDoc(doc(db, 'users', uid), { students: arrayRemove(studentUid) });
-          await updateDoc(doc(db, 'users', studentUid), { teacherUid: null });
-          setStudents((prev) => prev.filter((s) => s.uid !== studentUid));
+          try {
+            // Unlink the student (clear their teacherUid). Allowed for the
+            // linked teacher by the Firestore rule.
+            await updateDoc(doc(db, 'users', studentUid), { teacherUid: null });
+            setStudents((prev) => prev.filter((s) => s.uid !== studentUid));
+          } catch (e) {
+            Alert.alert('Error', "Couldn't remove this student. Please try again.");
+          }
         },
       },
     ]);
+  };
+
+  // One-tap parent report: compile this week's practice + share it.
+  const sendParentReport = async (student) => {
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'sessionHistory', student.uid, 'logs'),
+        orderBy('date', 'desc'), limit(7),
+      ));
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); cutoff.setHours(0, 0, 0, 0);
+      let weekMins = 0; let daysPracticed = 0;
+      snap.forEach((d) => {
+        const data = d.data();
+        const day = new Date(`${d.id}T00:00:00`);
+        if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
+      });
+      const name = student.name || student.email?.split('@')[0] || 'Your student';
+      const streak = student.streak || 0;
+      const assigned = student.assignedTasks?.length || 0;
+      const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
+      const h = Math.floor(weekMins / 60); const m = weekMins % 60;
+      const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      const report =
+`🎸 Prova practice report — ${name}
+
+This week: practised ${daysPracticed} of 7 days · ${timeStr} total
+Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
+Assigned tasks: ${done} of ${assigned} completed
+Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})
+
+Sent from Prova`;
+      await Share.share({ message: report });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't build the report. Please try again.");
+    }
   };
 
   const openChat = (student) => {
@@ -722,22 +1009,24 @@ function TeacherDashboard() {
                 <Text style={styles.demoBannerText}>Demo — sample student data</Text>
               </View>
             ) : (
-              <View style={styles.inviteCard}>
-                <Text style={styles.inviteLabel}>Add student by email</Text>
-                <View style={styles.inviteRow}>
-                  <TextInput
-                    style={styles.inviteInput}
-                    placeholder="student@email.com"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={inviteEmail}
-                    onChangeText={setInviteEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity style={[styles.inviteBtn, inviting && { opacity: 0.6 }]} onPress={addStudent} disabled={inviting}>
-                    {inviting ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.inviteBtnText}>Add</Text>}
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.codeCard}>
+                <Text style={styles.inviteLabel}>YOUR JOIN CODE</Text>
+                <Text style={styles.codeBig}>{joinCode || '······'}</Text>
+                <Text style={styles.codeHint}>
+                  Students enter this in their Profile → My Teacher to connect with you instantly.
+                </Text>
+                <TouchableOpacity style={styles.shareCodeBtn} onPress={shareCode} activeOpacity={0.85}>
+                  <Ionicons name="share-outline" size={16} color="#fff" />
+                  <Text style={styles.shareCodeText}>Share code</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!DEMO_MODE && !loading && students.length === 0 && (
+              <View style={styles.emptyStudents}>
+                <Ionicons name="people-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyStudentsText}>No students yet</Text>
+                <Text style={styles.emptyStudentsSub}>Share your join code above — students appear here the moment they connect.</Text>
               </View>
             )}
 
@@ -795,6 +1084,9 @@ function TeacherDashboard() {
                         </View>
                       </View>
 
+                      {/* Practice bar chart — last 2 weeks */}
+                      <StudentActivityChart studentUid={student.uid} />
+
                       {/* Last session note */}
                       {!!student.lastSessionNote && (
                         <View style={styles.sessionNote}>
@@ -829,6 +1121,10 @@ function TeacherDashboard() {
                               >
                                 {t.title}
                               </Text>
+                              {!t.completed && (() => {
+                                const d = taskDueLabel(t.dueDate);
+                                return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
+                              })()}
                             </View>
                           ))}
                         </View>
@@ -851,6 +1147,12 @@ function TeacherDashboard() {
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
                       </View>
+
+                      {/* Parent progress report */}
+                      <TouchableOpacity style={styles.parentReportBtn} onPress={() => sendParentReport(student)} activeOpacity={0.85}>
+                        <Ionicons name="share-outline" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
+                        <Text style={styles.parentReportText}>Send progress to parents</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -1135,6 +1437,15 @@ const styles = StyleSheet.create({
   // Invite
   inviteCard: { backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },
   inviteLabel: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: 1 },
+
+  codeCard: { backgroundColor: COLORS.primary + '14', borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '44', padding: SPACING.lg, marginBottom: SPACING.lg },
+  codeBig: { color: COLORS.text, fontSize: 34, fontWeight: '900', letterSpacing: 6, marginVertical: 4 },
+  codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
+  shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
+  shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  emptyStudents: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg },
+  emptyStudentsText: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  emptyStudentsSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
@@ -1176,9 +1487,31 @@ const styles = StyleSheet.create({
   // Assigned tasks mini list
   taskSection: { gap: 6 },
   taskSectionLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+
+  parentReportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 11, borderRadius: 10, backgroundColor: COLORS.primary + '15',
+    borderWidth: 1, borderColor: COLORS.primary + '33',
+  },
+  parentReportText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+
+  // Per-student practice bar chart
+  chartWrap: { gap: SPACING.sm },
+  chartHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  chartSummary: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 56 },
+  chartCol: { flex: 1, alignItems: 'center' },
+  chartTrack: { width: '100%', flex: 1, justifyContent: 'flex-end', backgroundColor: COLORS.surface, borderRadius: 3, overflow: 'hidden' },
+  chartBar: { width: '100%', backgroundColor: COLORS.primary, borderRadius: 3, minHeight: 2 },
+  chartBarToday: { backgroundColor: COLORS.accent },
+  chartTick: { color: COLORS.textMuted, fontSize: 8, fontWeight: '600', marginTop: 3 },
+  chartTickToday: { color: COLORS.accent },
+
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
+  miniDueOverdue: { color: COLORS.error },
 
   // Action row
   actionRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
@@ -1233,6 +1566,37 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   inputMulti: { height: 80, textAlignVertical: 'top' },
+  dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
+  dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  dueFieldText: { flex: 1, color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+
+  // Due date+time picker overlay
+  dpBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  dpCard: { width: '100%', maxWidth: 340, backgroundColor: COLORS.surface, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  dpHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  dpMonth: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  dpDowRow: { flexDirection: 'row', marginBottom: 4 },
+  dpDow: { width: `${100 / 7}%`, textAlign: 'center', color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  dpGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dpCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
+  dpDayDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dpDaySel: { backgroundColor: COLORS.primary },
+  dpDayText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  dpDayPast: { color: COLORS.border },
+  dpDaySelText: { color: '#fff', fontWeight: '800' },
+  dpTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
+  dpTimeLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  dpTimeCtrls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dpStep: { width: 26, height: 26, borderRadius: 8, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  dpTimeVal: { color: COLORS.text, fontSize: 18, fontWeight: '800', minWidth: 26, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  dpColon: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  dpAmPm: { marginLeft: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primary + '22', borderWidth: 1, borderColor: COLORS.primary + '44' },
+  dpAmPmText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  dpBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
+  dpClear: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  dpClearText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
+  dpSet: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
+  dpSetText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   modalBtns: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm },
   modalCancelBtn: { flex: 1, padding: SPACING.md, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },

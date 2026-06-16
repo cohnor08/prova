@@ -3,7 +3,10 @@
 // concrete enough for a teacher to hand straight to a student. `yt` is an
 // optional YouTube SEARCH phrase (the screen builds a search URL from it).
 
-export const RESOURCE_LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
+export const RESOURCE_LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
+
+// Levels without their own curated content fall back to the nearest band that has it.
+export const RESOURCE_LEVEL_FALLBACK = { Novice: 'Beginner', Elite: 'Advanced' };
 
 export const RESOURCES = {
   Guitar: {
