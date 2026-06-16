@@ -566,29 +566,11 @@ function InlineChatView({ student, myUid, isDemo }) {
 
 // ─── Teacher Dashboard ────────────────────────────────────────────────────────
 
-// Compact 5-week practice heatmap for one student — fetched lazily when their
-// card is expanded. Reads sessionHistory (allowed for the linked teacher).
-function buildStudentWeeks(logMap) {
-  const today = new Date();
-  const dow = (today.getDay() + 6) % 7; // Mon = 0
-  const monStart = new Date(today);
-  monStart.setDate(today.getDate() - dow);
-  monStart.setHours(0, 0, 0, 0);
-  const rows = Array.from({ length: 7 }, () => []);
-  for (let w = 4; w >= 0; w--) {
-    for (let d = 0; d < 7; d++) {
-      const day = new Date(monStart);
-      day.setDate(monStart.getDate() - w * 7 + d);
-      if (day > today) { rows[d].push(-1); continue; }
-      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-      const mins = logMap[key]?.totalMinutes || 0;
-      rows[d].push(mins === 0 ? 0 : mins < 15 ? 1 : mins < 30 ? 2 : 3);
-    }
-  }
-  return rows;
-}
+const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-function StudentHeatmap({ studentUid }) {
+// Per-student practice bar chart — daily minutes over the last 2 weeks. Fetched
+// lazily when their card expands. Reads sessionHistory (allowed for the teacher).
+function StudentActivityChart({ studentUid }) {
   const [logMap, setLogMap] = useState(null);
 
   useEffect(() => {
@@ -597,7 +579,7 @@ function StudentHeatmap({ studentUid }) {
       try {
         const snap = await getDocs(query(
           collection(db, 'sessionHistory', studentUid, 'logs'),
-          orderBy('date', 'desc'), limit(35),
+          orderBy('date', 'desc'), limit(20),
         ));
         const map = {};
         snap.forEach((d) => { map[d.id] = d.data(); });
@@ -612,28 +594,40 @@ function StudentHeatmap({ studentUid }) {
   if (logMap === null) {
     return <ActivityIndicator size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
   }
-  const rows = buildStudentWeeks(logMap);
-  const practiced = Object.values(logMap).filter((l) => (l.totalMinutes || 0) > 0).length;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    days.push({ mins: logMap[key]?.totalMinutes || 0, dow: DOW_LABELS[d.getDay()], isToday: i === 0 });
+  }
+  const maxMins = Math.max(30, ...days.map((d) => d.mins));
+  const totalMins = days.reduce((s, d) => s + d.mins, 0);
+  const practiced = days.filter((d) => d.mins > 0).length;
+  const h = Math.floor(totalMins / 60); const m = totalMins % 60;
+  const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
 
   return (
-    <View style={styles.studentHeat}>
-      <Text style={styles.taskSectionLabel}>PRACTICE — LAST 5 WEEKS · {practiced} days</Text>
-      <View>
-        {rows.map((row, ri) => (
-          <View key={ri} style={styles.heatRow}>
-            {row.map((v, ci) => (
+    <View style={styles.chartWrap}>
+      <View style={styles.chartHeader}>
+        <Text style={styles.taskSectionLabel}>PRACTICE · LAST 2 WEEKS</Text>
+        <Text style={styles.chartSummary}>{practiced}/14 days · {timeStr}</Text>
+      </View>
+      <View style={styles.chartBars}>
+        {days.map((d, i) => (
+          <View key={i} style={styles.chartCol}>
+            <View style={styles.chartTrack}>
               <View
-                key={ci}
                 style={[
-                  styles.heatCell,
-                  v === 0 && styles.heatCell0,
-                  v === 1 && styles.heatCell1,
-                  v === 2 && styles.heatCell2,
-                  v === 3 && styles.heatCell3,
-                  v === -1 && styles.heatCellFuture,
+                  styles.chartBar,
+                  { height: `${d.mins > 0 ? Math.max(10, (d.mins / maxMins) * 100) : 0}%` },
+                  d.isToday && styles.chartBarToday,
                 ]}
               />
-            ))}
+            </View>
+            <Text style={[styles.chartTick, d.isToday && styles.chartTickToday]}>{d.dow}</Text>
           </View>
         ))}
       </View>
@@ -929,8 +923,8 @@ Sent from Prova`;
                         </View>
                       </View>
 
-                      {/* Practice heatmap — last 5 weeks */}
-                      <StudentHeatmap studentUid={student.uid} />
+                      {/* Practice bar chart — last 2 weeks */}
+                      <StudentActivityChart studentUid={student.uid} />
 
                       {/* Last session note */}
                       {!!student.lastSessionNote && (
@@ -1336,15 +1330,17 @@ const styles = StyleSheet.create({
   },
   parentReportText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
-  // Per-student practice heatmap
-  studentHeat: { gap: 4 },
-  heatRow: { flexDirection: 'row', gap: 3, marginBottom: 3 },
-  heatCell: { width: 14, height: 14, borderRadius: 3 },
-  heatCell0: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  heatCell1: { backgroundColor: COLORS.primary + '40' },
-  heatCell2: { backgroundColor: COLORS.primary + '80' },
-  heatCell3: { backgroundColor: COLORS.primary },
-  heatCellFuture: { backgroundColor: 'transparent' },
+  // Per-student practice bar chart
+  chartWrap: { gap: SPACING.sm },
+  chartHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  chartSummary: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 56 },
+  chartCol: { flex: 1, alignItems: 'center' },
+  chartTrack: { width: '100%', flex: 1, justifyContent: 'flex-end', backgroundColor: COLORS.surface, borderRadius: 3, overflow: 'hidden' },
+  chartBar: { width: '100%', backgroundColor: COLORS.primary, borderRadius: 3, minHeight: 2 },
+  chartBarToday: { backgroundColor: COLORS.accent },
+  chartTick: { color: COLORS.textMuted, fontSize: 8, fontWeight: '600', marginTop: 3 },
+  chartTickToday: { color: COLORS.accent },
 
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
