@@ -406,7 +406,47 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
+  const [templates, setTemplates] = useState([]);
+
   const close = () => { setJustAdded(0); setDueDate(null); onClose(); };
+
+  // Reusable task templates live on the teacher's own user doc.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    getDoc(doc(db, 'users', uid))
+      .then((s) => setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []))
+      .catch(() => {});
+  }, []);
+
+  const saveTemplates = (next) => {
+    setTemplates(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { taskTemplates: next }).catch(() => {});
+  };
+
+  const applyTemplate = (t) => {
+    setTitle(t.title || '');
+    setDescription(t.description || '');
+    setYoutube(t.youtube || '');
+    setSong(t.song || '');
+  };
+
+  const saveAsTemplate = () => {
+    if (!title.trim()) return;
+    const tpl = { id: Date.now().toString(), title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim() };
+    // Replace any existing template with the same title, keep newest first.
+    const next = [tpl, ...templates.filter((x) => (x.title || '').toLowerCase() !== tpl.title.toLowerCase())].slice(0, 30);
+    saveTemplates(next);
+    Alert.alert('Saved', `"${tpl.title}" saved as a template.`);
+  };
+
+  const deleteTemplate = (t) => {
+    Alert.alert('Delete template?', t.title, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => saveTemplates(templates.filter((x) => x.id !== t.id)) },
+    ]);
+  };
 
   const handleAssign = async () => {
     if (!title.trim()) return;
@@ -453,6 +493,37 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
               <Text style={styles.modalSubtitle}>
                 To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
+
+              {(templates.length > 0 || title.trim()) && (
+                <View style={styles.tplBlock}>
+                  <View style={styles.tplHeader}>
+                    <Text style={styles.tplLabel}>TEMPLATES</Text>
+                    {!!title.trim() && (
+                      <TouchableOpacity onPress={saveAsTemplate} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={styles.tplSave}>＋ Save current</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {templates.length > 0 ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }} keyboardShouldPersistTaps="handled">
+                      {templates.map((t) => (
+                        <TouchableOpacity
+                          key={t.id}
+                          style={styles.tplChip}
+                          onPress={() => applyTemplate(t)}
+                          onLongPress={() => deleteTemplate(t)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.tplChipText} numberOfLines={1}>{t.title}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <Text style={styles.tplEmpty}>Tap “Save current” to reuse this task later.</Text>
+                  )}
+                </View>
+              )}
+
               <TextInput
                 style={styles.input}
                 placeholder="Task title"
@@ -1566,6 +1637,14 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   inputMulti: { height: 80, textAlignVertical: 'top' },
+  tplBlock: { marginBottom: SPACING.md },
+  tplHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  tplLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  tplSave: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  tplChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '15', maxWidth: 180 },
+  tplChipText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
+  tplEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
+
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   dueFieldText: { flex: 1, color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
