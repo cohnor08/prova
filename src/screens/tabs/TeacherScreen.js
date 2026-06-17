@@ -1015,6 +1015,7 @@ function TeacherDashboard() {
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
   const [expandedClassId, setExpandedClassId] = useState(null);
+  const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
 
   const myUid = auth.currentUser?.uid;
 
@@ -1483,35 +1484,69 @@ Sent from Prova`;
                         {members.length === 0 ? (
                           <Text style={styles.classCardMembers}>No students in this class yet.</Text>
                         ) : (
-                          members.map((m) => {
-                            const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
-                            const done = mt.filter((t) => t.completed).length;
-                            return (
-                              <View key={m.uid} style={styles.classMemberBlock}>
-                                <View style={styles.classMemberRow}>
-                                  <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
-                                  <Text style={styles.classMemberProgress}>
-                                    {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
-                                  </Text>
-                                </View>
-                                {mt.map((t) => (
-                                  <View key={t.id} style={styles.classTaskRow}>
-                                    <Ionicons
-                                      name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                      size={15}
-                                      color={t.completed ? COLORS.success : COLORS.textMuted}
-                                    />
-                                    <Text
-                                      style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
-                                      numberOfLines={1}
-                                    >
-                                      {t.title}
-                                    </Text>
+                          <>
+                            <View style={styles.classViewToggle}>
+                              <TouchableOpacity
+                                style={[styles.classViewPill, classView === 'progress' && styles.classViewPillActive]}
+                                onPress={() => setClassView('progress')}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.classViewPillText, classView === 'progress' && styles.classViewPillTextActive]}>Progress</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.classViewPill, classView === 'leaderboard' && styles.classViewPillActive]}
+                                onPress={() => setClassView('leaderboard')}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.classViewPillText, classView === 'leaderboard' && styles.classViewPillTextActive]}>Leaderboard</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {classView === 'progress' ? (
+                              members.map((m) => {
+                                const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
+                                const done = mt.filter((t) => t.completed).length;
+                                return (
+                                  <View key={m.uid} style={styles.classMemberBlock}>
+                                    <View style={styles.classMemberRow}>
+                                      <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
+                                      <Text style={styles.classMemberProgress}>
+                                        {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
+                                      </Text>
+                                    </View>
+                                    {mt.map((t) => (
+                                      <View key={t.id} style={styles.classTaskRow}>
+                                        <Ionicons
+                                          name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                          size={15}
+                                          color={t.completed ? COLORS.success : COLORS.textMuted}
+                                        />
+                                        <Text
+                                          style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
+                                          numberOfLines={1}
+                                        >
+                                          {t.title}
+                                        </Text>
+                                      </View>
+                                    ))}
                                   </View>
-                                ))}
-                              </View>
-                            );
-                          })
+                                );
+                              })
+                            ) : (
+                              [...members]
+                                .sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0))
+                                .map((m, i) => {
+                                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                                  return (
+                                    <View key={m.uid} style={styles.lbRow}>
+                                      <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
+                                      <Text style={styles.lbName} numberOfLines={1}>{m.name || m.email}</Text>
+                                      <Text style={styles.lbScore}>{(m.provaScore || 0).toLocaleString()}</Text>
+                                    </View>
+                                  );
+                                })
+                            )}
+                          </>
                         )}
                       </View>
                     )}
@@ -1856,6 +1891,16 @@ const styles = StyleSheet.create({
   classMemberProgress: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   classTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingLeft: SPACING.xs },
   classTaskTitle: { color: COLORS.textSecondary, fontSize: 12, flex: 1, minWidth: 0 },
+  classViewToggle: { flexDirection: 'row', gap: SPACING.xs, backgroundColor: COLORS.surface, borderRadius: 10, padding: 3, marginBottom: SPACING.sm },
+  classViewPill: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
+  classViewPillActive: { backgroundColor: COLORS.primary },
+  classViewPillText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  classViewPillTextActive: { color: COLORS.text },
+  lbRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  lbRank: { width: 26, textAlign: 'center', color: COLORS.textSecondary, fontSize: 13, fontWeight: '800' },
+  lbRankMedal: { fontSize: 16 },
+  lbName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  lbScore: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
