@@ -306,6 +306,7 @@ function PaywallScreen({ onUnlock }) {
 
 function CreateClassModal({ visible, students, onClose, onCreate }) {
   const [name, setName] = useState('');
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(() => new Set());
 
   const toggle = (uid) => setSelected((prev) => {
@@ -313,7 +314,12 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
     if (n.has(uid)) n.delete(uid); else n.add(uid);
     return n;
   });
-  const reset = () => { setName(''); setSelected(new Set()); };
+  const reset = () => { setName(''); setSearch(''); setSelected(new Set()); };
+
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? students.filter((s) => (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    : students;
   const create = () => {
     if (!name.trim()) { Alert.alert('Name your class', 'Give the class a name first.'); return; }
     onCreate(name.trim(), [...selected]);
@@ -337,8 +343,22 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
             {students.length === 0 ? (
               <Text style={styles.tplSheetEmpty}>No students yet — connect students with your join code first.</Text>
             ) : (
-              <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
-                {students.map((s) => {
+              <>
+                {students.length > 5 && (
+                  <TextInput
+                    style={[styles.input, { marginBottom: SPACING.sm }]}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
+                <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+                  {shown.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
+                  ) : shown.map((s) => {
                   const on = selected.has(s.uid);
                   const nm = s.name || s.email || 'Student';
                   return (
@@ -349,7 +369,8 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+                </ScrollView>
+              </>
             )}
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
