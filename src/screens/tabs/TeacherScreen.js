@@ -407,8 +407,13 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
   const [templates, setTemplates] = useState([]);
+  const [showTemplates, setShowTemplates] = useState(false);
 
-  const close = () => { setJustAdded(0); setDueDate(null); onClose(); };
+  const close = () => {
+    setTitle(''); setDescription(''); setYoutube(''); setSong('');
+    setDueDate(null); setJustAdded(0); setShowTemplates(false);
+    onClose();
+  };
 
   // Reusable task templates live on the teacher's own user doc.
   useEffect(() => {
@@ -494,25 +499,11 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
-              <View style={styles.tplBlock}>
-                <Text style={styles.tplLabel}>TEMPLATES</Text>
-                {templates.length > 0 ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }} keyboardShouldPersistTaps="handled" style={{ marginBottom: SPACING.sm }}>
-                    {templates.map((t) => (
-                      <TouchableOpacity
-                        key={t.id}
-                        style={styles.tplChip}
-                        onPress={() => applyTemplate(t)}
-                        onLongPress={() => deleteTemplate(t)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.tplChipText} numberOfLines={1}>{t.title}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <Text style={styles.tplEmpty}>No templates yet. Fill in a task below, then tap “Save as template” to reuse it.</Text>
-                )}
+              <View style={styles.tplActions}>
+                <TouchableOpacity style={styles.tplOpenBtn} onPress={() => { Keyboard.dismiss(); setShowTemplates(true); }} activeOpacity={0.85}>
+                  <Ionicons name="albums-outline" size={15} color={COLORS.text} />
+                  <Text style={styles.tplOpenText}>Templates ({templates.length})</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.tplSaveBtn, !title.trim() && styles.tplSaveBtnDisabled]}
                   onPress={saveAsTemplate}
@@ -588,6 +579,39 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 onClose={() => setShowDuePicker(false)}
                 onSet={setDueDate}
               />
+            )}
+            {showTemplates && (
+              <View style={styles.dpBackdrop}>
+                <View style={styles.tplSheet}>
+                  <View style={styles.tplSheetHeader}>
+                    <Text style={styles.tplSheetTitle}>Templates</Text>
+                    <TouchableOpacity onPress={() => setShowTemplates(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  {templates.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No templates yet. Fill in a task, then tap “Save as template”.</Text>
+                  ) : (
+                    <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+                      {templates.map((t) => (
+                        <View key={t.id} style={styles.tplSheetRow}>
+                          <TouchableOpacity
+                            style={{ flex: 1 }}
+                            onPress={() => { applyTemplate(t); setShowTemplates(false); }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.tplSheetRowTitle} numberOfLines={1}>{t.title}</Text>
+                            {!!t.description && <Text style={styles.tplSheetRowSub} numberOfLines={1}>{t.description}</Text>}
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteTemplate(t)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
             )}
           </View>
         </TouchableWithoutFeedback>
@@ -969,6 +993,26 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Remove one assigned task from a student (allowed: linked teacher may update
+  // the student's assignedTasks).
+  const removeAssignedTask = (studentUid, taskId, taskTitle) => {
+    Alert.alert('Remove task?', taskTitle, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: async () => {
+          const s = students.find((x) => x.uid === studentUid);
+          const next = (s?.assignedTasks || []).filter((t) => t.id !== taskId);
+          try {
+            await updateDoc(doc(db, 'users', studentUid), { assignedTasks: next });
+            setStudents((prev) => prev.map((x) => (x.uid === studentUid ? { ...x, assignedTasks: next } : x)));
+          } catch (e) {
+            Alert.alert('Error', "Couldn't remove the task. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
   // One-tap parent report: compile this week's practice + share it.
   const sendParentReport = async (student) => {
     try {
@@ -1196,6 +1240,13 @@ Sent from Prova`;
                                 const d = taskDueLabel(t.dueDate);
                                 return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
                               })()}
+                              <TouchableOpacity
+                                onPress={() => removeAssignedTask(student.uid, t.id, t.title)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{ marginLeft: 8 }}
+                              >
+                                <Ionicons name="close" size={16} color={COLORS.textMuted} />
+                              </TouchableOpacity>
                             </View>
                           ))}
                         </View>
@@ -1647,6 +1698,16 @@ const styles = StyleSheet.create({
   tplSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
   tplSaveBtnDisabled: { borderColor: COLORS.border, backgroundColor: 'transparent' },
   tplSaveBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  tplActions: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
+  tplOpenBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
+  tplOpenText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  tplSheet: { width: '100%', maxWidth: 360, backgroundColor: COLORS.surface, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  tplSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  tplSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  tplSheetEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, paddingVertical: SPACING.md },
+  tplSheetRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+  tplSheetRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  tplSheetRowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
