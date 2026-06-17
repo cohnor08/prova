@@ -481,7 +481,10 @@ function DueDatePicker({ initial, onClose, onSet }) {
   );
 }
 
-function AssignTaskModal({ student, visible, onClose, onAssigned }) {
+function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAssigned }) {
+  // The modal assigns to one student, or to every student in a class at once.
+  const isClass = !!klass;
+  const recipients = isClass ? (recipientUids || []) : (student ? [student.uid] : []);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [youtube, setYoutube] = useState('');
@@ -544,11 +547,14 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
       return;
     }
+    if (recipients.length === 0) {
+      Alert.alert('No students', isClass ? 'This class has no students yet.' : 'No student selected.');
+      return;
+    }
     Keyboard.dismiss();
     setLoading(true);
     try {
-      const task = {
-        id: Date.now().toString(),
+      const base = {
         title: title.trim(),
         description: description.trim(),
         youtube: youtube.trim(),
@@ -558,10 +564,20 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
       };
-      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
+      // Each student gets their own private copy of the task (own id, own progress).
+      await Promise.all(
+        recipients.map((uid, i) =>
+          updateDoc(doc(db, 'users', uid), {
+            assignedTasks: arrayUnion({ ...base, id: `${Date.now()}_${i}` }),
+          })
+        )
+      );
       // Keep the modal open so the teacher can assign several in a row.
       setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null);
       setJustAdded((n) => n + 1);
+      if (isClass) {
+        Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
+      }
       onAssigned();
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -579,9 +595,12 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Assign Task</Text>
+              <Text style={styles.modalTitle}>{isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
-                To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
+                {isClass
+                  ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
+                  : `To: ${student?.name || student?.email}`}
+                {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
               <View style={styles.tplActions}>
@@ -989,6 +1008,7 @@ function TeacherDashboard() {
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
+  const [selectedClass, setSelectedClass] = useState(null);
 
   const myUid = auth.currentUser?.uid;
 
@@ -1442,6 +1462,15 @@ Sent from Prova`;
                         {members.map((m) => m.name || m.email).join(', ')}
                       </Text>
                     )}
+                    <TouchableOpacity
+                      style={[styles.classAssignBtn, members.length === 0 && { opacity: 0.5 }]}
+                      onPress={() => setSelectedClass(c)}
+                      disabled={members.length === 0}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
+                      <Text style={styles.classAssignBtnText}>Assign task to class</Text>
+                    </TouchableOpacity>
                   </View>
                 );
               })
@@ -1518,6 +1547,17 @@ Sent from Prova`;
         student={selectedStudent}
         visible={!!selectedStudent}
         onClose={() => setSelectedStudent(null)}
+        onAssigned={loadStudents}
+      />
+      <AssignTaskModal
+        klass={selectedClass}
+        recipientUids={
+          selectedClass
+            ? (selectedClass.studentUids || []).filter((uid) => students.some((s) => s.uid === uid))
+            : []
+        }
+        visible={!!selectedClass}
+        onClose={() => setSelectedClass(null)}
         onAssigned={loadStudents}
       />
       <CreateClassModal
@@ -1752,6 +1792,8 @@ const styles = StyleSheet.create({
   classCardName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   classCardMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
   classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
+  classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
