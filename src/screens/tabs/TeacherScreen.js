@@ -302,6 +302,70 @@ function PaywallScreen({ onUnlock }) {
   );
 }
 
+// ─── Create Class Modal ──────────────────────────────────────────────────────
+
+function CreateClassModal({ visible, students, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+
+  const toggle = (uid) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(uid)) n.delete(uid); else n.add(uid);
+    return n;
+  });
+  const reset = () => { setName(''); setSelected(new Set()); };
+  const create = () => {
+    if (!name.trim()) { Alert.alert('Name your class', 'Give the class a name first.'); return; }
+    onCreate(name.trim(), [...selected]);
+    reset();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>New class</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Class name (e.g. Tuesday Beginners)"
+              placeholderTextColor={COLORS.textMuted}
+              value={name}
+              onChangeText={setName}
+            />
+            <Text style={styles.tplLabel}>ADD STUDENTS ({selected.size})</Text>
+            {students.length === 0 ? (
+              <Text style={styles.tplSheetEmpty}>No students yet — connect students with your join code first.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+                {students.map((s) => {
+                  const on = selected.has(s.uid);
+                  const nm = s.name || s.email || 'Student';
+                  return (
+                    <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
+                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                      <Text style={styles.classPickName} numberOfLines={1}>{nm}</Text>
+                      {!!s.level && <Text style={styles.classPickMeta}>{s.level}</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalAssignBtn, !name.trim() && { opacity: 0.5 }]} onPress={create} disabled={!name.trim()}>
+                <Text style={styles.modalAssignText}>Create class</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── Assign Task Modal ────────────────────────────────────────────────────────
 
 // Calendar + time picker for a task due date (no external dependency). Rendered
@@ -902,6 +966,8 @@ function TeacherDashboard() {
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
   const [joinCode, setJoinCode] = useState(null);
+  const [classes, setClasses] = useState([]);
+  const [showCreateClass, setShowCreateClass] = useState(false);
 
   const myUid = auth.currentUser?.uid;
 
@@ -942,13 +1008,36 @@ function TeacherDashboard() {
       const uid = auth.currentUser.uid;
       // Students who connected (via my join code, or an accepted request) carry
       // teacherUid === my uid.
-      const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
+      const [snap, meSnap] = await Promise.all([
+        getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+        getDoc(doc(db, 'users', uid)),
+      ]);
       setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+      setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveClasses = (next) => {
+    setClasses(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { classes: next }).catch(() => {});
+  };
+
+  const createClass = (name, studentUids) => {
+    const cls = { id: `class_${Date.now()}`, name, studentUids, createdAt: new Date().toISOString() };
+    saveClasses([...classes, cls]);
+    setShowCreateClass(false);
+  };
+
+  const deleteClass = (id, name) => {
+    Alert.alert('Delete class?', `"${name}" — the students stay connected to you.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => saveClasses(classes.filter((c) => c.id !== id)) },
+    ]);
   };
 
   const addStudent = async () => {
@@ -1097,6 +1186,20 @@ Sent from Prova`;
             />
             <Text style={[styles.tabPillText, activeTab === 'students' && styles.tabPillTextActive]}>
               Students {students.length > 0 ? `(${students.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'classes' && styles.tabPillActive]}
+            onPress={() => setActiveTab('classes')}
+          >
+            <Ionicons
+              name={activeTab === 'classes' ? 'school' : 'school-outline'}
+              size={14}
+              color={activeTab === 'classes' ? COLORS.text : COLORS.textMuted}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={[styles.tabPillText, activeTab === 'classes' && styles.tabPillTextActive]}>
+              Classes {classes.length > 0 ? `(${classes.length})` : ''}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1283,6 +1386,48 @@ Sent from Prova`;
           </>
         )}
 
+        {/* ── Classes tab ── */}
+        {activeTab === 'classes' && (
+          <>
+            <TouchableOpacity style={styles.newClassBtn} onPress={() => setShowCreateClass(true)} activeOpacity={0.85}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.newClassBtnText}>New class</Text>
+            </TouchableOpacity>
+
+            {classes.length === 0 ? (
+              <View style={styles.emptyStudents}>
+                <Ionicons name="school-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyStudentsText}>No classes yet</Text>
+                <Text style={styles.emptyStudentsSub}>Create a class to assign tasks to a group of students at once.</Text>
+              </View>
+            ) : (
+              classes.map((c) => {
+                const members = (c.studentUids || [])
+                  .map((uid) => students.find((s) => s.uid === uid))
+                  .filter(Boolean);
+                return (
+                  <View key={c.id} style={styles.classCard}>
+                    <View style={styles.classCardTop}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.classCardName} numberOfLines={1}>{c.name}</Text>
+                        <Text style={styles.classCardMeta}>{members.length} student{members.length === 1 ? '' : 's'}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => deleteClass(c.id, c.name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                      </TouchableOpacity>
+                    </View>
+                    {members.length > 0 && (
+                      <Text style={styles.classCardMembers} numberOfLines={2}>
+                        {members.map((m) => m.name || m.email).join(', ')}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+
         {/* ── Messages tab ── */}
         {activeTab === 'chats' && (
           <>
@@ -1353,6 +1498,12 @@ Sent from Prova`;
         visible={!!selectedStudent}
         onClose={() => setSelectedStudent(null)}
         onAssigned={loadStudents}
+      />
+      <CreateClassModal
+        visible={showCreateClass}
+        students={students}
+        onClose={() => setShowCreateClass(false)}
+        onCreate={createClass}
       />
     </>
   );
@@ -1568,6 +1719,18 @@ const styles = StyleSheet.create({
   emptyStudents: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyStudentsText: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   emptyStudentsSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+
+  // Classes
+  classPickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  classPickName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  classPickMeta: { color: COLORS.textMuted, fontSize: 12 },
+  newClassBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: SPACING.lg },
+  newClassBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  classCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.md },
+  classCardTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  classCardName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  classCardMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
+  classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
