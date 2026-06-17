@@ -372,11 +372,15 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
                 </ScrollView>
               </>
             )}
+            {!name.trim() && (
+              <Text style={styles.classHint}>Type a class name above to create it.</Text>
+            )}
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalAssignBtn, !name.trim() && { opacity: 0.5 }]} onPress={create} disabled={!name.trim()}>
+              {/* Stays tappable even when dimmed so it can tell the teacher what's missing. */}
+              <TouchableOpacity style={[styles.modalAssignBtn, !name.trim() && { opacity: 0.5 }]} onPress={create}>
                 <Text style={styles.modalAssignText}>Create class</Text>
               </TouchableOpacity>
             </View>
@@ -1794,6 +1798,7 @@ const styles = StyleSheet.create({
   classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
