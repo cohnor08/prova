@@ -494,35 +494,35 @@ function AssignTaskModal({ student, visible, onClose, onAssigned }) {
                 To: {student?.name || student?.email}{justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
-              {(templates.length > 0 || title.trim()) && (
-                <View style={styles.tplBlock}>
-                  <View style={styles.tplHeader}>
-                    <Text style={styles.tplLabel}>TEMPLATES</Text>
-                    {!!title.trim() && (
-                      <TouchableOpacity onPress={saveAsTemplate} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={styles.tplSave}>＋ Save current</Text>
+              <View style={styles.tplBlock}>
+                <Text style={styles.tplLabel}>TEMPLATES</Text>
+                {templates.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }} keyboardShouldPersistTaps="handled" style={{ marginBottom: SPACING.sm }}>
+                    {templates.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        style={styles.tplChip}
+                        onPress={() => applyTemplate(t)}
+                        onLongPress={() => deleteTemplate(t)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.tplChipText} numberOfLines={1}>{t.title}</Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
-                  {templates.length > 0 ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }} keyboardShouldPersistTaps="handled">
-                      {templates.map((t) => (
-                        <TouchableOpacity
-                          key={t.id}
-                          style={styles.tplChip}
-                          onPress={() => applyTemplate(t)}
-                          onLongPress={() => deleteTemplate(t)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.tplChipText} numberOfLines={1}>{t.title}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <Text style={styles.tplEmpty}>Tap “Save current” to reuse this task later.</Text>
-                  )}
-                </View>
-              )}
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <Text style={styles.tplEmpty}>No templates yet. Fill in a task below, then tap “Save as template” to reuse it.</Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.tplSaveBtn, !title.trim() && styles.tplSaveBtnDisabled]}
+                  onPress={saveAsTemplate}
+                  disabled={!title.trim()}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="bookmark-outline" size={14} color={title.trim() ? COLORS.primary : COLORS.textMuted} />
+                  <Text style={[styles.tplSaveBtnText, !title.trim() && { color: COLORS.textMuted }]}>Save as template</Text>
+                </TouchableOpacity>
+              </View>
 
               <TextInput
                 style={styles.input}
@@ -1643,7 +1643,10 @@ const styles = StyleSheet.create({
   tplSave: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   tplChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '15', maxWidth: 180 },
   tplChipText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
-  tplEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
+  tplEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic', marginBottom: SPACING.sm },
+  tplSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
+  tplSaveBtnDisabled: { borderColor: COLORS.border, backgroundColor: 'transparent' },
+  tplSaveBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
