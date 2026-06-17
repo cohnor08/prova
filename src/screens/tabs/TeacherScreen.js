@@ -567,6 +567,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
+        ...(isClass ? { classId: klass.id, className: klass.name } : {}),
       };
       // Each student gets their own private copy of the task (own id, own progress).
       await Promise.all(
@@ -1013,6 +1014,7 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [expandedClassId, setExpandedClassId] = useState(null);
 
   const myUid = auth.currentUser?.uid;
 
@@ -1450,22 +1452,70 @@ Sent from Prova`;
                 const members = (c.studentUids || [])
                   .map((uid) => students.find((s) => s.uid === uid))
                   .filter(Boolean);
+                const open = expandedClassId === c.id;
                 return (
                   <View key={c.id} style={styles.classCard}>
                     <View style={styles.classCardTop}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.classCardName} numberOfLines={1}>{c.name}</Text>
-                        <Text style={styles.classCardMeta}>{members.length} student{members.length === 1 ? '' : 's'}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                        onPress={() => setExpandedClassId(open ? null : c.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textMuted} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.classCardName} numberOfLines={1}>{c.name}</Text>
+                          <Text style={styles.classCardMeta}>{members.length} student{members.length === 1 ? '' : 's'}</Text>
+                        </View>
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => deleteClass(c.id, c.name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Ionicons name="trash-outline" size={18} color={COLORS.error} />
                       </TouchableOpacity>
                     </View>
-                    {members.length > 0 && (
+
+                    {!open && members.length > 0 && (
                       <Text style={styles.classCardMembers} numberOfLines={2}>
                         {members.map((m) => m.name || m.email).join(', ')}
                       </Text>
                     )}
+
+                    {open && (
+                      <View style={styles.classExpand}>
+                        {members.length === 0 ? (
+                          <Text style={styles.classCardMembers}>No students in this class yet.</Text>
+                        ) : (
+                          members.map((m) => {
+                            const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
+                            const done = mt.filter((t) => t.completed).length;
+                            return (
+                              <View key={m.uid} style={styles.classMemberBlock}>
+                                <View style={styles.classMemberRow}>
+                                  <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
+                                  <Text style={styles.classMemberProgress}>
+                                    {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
+                                  </Text>
+                                </View>
+                                {mt.map((t) => (
+                                  <View key={t.id} style={styles.classTaskRow}>
+                                    <Ionicons
+                                      name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                      size={15}
+                                      color={t.completed ? COLORS.success : COLORS.textMuted}
+                                    />
+                                    <Text
+                                      style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
+                                      numberOfLines={1}
+                                    >
+                                      {t.title}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
+
                     <TouchableOpacity
                       style={[styles.classAssignBtn, members.length === 0 && { opacity: 0.5 }]}
                       onPress={() => setSelectedClass(c)}
@@ -1799,6 +1849,13 @@ const styles = StyleSheet.create({
   classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
+  classExpand: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
+  classMemberBlock: { marginBottom: SPACING.sm },
+  classMemberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
+  classMemberName: { color: COLORS.text, fontSize: 13, fontWeight: '700', flex: 1, minWidth: 0 },
+  classMemberProgress: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  classTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingLeft: SPACING.xs },
+  classTaskTitle: { color: COLORS.textSecondary, fontSize: 12, flex: 1, minWidth: 0 },
   inviteRow: { flexDirection: 'row', gap: SPACING.sm },
   inviteInput: { flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 8, padding: SPACING.sm, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
   inviteBtn: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: SPACING.md, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
