@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
+import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -32,7 +33,8 @@ function formatTime(ts) {
 
 // ─── Chat View ────────────────────────────────────────────────────────────────
 
-function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
+function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
+  const headerName = otherName || (otherEmail ? otherEmail.split('@')[0] : '');
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -117,9 +119,9 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
         </TouchableOpacity>
         <View style={styles.chatNavCenter}>
           <View style={styles.chatAvatar}>
-            <Text style={styles.chatAvatarText}>{(otherEmail || '?')[0].toUpperCase()}</Text>
+            <Text style={styles.chatAvatarText}>{(headerName || '?')[0].toUpperCase()}</Text>
           </View>
-          <Text style={styles.chatNavEmail} numberOfLines={1}>{otherEmail}</Text>
+          <Text style={styles.chatNavEmail} numberOfLines={1}>{headerName}</Text>
         </View>
         <View style={{ width: 90 }} />
       </View>
@@ -207,6 +209,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
 
 export default function MessagesScreen() {
   const [conversations, setConversations] = useState([]);
+  const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [loading, setLoading] = useState(true);
   const [activeChat, setActiveChat] = useState(null);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -227,6 +230,22 @@ export default function MessagesScreen() {
       setLoading(false);
     }, () => setLoading(false));
   }, [myUid]);
+
+  // Resolve each conversation partner's username (chats only store email).
+  useEffect(() => {
+    const missing = conversations.map((c) => c.otherUid).filter((uid) => uid && !nameMap[uid]);
+    if (missing.length === 0) return;
+    (async () => {
+      const updates = {};
+      await Promise.all([...new Set(missing)].map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, 'users', uid));
+          updates[uid] = displayName({ uid, ...snap.data() });
+        } catch (e) { /* ignore */ }
+      }));
+      if (Object.keys(updates).length) setNameMap((m) => ({ ...m, ...updates }));
+    })();
+  }, [conversations]);
 
   // Self-heal: if this student is linked to a teacher but has no chat thread yet
   // (linked before auto-seeding existed), create it so it shows up here.
@@ -283,6 +302,7 @@ export default function MessagesScreen() {
           myUid={myUid}
           myEmail={myEmail}
           otherEmail={activeChat.otherEmail}
+          otherName={activeChat.otherName}
           onBack={() => setActiveChat(null)}
         />
       </SafeAreaView>
@@ -316,19 +336,21 @@ export default function MessagesScreen() {
           data={conversations}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const name = nameMap[item.otherUid] || (item.otherEmail ? item.otherEmail.split('@')[0] : item.otherUid);
+            return (
             <TouchableOpacity
               style={styles.convoItem}
-              onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid })}
+              onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid, otherName: name })}
               activeOpacity={0.8}
             >
               <View style={styles.convoAvatar}>
                 <Text style={styles.convoAvatarText}>
-                  {(item.otherEmail || '?')[0].toUpperCase()}
+                  {(name || '?')[0].toUpperCase()}
                 </Text>
               </View>
               <View style={styles.convoInfo}>
-                <Text style={styles.convoEmail} numberOfLines={1}>{item.otherEmail || item.otherUid}</Text>
+                <Text style={styles.convoEmail} numberOfLines={1}>{name}</Text>
                 <Text style={styles.convoLast} numberOfLines={1}>
                   {item.lastMessage
                     ? `${item.lastSenderUid === myUid ? 'You: ' : ''}${item.lastMessage}`
@@ -340,7 +362,8 @@ export default function MessagesScreen() {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} style={{ marginTop: 4 }} />
               </View>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />
       )}
 

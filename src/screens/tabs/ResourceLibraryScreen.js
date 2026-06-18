@@ -9,6 +9,7 @@ import {
   doc, getDoc, updateDoc, collection, query, where, getDocs, arrayUnion,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { displayName } from '../../lib/displayName';
 import { COLORS, SPACING } from '../../constants/theme';
 import { RESOURCES, RESOURCE_LEVELS, RESOURCE_LEVEL_FALLBACK, CATEGORY_META } from '../../constants/resources';
 
@@ -303,7 +304,7 @@ export default function ResourceLibraryScreen() {
                 students.map((s) => (
                   <TouchableOpacity key={s.uid} style={styles.pickRow} onPress={() => assignResourceTo([s.uid], null)} activeOpacity={0.7}>
                     <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.pickName} numberOfLines={1}>{s.name || s.email}</Text>
+                    <Text style={styles.pickName} numberOfLines={1}>{displayName(s)}</Text>
                   </TouchableOpacity>
                 ))
               )}
