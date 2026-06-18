@@ -51,6 +51,90 @@ function assignedDueLabel(due) {
   return { text: `Due ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
 }
 
+// One teacher-assigned task on the student's Today screen. If the teacher set a
+// timer (durationMin), the "Done" button is locked until the countdown finishes,
+// so the student can't just tap Done without practising.
+function TeacherTaskCard({ task, expanded, onToggle, onComplete, openTaskLink }) {
+  const hasTimer = (task.durationMin || 0) > 0;
+  const [secondsLeft, setSecondsLeft] = useState((task.durationMin || 0) * 60);
+  const [running, setRunning] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (running && secondsLeft > 0) {
+      intervalRef.current = setInterval(() => setSecondsLeft((s) => s - 1), 1000);
+    } else if (secondsLeft === 0) {
+      clearInterval(intervalRef.current);
+      setRunning(false);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running, secondsLeft]);
+
+  const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  const timerDone = secondsLeft === 0;
+  const canComplete = !hasTimer || timerDone;
+  const due = assignedDueLabel(task.dueDate);
+
+  return (
+    <View style={styles.teacherTask}>
+      <View style={styles.teacherTaskRow}>
+        <TouchableOpacity style={styles.teacherTaskMain} onPress={onToggle} activeOpacity={0.7}>
+          <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+          <Text style={[styles.teacherTaskTitle, task.completed && styles.teacherTaskDone]} numberOfLines={1}>{task.title}</Text>
+        </TouchableOpacity>
+        {!task.completed && due && (
+          <Text style={[styles.teacherDue, due.overdue && styles.teacherDueOverdue]}>{due.text}</Text>
+        )}
+        {task.completed ? (
+          <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+        ) : (
+          <TouchableOpacity
+            style={[styles.teacherDoneBtn, !canComplete && styles.teacherDoneBtnLocked]}
+            onPress={() => canComplete && onComplete(task.id)}
+            activeOpacity={canComplete ? 0.85 : 1}
+          >
+            {!canComplete && <Ionicons name="lock-closed" size={12} color={COLORS.textMuted} style={{ marginRight: 3 }} />}
+            <Text style={[styles.teacherDoneText, !canComplete && styles.teacherDoneTextLocked]}>Done</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {hasTimer && !task.completed && (
+        <View style={styles.ttTimer}>
+          <View style={styles.ttTimerBarBg}>
+            <View style={[styles.ttTimerBarFill, { width: `${(1 - secondsLeft / ((task.durationMin || 1) * 60)) * 100}%` }]} />
+          </View>
+          <View style={styles.ttTimerRow}>
+            <Text style={styles.ttTimerText}>{fmt(secondsLeft)}</Text>
+            <TouchableOpacity
+              style={[styles.ttTimerBtn, timerDone && { opacity: 0.5 }]}
+              onPress={() => { if (!timerDone) setRunning((r) => !r); }}
+              activeOpacity={timerDone ? 1 : 0.8}
+            >
+              <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
+              <Text style={styles.ttTimerBtnText}>{timerDone ? 'Finished' : running ? 'Pause' : `Start ${task.durationMin}m`}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {expanded && !!task.description && <Text style={styles.teacherTaskDesc}>{task.description}</Text>}
+      {expanded && !!task.youtube && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.7}>
+          <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+          <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Watch: {task.youtube}</Text>
+        </TouchableOpacity>
+      )}
+      {expanded && !!task.song && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.song)} activeOpacity={0.7}>
+          <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
+          <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {task.song}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 function SkeletonBlock({ width, height, style }) {
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
@@ -612,47 +696,16 @@ export default function TodayScreen({ navigation }) {
               <Ionicons name="school" size={16} color={COLORS.primary} />
               <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
             </View>
-            {assignedTasks.map((t) => {
-              const open = expandedTask === t.id;
-              return (
-                <View key={t.id} style={styles.teacherTask}>
-                  <View style={styles.teacherTaskRow}>
-                    <TouchableOpacity
-                      style={styles.teacherTaskMain}
-                      onPress={() => setExpandedTask(open ? null : t.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
-                      <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
-                    </TouchableOpacity>
-                    {!t.completed && (() => {
-                      const d = assignedDueLabel(t.dueDate);
-                      return d ? <Text style={[styles.teacherDue, d.overdue && styles.teacherDueOverdue]}>{d.text}</Text> : null;
-                    })()}
-                    {t.completed ? (
-                      <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                    ) : (
-                      <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
-                        <Text style={styles.teacherDoneText}>Done</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  {open && !!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
-                  {open && !!t.youtube && (
-                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.youtube)} activeOpacity={0.7}>
-                      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Watch: {t.youtube}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {open && !!t.song && (
-                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.song)} activeOpacity={0.7}>
-                      <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
-                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {t.song}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
+            {assignedTasks.map((t) => (
+              <TeacherTaskCard
+                key={t.id}
+                task={t}
+                expanded={expandedTask === t.id}
+                onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                onComplete={completeAssignedTask}
+                openTaskLink={openTaskLink}
+              />
+            ))}
           </View>
         )}
 
@@ -857,8 +910,17 @@ const styles = StyleSheet.create({
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
   teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginRight: SPACING.sm },
   teacherDueOverdue: { color: COLORS.error },
-  teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  teacherDoneTextLocked: { color: COLORS.textMuted },
+  ttTimer: { marginLeft: 22, marginTop: SPACING.sm },
+  ttTimerBarBg: { height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' },
+  ttTimerBarFill: { height: 4, borderRadius: 2, backgroundColor: COLORS.primary },
+  ttTimerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  ttTimerText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  ttTimerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
+  ttTimerBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
   challengeIcon: {
     width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
