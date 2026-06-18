@@ -15,6 +15,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -318,7 +319,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
 
   const q = search.trim().toLowerCase();
   const shown = q
-    ? students.filter((s) => (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    ? students.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
     : students;
   const create = () => {
     if (!name.trim()) { Alert.alert('Name your class', 'Give the class a name first.'); return; }
@@ -360,7 +361,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
                     <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
                   ) : shown.map((s) => {
                   const on = selected.has(s.uid);
-                  const nm = s.name || s.email || 'Student';
+                  const nm = displayName(s);
                   return (
                     <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
                       <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
@@ -606,7 +607,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
-                  : `To: ${student?.name || student?.email}`}
+                  : `To: ${displayName(student)}`}
                 {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
@@ -1213,7 +1214,7 @@ function TeacherDashboard() {
         const day = new Date(`${d.id}T00:00:00`);
         if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
       });
-      const name = student.name || student.email?.split('@')[0] || 'Your student';
+      const name = displayName(student);
       const streak = student.streak || 0;
       const assigned = student.assignedTasks?.length || 0;
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
@@ -1245,7 +1246,7 @@ Sent from Prova`;
 
   // ── Inline chat view ──
   if (activeChatStudent) {
-    const displayName = activeChatStudent.name || activeChatStudent.email;
+    const chatTitle = displayName(activeChatStudent);
     return (
       <View style={{ flex: 1 }}>
         <View style={styles.chatNavHeader}>
@@ -1254,7 +1255,7 @@ Sent from Prova`;
             <Text style={styles.chatNavBackText}>Messages</Text>
           </TouchableOpacity>
           <View style={styles.chatNavCenter}>
-            <Text style={styles.chatNavTitle} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.chatNavTitle} numberOfLines={1}>{chatTitle}</Text>
             <Text style={styles.chatNavSub}>{activeChatStudent.level} · {activeChatStudent.instrument}</Text>
           </View>
           <View style={{ width: 80 }} />
@@ -1353,8 +1354,8 @@ Sent from Prova`;
               const assignedCount = student.assignedTasks?.length || 0;
               const doneCount = student.assignedTasks?.filter((t) => t.completed).length || 0;
               const hasPracticeToday = student.availableDays?.includes(todayName);
-              const displayName = student.name || student.email;
-              const initial = displayName[0].toUpperCase();
+              const nm = displayName(student);
+              const initial = nm[0].toUpperCase();
 
               return (
                 <View key={student.uid} style={styles.studentCard}>
@@ -1368,7 +1369,7 @@ Sent from Prova`;
                     </View>
                     <View style={styles.studentInfo}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.studentName}>{displayName}</Text>
+                        <Text style={styles.studentName}>{nm}</Text>
                       </View>
                       <Text style={styles.studentMeta}>{student.level} · {student.instrument}</Text>
                       <View style={styles.statusRow}>
@@ -1464,7 +1465,7 @@ Sent from Prova`;
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.actionBtnRemove}
-                          onPress={() => removeStudent(student.uid, displayName)}
+                          onPress={() => removeStudent(student.uid, nm)}
                         >
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
@@ -1534,7 +1535,7 @@ Sent from Prova`;
 
                     {!open && members.length > 0 && (
                       <Text style={styles.classCardMembers} numberOfLines={2}>
-                        {members.map((m) => m.name || m.email).join(', ')}
+                        {members.map((m) => displayName(m)).join(', ')}
                       </Text>
                     )}
 
@@ -1565,7 +1566,7 @@ Sent from Prova`;
                               <>
                                 {classGroups.length > 0 && (
                                   <View style={styles.classGroupBox}>
-                                    <Text style={styles.classGroupLabel}>CLASS TASKS · tap 🗑 to remove from everyone</Text>
+                                    <Text style={styles.classGroupLabel}>CLASS TASKS</Text>
                                     {classGroups.map((g) => (
                                       <View key={g.key} style={styles.classGroupRow}>
                                         <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
@@ -1583,7 +1584,7 @@ Sent from Prova`;
                                   return (
                                     <View key={m.uid} style={styles.classMemberBlock}>
                                       <View style={styles.classMemberRow}>
-                                        <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
+                                        <Text style={styles.classMemberName} numberOfLines={1}>{displayName(m)}</Text>
                                         <Text style={styles.classMemberProgress}>
                                           {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
                                         </Text>
@@ -1618,7 +1619,7 @@ Sent from Prova`;
                                   return (
                                     <View key={m.uid} style={styles.lbRow}>
                                       <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
-                                      <Text style={styles.lbName} numberOfLines={1}>{m.name || m.email}</Text>
+                                      <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
                                       <Text style={styles.lbScore}>{(m.provaScore || 0).toLocaleString()}</Text>
                                     </View>
                                   );
@@ -1674,8 +1675,8 @@ Sent from Prova`;
                     lastMine = conv.lastSenderUid === myUid;
                   }
                 }
-                const displayName = student.name || student.email;
-                const initial = displayName[0].toUpperCase();
+                const nm = displayName(student);
+                const initial = nm[0].toUpperCase();
                 const status = getStudentStatus(student);
                 return (
                   <TouchableOpacity
@@ -1689,7 +1690,7 @@ Sent from Prova`;
                       <View style={[styles.avatarStatusDot, { backgroundColor: status.color }]} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.studentName}>{displayName}</Text>
+                      <Text style={styles.studentName}>{nm}</Text>
                       {lastText ? (
                         <Text style={styles.chatPreviewText} numberOfLines={1}>
                           {lastMine ? 'You: ' : ''}{lastText}
