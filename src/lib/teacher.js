@@ -7,7 +7,8 @@
 import {
   doc, getDoc, updateDoc, collection, query, where, getDocs,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
+import { ensureChatThread } from './chat';
 
 // Avoid ambiguous characters (0/O, 1/I) so codes are easy to read out loud.
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -42,5 +43,14 @@ export async function linkTeacherByCode(studentUid, rawCode) {
   if (teacher.id === studentUid) throw new Error("That's your own code.");
   await updateDoc(doc(db, 'users', studentUid), { teacherUid: teacher.id });
   const d = teacher.data();
+  // Auto-create the chat thread so it appears in the student's Messages right away.
+  try {
+    await ensureChatThread({
+      aUid: studentUid,
+      aEmail: auth.currentUser?.email || '',
+      bUid: teacher.id,
+      bEmail: d.email || '',
+    });
+  } catch (e) { /* non-fatal — chat just won't be pre-seeded */ }
   return { uid: teacher.id, name: d.username || d.email?.split('@')[0] || 'your teacher' };
 }

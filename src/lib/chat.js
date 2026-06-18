@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, setDoc, serverTimestamp,
+  collection, doc, addDoc, getDoc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -33,6 +33,24 @@ export function receiptStatus(message, otherReadAt) {
   const readMs = toMs(otherReadAt);
   const msgMs = toMs(message.timestamp) ?? (typeof message.ts === 'number' ? message.ts : null);
   return readMs != null && msgMs != null && readMs >= msgMs ? 'Read' : 'Sent';
+}
+
+// Ensures a thread exists in BOTH participants' conversation lists without
+// sending a message — used to auto-create the teacher↔student chat the moment
+// they're linked, so it shows up in Messages before anyone has said anything.
+// Only writes a side that doesn't already have the conversation, so it never
+// clobbers a real thread's last message / ordering.
+export async function ensureChatThread({ aUid, aEmail, bUid, bEmail }) {
+  const chatId = makeChatId(aUid, bUid);
+  const aRef = doc(db, 'userChats', aUid, 'conversations', chatId);
+  const bRef = doc(db, 'userChats', bUid, 'conversations', chatId);
+  const [aSnap, bSnap] = await Promise.all([getDoc(aRef), getDoc(bRef)]);
+  const seed = { chatId, lastMessage: '', lastMessageAt: serverTimestamp(), lastSenderUid: '' };
+  const writes = [];
+  if (!aSnap.exists()) writes.push(setDoc(aRef, { ...seed, otherUid: bUid, otherEmail: bEmail || '' }));
+  if (!bSnap.exists()) writes.push(setDoc(bRef, { ...seed, otherUid: aUid, otherEmail: aEmail || '' }));
+  if (writes.length) await Promise.all(writes);
+  return chatId;
 }
 
 // Sends a message and updates both participants' conversation lists so the
