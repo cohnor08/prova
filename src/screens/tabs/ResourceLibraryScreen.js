@@ -5,7 +5,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import {
+  doc, getDoc, updateDoc, collection, query, where, getDocs, arrayUnion,
+} from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { RESOURCES, RESOURCE_LEVELS, RESOURCE_LEVEL_FALLBACK, CATEGORY_META } from '../../constants/resources';
@@ -37,7 +39,7 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-function ResourceItem({ item }) {
+function ResourceItem({ item, onAssign }) {
   return (
     <View style={styles.item}>
       <Text style={styles.itemTitle}>{item.title}</Text>
@@ -46,6 +48,12 @@ function ResourceItem({ item }) {
         <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(item.yt)} activeOpacity={0.7}>
           <Ionicons name="logo-youtube" size={15} color="#FF0000" />
           <Text style={styles.ytText} numberOfLines={1}>Watch: {item.yt}</Text>
+        </TouchableOpacity>
+      )}
+      {onAssign && (
+        <TouchableOpacity style={styles.assignRow} onPress={() => onAssign({ title: item.title, url: item.yt || item.title })} activeOpacity={0.7}>
+          <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+          <Text style={styles.assignRowText}>Assign to student</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -62,13 +70,54 @@ export default function ResourceLibraryScreen() {
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
+  // For assigning a resource to a student/class.
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [assignTarget, setAssignTarget] = useState(null); // { title, url } | null
+
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     getDoc(doc(db, 'users', uid))
-      .then((s) => setCustom(Array.isArray(s.data()?.customResources) ? s.data().customResources : []))
+      .then((s) => {
+        setCustom(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
+        setClasses(Array.isArray(s.data()?.classes) ? s.data().classes : []);
+      })
+      .catch(() => {});
+    getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)))
+      .then((snap) => setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))))
       .catch(() => {});
   }, []);
+
+  // Assign the selected resource as a task (with its link) to recipients.
+  const assignResourceTo = async (recipientUids, klass) => {
+    if (!assignTarget || recipientUids.length === 0) return;
+    const base = {
+      title: assignTarget.title,
+      description: '',
+      youtube: assignTarget.url,
+      song: '',
+      dueDate: null,
+      durationMin: 0,
+      completed: false,
+      assignedAt: new Date().toISOString(),
+      teacherUid: auth.currentUser.uid,
+      ...(klass ? { classId: klass.id, className: klass.name } : {}),
+    };
+    try {
+      await Promise.all(
+        recipientUids.map((uid, i) =>
+          updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion({ ...base, id: `${Date.now()}_${i}` }) })
+        )
+      );
+      setAssignTarget(null);
+      Alert.alert('Assigned', klass
+        ? `Sent to ${recipientUids.length} student${recipientUids.length === 1 ? '' : 's'} in ${klass.name}.`
+        : 'Resource sent to the student.');
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
+  };
 
   const saveCustom = (next) => {
     setCustom(next);
@@ -143,6 +192,10 @@ export default function ResourceLibraryScreen() {
                   <Ionicons name="logo-youtube" size={15} color="#FF0000" />
                   <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={styles.assignRow} onPress={() => setAssignTarget({ title: r.title, url: r.url })} activeOpacity={0.7}>
+                  <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.assignRowText}>Assign to student</Text>
+                </TouchableOpacity>
               </View>
             ))
           )}
@@ -157,7 +210,7 @@ export default function ResourceLibraryScreen() {
                 <Text style={styles.sectionTitle}>{meta.label}</Text>
               </View>
               {data[cat].map((item, idx) => (
-                <ResourceItem key={`${cat}_${idx}`} item={item} />
+                <ResourceItem key={`${cat}_${idx}`} item={item} onAssign={setAssignTarget} />
               ))}
             </View>
           );
@@ -200,6 +253,53 @@ export default function ResourceLibraryScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Pick who to assign the chosen resource to */}
+      <Modal visible={!!assignTarget} transparent animationType="slide" onRequestClose={() => setAssignTarget(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.customRow}>
+              <Text style={styles.modalTitle} numberOfLines={1}>Assign “{assignTarget?.title}”</Text>
+              <TouchableOpacity onPress={() => setAssignTarget(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSub}>Sends it as a task with the link attached.</Text>
+
+            <ScrollView style={{ maxHeight: 360 }}>
+              {classes.length > 0 && <Text style={styles.pickLabel}>CLASSES</Text>}
+              {classes.map((c) => {
+                const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.pickRow, memberUids.length === 0 && { opacity: 0.4 }]}
+                    onPress={() => memberUids.length > 0 && assignResourceTo(memberUids, c)}
+                    disabled={memberUids.length === 0}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="school-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.pickName} numberOfLines={1}>{c.name}</Text>
+                    <Text style={styles.pickMeta}>{memberUids.length} student{memberUids.length === 1 ? '' : 's'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              <Text style={styles.pickLabel}>STUDENTS</Text>
+              {students.length === 0 ? (
+                <Text style={styles.emptyRes}>No connected students yet.</Text>
+              ) : (
+                students.map((s) => (
+                  <TouchableOpacity key={s.uid} style={styles.pickRow} onPress={() => assignResourceTo([s.uid], null)} activeOpacity={0.7}>
+                    <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
+                    <Text style={styles.pickName} numberOfLines={1}>{s.name || s.email}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -233,6 +333,12 @@ const styles = StyleSheet.create({
   addResBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   emptyRes: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
+  assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  pickLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: SPACING.md, marginBottom: SPACING.xs },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  pickName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  pickMeta: { color: COLORS.textMuted, fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
