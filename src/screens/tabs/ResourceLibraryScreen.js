@@ -51,7 +51,7 @@ function ResourceItem({ item, onAssign }) {
         </TouchableOpacity>
       )}
       {onAssign && (
-        <TouchableOpacity style={styles.assignRow} onPress={() => onAssign({ title: item.title, url: item.yt || item.title })} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.assignRow} onPress={() => onAssign({ title: item.title, url: item.yt || item.title, description: item.detail || '' })} activeOpacity={0.7}>
           <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
           <Text style={styles.assignRowText}>Assign to student</Text>
         </TouchableOpacity>
@@ -69,6 +69,7 @@ export default function ResourceLibraryScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [newDesc, setNewDesc] = useState('');
 
   // For assigning a resource to a student/class.
   const [students, setStudents] = useState([]);
@@ -94,7 +95,7 @@ export default function ResourceLibraryScreen() {
     if (!assignTarget || recipientUids.length === 0) return;
     const base = {
       title: assignTarget.title,
-      description: '',
+      description: assignTarget.description || '',
       youtube: assignTarget.url,
       song: '',
       dueDate: null,
@@ -130,9 +131,9 @@ export default function ResourceLibraryScreen() {
       Alert.alert('Add a title and link', 'Both a title and a YouTube link (or search) are needed.');
       return;
     }
-    const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), instrument, level };
+    const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument, level };
     saveCustom([item, ...custom]);
-    setNewTitle(''); setNewUrl(''); setShowAdd(false);
+    setNewTitle(''); setNewUrl(''); setNewDesc(''); setShowAdd(false);
   };
 
   const removeResource = (item) => {
@@ -188,11 +189,12 @@ export default function ResourceLibraryScreen() {
                     <Ionicons name="trash-outline" size={17} color={COLORS.error} />
                   </TouchableOpacity>
                 </View>
+                {!!r.description && <Text style={styles.itemDetail}>{r.description}</Text>}
                 <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
                   <Ionicons name="logo-youtube" size={15} color="#FF0000" />
                   <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.assignRow} onPress={() => setAssignTarget({ title: r.title, url: r.url })} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.assignRow} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
                   <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
                   <Text style={styles.assignRowText}>Assign to student</Text>
                 </TouchableOpacity>
@@ -241,8 +243,17 @@ export default function ResourceLibraryScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                placeholder="Description (optional) — what should the student do?"
+                placeholderTextColor={COLORS.textMuted}
+                value={newDesc}
+                onChangeText={setNewDesc}
+                multiline
+                numberOfLines={3}
+              />
               <View style={styles.modalBtns}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setNewTitle(''); setNewUrl(''); }}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setNewTitle(''); setNewUrl(''); setNewDesc(''); }}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.saveBtn} onPress={addResource}>
@@ -344,6 +355,7 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },
   input: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14, marginBottom: SPACING.sm },
+  inputMulti: { minHeight: 70, textAlignVertical: 'top' },
   modalBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },

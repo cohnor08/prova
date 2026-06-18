@@ -1169,6 +1169,36 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Remove a class task from EVERY student it was assigned to. A class batch
+  // shares the same classId + assignedAt + title, so match on that.
+  const removeClassTask = (klass, group) => {
+    Alert.alert(
+      'Remove from whole class?',
+      `"${group.title}" will be removed from all ${group.count} student${group.count === 1 ? '' : 's'} in ${klass.name}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove from class', style: 'destructive', onPress: async () => {
+            const memberUids = (klass.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+            const matches = (t) => t.classId === klass.id && t.assignedAt === group.assignedAt && t.title === group.title;
+            try {
+              await Promise.all(memberUids.map((uid) => {
+                const s = students.find((x) => x.uid === uid);
+                const next = (s?.assignedTasks || []).filter((t) => !matches(t));
+                return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+              }));
+              setStudents((prev) => prev.map((x) =>
+                memberUids.includes(x.uid) ? { ...x, assignedTasks: (x.assignedTasks || []).filter((t) => !matches(t)) } : x
+              ));
+            } catch (e) {
+              Alert.alert('Error', "Couldn't remove the task for the class. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // One-tap parent report: compile this week's practice + share it.
   const sendParentReport = async (student) => {
     try {
@@ -1473,6 +1503,16 @@ Sent from Prova`;
                   .map((uid) => students.find((s) => s.uid === uid))
                   .filter(Boolean);
                 const open = expandedClassId === c.id;
+                // Group this class's assigned tasks (one row per batch) so the
+                // teacher can remove a task from the whole class at once.
+                const groupMap = {};
+                members.forEach((m) => (m.assignedTasks || []).filter((t) => t.classId === c.id).forEach((t) => {
+                  const key = `${t.assignedAt}__${t.title}`;
+                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0 };
+                  groupMap[key].count += 1;
+                  if (t.completed) groupMap[key].done += 1;
+                }));
+                const classGroups = Object.values(groupMap).sort((a, b) => (b.assignedAt || '').localeCompare(a.assignedAt || ''));
                 return (
                   <View key={c.id} style={styles.classCard}>
                     <View style={styles.classCardTop}>
@@ -1522,35 +1562,54 @@ Sent from Prova`;
                             </View>
 
                             {classView === 'progress' ? (
-                              members.map((m) => {
-                                const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
-                                const done = mt.filter((t) => t.completed).length;
-                                return (
-                                  <View key={m.uid} style={styles.classMemberBlock}>
-                                    <View style={styles.classMemberRow}>
-                                      <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
-                                      <Text style={styles.classMemberProgress}>
-                                        {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
-                                      </Text>
-                                    </View>
-                                    {mt.map((t) => (
-                                      <View key={t.id} style={styles.classTaskRow}>
-                                        <Ionicons
-                                          name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                          size={15}
-                                          color={t.completed ? COLORS.success : COLORS.textMuted}
-                                        />
-                                        <Text
-                                          style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
-                                          numberOfLines={1}
-                                        >
-                                          {t.title}
-                                        </Text>
+                              <>
+                                {classGroups.length > 0 && (
+                                  <View style={styles.classGroupBox}>
+                                    <Text style={styles.classGroupLabel}>CLASS TASKS · tap 🗑 to remove from everyone</Text>
+                                    {classGroups.map((g) => (
+                                      <View key={g.key} style={styles.classGroupRow}>
+                                        <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
+                                        <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                          <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+                                        </TouchableOpacity>
                                       </View>
                                     ))}
                                   </View>
-                                );
-                              })
+                                )}
+                                {members.map((m) => {
+                                  const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
+                                  const done = mt.filter((t) => t.completed).length;
+                                  return (
+                                    <View key={m.uid} style={styles.classMemberBlock}>
+                                      <View style={styles.classMemberRow}>
+                                        <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
+                                        <Text style={styles.classMemberProgress}>
+                                          {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
+                                        </Text>
+                                      </View>
+                                      {mt.map((t) => (
+                                        <View key={t.id} style={styles.classTaskRow}>
+                                          <Ionicons
+                                            name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                            size={15}
+                                            color={t.completed ? COLORS.success : COLORS.textMuted}
+                                          />
+                                          <Text
+                                            style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
+                                            numberOfLines={1}
+                                          >
+                                            {t.title}
+                                          </Text>
+                                          <TouchableOpacity onPress={() => removeAssignedTask(m.uid, t.id, t.title)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                            <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                                          </TouchableOpacity>
+                                        </View>
+                                      ))}
+                                    </View>
+                                  );
+                                })}
+                              </>
                             ) : (
                               [...members]
                                 .sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0))
@@ -1910,6 +1969,11 @@ const styles = StyleSheet.create({
   classMemberProgress: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   classTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingLeft: SPACING.xs },
   classTaskTitle: { color: COLORS.textSecondary, fontSize: 12, flex: 1, minWidth: 0 },
+  classGroupBox: { backgroundColor: COLORS.surface, borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm },
+  classGroupLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
+  classGroupRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 6 },
+  classGroupTitle: { color: COLORS.text, fontSize: 13, fontWeight: '600', flex: 1, minWidth: 0 },
+  classGroupMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   classViewToggle: { flexDirection: 'row', gap: SPACING.xs, backgroundColor: COLORS.surface, borderRadius: 10, padding: 3, marginBottom: SPACING.sm },
   classViewPill: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
   classViewPillActive: { backgroundColor: COLORS.primary },
