@@ -975,6 +975,12 @@ function smoothPath(pts) {
   return d;
 }
 
+// TEMP preview: set to true to render the chart with sample spiky data so you
+// can see the look without a student who has logged two weeks of practice.
+// Set back to false before showing real teachers.
+const PREVIEW_WITH_SAMPLE = false;
+const SAMPLE_MINS = [25, 60, 15, 50, 20, 70, 30, 55, 18, 65, 35, 75, 28, 60];
+
 function StudentActivityChart({ studentUid }) {
   const [logMap, setLogMap] = useState(null);
 
@@ -1006,7 +1012,8 @@ function StudentActivityChart({ studentUid }) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    days.push({ mins: logMap[key]?.totalMinutes || 0, dow: DOW_LABELS[d.getDay()], isToday: i === 0 });
+    const mins = PREVIEW_WITH_SAMPLE ? SAMPLE_MINS[13 - i] : (logMap[key]?.totalMinutes || 0);
+    days.push({ mins, dow: DOW_LABELS[d.getDay()], isToday: i === 0 });
   }
   const maxMins = Math.max(30, ...days.map((d) => d.mins));
   const totalMins = days.reduce((s, d) => s + d.mins, 0);
