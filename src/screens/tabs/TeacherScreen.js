@@ -3,7 +3,9 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
   KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard,
+  Dimensions,
 } from 'react-native';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -955,6 +957,24 @@ const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 // Per-student practice bar chart — daily minutes over the last 2 weeks. Fetched
 // lazily when their card expands. Reads sessionHistory (allowed for the teacher).
+// Smooth (Catmull-Rom → cubic Bézier) path through a list of {x,y} points.
+function smoothPath(pts) {
+  if (pts.length < 2) return '';
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
 function StudentActivityChart({ studentUid }) {
   const [logMap, setLogMap] = useState(null);
 
@@ -991,8 +1011,22 @@ function StudentActivityChart({ studentUid }) {
   const maxMins = Math.max(30, ...days.map((d) => d.mins));
   const totalMins = days.reduce((s, d) => s + d.mins, 0);
   const practiced = days.filter((d) => d.mins > 0).length;
+  const peak = Math.max(...days.map((d) => d.mins));
   const h = Math.floor(totalMins / 60); const m = totalMins % 60;
   const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+  // SVG smooth area chart geometry.
+  const W = Dimensions.get('window').width - 96;
+  const H = 96;
+  const PAD_T = 10; const PAD_B = 4;
+  const step = W / (days.length - 1);
+  const pts = days.map((d, i) => ({
+    x: i * step,
+    y: PAD_T + (1 - d.mins / maxMins) * (H - PAD_T - PAD_B),
+  }));
+  const line = smoothPath(pts);
+  const area = `${line} L ${pts[pts.length - 1].x} ${H} L ${pts[0].x} ${H} Z`;
+  const last = pts[pts.length - 1];
 
   return (
     <View style={styles.chartWrap}>
@@ -1000,21 +1034,21 @@ function StudentActivityChart({ studentUid }) {
         <Text style={styles.taskSectionLabel}>PRACTICE · LAST 2 WEEKS</Text>
         <Text style={styles.chartSummary}>{practiced}/14 days · {timeStr}</Text>
       </View>
-      <View style={styles.chartBars}>
-        {days.map((d, i) => (
-          <View key={i} style={styles.chartCol}>
-            <View style={styles.chartTrack}>
-              <View
-                style={[
-                  styles.chartBar,
-                  { height: `${d.mins > 0 ? Math.max(10, (d.mins / maxMins) * 100) : 0}%` },
-                  d.isToday && styles.chartBarToday,
-                ]}
-              />
-            </View>
-            <Text style={[styles.chartTick, d.isToday && styles.chartTickToday]}>{d.dow}</Text>
-          </View>
-        ))}
+      <Svg width={W} height={H}>
+        <Defs>
+          <LinearGradient id="studentArea" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={COLORS.primary} stopOpacity="0.35" />
+            <Stop offset="1" stopColor={COLORS.primary} stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Path d={area} fill="url(#studentArea)" />
+        <Path d={line} stroke={COLORS.primary} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <Circle cx={last.x} cy={last.y} r={4.5} fill={COLORS.accent} stroke={COLORS.surface} strokeWidth={2} />
+      </Svg>
+      <View style={styles.chartAxis}>
+        <Text style={styles.chartAxisLabel}>2 wks ago</Text>
+        <Text style={styles.chartAxisPeak}>Peak {peak}m</Text>
+        <Text style={styles.chartAxisLabel}>Today</Text>
       </View>
     </View>
   );
@@ -2045,6 +2079,9 @@ const styles = StyleSheet.create({
   chartBarToday: { backgroundColor: COLORS.accent },
   chartTick: { color: COLORS.textMuted, fontSize: 8, fontWeight: '600', marginTop: 3 },
   chartTickToday: { color: COLORS.accent },
+  chartAxis: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+  chartAxisLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600' },
+  chartAxisPeak: { color: COLORS.textSecondary, fontSize: 10, fontWeight: '700' },
 
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
