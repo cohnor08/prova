@@ -24,10 +24,47 @@ import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
+import GigsScreen from './src/screens/tabs/GigsScreen';
+import SongsScreen from './src/screens/tabs/SongsScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const PracticeStack = createNativeStackNavigator();
+
+// The Practice tab is a small stack so it can push deeper pages (Gigs &
+// Setlists) without adding another bottom tab.
+function PracticeStackScreen() {
+  return (
+    <PracticeStack.Navigator screenOptions={{ headerShown: false }}>
+      <PracticeStack.Screen name="PracticeHome" component={PracticeScreen} />
+      <PracticeStack.Screen
+        name="Songs"
+        component={SongsScreen}
+        options={{
+          headerShown: true,
+          title: 'Songs & Setlists',
+          headerStyle: { backgroundColor: COLORS.surface },
+          headerTintColor: COLORS.text,
+          headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
+          headerShadowVisible: false,
+        }}
+      />
+      <PracticeStack.Screen
+        name="Gigs"
+        component={GigsScreen}
+        options={{
+          headerShown: true,
+          title: 'Gigs',
+          headerStyle: { backgroundColor: COLORS.surface },
+          headerTintColor: COLORS.text,
+          headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
+          headerShadowVisible: false,
+        }}
+      />
+    </PracticeStack.Navigator>
+  );
+}
 
 const TAB_ICONS = {
   Today: ['musical-notes', 'musical-notes-outline'],
@@ -76,7 +113,7 @@ function MainTabs({ role }) {
       ) : (
         <>
           <Tab.Screen name="Today" component={TodayScreen} />
-          <Tab.Screen name="Practice" component={PracticeScreen} />
+          <Tab.Screen name="Practice" component={PracticeStackScreen} />
           <Tab.Screen name="Progress" component={ProgressScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
           <Tab.Screen name="Profile" component={ProfileScreen} />

@@ -1,15 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, PanResponder, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { PitchDetector } from 'pitchy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
+import { generateSetlist } from '../../lib/claude';
+import PerformanceMode from '../../components/PerformanceMode';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES, SPOTIFY_DISCOVERY,
+  SPOTIFY_EXPORT_ENABLED, isSpotifyConfigured, exportSetlistToSpotify,
+} from '../../lib/spotify';
+
+// Lets the OAuth popup hand control back to the app when Spotify redirects.
+WebBrowser.maybeCompleteAuthSession();
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +58,25 @@ const BPM_MIN = 20;
 const BPM_MAX = 200;
 const THUMB_SIZE = 26;
 const REC_ART = 130; // cover-tile size for "Picked for your level" carousel cards
+
+// Generated cover tiles — our own artwork, so there's no third-party/album-art
+// licensing to worry about. A song's title deterministically picks one gradient.
+const ART_GRADIENTS = [
+  ['#3B82F6', '#06B6D4'],
+  ['#6366F1', '#8B5CF6'],
+  ['#0EA5E9', '#22D3EE'],
+  ['#8B5CF6', '#EC4899'],
+  ['#10B981', '#06B6D4'],
+  ['#F59E0B', '#F43F5E'],
+  ['#3B82F6', '#1D4ED8'],
+  ['#14B8A6', '#3B82F6'],
+];
+
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 
 // ─── BPM Slider ───────────────────────────────────────────────────────────────
 
@@ -264,21 +297,65 @@ const TUNER_RECORDING_OPTIONS = {
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function PracticeScreen({ route, navigation }) {
+export default function SongsScreen({ route, navigation }) {
   // Tasks
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const hasLoadedRef = useRef(false); // skip the loading flash on re-focus
 
+  // Song library — songs the user wants to learn
+  const [songs, setSongs] = useState([]);
+  const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
+  const [songSearch, setSongSearch] = useState('');          // filter the library
+  const [newTitle, setNewTitle] = useState('');
+  const [newArtist, setNewArtist] = useState('');
 
   // Gig setlists — AI-built playlists saved inside the library
   const [setlists, setSetlists] = useState([]);
+  const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
+  const [gigSetting, setGigSetting] = useState('');
+  const [gigAudience, setGigAudience] = useState('');
+  const [gigVibe, setGigVibe] = useState('');
+  const [gigSongCount, setGigSongCount] = useState(10);
+  const [generatingSetlist, setGeneratingSetlist] = useState(false);
+  const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+  const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
+  const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
 
   // Upcoming gigs (events) — drive Pre-Gig Mode. Loaded read-only here; the
   // managing UI (add/remove) lives on the pushed Gigs & Setlists screen.
   const [gigs, setGigs] = useState([]);
 
+  // Spotify export — OAuth (PKCE) + "create this playlist in Spotify"
+  const [spotifyToken, setSpotifyToken] = useState(null);
+  const spotifyScopeRef = useRef('');
+  const [exportingSetlistId, setExportingSetlistId] = useState(null);
+  const pendingExportRef = useRef(null);
+  const spotifyRedirectUri = AuthSession.makeRedirectUri({ scheme: 'prova' });
+  const [spotifyRequest, spotifyResponse, promptSpotify] = AuthSession.useAuthRequest(
+    {
+      clientId: SPOTIFY_CLIENT_ID,
+      scopes: SPOTIFY_SCOPES,
+      usePKCE: true,
+      redirectUri: spotifyRedirectUri,
+      // Force the consent screen every time so the playlist permissions are
+      // always (re)granted — Spotify silently skips consent once authorized,
+      // which can leave a token without the needed scopes.
+      extraParams: { show_dialog: 'true' },
+    },
+    SPOTIFY_DISCOVERY,
+  );
+
+  // Player profile — drives level-matched song recommendations
+  const [instrument, setInstrument] = useState('Guitar');
+  const [level, setLevel] = useState('Beginner');
+
+  // Song playback — 30s in-app preview (iTunes) + "open in" deep links
+  const [playingSongId, setPlayingSongId] = useState(null);
+  const [loadingSongId, setLoadingSongId] = useState(null);
+  const songSoundRef = useRef(null);
+  const [openInSong, setOpenInSong] = useState(null); // song shown in the "Open in…" sheet
+  const [artwork, setArtwork] = useState({}); // "title|artist" → cover URL (null once fetched, none found)
 
   // Which tool is visible: 'metronome' | 'tuner' | 'songs'
   // (the practice timer now lives inline on the task card above)
@@ -390,6 +467,7 @@ export default function PracticeScreen({ route, navigation }) {
         clearInterval(intervalRef.current);
         setIsPlaying(false);
         stopTuning();
+        stopSongPlayback();
       };
     }, [])
   );
@@ -438,9 +516,7 @@ export default function PracticeScreen({ route, navigation }) {
   }, [isPlaying, bpm, beatsPerBar]);
 
   const loadData = async () => {
-    // Only show the loading placeholder on the very first load. On later focuses
-    // (e.g. returning from the Songs/Gigs screens) refresh silently — no flash.
-    if (!hasLoadedRef.current) setLoadingTasks(true);
+    setLoadingTasks(true);
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
@@ -450,14 +526,286 @@ export default function PracticeScreen({ route, navigation }) {
       const todaySessions = data?.practicePlan?.weeklyPlan?.[todayName]?.sessions || [];
       setSessions(todaySessions);
       setActiveSession(todaySessions[0] || null);
+      setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
+      setTipLink(data?.tipLink || '');
+      if (data?.instrument) setInstrument(data.instrument);
+      if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingTasks(false);
-      hasLoadedRef.current = true;
+    }
+  };
+
+  // Persist the song library to the user doc (owner-only write per Firestore rules)
+  const saveSongs = async (next) => {
+    setSongs(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { songLibrary: next }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to save songs:', err);
+      Alert.alert('Error', "Couldn't save your song. Check your connection and try again.");
+    }
+  };
+
+  // Persist gig setlists to the user doc (same owner-only write as the library)
+  const saveSetlists = async (next) => {
+    setSetlists(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { setlists: next }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to save setlists:', err);
+      Alert.alert('Error', "Couldn't save your setlist. Check your connection and try again.");
+    }
+  };
+
+  // Ask Claude for a gig setlist, then save it as a playlist. Any suggested song
+  // not already in the library is also copied in, so previews/covers light up and
+  // the user can practise it.
+  const handleGenerateSetlist = async () => {
+    const setting = gigSetting.trim();
+    const audience = gigAudience.trim();
+    if (!setting || !audience) {
+      Alert.alert('Almost there', 'Describe the setting and the audience so Prova can tailor the setlist.');
+      return;
+    }
+    Keyboard.dismiss();
+    setGeneratingSetlist(true);
+    try {
+      const result = await generateSetlist({
+        instrument, level,
+        setting, audience,
+        vibe: gigVibe.trim() || null,
+        songCount: gigSongCount,
+        library: songs.map((s) => ({ title: s.title, artist: s.artist || '' })),
+      });
+
+      const inLibrary = (t, a) => songs.some(
+        (s) => s.title.toLowerCase() === (t || '').toLowerCase()
+          && (s.artist || '').toLowerCase() === (a || '').toLowerCase()
+      );
+      const picks = (result?.songs || [])
+        .filter((s) => s && s.title)
+        .map((s, i) => ({
+          id: `setsong_${Date.now()}_${i}`,
+          title: String(s.title).slice(0, 120),
+          artist: String(s.artist || '').slice(0, 120),
+          note: String(s.note || '').slice(0, 80),
+          fromLibrary: inLibrary(s.title, s.artist),
+        }));
+      if (picks.length === 0) {
+        Alert.alert('No setlist', "Prova couldn't build a setlist this time. Try adding more detail.");
+        return;
+      }
+
+      const setlist = {
+        id: `setlist_${Date.now()}`,
+        name: String(result?.name || 'Gig setlist').slice(0, 50),
+        setting, audience,
+        vibe: gigVibe.trim(),
+        songs: picks,
+        createdAt: new Date().toISOString(),
+      };
+      const nextSetlists = [setlist, ...setlists];
+      await saveSetlists(nextSetlists);
+
+      // Fold any brand-new songs into the library too.
+      const additions = picks
+        .filter((p) => !inLibrary(p.title, p.artist))
+        .map((p) => ({ id: p.id, title: p.title, artist: p.artist, addedAt: new Date().toISOString() }));
+      if (additions.length > 0) await saveSongs([...additions, ...songs]);
+
+      // Reset the form and jump straight into the new setlist.
+      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigSongCount(10);
+      setShowGigForm(false);
+      setViewingSetlist(setlist);
+    } catch (err) {
+      console.warn('Setlist generation failed:', err);
+      Alert.alert('Error', err.message?.includes('limit')
+        ? err.message
+        : "Couldn't build your setlist right now. Please try again.");
+    } finally {
+      setGeneratingSetlist(false);
+    }
+  };
+
+  const deleteSetlist = (id) => {
+    saveSetlists(setlists.filter((s) => s.id !== id));
+    setViewingSetlist(null);
+  };
+
+  // Closing the setlist detail stops any preview still playing and dismisses the
+  // open-in overlay, so nothing keeps running behind the scenes.
+  const closeSetlistDetail = () => {
+    stopSongPlayback();
+    setOpenInSong(null);
+    setViewingSetlist(null);
+  };
+
+  // ── Spotify export ──
+  // Build the real Spotify playlist and report what made it / what was skipped.
+  const runSpotifyExport = async (token, setlist) => {
+    setExportingSetlistId(setlist.id);
+    try {
+      const { url, addedCount, missed } = await exportSetlistToSpotify(token, setlist, spotifyScopeRef.current);
+      const missText = missed.length
+        ? `\n\n${missed.length} song${missed.length === 1 ? " wasn't" : "s weren't"} found on Spotify and ${missed.length === 1 ? 'was' : 'were'} skipped.`
+        : '';
+      Alert.alert(
+        'Added to Spotify ✅',
+        `"${setlist.name}" — ${addedCount} song${addedCount === 1 ? '' : 's'} added.${missText}`,
+        [
+          ...(url ? [{ text: 'Open in Spotify', onPress: () => Linking.openURL(url) }] : []),
+          { text: 'Done', style: 'cancel' },
+        ],
+      );
+    } catch (e) {
+      if (String(e.message).includes('expired')) setSpotifyToken(null);
+      Alert.alert('Spotify', e.message || 'Export failed. Please try again.');
+    } finally {
+      setExportingSetlistId(null);
+    }
+  };
+
+  const handleExportToSpotify = (setlist) => {
+    if (!isSpotifyConfigured()) {
+      Alert.alert(
+        'Spotify not connected yet',
+        'Spotify export needs a one-time setup (a free Spotify Developer Client ID). Ask your developer to finish connecting Spotify, then this button will work.',
+      );
+      return;
+    }
+    if (spotifyToken) { runSpotifyExport(spotifyToken, setlist); return; }
+    // Not signed in yet — remember the setlist and launch the Spotify login.
+    pendingExportRef.current = setlist;
+    setExportingSetlistId(setlist.id);
+    promptSpotify();
+  };
+
+  // When the Spotify login returns, exchange the code for a token (PKCE) and run
+  // any export the user was waiting on.
+  useEffect(() => {
+    if (!spotifyResponse) return;
+    if (spotifyResponse.type === 'success' && spotifyRequest?.codeVerifier) {
+      (async () => {
+        try {
+          const tokenResult = await AuthSession.exchangeCodeAsync(
+            {
+              clientId: SPOTIFY_CLIENT_ID,
+              code: spotifyResponse.params.code,
+              redirectUri: spotifyRedirectUri,
+              extraParams: { code_verifier: spotifyRequest.codeVerifier },
+            },
+            SPOTIFY_DISCOVERY,
+          );
+          console.log('[Spotify] granted scopes:', tokenResult.scope || '(none returned)');
+          spotifyScopeRef.current = tokenResult.scope || '';
+          setSpotifyToken(tokenResult.accessToken);
+          const pending = pendingExportRef.current;
+          pendingExportRef.current = null;
+          if (pending) await runSpotifyExport(tokenResult.accessToken, pending);
+          else setExportingSetlistId(null);
+        } catch (e) {
+          setExportingSetlistId(null);
+          pendingExportRef.current = null;
+          Alert.alert('Spotify', e.message || "Couldn't connect to Spotify.");
+        }
+      })();
+    } else {
+      // Dismissed or errored — clear the pending state.
+      setExportingSetlistId(null);
+      pendingExportRef.current = null;
+    }
+  }, [spotifyResponse]);
+
+  const addSong = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    const song = {
+      id: `song_${Date.now()}`,
+      title,
+      artist: newArtist.trim(),
+      addedAt: new Date().toISOString(),
+    };
+    saveSongs([song, ...songs]);
+    setNewTitle('');
+    setNewArtist('');
+    Keyboard.dismiss();
+  };
+
+  const removeSong = (id) => saveSongs(songs.filter((s) => s.id !== id));
+
+  // Copy a level-matched recommendation into the user's own library
+  const addRecommendedSong = (rec) => {
+    const exists = songs.some(
+      (s) => s.title.toLowerCase() === rec.title.toLowerCase()
+        && (s.artist || '').toLowerCase() === (rec.artist || '').toLowerCase()
+    );
+    if (exists) return;
+    const song = {
+      id: `song_${Date.now()}`,
+      title: rec.title,
+      artist: rec.artist || '',
+      addedAt: new Date().toISOString(),
+    };
+    saveSongs([song, ...songs]);
+  };
+
+  const stopSongPlayback = async () => {
+    if (songSoundRef.current) {
+      try { await songSoundRef.current.stopAsync(); } catch (_) {}
+      try { await songSoundRef.current.unloadAsync(); } catch (_) {}
+      songSoundRef.current = null;
+    }
+    setPlayingSongId(null);
+  };
+
+  // Play (or stop) a 30-second preview of a song in-app
+  const toggleSongPlayback = async (song) => {
+    if (playingSongId === song.id) { await stopSongPlayback(); return; }
+    await stopSongPlayback();
+    // Free up audio from the other tools first
+    if (isPlaying) { clearInterval(intervalRef.current); setIsPlaying(false); }
+    if (isTuning) await stopTuning();
+
+    setLoadingSongId(song.id);
+    try {
+      const previewUrl = await fetchSongPreview(song.title, song.artist);
+      if (!previewUrl) {
+        Alert.alert('No preview', `Couldn't find a preview for "${song.title}". Try "Open in…" to play the full song.`);
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync({ uri: previewUrl }, { shouldPlay: true });
+      songSoundRef.current = sound;
+      setPlayingSongId(song.id);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) stopSongPlayback();
+      });
+    } catch (e) {
+      console.warn('Song playback error:', e);
+      Alert.alert('Playback error', "Couldn't play this song preview.");
+    } finally {
+      setLoadingSongId(null);
+    }
+  };
+
+  // Open the full song in the user's music app
+  const openSongIn = async (song, service) => {
+    setOpenInSong(null);
+    const url = service === 'spotify'
+      ? spotifySearchUrl(song.title, song.artist)
+      : appleMusicSearchUrl(song.title, song.artist);
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      console.warn('Open in failed:', e);
+      Alert.alert('Error', `Couldn't open ${service === 'spotify' ? 'Spotify' : 'Apple Music'}.`);
     }
   };
 
@@ -546,6 +894,9 @@ export default function PracticeScreen({ route, navigation }) {
     if (next !== 'tuner' && isTuning) {
       stopTuning();
     }
+    if (next !== 'songs' && playingSongId) {
+      stopSongPlayback();
+    }
     setTool(next);
   };
 
@@ -575,377 +926,613 @@ export default function PracticeScreen({ route, navigation }) {
         (SONG_TASK_CATEGORIES.has(b.category) ? 1 : 0) - (SONG_TASK_CATEGORIES.has(a.category) ? 1 : 0))
     : sessions;
 
+  // Songs matched to the player's instrument + level, and the one to feature
+  // today — rotates by day across the user's library plus the recommendations.
+  const recommendedSongs = getRecommendedSongs(instrument, level);
+  const recommendedIds = new Set(
+    songs.map((s) => `${s.title.toLowerCase()}|${(s.artist || '').toLowerCase()}`)
+  );
+  const songOfTheDay = getDailySong(instrument, level);
+
+  // Library shown alphabetically by title, optionally filtered by the search
+  // box, and collapsed to a few rows until expanded — keeps a big library from
+  // dominating the screen. Searching shows all matches (no collapse).
+  const SONGS_COLLAPSED = 4;
+  const songQuery = songSearch.trim().toLowerCase();
+  const sortedSongs = [...songs].sort((a, b) =>
+    (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+  );
+  const filteredSongs = songQuery
+    ? sortedSongs.filter((s) =>
+        (s.title || '').toLowerCase().includes(songQuery)
+        || (s.artist || '').toLowerCase().includes(songQuery))
+    : sortedSongs;
+  const shownSongs = songQuery || songsExpanded ? filteredSongs : filteredSongs.slice(0, SONGS_COLLAPSED);
+
+  // Keyed by title|artist so a song shared across the library, recommendations,
+  // and "song of the day" only fetches its cover once.
+  const artKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
+
+  // Lazily pull cover art for every song currently on screen (iTunes Search).
+  // The `undefined` guard means each unique song is fetched at most once.
+  useEffect(() => {
+    const visible = [songOfTheDay, ...songs, ...recommendedSongs, ...(viewingSetlist?.songs || [])].filter(Boolean);
+    const seen = new Set();
+    const missing = [];
+    for (const s of visible) {
+      const k = artKey(s);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (artwork[k] === undefined) missing.push(s);
+    }
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      await Promise.all(
+        missing.map(async (s) => { updates[artKey(s)] = await fetchSongArtwork(s.title, s.artist); })
+      );
+      if (!cancelled) setArtwork((prev) => ({ ...prev, ...updates }));
+    })();
+    return () => { cancelled = true; };
+  }, [songs, instrument, level, viewingSetlist]);
+
   const categoryColor = activeSession
     ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
     : COLORS.primary;
 
+  // The song's real album cover (from the iTunes Search API). While it loads —
+  // or for the rare song with no match — we show a generated gradient tile so
+  // the layout never looks broken.
+  // `linkToStore` wraps a real cover in a tap → "Open in…" sheet, which Apple's
+  // terms require (album art must link to the content on a store). It's off only
+  // where the cover already sits inside another tap target (the carousel, whose
+  // cover taps to preview — store access there is via the per-song Add/Open-in).
+  const renderArtwork = (song, size, radius = 10, linkToStore = true) => {
+    const uri = artwork[artKey(song)];
+    if (uri) {
+      const img = (
+        <Image
+          source={{ uri }}
+          style={{ width: size, height: size, borderRadius: radius, backgroundColor: COLORS.card }}
+        />
+      );
+      return linkToStore ? (
+        <TouchableOpacity activeOpacity={0.8} onPress={() => setOpenInSong(song)}>
+          {img}
+        </TouchableOpacity>
+      ) : img;
+    }
+    const isTodaySong = songOfTheDay && song.id === songOfTheDay.id;
+    const colors = ART_GRADIENTS[hashString(artKey(song)) % ART_GRADIENTS.length];
+    const initial = (song.title || '?').trim().charAt(0).toUpperCase() || '?';
+    return (
+      <LinearGradient
+        colors={colors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          width: size, height: size, borderRadius: radius,
+          alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}
+      >
+        {isTodaySong ? (
+          <Ionicons name="star" size={Math.round(size * 0.4)} color="#fff" />
+        ) : (
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: Math.round(size * 0.44) }}>
+            {initial}
+          </Text>
+        )}
+      </LinearGradient>
+    );
+  };
+
+  // Preview play/pause button + an "Open in…" (full song) button
+  const renderSongControls = (song, size = 26) => {
+    const isLoading = loadingSongId === song.id;
+    const isThisPlaying = playingSongId === song.id;
+    return (
+      <View style={styles.songControls}>
+        <TouchableOpacity
+          onPress={() => toggleSongPlayback(song)}
+          disabled={isLoading}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isLoading ? 'ellipsis-horizontal-circle-outline' : isThisPlaying ? 'pause-circle' : 'play-circle'}
+            size={size}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setOpenInSong(song)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="open-outline" size={size - 6} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // The "Open in Spotify / Apple Music" bottom sheet contents. Rendered either
+  // inside a standalone Modal (from the main screen) or as a plain overlay inside
+  // the setlist detail Modal — iOS can't stack one Modal on top of another, so we
+  // never nest Modals; we drop this View into whichever surface is already open.
+  const renderOpenInSheet = () => (
+    <View style={styles.playerBackdrop}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setOpenInSong(null)} />
+      <View style={styles.playerSheet}>
+        <View style={styles.playerHandle} />
+        <Text style={styles.playerTitle} numberOfLines={1}>{openInSong?.title}</Text>
+        {!!openInSong?.artist && (
+          <Text style={styles.playerArtist} numberOfLines={1}>{openInSong.artist}</Text>
+        )}
+        <Text style={styles.openInHint}>Play the full song in:</Text>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#1DB954' }]}
+          onPress={() => openSongIn(openInSong, 'spotify')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-notes" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Spotify</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.openInBtn, { backgroundColor: '#FA243C' }]}
+          onPress={() => openSongIn(openInSong, 'apple')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="musical-note" size={20} color="#fff" />
+          <Text style={styles.openInBtnText}>Apple Music</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.openInCancel} onPress={() => setOpenInSong(null)} activeOpacity={0.7}>
+          <Text style={styles.openInCancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Practice</Text>
-
-        {/* ── Pre-Gig Mode banner ── */}
-        {preGig && (
-          <TouchableOpacity
-            style={styles.preGigBanner}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('Gigs')}
-          >
-            <View style={styles.preGigIcon}>
-              <Ionicons name="megaphone" size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.preGigLabel}>PRE-GIG MODE · {countdownLabel(daysToNextGig).toUpperCase()}</Text>
-              <Text style={styles.preGigTitle} numberOfLines={1}>{nextGig.name}</Text>
-              <Text style={styles.preGigSub} numberOfLines={1}>
-                {nextGigSetlist
-                  ? `Setlist: ${nextGigSetlist.name} · tap to rehearse`
-                  : 'Focus on your songs — tap to manage gigs'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
-        )}
-
-        {/* ── Task Instructions ── */}
-        <Text style={styles.sectionLabel}>
-          {preGig ? 'CURRENT TASK · SONGS FIRST' : 'CURRENT TASK'}
-        </Text>
-
-        {loadingTasks ? (
-          <View style={styles.taskPlaceholder} />
-        ) : sessions.length === 0 ? (
-          <View style={styles.emptyTask}>
-            <Ionicons name="musical-notes-outline" size={28} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-            <Text style={styles.emptyTaskText}>No sessions scheduled today</Text>
-          </View>
-        ) : (
-          <>
-            {sessions.length > 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillsRow}
-                style={{ marginBottom: SPACING.md }}
-              >
-                {displaySessions.map((s) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[styles.taskPill, activeSession?.id === s.id && styles.taskPillActive]}
-                    onPress={() => setActiveSession(s)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[styles.taskPillText, activeSession?.id === s.id && styles.taskPillTextActive]}
-                      numberOfLines={1}
-                    >
-                      {s.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
-            {activeSession && (
-              <View style={[styles.taskCard, { borderLeftColor: categoryColor }]}>
-                <View style={styles.taskCardTop}>
-                  <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
-                    <Text style={[styles.categoryText, { color: categoryColor }]}>
-                      {activeSession.category?.replace('_', ' ').toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={styles.taskDuration}>
-                    <Ionicons name="time-outline" size={12} color={COLORS.textMuted} /> {activeSession.duration} min
-                  </Text>
-                </View>
-                <Text style={styles.taskTitle}>{activeSession.title}</Text>
-                <Text style={styles.taskDesc}>{activeSession.description}</Text>
-
-                {/* Inline practice timer */}
-                <View style={styles.inlineTimerBox}>
-                  <View style={styles.inlineTimer}>
-                    <View style={styles.inlineTimerLeft}>
-                      <Ionicons name="time-outline" size={18} color={COLORS.textMuted} />
-                      <Text style={[styles.inlineTimerTime, { color: COLORS.text }]}>
-                        {formatTime(timerSeconds)}
-                      </Text>
-                      <Text style={styles.inlineTimerTotal}>/ {activeSession.duration} min</Text>
-                    </View>
-                    <View style={styles.inlineTimerControls}>
-                      <TouchableOpacity
-                        style={styles.inlineResetBtn}
-                        onPress={() => {
-                          clearInterval(timerRef.current);
-                          setTimerActive(false);
-                          setTimerSeconds(activeSession.duration * 60);
-                        }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.inlinePlayBtn, { backgroundColor: timerActive ? COLORS.error : COLORS.primaryDark }]}
-                        onPress={() => setTimerActive((p) => !p)}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name={timerActive ? 'pause' : 'play'} size={20} color={COLORS.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* Thin progress bar */}
-                  <View style={styles.inlineTimerBarTrack}>
-                    <View
-                      style={[
-                        styles.inlineTimerBarFill,
-                        {
-                          width: activeSession.duration * 60 > 0
-                            ? `${(1 - timerSeconds / (activeSession.duration * 60)) * 100}%`
-                            : '0%',
-                          backgroundColor: COLORS.primaryDark,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-              </View>
-            )}
-          </>
-        )}
-
-        {/* ── Tool selector ── */}
-        <View style={styles.toolSelector}>
-          {[
-            { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
-            { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
-            { key: 'songs', label: 'Songs', icon: 'list-outline', nav: 'Songs' },
-            { key: 'gigs', label: 'Gigs', icon: 'calendar-outline', nav: 'Gigs' },
-          ].map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.toolBtn, tool === t.key && styles.toolBtnActive]}
-              onPress={() => (t.nav ? navigation.navigate(t.nav) : selectTool(t.key))}
-              activeOpacity={0.8}
-            >
-              <Ionicons name={t.icon} size={22} color={tool === t.key ? COLORS.text : COLORS.textMuted} />
-              <Text style={[styles.toolBtnText, tool === t.key && styles.toolBtnTextActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* ── Metronome ── */}
-        {tool === 'metronome' && (
+        {/* ── Gig Setlists ── */}
+        {(
         <View style={styles.card}>
+          <Text style={styles.songsHeading}>Gig Setlists</Text>
+          <Text style={styles.songsSub}>
+            Describe a gig and Prova builds you an ordered setlist — saved here as a playlist.
+          </Text>
 
-          {/* Beat dots */}
-          <View style={styles.beatRow}>
-            {Array.from({ length: beatsPerBar }).map((_, i) => {
-              const isActive = isPlaying && i === beat % beatsPerBar;
-              const isAccent = i === 0;
-              return (
-                <Animated.View
-                  key={i}
-                  style={[
-                    styles.beatDot,
-                    isAccent && styles.beatDotAccent,
-                    isActive && styles.beatDotOn,
-                    isActive && isAccent && styles.beatDotAccentOn,
-                    isActive && { transform: [{ scale: pulseAnim }] },
-                  ]}
-                />
-              );
-            })}
-          </View>
+          <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.gigNewBtnText}>New gig setlist</Text>
+          </TouchableOpacity>
 
-          {/* BPM display */}
-          <View style={styles.bpmDisplay}>
-            <Text style={styles.bpmValue}>{bpm}</Text>
-            <Text style={styles.bpmUnitLabel}>BPM</Text>
-          </View>
-
-          {/* Horizontal slider */}
-          <BpmSlider bpm={bpm} onChange={setBpm} />
-          <View style={styles.bpmRange}>
-            <Text style={styles.bpmRangeLabel}>{BPM_MIN}</Text>
-            <Text style={styles.bpmRangeLabel}>{BPM_MAX}</Text>
-          </View>
-
-          {/* Time signature */}
-          <View style={styles.timeSigRow}>
-            <Text style={styles.timeSigLabel}>Time sig</Text>
-            <View style={styles.timeSigBtns}>
-              {TIME_SIGNATURES.map((n) => (
+          {setlists.length === 0 ? (
+            <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
+          ) : (
+            <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
+              {setlists.map((sl) => (
                 <TouchableOpacity
-                  key={n}
-                  style={[styles.timeSigBtn, beatsPerBar === n && styles.timeSigBtnActive]}
-                  onPress={() => { setBeatsPerBar(n); setBeat(0); }}
+                  key={sl.id}
+                  style={styles.setlistRow}
+                  activeOpacity={0.7}
+                  onPress={() => setViewingSetlist(sl)}
                 >
-                  <Text style={[styles.timeSigText, beatsPerBar === n && styles.timeSigTextActive]}>
-                    {n}/4
-                  </Text>
+                  <View style={styles.setlistIcon}>
+                    <Ionicons name="list" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.setlistName} numberOfLines={1}>{sl.name}</Text>
+                    <Text style={styles.setlistMeta} numberOfLines={1}>
+                      {sl.songs.length} songs · {sl.setting}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-
-          {/* Speed trainer */}
-          <View style={[styles.trainerBox, trainerOn && styles.trainerBoxOn]}>
-            <TouchableOpacity
-              style={styles.trainerHeader}
-              onPress={() => setTrainerOn((o) => !o)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.trainerTitleWrap}>
-                <Ionicons name="trending-up" size={16} color={trainerOn ? COLORS.primary : COLORS.textMuted} />
-                <Text style={[styles.trainerTitle, trainerOn && { color: COLORS.text }]}>Speed trainer</Text>
-              </View>
-              <View style={[styles.trainerSwitch, trainerOn && styles.trainerSwitchOn]}>
-                <View style={[styles.trainerKnob, trainerOn && styles.trainerKnobOn]} />
-              </View>
-            </TouchableOpacity>
-
-            {trainerOn && (
-              <View style={styles.trainerBody}>
-                <Text style={styles.trainerHint}>
-                  {isPlaying
-                    ? atTarget
-                      ? `✓ At target — holding ${trainerTarget} BPM`
-                      : `Ramping ${trainerStart} → ${trainerTarget} BPM`
-                    : 'Speeds up automatically as you play'}
-                </Text>
-                <View style={styles.trainerRow}>
-                  <Text style={styles.trainerLabel}>From</Text>
-                  <Stepper value={trainerStart} min={BPM_MIN} max={BPM_MAX} step={5} suffix="BPM" onChange={setTrainerStart} />
-                </View>
-                <View style={styles.trainerRow}>
-                  <Text style={styles.trainerLabel}>To</Text>
-                  <Stepper value={trainerTarget} min={BPM_MIN} max={BPM_MAX} step={5} suffix="BPM" onChange={setTrainerTarget} />
-                </View>
-                <View style={styles.trainerRow}>
-                  <Text style={styles.trainerLabel}>Increase by</Text>
-                  <Stepper value={trainerStep} min={1} max={20} step={1} suffix="BPM" onChange={setTrainerStep} />
-                </View>
-                <View style={styles.trainerRow}>
-                  <Text style={styles.trainerLabel}>Every</Text>
-                  <Stepper value={trainerBars} min={1} max={16} step={1} suffix="bars" onChange={setTrainerBars} />
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Play */}
-          <TouchableOpacity
-            style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-            onPress={togglePlay}
-            activeOpacity={0.8}
-          >
-            <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.text} />
-          </TouchableOpacity>
+          )}
         </View>
         )}
 
-        {/* ── Tuner (chromatic, auto-detecting) ── */}
-        {tool === 'tuner' && (() => {
-          const note = detectedHz ? hzToNote(detectedHz) : null;
-          const cents = note ? Math.max(-50, Math.min(50, note.cents)) : 0;
-          const ratio = (cents + 50) / 100; // 0 (−50¢) … 1 (+50¢)
-          const inTune = note && Math.abs(note.cents) <= 5;
-          const close = note && Math.abs(note.cents) <= 15;
-          const color = !note ? COLORS.textMuted : inTune ? COLORS.success : close ? '#F59E0B' : COLORS.error;
-          // Which standard string are you nearest to? (closest by pitch, octave-aware)
-          const nearest = note
-            ? strings.reduce((best, s) => {
-                const d = Math.abs(1200 * Math.log2(detectedHz / s.freq));
-                return !best || d < best.d ? { num: s.number, d } : best;
-              }, null)
-            : null;
+        {/* ── Song Library ── */}
+        {(
+        <View style={styles.card}>
+          <Text style={styles.songsHeading}>My Song Library</Text>
+          <Text style={styles.songsSub}>
+            Add songs you want to learn. Prova features one to practice each day.
+          </Text>
 
-          return (
-            <View style={styles.card}>
-              {/* Guitar / Bass toggle */}
-              <View style={styles.instRow}>
-                {['Guitar', 'Bass'].map((inst) => (
+          {/* Add form */}
+          <View style={styles.addRow}>
+            <View style={{ flex: 1, gap: SPACING.sm }}>
+              <TextInput
+                style={styles.songInput}
+                placeholder="Song title"
+                placeholderTextColor={COLORS.textMuted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                returnKeyType="next"
+              />
+              <TextInput
+                style={styles.songInput}
+                placeholder="Artist (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newArtist}
+                onChangeText={setNewArtist}
+                returnKeyType="done"
+                onSubmitEditing={addSong}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.songAddBtn, !newTitle.trim() && styles.songAddBtnDisabled]}
+              onPress={addSong}
+              disabled={!newTitle.trim()}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={28} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search box — appears once the library is big enough to need it */}
+          {songs.length > SONGS_COLLAPSED && (
+            <View style={styles.songSearchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.songSearchInput}
+                placeholder="Search your library"
+                placeholderTextColor={COLORS.textMuted}
+                value={songSearch}
+                onChangeText={setSongSearch}
+                returnKeyType="search"
+                autoCorrect={false}
+              />
+              {songSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setSongSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* List */}
+          {songs.length === 0 ? (
+            <View style={styles.songsEmpty}>
+              <Ionicons name="musical-notes-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyTaskText}>No songs yet — add your first above</Text>
+            </View>
+          ) : songQuery && filteredSongs.length === 0 ? (
+            <View style={styles.songsEmpty}>
+              <Ionicons name="search-outline" size={24} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyTaskText}>No songs match “{songSearch.trim()}”</Text>
+            </View>
+          ) : (
+            <View style={styles.songList}>
+              {shownSongs.map((s) => {
+                const isToday = songOfTheDay && s.id === songOfTheDay.id;
+                return (
+                  <View key={s.id} style={[styles.songRow, isToday && styles.songRowToday]}>
+                    {renderArtwork(s, 48, 10)}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.songRowTitle} numberOfLines={1}>{s.title}</Text>
+                      {!!s.artist && <Text style={styles.songRowArtist} numberOfLines={1}>{s.artist}</Text>}
+                    </View>
+                    {isToday && <Text style={styles.songRowTodayTag}>TODAY</Text>}
+                    {renderSongControls(s, 24)}
+                    <TouchableOpacity
+                      onPress={() => removeSong(s.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              {!songQuery && songs.length > SONGS_COLLAPSED && (
+                <TouchableOpacity
+                  style={styles.songsToggle}
+                  activeOpacity={0.7}
+                  onPress={() => setSongsExpanded((v) => !v)}
+                >
+                  <Text style={styles.songsToggleText}>
+                    {songsExpanded ? 'Show less' : `Show all ${songs.length} songs`}
+                  </Text>
+                  <Ionicons
+                    name={songsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Recommended for the player's level */}
+          <View style={styles.recHeaderRow}>
+            <Ionicons name="sparkles" size={15} color={COLORS.accent} />
+            <Text style={styles.recHeading}>Picked for your level</Text>
+            <Text style={styles.recLevelTag}>{level} · {instrument}</Text>
+          </View>
+          <Text style={styles.songsSub}>
+            Songs that fit a {level.toLowerCase()} {instrument.toLowerCase()} player. Tap a cover to preview, or add it to your library.
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.recScrollOuter}
+            contentContainerStyle={styles.recScroll}
+          >
+            {recommendedSongs.map((rec) => {
+              const added = recommendedIds.has(artKey(rec));
+              const isLoading = loadingSongId === rec.id;
+              const isThisPlaying = playingSongId === rec.id;
+              return (
+                <View key={rec.id} style={styles.recCard}>
                   <TouchableOpacity
-                    key={inst}
-                    style={[styles.instBtn, tunerInstrument === inst && styles.instBtnActive]}
-                    onPress={() => setTunerInstrument(inst)}
+                    style={styles.recArtWrap}
+                    activeOpacity={0.85}
+                    onPress={() => toggleSongPlayback(rec)}
+                    disabled={isLoading}
                   >
-                    <Text style={[styles.instBtnText, tunerInstrument === inst && styles.instBtnTextActive]}>
-                      {inst}
+                    {renderArtwork(rec, REC_ART, 12, false)}
+                    <View style={styles.recPlayOverlay}>
+                      <Ionicons
+                        name={isLoading ? 'ellipsis-horizontal' : isThisPlaying ? 'pause' : 'play'}
+                        size={20}
+                        color="#fff"
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={styles.recCardTitle} numberOfLines={1}>{rec.title}</Text>
+                  {!!rec.artist && <Text style={styles.recCardArtist} numberOfLines={1}>{rec.artist}</Text>}
+                  <TouchableOpacity
+                    style={[styles.recAddBtn, added && styles.recAddBtnDone]}
+                    onPress={() => addRecommendedSong(rec)}
+                    disabled={added}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name={added ? 'checkmark' : 'add'}
+                      size={16}
+                      color={added ? COLORS.success : COLORS.text}
+                    />
+                    <Text style={[styles.recAddText, added && { color: COLORS.success }]}>
+                      {added ? 'Added' : 'Add'}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Big auto-detected note */}
-              <View style={styles.tunerNoteBlock}>
-                <Text style={[styles.tunerBigNote, { color }]}>
-                  {note ? note.name : '–'}
-                  {note && <Text style={styles.tunerBigOctave}>{note.octave}</Text>}
-                </Text>
-                <Text style={[styles.tunerStatus, { color }]}>
-                  {!isTuning
-                    ? 'Tap Start, then play a string'
-                    : !note
-                      ? 'Listening…'
-                      : inTune
-                        ? '✓ In tune'
-                        : note.cents < 0
-                          ? `${Math.abs(note.cents)}¢ flat · tune up`
-                          : `${note.cents}¢ sharp · tune down`}
-                </Text>
-              </View>
-
-              {/* Needle / cents meter */}
-              <View style={styles.needleWrap}>
-                <View style={styles.needleTrack}>
-                  {/* in-tune zone */}
-                  <View style={styles.needleZone} />
-                  <View style={styles.needleCenter} />
-                  {note && (
-                    <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
-                  )}
                 </View>
-                <View style={styles.needleLabels}>
-                  <Text style={styles.needleLabel}>♭</Text>
-                  <Text style={styles.needleLabel}>0</Text>
-                  <Text style={styles.needleLabel}>♯</Text>
-                </View>
-              </View>
-
-              {/* Standard-tuning reference — highlights the string you're playing */}
-              <View style={styles.tunerStringRow}>
-                {strings.map((s) => {
-                  const on = nearest?.num === s.number;
-                  return (
-                    <View
-                      key={s.number}
-                      style={[styles.tunerStringChip, on && { borderColor: color, backgroundColor: color + '22' }]}
-                    >
-                      <Text style={[styles.tunerStringChipText, on && { color }]}>{s.note}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-
-              {/* Start / Stop */}
-              <TouchableOpacity
-                style={[styles.tunerBtn, isTuning && styles.tunerBtnActive]}
-                onPress={isTuning ? stopTuning : startTuning}
-                activeOpacity={0.8}
-              >
-                <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
-                <Text style={styles.tunerBtnText}>{isTuning ? 'Stop' : 'Start Tuning'}</Text>
-              </TouchableOpacity>
-
-              <Text style={styles.tunerCaption}>
-                Auto-detects any note · Standard {tunerInstrument === 'Bass' ? 'EADG' : 'EADGBE'}
-              </Text>
-            </View>
-          );
-        })()}
+              );
+            })}
+          </ScrollView>
+          <Text style={styles.attribution}>
+            Song previews and album artwork provided by Apple Music. Tap any cover to open the full track.
+          </Text>
+        </View>
+        )}
 
       </ScrollView>
+
+      {/* "Open in…" — play the full song in the user's music app. Suppressed
+          while the setlist detail Modal is open (iOS can't stack Modals); in that
+          case the same sheet is rendered as an overlay inside the detail Modal. */}
+      <Modal
+        visible={!!openInSong && !viewingSetlist}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOpenInSong(null)}
+      >
+        {renderOpenInSheet()}
+      </Modal>
+
+      {/* "New gig setlist" — describe the gig, Prova builds the setlist */}
+      <Modal
+        visible={showGigForm}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
+      >
+        <View style={styles.playerBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => !generatingSetlist && setShowGigForm(false)}
+          />
+          <View style={styles.gigSheet}>
+            <View style={styles.playerHandle} />
+            <Text style={styles.gigSheetTitle}>Plan a gig</Text>
+            <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
+
+            <Text style={styles.gigLabel}>Setting</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. Friday night bar, wedding reception, coffee shop"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigSetting}
+              onChangeText={setGigSetting}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Audience</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. 20–40s, up for dancing; mixed-age family crowd"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigAudience}
+              onChangeText={setGigAudience}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Vibe (optional)</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. laid-back acoustic, high-energy rock"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigVibe}
+              onChangeText={setGigVibe}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Number of songs</Text>
+            <View style={styles.gigStepper}>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.max(3, n - 1))}
+                disabled={generatingSetlist || gigSongCount <= 3}
+              >
+                <Ionicons name="remove" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+              <Text style={styles.gigStepValue}>{gigSongCount}</Text>
+              <TouchableOpacity
+                style={styles.gigStepBtn}
+                onPress={() => setGigSongCount((n) => Math.min(30, n + 1))}
+                disabled={generatingSetlist || gigSongCount >= 30}
+              >
+                <Ionicons name="add" size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.gigGenerateBtn, generatingSetlist && { opacity: 0.7 }]}
+              onPress={handleGenerateSetlist}
+              disabled={generatingSetlist}
+              activeOpacity={0.85}
+            >
+              {generatingSetlist ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.gigGenerateText}>Building your setlist…</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Text style={styles.gigGenerateText}>Generate setlist</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {!generatingSetlist && (
+              <TouchableOpacity style={styles.openInCancel} onPress={() => setShowGigForm(false)} activeOpacity={0.7}>
+                <Text style={styles.openInCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Setlist detail — the ordered songs, each previewable + openable */}
+      <Modal
+        visible={!!viewingSetlist}
+        transparent
+        animationType="slide"
+        onRequestClose={closeSetlistDetail}
+      >
+        <View style={styles.detailBackdrop}>
+          <View style={styles.detailSheet}>
+            <View style={styles.playerHandle} />
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle} numberOfLines={2}>{viewingSetlist?.name}</Text>
+                <Text style={styles.detailMeta} numberOfLines={2}>
+                  {viewingSetlist?.songs?.length} songs · {viewingSetlist?.setting}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closeSetlistDetail} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={26} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: SPACING.md }}>
+              {viewingSetlist?.songs?.map((s, i) => (
+                <View key={s.id || i} style={styles.detailRow}>
+                  <Text style={styles.detailNum}>{i + 1}</Text>
+                  {renderArtwork(s, 44, 8)}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailSongTitle} numberOfLines={1}>{s.title}</Text>
+                    {!!s.artist && <Text style={styles.detailSongArtist} numberOfLines={1}>{s.artist}</Text>}
+                    {!!s.note && <Text style={styles.detailSongNote} numberOfLines={1}>{s.note}</Text>}
+                  </View>
+                  {renderSongControls(s, 24)}
+                </View>
+              ))}
+            </ScrollView>
+
+            {viewingSetlist?.songs?.length > 0 && (
+              <TouchableOpacity
+                style={styles.goLiveBtn}
+                onPress={() => { const sl = viewingSetlist; setViewingSetlist(null); setPerformingSetlist(sl); }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="radio" size={18} color={COLORS.text} />
+                <Text style={styles.goLiveText}>Go live — perform this set</Text>
+              </TouchableOpacity>
+            )}
+
+            {SPOTIFY_EXPORT_ENABLED && (
+              <TouchableOpacity
+                style={[styles.spotifyExportBtn, exportingSetlistId === viewingSetlist?.id && { opacity: 0.7 }]}
+                onPress={() => handleExportToSpotify(viewingSetlist)}
+                disabled={exportingSetlistId === viewingSetlist?.id}
+                activeOpacity={0.85}
+              >
+                {exportingSetlistId === viewingSetlist?.id ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="musical-notes" size={18} color="#fff" />
+                    <Text style={styles.spotifyExportText}>Create this playlist in Spotify</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.detailDeleteBtn}
+              onPress={() => Alert.alert(
+                'Delete setlist?',
+                `"${viewingSetlist?.name}" will be removed. Songs stay in your library.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteSetlist(viewingSetlist.id) },
+                ]
+              )}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+              <Text style={styles.detailDeleteText}>Delete setlist</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Open-in sheet rendered in-place (not a nested Modal) so it can sit
+              on top of the setlist detail without iOS dropping it. */}
+          {!!openInSong && (
+            <View style={StyleSheet.absoluteFill}>{renderOpenInSheet()}</View>
+          )}
+        </View>
+      </Modal>
+
+      {performingSetlist && (
+        <PerformanceMode
+          setlist={performingSetlist}
+          tipLink={tipLink}
+          onUpdateSongs={(newSongs) => {
+            const next = { ...performingSetlist, songs: newSongs };
+            setPerformingSetlist(next);
+            saveSetlists(setlists.map((s) => (s.id === next.id ? next : s)));
+          }}
+          onClose={() => { stopSongPlayback(); setPerformingSetlist(null); }}
+          playingSongId={playingSongId}
+          loadingSongId={loadingSongId}
+          onTogglePreview={toggleSongPlayback}
+          onStopPreview={stopSongPlayback}
+          onOpenSpotify={(song) => openSongIn(song, 'spotify')}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -984,14 +1571,14 @@ const styles = StyleSheet.create({
   taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
 
   // Inline practice timer (lives on the task card)
-  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1, backgroundColor: COLORS.surface, borderColor: COLORS.border },
+  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1 },
   inlineTimer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inlineTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   inlineTimerTime: { fontSize: 27, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
   inlineTimerTotal: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 1 },
   inlineTimerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   inlineResetBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
-  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
   inlineTimerBarTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, marginTop: SPACING.sm + 2, overflow: 'hidden' },
   inlineTimerBarFill: { height: '100%', borderRadius: 2 },
 
