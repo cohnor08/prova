@@ -978,7 +978,7 @@ function smoothPath(pts) {
 // TEMP preview: set to true to render the chart with sample spiky data so you
 // can see the look without a student who has logged two weeks of practice.
 // Set back to false before showing real teachers.
-const PREVIEW_WITH_SAMPLE = false;
+const PREVIEW_WITH_SAMPLE = true;
 const SAMPLE_MINS = [25, 60, 15, 50, 20, 70, 30, 55, 18, 65, 35, 75, 28, 60];
 
 function StudentActivityChart({ studentUid }) {
