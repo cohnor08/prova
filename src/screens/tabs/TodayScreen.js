@@ -36,6 +36,21 @@ const RATING_OPTIONS = [
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
+// Due label for an assigned (teacher) task (ISO datetime) — null when no due date.
+function assignedDueLabel(due) {
+  if (!due) return null;
+  const d = new Date(due);
+  if (isNaN(d)) return null;
+  if (d < new Date()) return { text: 'Overdue', overdue: true };
+  const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = Math.round((d0 - t0) / 86400000);
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (days === 0) return { text: `Due ${time}`, overdue: false };
+  if (days === 1) return { text: `Tomorrow ${time}`, overdue: false };
+  return { text: `Due ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
+}
+
 function SkeletonBlock({ width, height, style }) {
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
@@ -434,6 +449,17 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
+  // Open an attachment a teacher added to a task: a raw URL opens directly,
+  // anything else becomes a YouTube search (handles links and song names).
+  const openTaskLink = (value) => {
+    const s = (value || '').trim();
+    if (!s) return;
+    const url = /^https?:\/\//i.test(s)
+      ? s
+      : `https://www.youtube.com/results?search_query=${encodeURIComponent(s)}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
   // activity marker so practising today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
@@ -599,6 +625,10 @@ export default function TodayScreen({ navigation }) {
                       <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
                       <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
                     </TouchableOpacity>
+                    {!t.completed && (() => {
+                      const d = assignedDueLabel(t.dueDate);
+                      return d ? <Text style={[styles.teacherDue, d.overdue && styles.teacherDueOverdue]}>{d.text}</Text> : null;
+                    })()}
                     {t.completed ? (
                       <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
                     ) : (
@@ -608,6 +638,18 @@ export default function TodayScreen({ navigation }) {
                     )}
                   </View>
                   {open && !!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
+                  {open && !!t.youtube && (
+                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.youtube)} activeOpacity={0.7}>
+                      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Watch: {t.youtube}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {open && !!t.song && (
+                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.song)} activeOpacity={0.7}>
+                      <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
+                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {t.song}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })}
@@ -811,6 +853,10 @@ const styles = StyleSheet.create({
   teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', flex: 1 },
   teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
+  teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
+  teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
+  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginRight: SPACING.sm },
+  teacherDueOverdue: { color: COLORS.error },
   teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },

@@ -9,10 +9,10 @@ import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
-  onSnapshot, orderBy, doc,
+  onSnapshot, orderBy, doc, getDoc,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
-import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -228,6 +228,26 @@ export default function MessagesScreen() {
     }, () => setLoading(false));
   }, [myUid]);
 
+  // Self-heal: if this student is linked to a teacher but has no chat thread yet
+  // (linked before auto-seeding existed), create it so it shows up here.
+  useEffect(() => {
+    if (!myUid) return;
+    (async () => {
+      try {
+        const meSnap = await getDoc(doc(db, 'users', myUid));
+        const teacherUid = meSnap.data()?.teacherUid;
+        if (!teacherUid) return;
+        const teacherSnap = await getDoc(doc(db, 'users', teacherUid));
+        await ensureChatThread({
+          aUid: myUid,
+          aEmail: myEmail,
+          bUid: teacherUid,
+          bEmail: teacherSnap.data()?.email || '',
+        });
+      } catch (e) { /* non-fatal */ }
+    })();
+  }, [myUid]);
+
   const startChat = async () => {
     const email = searchEmail.trim().toLowerCase();
     if (!email) return;
@@ -310,7 +330,9 @@ export default function MessagesScreen() {
               <View style={styles.convoInfo}>
                 <Text style={styles.convoEmail} numberOfLines={1}>{item.otherEmail || item.otherUid}</Text>
                 <Text style={styles.convoLast} numberOfLines={1}>
-                  {item.lastSenderUid === myUid ? 'You: ' : ''}{item.lastMessage}
+                  {item.lastMessage
+                    ? `${item.lastSenderUid === myUid ? 'You: ' : ''}${item.lastMessage}`
+                    : 'Tap to start chatting'}
                 </Text>
               </View>
               <View style={styles.convoRight}>
