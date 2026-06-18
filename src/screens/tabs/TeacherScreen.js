@@ -495,6 +495,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
   const [song, setSong] = useState('');
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
+  const [durationMin, setDurationMin] = useState(0); // 0 = no timer
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
@@ -503,7 +504,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong('');
-    setDueDate(null); setJustAdded(0); setShowTemplates(false);
+    setDueDate(null); setDurationMin(0); setJustAdded(0); setShowTemplates(false);
     onClose();
   };
 
@@ -564,6 +565,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         youtube: youtube.trim(),
         song: song.trim(),
         dueDate,
+        durationMin: durationMin || 0,
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
@@ -578,7 +580,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         )
       );
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(0);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -666,6 +668,23 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                 </Text>
                 <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
               </TouchableOpacity>
+
+              <Text style={styles.dueLabel}>TIMER</Text>
+              <Text style={styles.timerHint}>Student must run this timer before they can mark it done.</Text>
+              <View style={styles.durRow}>
+                {[0, 5, 10, 15, 20, 30].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.durChip, durationMin === m && styles.durChipActive]}
+                    onPress={() => { Keyboard.dismiss(); setDurationMin(m); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.durChipText, durationMin === m && styles.durChipTextActive]}>
+                      {m === 0 ? 'None' : `${m}m`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
@@ -2044,6 +2063,12 @@ const styles = StyleSheet.create({
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
+  durRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  durChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  durChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  durChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  durChipTextActive: { color: COLORS.text },
   dueFieldText: { flex: 1, color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 
   // Due date+time picker overlay

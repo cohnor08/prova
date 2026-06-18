@@ -518,8 +518,10 @@ function LeaderboardRow({ entry, rank, isMe }) {
   );
 }
 
-function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
-  const [tab, setTab] = useState('world');
+function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [], className, onAddFriend }) {
+  const inClass = classBoard.length > 0;
+  // Joining a class auto-selects its leaderboard.
+  const [tab, setTab] = useState(inClass ? 'class' : 'world');
   const [open, setOpen] = useState(true);     // collapsible section
   const [showAll, setShowAll] = useState(false); // expand the row list past the top few
   const [showAdd, setShowAdd] = useState(false);
@@ -547,7 +549,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
     }
   };
 
-  const rows = tab === 'world' ? worldBoard : friendsBoard;
+  const rows = tab === 'world' ? worldBoard : tab === 'class' ? classBoard : friendsBoard;
   const isEmpty = rows.length === 0;
 
   // Collapse long boards to the top few, with a "Show all" toggle. If the
@@ -570,11 +572,16 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, onAddFriend }) {
         <>
           {/* Tab toggle */}
           <View style={styles.lbTabs}>
-            {['world', 'friends'].map(t => (
+            {(inClass ? ['world', 'friends', 'class'] : ['world', 'friends']).map(t => (
               <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => { setTab(t); setShowAll(false); }}>
-                <Ionicons name={t === 'world' ? 'globe-outline' : 'people-outline'} size={14} color={tab === t ? COLORS.text : COLORS.textMuted} style={{ marginRight: 5 }} />
-                <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]}>
-                  {t === 'world' ? 'World' : 'Friends'}
+                <Ionicons
+                  name={t === 'world' ? 'globe-outline' : t === 'class' ? 'school-outline' : 'people-outline'}
+                  size={14}
+                  color={tab === t ? COLORS.text : COLORS.textMuted}
+                  style={{ marginRight: 5 }}
+                />
+                <Text style={[styles.lbTabText, tab === t && styles.lbTabTextActive]} numberOfLines={1}>
+                  {t === 'world' ? 'World' : t === 'class' ? (className || 'Class') : 'Friends'}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -661,6 +668,8 @@ export default function ProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [worldBoard, setWorldBoard] = useState([]);
   const [friendsBoard, setFriendsBoard] = useState([]);
+  const [classBoard, setClassBoard] = useState([]);
+  const [className, setClassName] = useState('');
   const [showRanks, setShowRanks] = useState(false);
   const lastFetchRef = useRef(0);
 
@@ -703,6 +712,27 @@ export default function ProgressScreen() {
         setFriendsBoard(board);
       } else {
         setFriendsBoard([{ uid, ...data }]);
+      }
+
+      // Class leaderboard: if linked to a teacher and placed in one of their
+      // classes, rank that class's members by Prova Score.
+      const teacherUid = data?.teacherUid;
+      if (teacherUid) {
+        const teacherSnap = await getDoc(doc(db, 'users', teacherUid));
+        const classes = Array.isArray(teacherSnap.data()?.classes) ? teacherSnap.data().classes : [];
+        const myClass = classes.find((c) => (c.studentUids || []).includes(uid));
+        if (myClass) {
+          const memberDocs = await Promise.all((myClass.studentUids || []).map((suid) => getDoc(doc(db, 'users', suid))));
+          const board = memberDocs.filter((d) => d.exists()).map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => entryScore(b) - entryScore(a));
+          setClassBoard(board);
+          setClassName(myClass.name || 'Class');
+        } else {
+          setClassBoard([]);
+          setClassName('');
+        }
+      } else {
+        setClassBoard([]);
+        setClassName('');
       }
 
       lastFetchRef.current = Date.now();
@@ -763,6 +793,8 @@ export default function ProgressScreen() {
           myData={userData}
           worldBoard={worldBoard}
           friendsBoard={friendsBoard}
+          classBoard={classBoard}
+          className={className}
           onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
         />
         <LevelProgress level={level} xp={xp} />
