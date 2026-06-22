@@ -254,11 +254,21 @@ export default function TeacherHomeScreen({ navigation }) {
           </View>
         );
       case 'lessons': {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const upcoming = lessons
-          .filter((l) => l.date >= todayStr)
-          .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-          .slice(0, 3);
+        // Expand the next 28 days so weekly lessons show their next occurrences.
+        const base = new Date();
+        const occ = [];
+        for (let i = 0; i < 28; i++) {
+          const d = new Date(base); d.setDate(base.getDate() + i);
+          const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          lessons.forEach((l) => {
+            const anchor = (l.date || '').split('-').map(Number);
+            const anchorDow = anchor.length === 3 ? new Date(anchor[0], anchor[1] - 1, anchor[2]).getDay() : -1;
+            const matches = l.repeat === 'weekly' ? (ds >= l.date && d.getDay() === anchorDow) : l.date === ds;
+            if (matches) occ.push({ ...l, date: ds });
+          });
+        }
+        occ.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+        const upcoming = occ.slice(0, 3);
         return (
           <View style={styles.card}>
             <View style={styles.lessonsHead}>
