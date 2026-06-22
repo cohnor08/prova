@@ -17,10 +17,6 @@ import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, rest
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-// Demo: show a sample teacher-assigned task on Today so the feature is visible
-// without a real teacher assigning one. Set to false before launch.
-const SEED_DEMO_TEACHER_TASK = true;
-
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
   technique: '#3B82F6',
@@ -287,7 +283,6 @@ export default function TodayScreen({ navigation }) {
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [regenerating, setRegenerating] = useState(false);
-  const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [soloOpen, setSoloOpen] = useState(true);
@@ -571,7 +566,6 @@ export default function TodayScreen({ navigation }) {
 
   // Mark a teacher-assigned task complete (writes back so the teacher sees it).
   const completeAssignedTask = async (taskId) => {
-    if (taskId === 'demo_teacher_task') { setDemoTaskDone(true); return; }
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     const next = (userData?.assignedTasks || []).map((t) =>
@@ -621,14 +615,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   const isToday = selectedDay === TODAY_NAME;
-  const assignedTasks = (userData?.assignedTasks?.length)
-    ? userData.assignedTasks
-    : (SEED_DEMO_TEACHER_TASK ? [{
-        id: 'demo_teacher_task',
-        title: 'Practice the F barre chord transition',
-        description: 'Switch F → C cleanly, 8 reps at 70 BPM. Film one take for me.',
-        completed: demoTaskDone,
-      }] : []);
+  const assignedTasks = userData?.assignedTasks || [];
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
   const soloTasks = assignedTasks.filter((t) => !t.classId);

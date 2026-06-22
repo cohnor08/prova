@@ -25,7 +25,6 @@ import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import TeacherCalendarScreen from './src/screens/tabs/TeacherCalendarScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
-import GigsScreen from './src/screens/tabs/GigsScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
@@ -47,18 +46,6 @@ function PracticeStackScreen() {
         options={{
           headerShown: true,
           title: 'Songs & Setlists',
-          headerStyle: { backgroundColor: COLORS.surface },
-          headerTintColor: COLORS.text,
-          headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
-          headerShadowVisible: false,
-        }}
-      />
-      <PracticeStack.Screen
-        name="Gigs"
-        component={GigsScreen}
-        options={{
-          headerShown: true,
-          title: 'Gigs',
           headerStyle: { backgroundColor: COLORS.surface },
           headerTintColor: COLORS.text,
           headerTitleStyle: { color: COLORS.text, fontWeight: '800' },
