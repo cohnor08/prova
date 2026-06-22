@@ -6,7 +6,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
+import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
@@ -306,6 +308,46 @@ export default function TodayScreen({ navigation }) {
       setShowRestoreModal(true);
     }
   }, [userData, selectedDay]);
+
+  // Streak-saver notification: if reminders are on and they have a streak worth
+  // saving but haven't practised today, schedule tonight's nudge. Cancel it once
+  // they've practised.
+  useEffect(() => {
+    if (!userData) return;
+    const streakVal = userData.streak || 0;
+    const todayStr = new Date().toDateString();
+    const lastStr = userData.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
+    const practicedToday = lastStr === todayStr || completedIds.length > 0;
+    if (userData.reminderEnabled && streakVal >= 2 && !practicedToday) {
+      scheduleStreakSaver(streakVal);
+    } else {
+      cancelStreakSaver();
+    }
+  }, [userData, completedIds]);
+
+  // New-task ping: when this device first sees a teacher task it hasn't seen
+  // before, fire a local notification. Seeds silently on first run so existing
+  // tasks don't all ping at once.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    const tasks = userData?.assignedTasks;
+    if (!uid || !Array.isArray(tasks)) return;
+    const key = `prova_seen_tasks_${uid}`;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(key);
+        const ids = tasks.map((t) => t.id);
+        if (raw === null) {
+          await AsyncStorage.setItem(key, JSON.stringify(ids));
+          return; // first run — seed without notifying
+        }
+        const seen = new Set(JSON.parse(raw));
+        const fresh = tasks.filter((t) => !t.completed && !seen.has(t.id));
+        if (fresh.length > 0) await notifyNewTasks(fresh.length);
+        await AsyncStorage.setItem(key, JSON.stringify(ids));
+      } catch (e) { /* ignore */ }
+    })();
+  }, [userData?.assignedTasks]);
 
   // Persist restore bookkeeping (monthly reset, baseline init, earned grants).
   // Converges: applying the updates changes the keys below, re-runs, then no-ops.

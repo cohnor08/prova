@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, Modal, ActivityIndicator, TextInput,
+  Alert, Modal, ActivityIndicator, TextInput, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,8 +11,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode } from '../../lib/teacher';
+import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver } from '../../lib/notifications';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
+
+const REMINDER_TIMES = [
+  { label: '7:00 AM', value: '07:00' },
+  { label: '12:00 PM', value: '12:00' },
+  { label: '3:30 PM', value: '15:30' },
+  { label: '5:00 PM', value: '17:00' },
+  { label: '7:00 PM', value: '19:00' },
+  { label: '8:30 PM', value: '20:30' },
+];
+function reminderTimeLabel(value) {
+  const f = REMINDER_TIMES.find((t) => t.value === value);
+  return f ? f.label : '7:00 PM';
+}
 
 // ─── Picker Modal ─────────────────────────────────────────────────────────────
 
@@ -308,6 +322,27 @@ export default function ProfileScreen() {
     setModal({ key, title, options, multi });
   };
 
+  const toggleReminders = async (on) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    if (on) {
+      const ok = await ensureNotificationPermission();
+      if (!ok) {
+        Alert.alert('Notifications are off', 'Turn on notifications for Prova in your phone’s Settings to get practice reminders.');
+        return;
+      }
+      const time = userData?.reminderTime || '19:00';
+      await scheduleDailyReminder(time);
+      await updateDoc(doc(db, 'users', uid), { reminderEnabled: true, reminderTime: time });
+      setUserData((p) => ({ ...p, reminderEnabled: true, reminderTime: time }));
+    } else {
+      await cancelDailyReminder();
+      await cancelStreakSaver();
+      await updateDoc(doc(db, 'users', uid), { reminderEnabled: false });
+      setUserData((p) => ({ ...p, reminderEnabled: false }));
+    }
+  };
+
   const handleSave = async (value) => {
     const key = modal.key;
     setModal(null);
@@ -316,6 +351,11 @@ export default function ProfileScreen() {
       const uid = auth.currentUser.uid;
       await updateDoc(doc(db, 'users', uid), { [key]: value });
       setUserData((prev) => ({ ...prev, [key]: value }));
+
+      // Re-arm the daily reminder if the chosen time changed while it's on.
+      if (key === 'reminderTime' && userData?.reminderEnabled) {
+        await scheduleDailyReminder(value);
+      }
 
       const planKeys = ['instrument', 'level', 'goals', 'skills', 'availableDays', 'dailyDuration'];
       if (planKeys.includes(key)) {
@@ -519,6 +559,33 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
+        </View>
+
+        {/* Reminders */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>REMINDERS</Text>
+
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Practice reminders</Text>
+            <Switch
+              value={!!userData?.reminderEnabled}
+              onValueChange={toggleReminders}
+              trackColor={{ true: COLORS.primary, false: COLORS.border }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {!!userData?.reminderEnabled && (
+            <TouchableOpacity style={styles.row} onPress={() => openModal('reminderTime', 'Reminder Time', REMINDER_TIMES)}>
+              <Text style={styles.rowLabel}>Reminder time</Text>
+              <View style={styles.rowRight}>
+                <Text style={styles.rowValue}>{reminderTimeLabel(userData?.reminderTime)}</Text>
+                <Text style={styles.rowArrow}>›</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          <Text style={styles.reminderHint}>A daily nudge to practise, plus a heads-up if your streak is about to break.</Text>
         </View>
 
         {/* Practice Settings */}
@@ -793,6 +860,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   rowLabel: { color: COLORS.textSecondary, fontSize: 15 },
+  reminderHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, maxWidth: '55%' },
   rowValue: { color: COLORS.text, fontSize: 15, fontWeight: '500', textAlign: 'right' },
   rowArrow: { color: COLORS.textMuted, fontSize: 18, lineHeight: 20 },
