@@ -34,7 +34,8 @@
           "photosPermission": "Prova lets you attach photos and videos to your chats.",
           "cameraPermission": "Prova uses the camera to take photos and record videos for your chats."
         }
-      ]
+      ],
+      "expo-notifications"
     ]
   }
 }
