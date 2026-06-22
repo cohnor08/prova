@@ -719,7 +719,8 @@ export default function PracticeScreen({ route, navigation }) {
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
             { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
             { key: 'songs', label: 'Songs', icon: 'list-outline', nav: 'Songs' },
-            { key: 'gigs', label: 'Gigs', icon: 'calendar-outline', nav: 'Gigs' },
+            { key: 'gigs', label: 'Gigs', icon: 'mic-outline', nav: 'Gigs' },
+            { key: 'schedule', label: 'Calendar', icon: 'calendar-outline', nav: 'Schedule' },
           ].map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -984,7 +985,7 @@ const styles = StyleSheet.create({
   taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
 
   // Inline practice timer (lives on the task card)
-  inlineTimerBox: { marginTop: SPACING.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderRadius: 14, borderWidth: 1, backgroundColor: COLORS.surface, borderColor: COLORS.border },
+  inlineTimerBox: { marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
   inlineTimer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inlineTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   inlineTimerTime: { fontSize: 27, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },

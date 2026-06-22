@@ -289,6 +289,7 @@ export default function TodayScreen({ navigation }) {
   const [regenerating, setRegenerating] = useState(false);
   const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
+  const [challengeOpen, setChallengeOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
     const n = new Set(prev);
@@ -726,26 +727,35 @@ export default function TodayScreen({ navigation }) {
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
-            <View style={styles.challengeHeader}>
+            <TouchableOpacity style={styles.challengeHeader} onPress={() => setChallengeOpen((o) => !o)} activeOpacity={0.7}>
               <View style={styles.challengeIcon}>
                 <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
               </View>
-              <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
-              <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>
-            </View>
-            <Text style={styles.challengeTitle}>{dailyChallenge.title}</Text>
-            <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
-            <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
-            {challengeDoneToday ? (
-              <View style={styles.challengeDone}>
-                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
+                <Text style={styles.challengeTitle} numberOfLines={challengeOpen ? undefined : 1}>{dailyChallenge.title}</Text>
               </View>
-            ) : (
-              <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
-                <Ionicons name="checkmark" size={16} color="#fff" />
-                <Text style={styles.challengeBtnText}>Mark complete</Text>
-              </TouchableOpacity>
+              {challengeDoneToday
+                ? <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                : <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>}
+              <Ionicons name={challengeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            {challengeOpen && (
+              <>
+                <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
+                <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
+                {challengeDoneToday ? (
+                  <View style={styles.challengeDone}>
+                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                    <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                    <Text style={styles.challengeBtnText}>Mark complete</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         )}
@@ -1013,15 +1023,15 @@ const styles = StyleSheet.create({
   ttTimerText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
   ttTimerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
   ttTimerBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
-  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   challengeIcon: {
     width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
     alignItems: 'center', justifyContent: 'center',
   },
-  challengeKicker: { flex: 1, color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  challengeKicker: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
-  challengeTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
-  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
+  challengeTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: 2 },
+  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: SPACING.md, marginBottom: SPACING.md },
   challengeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 12,
