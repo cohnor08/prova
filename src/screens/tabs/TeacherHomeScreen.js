@@ -105,44 +105,61 @@ function ChecklistRow({ done, label, onPress }) {
   );
 }
 
-// Edit-mode list you reorder by holding the grip (≡) and dragging up/down.
-// Built on PanResponder (no extra deps). Rows are a fixed height so the drag
-// maps cleanly to list positions.
+// Edit-mode list: hold the grip (≡) and drag a row to reorder, tap a row to
+// drop it down and preview the widget, and use the eye to show/hide it. Built
+// on PanResponder (no extra deps); rows measure their own height so previews
+// of any size still reorder correctly.
 const ROW_H = 56;
-function WidgetEditList({ layout, onReorder, onToggle }) {
+function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStateChange }) {
   const [dragId, setDragId] = useState(null);
+  const [open, setOpen] = useState({});           // id -> previewing?
   const orderRef = useRef(layout);
   orderRef.current = layout;
+  const heights = useRef({});                      // id -> measured height
   const responders = useRef({});
   const pan = useRef(new Animated.Value(0)).current;
-  const startIdx = useRef(0);
-  const curIdx = useRef(0);
+  const startTop = useRef(0);
+
+  const offsetsOf = (order) => {
+    const o = {}; let y = 0;
+    order.forEach((w) => { o[w.id] = y; y += (heights.current[w.id] || ROW_H); });
+    return o;
+  };
 
   const getResponder = (id) => {
     if (responders.current[id]) return responders.current[id];
     responders.current[id] = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        const i = orderRef.current.findIndex((w) => w.id === id);
-        startIdx.current = i; curIdx.current = i;
+        startTop.current = offsetsOf(orderRef.current)[id] || 0;
         pan.setValue(0);
         setDragId(id);
+        onDragStateChange && onDragStateChange(true);
       },
       onPanResponderMove: (_, g) => {
-        const target = Math.max(0, Math.min(orderRef.current.length - 1, startIdx.current + Math.round(g.dy / ROW_H)));
-        if (target !== curIdx.current) {
-          const arr = [...orderRef.current];
-          const from = arr.findIndex((w) => w.id === id);
-          const [it] = arr.splice(from, 1);
-          arr.splice(target, 0, it);
-          curIdx.current = target;
-          onReorder(arr);
+        const order = orderRef.current;
+        const offs = offsetsOf(order);
+        const desiredTop = startTop.current + g.dy;
+        const center = desiredTop + (heights.current[id] || ROW_H) / 2;
+        let target = 0;
+        for (let i = 0; i < order.length; i++) {
+          if (center >= offs[order[i].id]) target = i; else break;
         }
-        pan.setValue(g.dy + (startIdx.current - curIdx.current) * ROW_H);
+        const curIndex = order.findIndex((w) => w.id === id);
+        if (target !== curIndex) {
+          const arr = [...order];
+          const [it] = arr.splice(curIndex, 1);
+          arr.splice(target, 0, it);
+          onReorder(arr);
+          pan.setValue(desiredTop - (offsetsOf(arr)[id] || 0));
+        } else {
+          pan.setValue(desiredTop - offs[id]);
+        }
       },
-      onPanResponderRelease: () => { setDragId(null); pan.setValue(0); },
-      onPanResponderTerminate: () => { setDragId(null); pan.setValue(0); },
+      onPanResponderRelease: () => { setDragId(null); pan.setValue(0); onDragStateChange && onDragStateChange(false); },
+      onPanResponderTerminate: () => { setDragId(null); pan.setValue(0); onDragStateChange && onDragStateChange(false); },
     });
     return responders.current[id];
   };
@@ -151,24 +168,35 @@ function WidgetEditList({ layout, onReorder, onToggle }) {
     <View style={{ marginBottom: SPACING.md }}>
       {layout.map((w) => {
         const dragging = dragId === w.id;
+        const isOpen = open[w.id];
+        const preview = isOpen ? renderPreview(w.id) : null;
         return (
           <Animated.View
             key={w.id}
+            onLayout={(e) => { heights.current[w.id] = e.nativeEvent.layout.height + SPACING.sm; }}
             style={[
-              styles.editRow,
-              dragging && styles.editRowDragging,
+              styles.editItem,
+              dragging && styles.editItemDragging,
               dragging && { transform: [{ translateY: pan }], zIndex: 20, elevation: 8 },
             ]}
           >
-            <View {...getResponder(w.id).panHandlers} style={styles.grip}>
-              <Ionicons name="reorder-three" size={26} color={COLORS.textSecondary} />
+            <View style={styles.editHeader}>
+              <View {...getResponder(w.id).panHandlers} style={styles.grip}>
+                <Ionicons name="reorder-three" size={26} color={COLORS.textSecondary} />
+              </View>
+              <TouchableOpacity style={styles.editNameWrap} onPress={() => setOpen((o) => ({ ...o, [w.id]: !o[w.id] }))} activeOpacity={0.7}>
+                <Ionicons name={isOpen ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+                <Text style={[styles.editRowName, !w.enabled && { color: COLORS.textMuted }]} numberOfLines={1}>{WIDGET_LABELS[w.id]}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => onToggle(w.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
+              </TouchableOpacity>
             </View>
-            <Text style={[styles.editRowName, !w.enabled && { color: COLORS.textMuted }]} numberOfLines={1}>
-              {WIDGET_LABELS[w.id]}
-            </Text>
-            <TouchableOpacity onPress={() => onToggle(w.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
-            </TouchableOpacity>
+            {isOpen && (
+              <View pointerEvents="none" style={[styles.editPreview, !w.enabled && { opacity: 0.4 }]}>
+                {preview || <Text style={styles.emptyMini}>Nothing to preview yet.</Text>}
+              </View>
+            )}
           </Animated.View>
         );
       })}
@@ -183,6 +211,7 @@ export default function TeacherHomeScreen({ navigation }) {
   const [joinCode, setJoinCode] = useState(null);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const [editMode, setEditMode] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [note, setNote] = useState('');
   const [lessons, setLessons] = useState([]);
 
@@ -353,7 +382,7 @@ export default function TeacherHomeScreen({ navigation }) {
             {upcoming.length === 0 ? (
               <Text style={styles.emptyMini}>No lessons scheduled. Tap Calendar to add one.</Text>
             ) : upcoming.map((l) => (
-              <View key={l.id} style={styles.miniRow}>
+              <View key={`${l.id}_${l.date}`} style={styles.miniRow}>
                 <Ionicons name="time-outline" size={15} color={COLORS.primary} />
                 <Text style={styles.miniName} numberOfLines={1}>{l.studentName}</Text>
                 <Text style={styles.miniMeta}>{lessonWhen(l)}</Text>
@@ -426,7 +455,7 @@ export default function TeacherHomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.kicker}>TEACHER HOME</Text>
@@ -443,11 +472,11 @@ export default function TeacherHomeScreen({ navigation }) {
         </View>
 
         {editMode && (
-          <Text style={styles.editHelp}>Hold the ≡ handle and drag a card up or down to reorder. Tap the eye to hide it. Tap Done to save.</Text>
+          <Text style={styles.editHelp}>Hold the ≡ handle to drag a card up or down. Tap a row to preview it. Use the eye to show/hide. Tap Done to save.</Text>
         )}
 
         {editMode ? (
-          <WidgetEditList layout={layout} onReorder={setLayout} onToggle={toggleWidget} />
+          <WidgetEditList layout={layout} onReorder={setLayout} onToggle={toggleWidget} renderPreview={renderWidget} onDragStateChange={setDragging} />
         ) : loading ? (
           <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
@@ -473,10 +502,13 @@ const styles = StyleSheet.create({
   editBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   editHelp: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginBottom: SPACING.md, marginTop: -SPACING.sm },
   editWrap: { borderWidth: 1, borderColor: COLORS.primary + '55', borderRadius: 16, padding: SPACING.sm, marginBottom: SPACING.md, backgroundColor: COLORS.primary + '0C' },
-  editRow: { height: ROW_H, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
-  editRowDragging: { borderColor: COLORS.primary, backgroundColor: COLORS.surface, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  grip: { paddingVertical: 6, paddingRight: 4 },
+  editItem: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm, overflow: 'hidden' },
+  editItemDragging: { borderColor: COLORS.primary, backgroundColor: COLORS.surface, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  editHeader: { height: ROW_H, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
+  editNameWrap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  grip: { paddingVertical: 10, paddingHorizontal: 4 },
   editRowName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  editPreview: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.md },
   editBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: 4 },
   editName: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
   editControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
