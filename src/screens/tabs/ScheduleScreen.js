@@ -203,7 +203,12 @@ export default function ScheduleScreen({ navigation }) {
             const cellYmd = ymd(new Date(year, month, d));
             const isSel = cellYmd === selected;
             const isToday = cellYmd === todayStr;
-            const types = [...new Set(eventsOn(cellYmd).map((e) => e.type))];
+            const cellEvents = eventsOn(cellYmd);
+            const types = [...new Set(cellEvents.map((e) => e.type))];
+            // A day's "task due" dot turns green once every task due that day is done.
+            const dueEvents = cellEvents.filter((e) => e.type === 'due');
+            const allDueDone = dueEvents.length > 0 && dueEvents.every((e) => e.done);
+            const dotColor = (tp) => (tp === 'due' && allDueDone ? COLORS.success : TYPE_META[tp].color);
             return (
               <TouchableOpacity key={d} style={styles.cell} onPress={() => { setSelected(cellYmd); setShowAddGig(false); }} activeOpacity={0.7}>
                 <View style={[styles.cellInner, isSel && styles.cellSelected, isToday && !isSel && styles.cellToday]}>
@@ -211,7 +216,7 @@ export default function ScheduleScreen({ navigation }) {
                 </View>
                 <View style={styles.dotRow}>
                   {types.slice(0, 3).map((tp) => (
-                    <View key={tp} style={[styles.dot, { backgroundColor: isSel ? '#fff' : TYPE_META[tp].color }]} />
+                    <View key={tp} style={[styles.dot, { backgroundColor: isSel ? '#fff' : dotColor(tp) }]} />
                   ))}
                 </View>
               </TouchableOpacity>

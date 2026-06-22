@@ -52,7 +52,7 @@ function assignedDueLabel(due) {
 // One teacher-assigned task on the student's Today screen. If the teacher set a
 // timer (durationMin), the "Done" button is locked until the countdown finishes,
 // so the student can't just tap Done without practising.
-function TeacherTaskCard({ task, expanded, onToggle, onComplete, openTaskLink }) {
+function TeacherTaskCard({ task, expanded, onToggle, onComplete, openTaskLink, onOpenSong }) {
   const hasTimer = (task.durationMin || 0) > 0;
   const [secondsLeft, setSecondsLeft] = useState((task.durationMin || 0) * 60);
   const [running, setRunning] = useState(false);
@@ -126,9 +126,10 @@ function TeacherTaskCard({ task, expanded, onToggle, onComplete, openTaskLink })
         </TouchableOpacity>
       )}
       {expanded && !!task.song && (
-        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.song)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
           <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
           <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {task.song}</Text>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
     </View>
@@ -206,6 +207,10 @@ function SessionCard({ session, onComplete, completed, onStart }) {
         {expanded && (<>
         <Text style={styles.sessionDesc}>{session.description}</Text>
         <ReferenceLink reference={session.reference} />
+        <View style={styles.sessionPtsRow}>
+          <Ionicons name="sparkles" size={13} color={COLORS.accent} />
+          <Text style={styles.sessionPts}>Worth +{Math.round(taskPoints(session) / 5) * 5} Prova points</Text>
+        </View>
         {!completed && (
           <View>
             {timerActive && (
@@ -268,6 +273,7 @@ function PlanCard({ session }) {
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionDuration}>{session.duration} min</Text>
           <Text style={[styles.sessionCategory, { color }]}>{session.category.replace('_', ' ')}</Text>
+          <Text style={styles.sessionPts}>+{Math.round(taskPoints(session) / 5) * 5} pts</Text>
         </View>
       </View>
     </View>
@@ -590,6 +596,15 @@ export default function TodayScreen({ navigation }) {
     Linking.openURL(url).catch(() => {});
   };
 
+  // Open a teacher-assigned song in the Songs library, pinned to the top there.
+  const openSongInLibrary = (songStr) => {
+    const s = (songStr || '').trim();
+    if (!s) return;
+    const m = s.match(/^(.*?)\s+(?:-|–|—|by)\s+(.*)$/i);
+    const focusSong = m ? { title: m[1].trim(), artist: m[2].trim() } : { title: s, artist: '' };
+    navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
+  };
+
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
   // activity marker so practising today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
@@ -800,6 +815,7 @@ export default function TodayScreen({ navigation }) {
                 onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
                 onComplete={completeAssignedTask}
                 openTaskLink={openTaskLink}
+                onOpenSong={openSongInLibrary}
               />
             ))}
           </View>
@@ -827,6 +843,7 @@ export default function TodayScreen({ navigation }) {
                   onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
                   onComplete={completeAssignedTask}
                   openTaskLink={openTaskLink}
+                onOpenSong={openSongInLibrary}
                 />
               ))}
             </View>
@@ -838,7 +855,11 @@ export default function TodayScreen({ navigation }) {
           <TouchableOpacity
             style={styles.songCard}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Practice', { screen: 'Songs' })}
+            onPress={() => navigation.navigate('Practice', {
+              screen: 'Songs',
+              params: { focusSong: songOfTheDay },
+              initial: false,
+            })}
           >
             <View style={styles.songIcon}>
               <Ionicons name="musical-notes" size={20} color={COLORS.accent} />
@@ -1045,6 +1066,8 @@ const styles = StyleSheet.create({
   categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: 4 },
   categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  sessionPtsRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: SPACING.md },
+  sessionPts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
   sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
   sessionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
