@@ -662,6 +662,33 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
+// Progress is composed of cards the student can show/hide and reorder.
+const DEFAULT_WIDGETS = [
+  { id: 'stats', enabled: true },
+  { id: 'score', enabled: true },
+  { id: 'leaderboard', enabled: true },
+  { id: 'level', enabled: true },
+  { id: 'daily', enabled: true },
+  { id: 'weekly', enabled: true },
+  { id: 'heatmap', enabled: true },
+  { id: 'categories', enabled: true },
+  { id: 'milestones', enabled: true },
+  { id: 'goals', enabled: true },
+];
+const WIDGET_LABELS = {
+  stats: 'Stats', score: 'Prova Score', leaderboard: 'Leaderboard', level: 'Level',
+  daily: 'Daily graph', weekly: 'Weekly hours', heatmap: 'Activity graph',
+  categories: 'Categories', milestones: 'Milestones', goals: 'Goals',
+};
+function mergeLayout(saved) {
+  if (!Array.isArray(saved)) return DEFAULT_WIDGETS;
+  const known = new Set(Object.keys(WIDGET_LABELS));
+  const kept = saved.filter((w) => w && known.has(w.id)).map((w) => ({ id: w.id, enabled: w.enabled !== false }));
+  const have = new Set(kept.map((w) => w.id));
+  DEFAULT_WIDGETS.forEach((d) => { if (!have.has(d.id)) kept.push({ ...d }); });
+  return kept;
+}
+
 export default function ProgressScreen() {
   const [userData, setUserData] = useState(null);
   const [logMap, setLogMap] = useState({});
@@ -671,6 +698,8 @@ export default function ProgressScreen() {
   const [classBoard, setClassBoard] = useState([]);
   const [className, setClassName] = useState('');
   const [showRanks, setShowRanks] = useState(false);
+  const [layout, setLayout] = useState(DEFAULT_WIDGETS);
+  const [editMode, setEditMode] = useState(false);
   const lastFetchRef = useRef(0);
 
   useFocusEffect(
@@ -692,6 +721,7 @@ export default function ProgressScreen() {
 
       const data = userSnap.data();
       setUserData(data);
+      setLayout(mergeLayout(data?.studentWidgets));
 
       const map = {};
       logsSnap.forEach(d => { map[d.id] = d.data(); });
@@ -743,6 +773,23 @@ export default function ProgressScreen() {
     }
   };
 
+  const moveWidget = (id, dir) => {
+    setLayout((prev) => {
+      const i = prev.findIndex((w) => w.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+  const toggleWidget = (id) => setLayout((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
+  const saveLayout = async () => {
+    setEditMode(false);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { studentWidgets: layout }).catch(() => {});
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -766,45 +813,47 @@ export default function ProgressScreen() {
   const categoryData = buildCategoryData(logMap);
   const milestones   = computeMilestones(streak, totalMins, totalSessions);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Progress</Text>
-
-        <View style={styles.statsRow}>
-          {[
-            { value: streak, unit: '🔥', label: 'Day Streak' },
-            { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
-            { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
-            { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
-          ].map(s => (
-            <View key={s.label} style={styles.statCard}>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statUnit}>{s.unit}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />
-        <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
-        <Leaderboard
-          myUid={auth.currentUser?.uid}
-          myData={userData}
-          worldBoard={worldBoard}
-          friendsBoard={friendsBoard}
-          classBoard={classBoard}
-          className={className}
-          onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
-        />
-        <LevelProgress level={level} xp={xp} />
-        <LineGraph data={dailyData} />
-        <WeeklyBarChart data={weeklyData} />
-        <ActivityGraph data={weeklyTrend} streak={streak} />
-        <CategoryBreakdown data={categoryData} />
-        <Milestones data={milestones} />
-
-        {userData?.goals?.length > 0 && (
+  const renderWidget = (id) => {
+    switch (id) {
+      case 'stats':
+        return (
+          <View style={styles.statsRow}>
+            {[
+              { value: streak, unit: '🔥', label: 'Day Streak' },
+              { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
+              { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
+              { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
+            ].map(s => (
+              <View key={s.label} style={styles.statCard}>
+                <Text style={styles.statValue}>{s.value}</Text>
+                <Text style={styles.statUnit}>{s.unit}</Text>
+                <Text style={styles.statLabel}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      case 'score':
+        return <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />;
+      case 'leaderboard':
+        return (
+          <Leaderboard
+            myUid={auth.currentUser?.uid}
+            myData={userData}
+            worldBoard={worldBoard}
+            friendsBoard={friendsBoard}
+            classBoard={classBoard}
+            className={className}
+            onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
+          />
+        );
+      case 'level': return <LevelProgress level={level} xp={xp} />;
+      case 'daily': return <LineGraph data={dailyData} />;
+      case 'weekly': return <WeeklyBarChart data={weeklyData} />;
+      case 'heatmap': return <ActivityGraph data={weeklyTrend} streak={streak} />;
+      case 'categories': return <CategoryBreakdown data={categoryData} />;
+      case 'milestones': return <Milestones data={milestones} />;
+      case 'goals':
+        return userData?.goals?.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>YOUR GOALS</Text>
             {userData.goals.map(goal => (
@@ -814,7 +863,58 @@ export default function ProgressScreen() {
               </View>
             ))}
           </View>
+        ) : null;
+      default: return null;
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Progress</Text>
+          <TouchableOpacity
+            style={[styles.editBtn, editMode && styles.editBtnActive]}
+            onPress={() => (editMode ? saveLayout() : setEditMode(true))}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={editMode ? 'checkmark' : 'create-outline'} size={16} color={editMode ? '#fff' : COLORS.primary} />
+            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Edit'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {editMode && (
+          <Text style={styles.editHelp}>Reorder with the arrows or hide a card with the eye. Tap Done to save.</Text>
         )}
+
+        <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
+
+        {layout.map((w, i) => {
+          const content = renderWidget(w.id);
+          if (!content) return null;
+          if (editMode) {
+            return (
+              <View key={w.id} style={styles.editWrap}>
+                <View style={styles.editBar}>
+                  <Text style={styles.editName}>{WIDGET_LABELS[w.id]}</Text>
+                  <View style={styles.editControls}>
+                    <TouchableOpacity onPress={() => moveWidget(w.id, -1)} disabled={i === 0} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="arrow-up" size={20} color={i === 0 ? COLORS.textMuted : COLORS.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => moveWidget(w.id, 1)} disabled={i === layout.length - 1} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="arrow-down" size={20} color={i === layout.length - 1 ? COLORS.textMuted : COLORS.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => toggleWidget(w.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View pointerEvents="none" style={!w.enabled && { opacity: 0.35 }}>{content}</View>
+              </View>
+            );
+          }
+          return w.enabled ? <View key={w.id}>{content}</View> : null;
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -827,6 +927,15 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   center: { flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center' },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface, marginBottom: SPACING.lg },
+  editBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  editBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  editHelp: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginBottom: SPACING.md, marginTop: -SPACING.sm },
+  editWrap: { borderWidth: 1, borderColor: COLORS.primary + '55', borderRadius: 16, padding: SPACING.sm, marginBottom: SPACING.md, backgroundColor: COLORS.primary + '0C' },
+  editBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: 4 },
+  editName: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
+  editControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
 
   statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
