@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'fireb
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
+import { displayName } from '../../lib/displayName';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -41,6 +42,10 @@ const DEFAULT_WIDGETS = [
   { id: 'getstarted', enabled: true },
   { id: 'actions', enabled: true },
   { id: 'tip', enabled: true },
+  // Extra widgets — off by default; teachers switch them on in Edit mode.
+  { id: 'top', enabled: false },
+  { id: 'attention', enabled: false },
+  { id: 'notes', enabled: false },
 ];
 const WIDGET_LABELS = {
   code: 'Join code',
@@ -48,6 +53,9 @@ const WIDGET_LABELS = {
   getstarted: 'Get started',
   actions: 'Quick actions',
   tip: 'Tip of the day',
+  top: 'Top students',
+  attention: 'Needs a nudge',
+  notes: 'My notes',
 };
 
 // Merge a saved layout with the defaults: keep saved order/visibility for known
@@ -88,20 +96,30 @@ function ChecklistRow({ done, label, onPress }) {
 export default function TeacherHomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
+  const [students, setStudents] = useState([]);
   const [joinCode, setJoinCode] = useState(null);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const [editMode, setEditMode] = useState(false);
+  const [note, setNote] = useState('');
 
   // Make sure this teacher has a join code (students use it to connect) and
-  // load their saved home layout.
+  // load their saved home layout + personal note.
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     ensureTeacherCode(uid).then(setJoinCode).catch(() => {});
     getDoc(doc(db, 'users', uid))
-      .then((s) => setLayout(mergeLayout(s.data()?.teacherWidgets)))
+      .then((s) => {
+        setLayout(mergeLayout(s.data()?.teacherWidgets));
+        setNote(s.data()?.teacherNote || '');
+      })
       .catch(() => {});
   }, []);
+
+  const saveNote = async () => {
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { teacherNote: note }).catch(() => {});
+  };
 
   const moveWidget = (id, dir) => {
     setLayout((prev) => {
@@ -134,6 +152,7 @@ export default function TeacherHomeScreen({ navigation }) {
       let cancelled = false;
       if (DEMO_MODE) {
         setStats(computeStats(DEMO_STUDENTS_DATA));
+        setStudents(DEMO_STUDENTS_DATA);
         setLoading(false);
         return () => { cancelled = true; };
       }
@@ -143,8 +162,8 @@ export default function TeacherHomeScreen({ navigation }) {
           if (!uid) return;
           // Students who connected carry teacherUid === my uid.
           const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
-          const students = snap.docs.map((d) => d.data());
-          if (!cancelled) setStats(computeStats(students));
+          const list = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+          if (!cancelled) { setStats(computeStats(list)); setStudents(list); }
         } catch (e) {
           console.error(e);
         } finally {
@@ -212,6 +231,63 @@ export default function TeacherHomeScreen({ navigation }) {
               <Text style={styles.tipKicker}>TIP OF THE DAY</Text>
             </View>
             <Text style={styles.tipText}>{tipOfTheDay()}</Text>
+          </View>
+        );
+      case 'top': {
+        const ranked = [...students].sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0)).slice(0, 3);
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Top students</Text>
+            {ranked.length === 0 ? (
+              <Text style={styles.emptyMini}>No students yet.</Text>
+            ) : ranked.map((s, i) => (
+              <View key={s.uid || i} style={styles.miniRow}>
+                <Text style={styles.miniRank}>{['🥇', '🥈', '🥉'][i]}</Text>
+                <Text style={styles.miniName} numberOfLines={1}>{displayName(s)}</Text>
+                <Text style={styles.miniScore}>{(s.provaScore || 0).toLocaleString()}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      }
+      case 'attention': {
+        const now = Date.now();
+        const flagged = students.filter((s) => {
+          if (!s.lastSessionDate) return true;
+          return now - new Date(s.lastSessionDate).getTime() >= 3 * 86400000;
+        });
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Needs a nudge</Text>
+            {flagged.length === 0 ? (
+              <Text style={styles.emptyMini}>Everyone's practised recently 🎉</Text>
+            ) : flagged.slice(0, 5).map((s, i) => {
+              const days = s.lastSessionDate ? Math.floor((now - new Date(s.lastSessionDate).getTime()) / 86400000) : null;
+              return (
+                <View key={s.uid || i} style={styles.miniRow}>
+                  <Ionicons name="alert-circle-outline" size={16} color={COLORS.error} />
+                  <Text style={styles.miniName} numberOfLines={1}>{displayName(s)}</Text>
+                  <Text style={styles.miniMeta}>{days === null ? 'never' : `${days}d ago`}</Text>
+                </View>
+              );
+            })}
+          </View>
+        );
+      }
+      case 'notes':
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>My notes</Text>
+            <TextInput
+              style={styles.noteInput}
+              value={note}
+              onChangeText={setNote}
+              onBlur={saveNote}
+              editable={!editMode}
+              multiline
+              placeholder="Jot reminders for yourself — lesson ideas, who to follow up with…"
+              placeholderTextColor={COLORS.textMuted}
+            />
           </View>
         );
       default:
@@ -313,6 +389,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg,
   },
   cardTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: SPACING.sm },
+  emptyMini: { color: COLORS.textMuted, fontSize: 13 },
+  miniRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 7, borderTopWidth: 1, borderTopColor: COLORS.border },
+  miniRank: { width: 22, textAlign: 'center', fontSize: 15 },
+  miniName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  miniScore: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  miniMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  noteInput: { color: COLORS.text, fontSize: 14, lineHeight: 20, minHeight: 70, textAlignVertical: 'top' },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 10 },
   checkLabel: { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   checkLabelDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
