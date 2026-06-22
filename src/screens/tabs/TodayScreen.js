@@ -82,11 +82,13 @@ function TeacherTaskCard({ task, expanded, onToggle, onComplete, openTaskLink })
       <View style={styles.teacherTaskRow}>
         <TouchableOpacity style={styles.teacherTaskMain} onPress={onToggle} activeOpacity={0.7}>
           <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
-          <Text style={[styles.teacherTaskTitle, task.completed && styles.teacherTaskDone]} numberOfLines={1}>{task.title}</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.teacherTaskTitle, task.completed && styles.teacherTaskDone]} numberOfLines={expanded ? undefined : 2}>{task.title}</Text>
+            {!task.completed && due && (
+              <Text style={[styles.teacherDue, due.overdue && styles.teacherDueOverdue]}>{due.text}</Text>
+            )}
+          </View>
         </TouchableOpacity>
-        {!task.completed && due && (
-          <Text style={[styles.teacherDue, due.overdue && styles.teacherDueOverdue]}>{due.text}</Text>
-        )}
         {task.completed ? (
           <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
         ) : (
@@ -945,12 +947,12 @@ const styles = StyleSheet.create({
   teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
-  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginRight: SPACING.sm },
+  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 },
   teacherDueOverdue: { color: COLORS.error },
   teacherDoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
