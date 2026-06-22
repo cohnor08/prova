@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
@@ -32,6 +32,33 @@ function tipOfTheDay() {
   const start = new Date(new Date().getFullYear(), 0, 0);
   const day = Math.floor((Date.now() - start) / 86400000);
   return TIPS[day % TIPS.length];
+}
+
+// Home is composed of widgets the teacher can show/hide and reorder.
+const DEFAULT_WIDGETS = [
+  { id: 'code', enabled: true },
+  { id: 'stats', enabled: true },
+  { id: 'getstarted', enabled: true },
+  { id: 'actions', enabled: true },
+  { id: 'tip', enabled: true },
+];
+const WIDGET_LABELS = {
+  code: 'Join code',
+  stats: 'Stats',
+  getstarted: 'Get started',
+  actions: 'Quick actions',
+  tip: 'Tip of the day',
+};
+
+// Merge a saved layout with the defaults: keep saved order/visibility for known
+// widgets, then append any new widgets that didn't exist when it was saved.
+function mergeLayout(saved) {
+  if (!Array.isArray(saved)) return DEFAULT_WIDGETS;
+  const known = new Set(Object.keys(WIDGET_LABELS));
+  const kept = saved.filter((w) => w && known.has(w.id)).map((w) => ({ id: w.id, enabled: w.enabled !== false }));
+  const have = new Set(kept.map((w) => w.id));
+  DEFAULT_WIDGETS.forEach((d) => { if (!have.has(d.id)) kept.push({ ...d }); });
+  return kept;
 }
 
 function StatCard({ value, label, icon }) {
@@ -62,13 +89,40 @@ export default function TeacherHomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
   const [joinCode, setJoinCode] = useState(null);
+  const [layout, setLayout] = useState(DEFAULT_WIDGETS);
+  const [editMode, setEditMode] = useState(false);
 
-  // Make sure this teacher has a join code (students use it to connect).
+  // Make sure this teacher has a join code (students use it to connect) and
+  // load their saved home layout.
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     ensureTeacherCode(uid).then(setJoinCode).catch(() => {});
+    getDoc(doc(db, 'users', uid))
+      .then((s) => setLayout(mergeLayout(s.data()?.teacherWidgets)))
+      .catch(() => {});
   }, []);
+
+  const moveWidget = (id, dir) => {
+    setLayout((prev) => {
+      const i = prev.findIndex((w) => w.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const toggleWidget = (id) => {
+    setLayout((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
+  };
+
+  const saveLayout = async () => {
+    setEditMode(false);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { teacherWidgets: layout }).catch(() => {});
+  };
 
   const shareCode = () => {
     if (!joinCode) return;
@@ -104,62 +158,118 @@ export default function TeacherHomeScreen({ navigation }) {
   const goStudents = () => navigation.navigate('Teacher');
   const goResources = () => navigation.navigate('Resources');
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.kicker}>TEACHER HOME</Text>
-        <Text style={styles.title}>Welcome back, coach 👋</Text>
-
-        {joinCode && (
+  const renderWidget = (id) => {
+    switch (id) {
+      case 'code':
+        return joinCode ? (
           <View style={styles.codeCard}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.codeLabel}>YOUR JOIN CODE</Text>
               <Text style={styles.codeValue}>{joinCode}</Text>
               <Text style={styles.codeHint}>Students enter this in their Profile to connect with you.</Text>
             </View>
-            <TouchableOpacity style={styles.codeShareBtn} onPress={shareCode} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.codeShareBtn} onPress={shareCode} activeOpacity={0.85} disabled={editMode}>
               <Ionicons name="share-outline" size={18} color={COLORS.primary} />
               <Text style={styles.codeShareText}>Share</Text>
             </TouchableOpacity>
           </View>
+        ) : null;
+      case 'stats':
+        return (
+          <View style={styles.statsRow}>
+            <StatCard value={stats.students} label="Students" icon="people" />
+            <StatCard value={stats.active} label="Active this week" icon="flame" />
+            <StatCard value={stats.tasks} label="Tasks assigned" icon="clipboard" />
+          </View>
+        );
+      case 'getstarted':
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Get started</Text>
+            <ChecklistRow done={stats.students > 0} label="Add your first student" onPress={editMode ? null : goStudents} />
+            <ChecklistRow done={stats.tasks > 0} label="Assign a practice task" onPress={editMode ? null : goStudents} />
+            <ChecklistRow done={false} label="Browse the resource library" onPress={editMode ? null : goResources} />
+          </View>
+        );
+      case 'actions':
+        return (
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={goStudents} activeOpacity={0.85} disabled={editMode}>
+              <Ionicons name="person-add" size={18} color={COLORS.text} />
+              <Text style={styles.actionText}>Add a student</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85} disabled={editMode}>
+              <Ionicons name="library" size={18} color={COLORS.primary} />
+              <Text style={[styles.actionText, { color: COLORS.primary }]}>Resources</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case 'tip':
+        return (
+          <View style={styles.tipCard}>
+            <View style={styles.tipHeader}>
+              <Ionicons name="bulb" size={16} color={COLORS.accent || COLORS.primary} />
+              <Text style={styles.tipKicker}>TIP OF THE DAY</Text>
+            </View>
+            <Text style={styles.tipText}>{tipOfTheDay()}</Text>
+          </View>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.kicker}>TEACHER HOME</Text>
+            <Text style={styles.title}>Welcome back, coach 👋</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.editBtn, editMode && styles.editBtnActive]}
+            onPress={() => (editMode ? saveLayout() : setEditMode(true))}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={editMode ? 'checkmark' : 'create-outline'} size={16} color={editMode ? '#fff' : COLORS.primary} />
+            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Edit'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {editMode && (
+          <Text style={styles.editHelp}>Use the arrows to reorder, or the eye to hide a card. Tap Done to save.</Text>
         )}
 
-        {loading ? (
+        {loading && !editMode ? (
           <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
-          <>
-            <View style={styles.statsRow}>
-              <StatCard value={stats.students} label="Students" icon="people" />
-              <StatCard value={stats.active} label="Active this week" icon="flame" />
-              <StatCard value={stats.tasks} label="Tasks assigned" icon="clipboard" />
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Get started</Text>
-              <ChecklistRow done={stats.students > 0} label="Add your first student" onPress={goStudents} />
-              <ChecklistRow done={stats.tasks > 0} label="Assign a practice task" onPress={goStudents} />
-              <ChecklistRow done={false} label="Browse the resource library" onPress={goResources} />
-            </View>
-
-            <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.actionBtn} onPress={goStudents} activeOpacity={0.85}>
-                <Ionicons name="person-add" size={18} color={COLORS.text} />
-                <Text style={styles.actionText}>Add a student</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85}>
-                <Ionicons name="library" size={18} color={COLORS.primary} />
-                <Text style={[styles.actionText, { color: COLORS.primary }]}>Resources</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.tipCard}>
-              <View style={styles.tipHeader}>
-                <Ionicons name="bulb" size={16} color={COLORS.accent || COLORS.primary} />
-                <Text style={styles.tipKicker}>TIP OF THE DAY</Text>
-              </View>
-              <Text style={styles.tipText}>{tipOfTheDay()}</Text>
-            </View>
-          </>
+          layout.map((w, i) => {
+            const content = renderWidget(w.id);
+            if (!content) return null;
+            if (editMode) {
+              return (
+                <View key={w.id} style={styles.editWrap}>
+                  <View style={styles.editBar}>
+                    <Text style={styles.editName}>{WIDGET_LABELS[w.id]}</Text>
+                    <View style={styles.editControls}>
+                      <TouchableOpacity onPress={() => moveWidget(w.id, -1)} disabled={i === 0} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Ionicons name="arrow-up" size={20} color={i === 0 ? COLORS.textMuted : COLORS.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => moveWidget(w.id, 1)} disabled={i === layout.length - 1} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Ionicons name="arrow-down" size={20} color={i === layout.length - 1 ? COLORS.textMuted : COLORS.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => toggleWidget(w.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View pointerEvents="none" style={!w.enabled && { opacity: 0.35 }}>{content}</View>
+                </View>
+              );
+            }
+            return w.enabled ? <View key={w.id}>{content}</View> : null;
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -171,6 +281,15 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.lg },
   kicker: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800', marginBottom: SPACING.lg },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACING.sm },
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  editBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  editBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  editHelp: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginBottom: SPACING.md, marginTop: -SPACING.sm },
+  editWrap: { borderWidth: 1, borderColor: COLORS.primary + '55', borderRadius: 16, padding: SPACING.sm, marginBottom: SPACING.md, backgroundColor: COLORS.primary + '0C' },
+  editBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: 4 },
+  editName: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
+  editControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
   codeCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg,
     backgroundColor: COLORS.primary + '14', borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '44',
