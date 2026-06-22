@@ -22,12 +22,24 @@ import ProgressScreen from './src/screens/tabs/ProgressScreen';
 import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
+import TeacherCalendarScreen from './src/screens/tabs/TeacherCalendarScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const TeacherHomeStack = createNativeStackNavigator();
+
+// Teacher Home wrapped in a stack so it can push the lesson calendar.
+function TeacherHomeStackScreen() {
+  return (
+    <TeacherHomeStack.Navigator screenOptions={{ headerShown: false }}>
+      <TeacherHomeStack.Screen name="TeacherHomeMain" component={TeacherHomeScreen} />
+      <TeacherHomeStack.Screen name="TeacherCalendar" component={TeacherCalendarScreen} />
+    </TeacherHomeStack.Navigator>
+  );
+}
 
 const TAB_ICONS = {
   Today: ['musical-notes', 'musical-notes-outline'],
@@ -67,7 +79,7 @@ function MainTabs({ role }) {
     >
       {isTeacher ? (
         <>
-          <Tab.Screen name="Home" component={TeacherHomeScreen} />
+          <Tab.Screen name="Home" component={TeacherHomeStackScreen} />
           <Tab.Screen name="Teacher" component={TeacherScreen} options={{ tabBarLabel: 'Students' }} />
           <Tab.Screen name="Resources" component={ResourceLibraryScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
