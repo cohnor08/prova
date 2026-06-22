@@ -289,6 +289,12 @@ export default function TodayScreen({ navigation }) {
   const [regenerating, setRegenerating] = useState(false);
   const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
+  const toggleGroup = (key) => setCollapsedGroups((prev) => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    return n;
+  });
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
   const restorePromptedRef = useRef(false); // pop the restore modal once per app open
@@ -621,6 +627,17 @@ export default function TodayScreen({ navigation }) {
         description: 'Switch F → C cleanly, 8 reps at 70 BPM. Film one take for me.',
         completed: demoTaskDone,
       }] : []);
+  // Separate one-to-one teacher tasks from class-assigned ones (which carry a
+  // classId/className), so the student can tell them apart.
+  const soloTasks = assignedTasks.filter((t) => !t.classId);
+  const classGroups = [];
+  assignedTasks.filter((t) => t.classId).forEach((t) => {
+    const key = t.className || 'Class';
+    let g = classGroups.find((x) => x.key === key);
+    if (!g) { g = { key, name: key, tasks: [] }; classGroups.push(g); }
+    g.tasks.push(t);
+  });
+
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
@@ -733,14 +750,14 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
-        {/* Tasks assigned by the student's teacher */}
-        {isToday && assignedTasks.length > 0 && (
+        {/* One-to-one tasks from the teacher */}
+        {isToday && soloTasks.length > 0 && (
           <View style={styles.teacherCard}>
             <View style={styles.teacherHeader}>
               <Ionicons name="school" size={16} color={COLORS.primary} />
               <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
             </View>
-            {assignedTasks.map((t) => (
+            {soloTasks.map((t) => (
               <TeacherTaskCard
                 key={t.id}
                 task={t}
@@ -752,6 +769,34 @@ export default function TodayScreen({ navigation }) {
             ))}
           </View>
         )}
+
+        {/* Class-assigned tasks, grouped per class with a collapsible header */}
+        {isToday && classGroups.map((g) => {
+          const collapsed = collapsedGroups.has(g.key);
+          const doneCount = g.tasks.filter((t) => t.completed).length;
+          return (
+            <View key={g.key} style={styles.teacherCard}>
+              <TouchableOpacity style={styles.classGroupHeader} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
+                <Ionicons name="people" size={16} color={COLORS.accent || COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.classGroupKicker} numberOfLines={1}>{g.name.toUpperCase()}</Text>
+                  <Text style={styles.classGroupSub}>Class task · {doneCount}/{g.tasks.length} done</Text>
+                </View>
+                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+              {!collapsed && g.tasks.map((t) => (
+                <TeacherTaskCard
+                  key={t.id}
+                  task={t}
+                  expanded={expandedTask === t.id}
+                  onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                  onComplete={completeAssignedTask}
+                  openTaskLink={openTaskLink}
+                />
+              ))}
+            </View>
+          );
+        })}
 
         {/* Sessions */}
         {selectedSessions.length > 0 && (
@@ -944,6 +989,9 @@ const styles = StyleSheet.create({
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
+  classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
