@@ -725,34 +725,6 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
-        {/* Sessions — the actual practice for the day, shown first */}
-        {selectedSessions.length > 0 && (
-          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
-        )}
-        {selectedSessions.length === 0 ? (
-          <View style={styles.restDay}>
-            <View style={styles.restIconWrap}>
-              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
-            </View>
-            <Text style={styles.restTitle}>Rest Day</Text>
-            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
-          </View>
-        ) : isToday ? (
-          selectedSessions.map(session => (
-            <SessionCard
-              key={session.id}
-              session={session}
-              onComplete={handleComplete}
-              completed={completedIds.includes(session.id)}
-              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
-            />
-          ))
-        ) : (
-          selectedSessions.map((session, i) => (
-            <PlanCard key={session.id || i} session={session} />
-          ))
-        )}
-
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
@@ -787,6 +759,34 @@ export default function TodayScreen({ navigation }) {
               </>
             )}
           </View>
+        )}
+
+        {/* Sessions — the actual practice for the day */}
+        {selectedSessions.length > 0 && (
+          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
+        )}
+        {selectedSessions.length === 0 ? (
+          <View style={styles.restDay}>
+            <View style={styles.restIconWrap}>
+              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+            </View>
+            <Text style={styles.restTitle}>Rest Day</Text>
+            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
+          </View>
+        ) : isToday ? (
+          selectedSessions.map(session => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              onComplete={handleComplete}
+              completed={completedIds.includes(session.id)}
+              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
+            />
+          ))
+        ) : (
+          selectedSessions.map((session, i) => (
+            <PlanCard key={session.id || i} session={session} />
+          ))
         )}
 
         {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
