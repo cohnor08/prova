@@ -589,7 +589,7 @@ export default function PracticeScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.preGigBanner}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('Gigs')}
+            onPress={() => navigation.navigate('Schedule')}
           >
             <View style={styles.preGigIcon}>
               <Ionicons name="megaphone" size={20} color="#fff" />
@@ -719,7 +719,6 @@ export default function PracticeScreen({ route, navigation }) {
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
             { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
             { key: 'songs', label: 'Songs', icon: 'list-outline', nav: 'Songs' },
-            { key: 'gigs', label: 'Gigs', icon: 'mic-outline', nav: 'Gigs' },
             { key: 'schedule', label: 'Calendar', icon: 'calendar-outline', nav: 'Schedule' },
           ].map((t) => (
             <TouchableOpacity
