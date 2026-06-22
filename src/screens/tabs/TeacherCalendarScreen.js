@@ -26,19 +26,17 @@ function occursOn(lesson, dateStr) {
   return lesson.date === dateStr;
 }
 
-// Lesson times 8:00 AM → 8:00 PM in 30-min steps.
-const TIME_OPTIONS = (() => {
-  const out = [];
-  for (let h = 8; h <= 20; h++) {
-    for (const m of [0, 30]) {
-      const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      const hr12 = ((h + 11) % 12) + 1;
-      out.push({ value, label: `${hr12}:${m === 0 ? '00' : '30'} ${h < 12 ? 'AM' : 'PM'}` });
-    }
-  }
-  return out;
-})();
-const timeLabel = (v) => (TIME_OPTIONS.find((t) => t.value === v) || {}).label || v;
+// Format a 24h "HH:MM" string as a friendly 12h label.
+function timeLabel(v) {
+  const [h, m] = (v || '').split(':').map(Number);
+  if (isNaN(h)) return v;
+  const hr12 = ((h + 11) % 12) + 1;
+  return `${hr12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+const to24h = (hour12, minute, meridiem) => {
+  const h = meridiem === 'PM' ? (hour12 % 12) + 12 : hour12 % 12;
+  return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
 
 function prettyDate(ymdStr) {
   const [y, m, d] = ymdStr.split('-').map(Number);
@@ -55,9 +53,17 @@ export default function TeacherCalendarScreen({ navigation }) {
 
   // Add-lesson form
   const [aStudent, setAStudent] = useState(null);
-  const [aTime, setATime] = useState('16:00');
+  const [aSearch, setASearch] = useState('');
+  const [aHour, setAHour] = useState(4);        // 1–12
+  const [aMin, setAMin] = useState(0);          // 0–59
+  const [aMeridiem, setAMeridiem] = useState('PM');
   const [aNote, setANote] = useState('');
   const [aWeekly, setAWeekly] = useState(false);
+
+  const resetForm = () => {
+    setAStudent(null); setASearch(''); setAHour(4); setAMin(0);
+    setAMeridiem('PM'); setANote(''); setAWeekly(false);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -93,12 +99,12 @@ export default function TeacherCalendarScreen({ navigation }) {
       studentUid: aStudent,
       studentName: s ? displayName(s) : 'Student',
       date: selected,
-      time: aTime,
+      time: to24h(aHour, aMin, aMeridiem),
       note: aNote.trim(),
       repeat: aWeekly ? 'weekly' : 'none',
     };
     saveLessons([...lessons, lesson]);
-    setShowAdd(false); setAStudent(null); setATime('16:00'); setANote(''); setAWeekly(false);
+    setShowAdd(false); resetForm();
   };
 
   const removeLesson = (lesson) => {
@@ -225,29 +231,64 @@ export default function TeacherCalendarScreen({ navigation }) {
             {students.length === 0 ? (
               <Text style={styles.empty}>No connected students yet.</Text>
             ) : (
-              <View style={styles.chipWrap}>
-                {students.map((s) => {
-                  const on = aStudent === s.uid;
-                  return (
-                    <TouchableOpacity key={s.uid} style={[styles.chip, on && styles.chipOn]} onPress={() => setAStudent(s.uid)} activeOpacity={0.8}>
-                      <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{displayName(s)}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <>
+                {students.length > 6 && (
+                  <TextInput
+                    style={[styles.noteInput, { marginBottom: SPACING.sm }]}
+                    value={aSearch}
+                    onChangeText={setASearch}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                )}
+                <View style={styles.chipWrap}>
+                  {(() => {
+                    const q = aSearch.trim().toLowerCase();
+                    const shown = q ? students.filter((s) => displayName(s).toLowerCase().includes(q)) : students;
+                    if (shown.length === 0) return <Text style={styles.empty}>No students match “{aSearch}”.</Text>;
+                    return shown.map((s) => {
+                      const on = aStudent === s.uid;
+                      return (
+                        <TouchableOpacity key={s.uid} style={[styles.chip, on && styles.chipOn]} onPress={() => setAStudent(s.uid)} activeOpacity={0.8}>
+                          <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{displayName(s)}</Text>
+                        </TouchableOpacity>
+                      );
+                    });
+                  })()}
+                </View>
+              </>
             )}
 
             <Text style={styles.fieldLabel}>TIME</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm, paddingVertical: 2 }}>
-              {TIME_OPTIONS.map((t) => {
-                const on = aTime === t.value;
-                return (
-                  <TouchableOpacity key={t.value} style={[styles.timeChip, on && styles.chipOn]} onPress={() => setATime(t.value)} activeOpacity={0.8}>
-                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
+            <View style={styles.timePicker}>
+              <View style={styles.timeUnit}>
+                <TouchableOpacity onPress={() => setAHour((h) => (h === 12 ? 1 : h + 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="chevron-up" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <Text style={styles.timeNum}>{aHour}</Text>
+                <TouchableOpacity onPress={() => setAHour((h) => (h === 1 ? 12 : h - 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.timeColon}>:</Text>
+              <View style={styles.timeUnit}>
+                <TouchableOpacity onPress={() => setAMin((m) => (m + 5) % 60)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="chevron-up" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <Text style={styles.timeNum}>{String(aMin).padStart(2, '0')}</Text>
+                <TouchableOpacity onPress={() => setAMin((m) => (m + 55) % 60)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.ampmCol}>
+                {['AM', 'PM'].map((p) => (
+                  <TouchableOpacity key={p} style={[styles.ampmBtn, aMeridiem === p && styles.chipOn]} onPress={() => setAMeridiem(p)} activeOpacity={0.8}>
+                    <Text style={[styles.chipText, aMeridiem === p && styles.chipTextOn]}>{p}</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                ))}
+              </View>
+            </View>
 
             <Text style={styles.fieldLabel}>NOTE (OPTIONAL)</Text>
             <TextInput
@@ -268,7 +309,7 @@ export default function TeacherCalendarScreen({ navigation }) {
             </TouchableOpacity>
 
             <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setAStudent(null); setANote(''); setAWeekly(false); }}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={addLesson}>
@@ -328,7 +369,12 @@ const styles = StyleSheet.create({
   fieldLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: SPACING.md, marginBottom: SPACING.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, maxWidth: 200 },
-  timeChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  timePicker: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  timeUnit: { alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 6, paddingHorizontal: 14, gap: 2 },
+  timeNum: { color: COLORS.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 30, textAlign: 'center' },
+  timeColon: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
+  ampmCol: { gap: SPACING.sm, marginLeft: SPACING.sm },
+  ampmBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   chipTextOn: { color: '#fff' },
