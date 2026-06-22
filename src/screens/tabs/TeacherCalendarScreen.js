@@ -14,6 +14,17 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+
+// Does a lesson happen on a given date? Weekly lessons recur on the same weekday
+// from their start date onward; one-off lessons only match their exact date.
+function occursOn(lesson, dateStr) {
+  if (lesson.repeat === 'weekly') {
+    if (dateStr < lesson.date) return false;
+    return parseYmd(dateStr).getDay() === parseYmd(lesson.date).getDay();
+  }
+  return lesson.date === dateStr;
+}
 
 // Lesson times 8:00 AM → 8:00 PM in 30-min steps.
 const TIME_OPTIONS = (() => {
@@ -46,6 +57,7 @@ export default function TeacherCalendarScreen({ navigation }) {
   const [aStudent, setAStudent] = useState(null);
   const [aTime, setATime] = useState('16:00');
   const [aNote, setANote] = useState('');
+  const [aWeekly, setAWeekly] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,16 +95,22 @@ export default function TeacherCalendarScreen({ navigation }) {
       date: selected,
       time: aTime,
       note: aNote.trim(),
+      repeat: aWeekly ? 'weekly' : 'none',
     };
     saveLessons([...lessons, lesson]);
-    setShowAdd(false); setAStudent(null); setATime('16:00'); setANote('');
+    setShowAdd(false); setAStudent(null); setATime('16:00'); setANote(''); setAWeekly(false);
   };
 
-  const removeLesson = (id, name) => {
-    Alert.alert('Remove lesson?', name, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => saveLessons(lessons.filter((l) => l.id !== id)) },
-    ]);
+  const removeLesson = (lesson) => {
+    const weekly = lesson.repeat === 'weekly';
+    Alert.alert(
+      weekly ? 'Remove weekly lesson?' : 'Remove lesson?',
+      weekly ? `${lesson.studentName} — this removes it from every week.` : `${lesson.studentName} · ${timeLabel(lesson.time)}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => saveLessons(lessons.filter((l) => l.id !== lesson.id)) },
+      ]
+    );
   };
 
   // Month grid
@@ -104,11 +122,9 @@ export default function TeacherCalendarScreen({ navigation }) {
   for (let i = 0; i < firstDow; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  const countByDate = {};
-  lessons.forEach((l) => { countByDate[l.date] = (countByDate[l.date] || 0) + 1; });
+  const lessonsOnDay = (dateStr) => lessons.filter((l) => occursOn(l, dateStr));
 
-  const dayLessons = lessons
-    .filter((l) => l.date === selected)
+  const dayLessons = lessonsOnDay(selected)
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   const upcoming = lessons
@@ -153,7 +169,7 @@ export default function TeacherCalendarScreen({ navigation }) {
             const cellYmd = ymd(new Date(year, month, d));
             const isSel = cellYmd === selected;
             const isToday = cellYmd === todayStr;
-            const has = countByDate[cellYmd];
+            const has = lessonsOnDay(cellYmd).length;
             return (
               <TouchableOpacity key={d} style={styles.cell} onPress={() => setSelected(cellYmd)} activeOpacity={0.7}>
                 <View style={[styles.cellInner, isSel && styles.cellSelected, isToday && !isSel && styles.cellToday]}>
@@ -180,10 +196,18 @@ export default function TeacherCalendarScreen({ navigation }) {
           <View key={l.id} style={styles.lessonCard}>
             <View style={styles.lessonTime}><Text style={styles.lessonTimeText}>{timeLabel(l.time)}</Text></View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.lessonName} numberOfLines={1}>{l.studentName}</Text>
+              <View style={styles.lessonNameRow}>
+                <Text style={styles.lessonName} numberOfLines={1}>{l.studentName}</Text>
+                {l.repeat === 'weekly' && (
+                  <View style={styles.weeklyBadge}>
+                    <Ionicons name="repeat" size={11} color={COLORS.primary} />
+                    <Text style={styles.weeklyBadgeText}>Weekly</Text>
+                  </View>
+                )}
+              </View>
               {!!l.note && <Text style={styles.lessonNote} numberOfLines={2}>{l.note}</Text>}
             </View>
-            <TouchableOpacity onPress={() => removeLesson(l.id, `${l.studentName} · ${timeLabel(l.time)}`)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => removeLesson(l)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="trash-outline" size={18} color={COLORS.error} />
             </TouchableOpacity>
           </View>
@@ -234,8 +258,17 @@ export default function TeacherCalendarScreen({ navigation }) {
               placeholderTextColor={COLORS.textMuted}
             />
 
+            <TouchableOpacity style={styles.repeatRow} onPress={() => setAWeekly((v) => !v)} activeOpacity={0.7}>
+              <Ionicons name="repeat" size={18} color={aWeekly ? COLORS.primary : COLORS.textMuted} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.repeatLabel}>Repeats weekly</Text>
+                <Text style={styles.repeatHint}>Shows every week on this day — no need to re-add it.</Text>
+              </View>
+              <Ionicons name={aWeekly ? 'checkbox' : 'square-outline'} size={22} color={aWeekly ? COLORS.primary : COLORS.textMuted} />
+            </TouchableOpacity>
+
             <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setAStudent(null); setANote(''); }}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setAStudent(null); setANote(''); setAWeekly(false); }}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={addLesson}>
@@ -279,8 +312,14 @@ const styles = StyleSheet.create({
   lessonCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
   lessonTime: { backgroundColor: COLORS.surface, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8 },
   lessonTimeText: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
-  lessonName: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  lessonNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  lessonName: { color: COLORS.text, fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  weeklyBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.primary + '22', borderRadius: 999, paddingVertical: 2, paddingHorizontal: 7 },
+  weeklyBadgeText: { color: COLORS.primary, fontSize: 10, fontWeight: '800' },
   lessonNote: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  repeatRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, paddingVertical: SPACING.sm },
+  repeatLabel: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  repeatHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
