@@ -290,6 +290,7 @@ export default function TodayScreen({ navigation }) {
   const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
+  const [soloOpen, setSoloOpen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
     const n = new Set(prev);
@@ -724,6 +725,34 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
+        {/* Sessions — the actual practice for the day, shown first */}
+        {selectedSessions.length > 0 && (
+          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
+        )}
+        {selectedSessions.length === 0 ? (
+          <View style={styles.restDay}>
+            <View style={styles.restIconWrap}>
+              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+            </View>
+            <Text style={styles.restTitle}>Rest Day</Text>
+            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
+          </View>
+        ) : isToday ? (
+          selectedSessions.map(session => (
+            <SessionCard
+              key={session.id}
+              session={session}
+              onComplete={handleComplete}
+              completed={completedIds.includes(session.id)}
+              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
+            />
+          ))
+        ) : (
+          selectedSessions.map((session, i) => (
+            <PlanCard key={session.id || i} session={session} />
+          ))
+        )}
+
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
@@ -760,14 +789,23 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
-        {/* One-to-one tasks from the teacher */}
+        {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
         {isToday && soloTasks.length > 0 && (
           <View style={styles.teacherCard}>
-            <View style={styles.teacherHeader}>
-              <Ionicons name="school" size={16} color={COLORS.primary} />
-              <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
-            </View>
-            {soloTasks.map((t) => (
+            {soloTasks.length >= 3 ? (
+              <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
+                <Ionicons name="school" size={16} color={COLORS.primary} />
+                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
+                <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.teacherHeader}>
+                <Ionicons name="school" size={16} color={COLORS.primary} />
+                <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+              </View>
+            )}
+            {(soloTasks.length < 3 || soloOpen) && soloTasks.map((t) => (
               <TeacherTaskCard
                 key={t.id}
                 task={t}
@@ -807,34 +845,6 @@ export default function TodayScreen({ navigation }) {
             </View>
           );
         })}
-
-        {/* Sessions */}
-        {selectedSessions.length > 0 && (
-          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
-        )}
-        {selectedSessions.length === 0 ? (
-          <View style={styles.restDay}>
-            <View style={styles.restIconWrap}>
-              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
-            </View>
-            <Text style={styles.restTitle}>Rest Day</Text>
-            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
-          </View>
-        ) : isToday ? (
-          selectedSessions.map(session => (
-            <SessionCard
-              key={session.id}
-              session={session}
-              onComplete={handleComplete}
-              completed={completedIds.includes(session.id)}
-              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
-            />
-          ))
-        ) : (
-          selectedSessions.map((session, i) => (
-            <PlanCard key={session.id || i} session={session} />
-          ))
-        )}
 
         {/* Song to practice — matched to the player's level */}
         {isToday && songOfTheDay && (
@@ -1030,7 +1040,7 @@ const styles = StyleSheet.create({
   },
   challengeKicker: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
-  challengeTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: 2 },
+  challengeTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: 2, lineHeight: 18 },
   challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: SPACING.md, marginBottom: SPACING.md },
   challengeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,

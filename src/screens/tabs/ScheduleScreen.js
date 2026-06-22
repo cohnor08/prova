@@ -82,7 +82,7 @@ export default function ScheduleScreen({ navigation }) {
       const d = new Date(t.dueDate);
       if (!isNaN(d) && ymd(d) === dateStr) {
         const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        out.push({ type: 'due', title: t.title || 'Task due', sub: t.className ? `${t.className}` : null, time: hh });
+        out.push({ type: 'due', title: t.title || 'Task due', sub: t.className ? `${t.className}` : null, time: hh, done: !!t.completed });
       }
     });
     return out.sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
@@ -163,17 +163,19 @@ export default function ScheduleScreen({ navigation }) {
           <Text style={styles.empty}>Nothing scheduled this day.</Text>
         ) : dayEvents.map((e, i) => {
           const meta = TYPE_META[e.type];
+          const done = e.type === 'due' && e.done;
           return (
             <View key={i} style={styles.eventCard}>
-              <View style={[styles.eventIcon, { backgroundColor: meta.color + '22' }]}>
-                <Ionicons name={meta.icon} size={16} color={meta.color} />
+              <View style={[styles.eventIcon, { backgroundColor: (done ? COLORS.success : meta.color) + '22' }]}>
+                <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.eventTitle} numberOfLines={1}>{e.title}</Text>
+                <Text style={[styles.eventTitle, done && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]} numberOfLines={1}>{e.title}</Text>
                 <Text style={styles.eventSub} numberOfLines={1}>
-                  {meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
+                  {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
                 </Text>
               </View>
+              {done && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             </View>
           );
         })}
