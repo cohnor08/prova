@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert,
 } from 'react-native';
@@ -42,6 +42,46 @@ function prettyDate(ymdStr) {
   const [y, m, d] = ymdStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
+
+// A rollable scroll-wheel: scroll the column, it snaps to the nearest value.
+const WHEEL_ITEM_H = 40;
+function Wheel({ values, value, onChange, format }) {
+  const ref = useRef(null);
+  const index = Math.max(0, values.indexOf(value));
+
+  const settle = (e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    let i = Math.round(y / WHEEL_ITEM_H);
+    i = Math.max(0, Math.min(values.length - 1, i));
+    if (values[i] !== value) onChange(values[i]);
+  };
+
+  return (
+    <View style={styles.wheel}>
+      <ScrollView
+        ref={ref}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_H}
+        decelerationRate="fast"
+        nestedScrollEnabled
+        onLayout={() => ref.current?.scrollTo({ y: index * WHEEL_ITEM_H, animated: false })}
+        onMomentumScrollEnd={settle}
+        onScrollEndDrag={settle}
+        contentContainerStyle={{ paddingVertical: WHEEL_ITEM_H }}
+      >
+        {values.map((v) => (
+          <View key={v} style={styles.wheelRow}>
+            <Text style={[styles.wheelItem, v === value && styles.wheelItemSel]}>{format ? format(v) : v}</Text>
+          </View>
+        ))}
+      </ScrollView>
+      <View pointerEvents="none" style={styles.wheelHighlight} />
+    </View>
+  );
+}
+
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 00,05,…,55
 
 export default function TeacherCalendarScreen({ navigation }) {
   const todayStr = ymd(new Date());
@@ -262,25 +302,9 @@ export default function TeacherCalendarScreen({ navigation }) {
 
             <Text style={styles.fieldLabel}>TIME</Text>
             <View style={styles.timePicker}>
-              <View style={styles.timeUnit}>
-                <TouchableOpacity onPress={() => setAHour((h) => (h === 12 ? 1 : h + 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="chevron-up" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <Text style={styles.timeNum}>{aHour}</Text>
-                <TouchableOpacity onPress={() => setAHour((h) => (h === 1 ? 12 : h - 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              </View>
+              <Wheel values={HOURS} value={aHour} onChange={setAHour} />
               <Text style={styles.timeColon}>:</Text>
-              <View style={styles.timeUnit}>
-                <TouchableOpacity onPress={() => setAMin((m) => (m + 5) % 60)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="chevron-up" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <Text style={styles.timeNum}>{String(aMin).padStart(2, '0')}</Text>
-                <TouchableOpacity onPress={() => setAMin((m) => (m + 55) % 60)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              </View>
+              <Wheel values={MINUTES} value={aMin} onChange={setAMin} format={(m) => String(m).padStart(2, '0')} />
               <View style={styles.ampmCol}>
                 {['AM', 'PM'].map((p) => (
                   <TouchableOpacity key={p} style={[styles.ampmBtn, aMeridiem === p && styles.chipOn]} onPress={() => setAMeridiem(p)} activeOpacity={0.8}>
@@ -370,9 +394,12 @@ const styles = StyleSheet.create({
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, maxWidth: 200 },
   timePicker: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  timeUnit: { alignItems: 'center', backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 6, paddingHorizontal: 14, gap: 2 },
-  timeNum: { color: COLORS.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 30, textAlign: 'center' },
   timeColon: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
+  wheel: { width: 58, height: WHEEL_ITEM_H * 3, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  wheelRow: { height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' },
+  wheelItem: { color: COLORS.textMuted, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  wheelItemSel: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
+  wheelHighlight: { position: 'absolute', left: 0, right: 0, top: WHEEL_ITEM_H, height: WHEEL_ITEM_H, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.primary + '55' },
   ampmCol: { gap: SPACING.sm, marginLeft: SPACING.sm },
   ampmBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
