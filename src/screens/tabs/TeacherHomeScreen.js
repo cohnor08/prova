@@ -38,6 +38,7 @@ function tipOfTheDay() {
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
   { id: 'code', enabled: true },
+  { id: 'lessons', enabled: true },
   { id: 'stats', enabled: true },
   { id: 'getstarted', enabled: true },
   { id: 'actions', enabled: true },
@@ -49,6 +50,7 @@ const DEFAULT_WIDGETS = [
 ];
 const WIDGET_LABELS = {
   code: 'Join code',
+  lessons: 'Lessons',
   stats: 'Stats',
   getstarted: 'Get started',
   actions: 'Quick actions',
@@ -57,6 +59,15 @@ const WIDGET_LABELS = {
   attention: 'Needs a nudge',
   notes: 'My notes',
 };
+
+const LESSON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function lessonWhen(l) {
+  const [y, m, d] = (l.date || '').split('-').map(Number);
+  const day = y ? `${LESSON_MONTHS[m - 1]} ${d}` : l.date;
+  const [hh, mm] = (l.time || '').split(':').map(Number);
+  const t = isNaN(hh) ? l.time : `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`;
+  return `${day} · ${t}`;
+}
 
 // Merge a saved layout with the defaults: keep saved order/visibility for known
 // widgets, then append any new widgets that didn't exist when it was saved.
@@ -101,6 +112,7 @@ export default function TeacherHomeScreen({ navigation }) {
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const [editMode, setEditMode] = useState(false);
   const [note, setNote] = useState('');
+  const [lessons, setLessons] = useState([]);
 
   // Make sure this teacher has a join code (students use it to connect) and
   // load their saved home layout + personal note.
@@ -112,6 +124,7 @@ export default function TeacherHomeScreen({ navigation }) {
       .then((s) => {
         setLayout(mergeLayout(s.data()?.teacherWidgets));
         setNote(s.data()?.teacherNote || '');
+        setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
       })
       .catch(() => {});
   }, []);
@@ -161,9 +174,16 @@ export default function TeacherHomeScreen({ navigation }) {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
           // Students who connected carry teacherUid === my uid.
-          const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)));
+          const [snap, meSnap] = await Promise.all([
+            getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+            getDoc(doc(db, 'users', uid)),
+          ]);
           const list = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-          if (!cancelled) { setStats(computeStats(list)); setStudents(list); }
+          if (!cancelled) {
+            setStats(computeStats(list));
+            setStudents(list);
+            setLessons(Array.isArray(meSnap.data()?.lessons) ? meSnap.data().lessons : []);
+          }
         } catch (e) {
           console.error(e);
         } finally {
@@ -233,6 +253,33 @@ export default function TeacherHomeScreen({ navigation }) {
             <Text style={styles.tipText}>{tipOfTheDay()}</Text>
           </View>
         );
+      case 'lessons': {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const upcoming = lessons
+          .filter((l) => l.date >= todayStr)
+          .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+          .slice(0, 3);
+        return (
+          <View style={styles.card}>
+            <View style={styles.lessonsHead}>
+              <Text style={styles.cardTitle}>Lessons</Text>
+              <TouchableOpacity style={styles.calBtn} onPress={() => navigation.navigate('TeacherCalendar')} activeOpacity={0.85} disabled={editMode}>
+                <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
+                <Text style={styles.calBtnText}>Calendar</Text>
+              </TouchableOpacity>
+            </View>
+            {upcoming.length === 0 ? (
+              <Text style={styles.emptyMini}>No lessons scheduled. Tap Calendar to add one.</Text>
+            ) : upcoming.map((l) => (
+              <View key={l.id} style={styles.miniRow}>
+                <Ionicons name="time-outline" size={15} color={COLORS.primary} />
+                <Text style={styles.miniName} numberOfLines={1}>{l.studentName}</Text>
+                <Text style={styles.miniMeta}>{lessonWhen(l)}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      }
       case 'top': {
         const ranked = [...students].sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0)).slice(0, 3);
         return (
@@ -396,6 +443,9 @@ const styles = StyleSheet.create({
   miniScore: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   miniMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   noteInput: { color: COLORS.text, fontSize: 14, lineHeight: 20, minHeight: 70, textAlignVertical: 'top' },
+  lessonsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  calBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
+  calBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 10 },
   checkLabel: { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   checkLabelDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
