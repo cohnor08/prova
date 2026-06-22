@@ -42,8 +42,8 @@ const DEFAULT_WIDGETS = [
   { id: 'stats', enabled: true },
   { id: 'getstarted', enabled: true },
   { id: 'actions', enabled: true },
-  { id: 'tip', enabled: true },
   // Extra widgets — off by default; teachers switch them on in Edit mode.
+  { id: 'tip', enabled: false },
   { id: 'top', enabled: false },
   { id: 'attention', enabled: false },
   { id: 'notes', enabled: false },
