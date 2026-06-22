@@ -603,6 +603,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
+              <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>{isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
@@ -701,6 +702,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                     : <Text style={styles.modalAssignText}>Assign task</Text>}
                 </TouchableOpacity>
               </View>
+              </ScrollView>
             </View>
             {showDuePicker && (
               <DueDatePicker
@@ -2100,7 +2102,7 @@ const styles = StyleSheet.create({
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl, maxHeight: '88%' },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.xs },
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },

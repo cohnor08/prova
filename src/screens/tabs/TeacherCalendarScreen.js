@@ -272,15 +272,23 @@ export default function TeacherCalendarScreen({ navigation }) {
               <Text style={styles.empty}>No connected students yet.</Text>
             ) : (
               <>
-                {students.length > 6 && (
-                  <TextInput
-                    style={[styles.noteInput, { marginBottom: SPACING.sm }]}
-                    value={aSearch}
-                    onChangeText={setASearch}
-                    placeholder="Search students…"
-                    placeholderTextColor={COLORS.textMuted}
-                    autoCapitalize="none"
-                  />
+                {students.length > 4 && (
+                  <View style={styles.searchBar}>
+                    <Ionicons name="search" size={15} color={COLORS.textMuted} />
+                    <TextInput
+                      style={styles.searchInput}
+                      value={aSearch}
+                      onChangeText={setASearch}
+                      placeholder="Search students…"
+                      placeholderTextColor={COLORS.textMuted}
+                      autoCapitalize="none"
+                    />
+                    {aSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setASearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
                 <View style={styles.chipWrap}>
                   {(() => {
@@ -375,8 +383,8 @@ const styles = StyleSheet.create({
   empty: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
 
   lessonCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
-  lessonTime: { backgroundColor: COLORS.surface, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8 },
-  lessonTimeText: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
+  lessonTime: { minWidth: 62 },
+  lessonTimeText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   lessonNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   lessonName: { color: COLORS.text, fontSize: 14, fontWeight: '700', flexShrink: 1 },
   weeklyBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.primary + '22', borderRadius: 999, paddingVertical: 2, paddingHorizontal: 7 },
@@ -399,13 +407,15 @@ const styles = StyleSheet.create({
   wheelRow: { height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' },
   wheelItem: { color: COLORS.textMuted, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
   wheelItemSel: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
-  wheelHighlight: { position: 'absolute', left: 0, right: 0, top: WHEEL_ITEM_H, height: WHEEL_ITEM_H, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.primary + '55' },
+  wheelHighlight: { position: 'absolute', left: 6, right: 6, top: WHEEL_ITEM_H, height: WHEEL_ITEM_H, borderRadius: 8, backgroundColor: COLORS.primary + '1A' },
   ampmCol: { gap: SPACING.sm, marginLeft: SPACING.sm },
   ampmBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   chipTextOn: { color: '#fff' },
   noteInput: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm },
+  searchInput: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, padding: 0 },
   modalBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
