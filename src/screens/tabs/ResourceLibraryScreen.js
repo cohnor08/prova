@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
-  Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
+  Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   doc, getDoc, updateDoc, collection, query, where, getDocs, arrayUnion,
 } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -40,10 +41,17 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-function ResourceItem({ item, onAssign }) {
+function ResourceItem({ item, onAssign, onRemove }) {
   return (
     <View style={styles.item}>
-      <Text style={styles.itemTitle}>{item.title}</Text>
+      <View style={styles.customRow}>
+        <Text style={[styles.itemTitle, { flex: 1 }]}>{item.title}</Text>
+        {onRemove && (
+          <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+          </TouchableOpacity>
+        )}
+      </View>
       <Text style={styles.itemDetail}>{item.detail}</Text>
       {item.yt && (
         <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(item.yt)} activeOpacity={0.7}>
@@ -61,6 +69,79 @@ function ResourceItem({ item, onAssign }) {
   );
 }
 
+// Drag-to-reorder list for the category sections (Exercises / Songs / Tips).
+// Hold the ≡ grip and drag a row; tap the eye to show/hide. PanResponder-based,
+// no extra deps. Rows are a fixed height since each is a single label.
+const CAT_ROW_H = 56;
+function CategoryEditList({ layout, onReorder, onToggle }) {
+  const [dragId, setDragId] = useState(null);
+  const orderRef = useRef(layout);
+  orderRef.current = layout;
+  const pan = useRef(new Animated.Value(0)).current;
+  const startTop = useRef(0);
+  const responders = useRef({});
+
+  const getResponder = (id) => {
+    if (responders.current[id]) return responders.current[id];
+    responders.current[id] = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startTop.current = orderRef.current.findIndex((x) => x.id === id) * CAT_ROW_H;
+        pan.setValue(0);
+        setDragId(id);
+      },
+      onPanResponderMove: (_, g) => {
+        const order = orderRef.current;
+        const desiredTop = startTop.current + g.dy;
+        const center = desiredTop + CAT_ROW_H / 2;
+        let target = Math.max(0, Math.min(order.length - 1, Math.floor(center / CAT_ROW_H)));
+        const curIndex = order.findIndex((x) => x.id === id);
+        if (target !== curIndex) {
+          const arr = [...order];
+          const [it] = arr.splice(curIndex, 1);
+          arr.splice(target, 0, it);
+          onReorder(arr);
+          pan.setValue(desiredTop - target * CAT_ROW_H);
+        } else {
+          pan.setValue(desiredTop - curIndex * CAT_ROW_H);
+        }
+      },
+      onPanResponderRelease: () => { setDragId(null); pan.setValue(0); },
+      onPanResponderTerminate: () => { setDragId(null); pan.setValue(0); },
+    });
+    return responders.current[id];
+  };
+
+  return (
+    <View style={{ marginTop: SPACING.sm }}>
+      {layout.map((entry) => {
+        const meta = CATEGORY_META[entry.id];
+        const dragging = dragId === entry.id;
+        return (
+          <Animated.View
+            key={entry.id}
+            style={[
+              styles.editRow,
+              dragging && styles.editRowDragging,
+              dragging && { transform: [{ translateY: pan }], zIndex: 20, elevation: 8 },
+            ]}
+          >
+            <View {...getResponder(entry.id).panHandlers} style={styles.grip}>
+              <Ionicons name="reorder-three" size={26} color={COLORS.textSecondary} />
+            </View>
+            <Ionicons name={meta.icon} size={16} color={COLORS.primary} />
+            <Text style={[styles.editRowName, !entry.visible && { color: COLORS.textMuted }]}>{meta.label}</Text>
+            <TouchableOpacity onPress={() => onToggle(entry.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name={entry.visible ? 'eye' : 'eye-off'} size={20} color={entry.visible ? COLORS.primary : COLORS.textMuted} />
+            </TouchableOpacity>
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function ResourceLibraryScreen() {
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
@@ -68,27 +149,49 @@ export default function ResourceLibraryScreen() {
   // Teacher-added resources, stored on the teacher's own user doc.
   const [custom, setCustom] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState(null); // resource id being edited, or null when adding
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [resSearch, setResSearch] = useState('');     // search across all your resources
+  const [expandedRes, setExpandedRes] = useState(null); // which resource card is expanded
+  const [hidden, setHidden] = useState([]);            // built-in item ids the teacher removed
+  const [catLayout, setCatLayout] = useState(null);    // section order + visibility, or null = default
+  const [collapsedCats, setCollapsedCats] = useState(() => new Set(Object.keys(CATEGORY_META))); // start compact
+  const [editLayout, setEditLayout] = useState(false); // layout edit mode (like the Home screen)
 
   // For assigning a resource to a student/class.
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [assignTarget, setAssignTarget] = useState(null); // { title, url } | null
 
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
+  const loadResources = (uid) => {
     if (!uid) return;
     getDoc(doc(db, 'users', uid))
       .then((s) => {
-        setCustom(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
+        const cust = Array.isArray(s.data()?.customResources) ? s.data().customResources : [];
+        setCustom(cust);
         setClasses(Array.isArray(s.data()?.classes) ? s.data().classes : []);
+        setHidden(Array.isArray(s.data()?.hiddenResources) ? s.data().hiddenResources : []);
+        if (Array.isArray(s.data()?.resourceLayout)) setCatLayout(s.data().resourceLayout);
+        // New teachers (no library of their own yet) get the built-in sections
+        // expanded so they see ready-to-use content; once they've built up their
+        // own resources, the stock sections stay collapsed to reduce clutter.
+        if (cust.length === 0) setCollapsedCats(new Set());
       })
       .catch(() => {});
     getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)))
       .then((snap) => setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))))
       .catch(() => {});
+  };
+
+  // Load once auth is ready. On a cold reopen this screen can mount before
+  // Firebase Auth restores the session, so we wait for the auth state to resolve
+  // (and reload on any sign-in) rather than bailing once and never retrying.
+  useEffect(() => {
+    if (auth.currentUser?.uid) loadResources(auth.currentUser.uid);
+    const unsub = onAuthStateChanged(auth, (u) => { if (u?.uid) loadResources(u.uid); });
+    return unsub;
   }, []);
 
   // Assign the selected resource as a task (with its link) to recipients.
@@ -127,14 +230,33 @@ export default function ResourceLibraryScreen() {
     if (uid) updateDoc(doc(db, 'users', uid), { customResources: next }).catch(() => {});
   };
 
-  const addResource = () => {
+  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); };
+
+  const openAdd = () => { resetForm(); setShowAdd(true); };
+
+  const openEdit = (r) => {
+    setEditingId(r.id);
+    setNewTitle(r.title || '');
+    setNewUrl(r.url || '');
+    setNewDesc(r.description || '');
+    setShowAdd(true);
+  };
+
+  const saveResource = () => {
     if (!newTitle.trim() || !newUrl.trim()) {
       Alert.alert('Add a title and link', 'Both a title and a YouTube link (or search) are needed.');
       return;
     }
-    const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument, level };
-    saveCustom([item, ...custom]);
-    setNewTitle(''); setNewUrl(''); setNewDesc(''); setShowAdd(false);
+    if (editingId) {
+      // Edit in place, keeping the resource's original instrument/level.
+      saveCustom(custom.map((x) => x.id === editingId
+        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim() }
+        : x));
+    } else {
+      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument, level };
+      saveCustom([item, ...custom]);
+    }
+    resetForm(); setShowAdd(false);
   };
 
   const removeResource = (item) => {
@@ -144,12 +266,61 @@ export default function ResourceLibraryScreen() {
     ]);
   };
 
-  // Show the teacher's own links that match the current instrument + level.
-  const myResources = custom.filter((r) => r.instrument === instrument && r.level === level);
+  // A stable id for a built-in item, so a teacher can hide it per their account.
+  const builtinId = (cat, item) => `${instrument}|${level}|${cat}|${item.title}`;
+
+  const saveHidden = (next) => {
+    setHidden(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { hiddenResources: next }).catch(() => {});
+  };
+  const removeBuiltin = (cat, item) => {
+    const id = builtinId(cat, item);
+    Alert.alert('Remove resource?', item.title, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => saveHidden([...hidden, id]) },
+    ]);
+  };
+
+  const toggleCollapse = (cat) => setCollapsedCats((prev) => {
+    const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n;
+  });
+
+  // Section layout (order + visibility), Home-screen style. Merge any saved
+  // layout with the full category list so new categories still appear.
+  const allCats = Object.keys(CATEGORY_META);
+  const mergedLayout = (() => {
+    const saved = Array.isArray(catLayout) ? catLayout.filter((x) => allCats.includes(x.id)) : [];
+    const have = new Set(saved.map((x) => x.id));
+    return [...saved, ...allCats.filter((c) => !have.has(c)).map((c) => ({ id: c, visible: true }))];
+  })();
+  const toggleCatVisible = (id) =>
+    setCatLayout(mergedLayout.map((x) => (x.id === id ? { ...x, visible: !x.visible } : x)));
+  const saveLayout = () => {
+    setEditLayout(false);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { resourceLayout: mergedLayout }).catch(() => {});
+  };
+
+  // The teacher's own links. When searching, match across ALL their resources
+  // (any instrument/level) by title, description or link; otherwise show the
+  // ones for the currently selected instrument + level.
+  const resQuery = resSearch.trim().toLowerCase();
+  const myResources = resQuery
+    ? custom.filter((r) =>
+        (r.title || '').toLowerCase().includes(resQuery)
+        || (r.description || '').toLowerCase().includes(resQuery)
+        || (r.url || '').toLowerCase().includes(resQuery))
+    : custom.filter((r) => r.instrument === instrument && r.level === level);
 
   const effLevel = RESOURCES[instrument]?.[level] ? level : (RESOURCE_LEVEL_FALLBACK[level] || level);
   const data = RESOURCES[instrument]?.[effLevel] || {};
-  const categories = Object.keys(CATEGORY_META).filter((c) => (data[c] || []).length > 0);
+  const hiddenSet = new Set(hidden);
+  // Items per category with hidden ones filtered out.
+  const visibleItems = (cat) => (data[cat] || []).filter((it) => !hiddenSet.has(builtinId(cat, it)));
+  // Sections in the teacher's chosen order — only visible ones that still have
+  // items (the drag editor handles reordering/hiding separately).
+  const orderedCats = mergedLayout.filter((x) => x.visible && visibleItems(x.id).length > 0);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -174,50 +345,128 @@ export default function ResourceLibraryScreen() {
           <View style={styles.sectionHeader}>
             <Ionicons name="bookmark" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Your resources</Text>
-            <TouchableOpacity style={styles.addResBtn} onPress={() => setShowAdd(true)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.addResBtn} onPress={openAdd} activeOpacity={0.85}>
               <Ionicons name="add" size={16} color={COLORS.primary} />
               <Text style={styles.addResBtnText}>Add</Text>
             </TouchableOpacity>
           </View>
+
+          {custom.length > 0 && (
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={15} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search your resources"
+                placeholderTextColor={COLORS.textMuted}
+                value={resSearch}
+                onChangeText={setResSearch}
+                autoCapitalize="none"
+              />
+              {!!resSearch && (
+                <TouchableOpacity onPress={() => setResSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {myResources.length === 0 ? (
-            <Text style={styles.emptyRes}>No links added for {instrument} · {level} yet. Tap “Add” to save one.</Text>
+            <Text style={styles.emptyRes}>
+              {resQuery
+                ? `No resources match “${resSearch.trim()}”.`
+                : `No links added for ${instrument} · ${level} yet. Tap “Add” to save one.`}
+            </Text>
           ) : (
-            myResources.map((r) => (
-              <View key={r.id} style={styles.item}>
-                <View style={styles.customRow}>
-                  <Text style={styles.itemTitle} numberOfLines={1}>{r.title}</Text>
-                  <TouchableOpacity onPress={() => removeResource(r)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="trash-outline" size={17} color={COLORS.error} />
+            myResources.map((r) => {
+              const open = expandedRes === r.id;
+              return (
+                <View key={r.id} style={styles.item}>
+                  <TouchableOpacity style={styles.customRow} onPress={() => setExpandedRes(open ? null : r.id)} activeOpacity={0.7}>
+                    <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
+                    <Text style={[styles.itemTitle, { flex: 1 }]} numberOfLines={1}>{r.title}</Text>
+                    {resQuery ? <Text style={styles.resTag}>{r.instrument} · {r.level}</Text> : null}
                   </TouchableOpacity>
+                  {open && (
+                    <>
+                      {!!r.description && <Text style={styles.itemDetail}>{r.description}</Text>}
+                      <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
+                        <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+                        <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
+                      </TouchableOpacity>
+                      <View style={styles.resActions}>
+                        <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
+                          <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                          <Text style={styles.resActionText}>Assign</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.resAction} onPress={() => openEdit(r)} activeOpacity={0.7}>
+                          <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                          <Text style={styles.resActionText}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.resAction} onPress={() => removeResource(r)} activeOpacity={0.7}>
+                          <Ionicons name="trash-outline" size={14} color={COLORS.error} />
+                          <Text style={[styles.resActionText, { color: COLORS.error }]}>Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
                 </View>
-                {!!r.description && <Text style={styles.itemDetail}>{r.description}</Text>}
-                <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
-                  <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                  <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.assignRow} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
-                  <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
-                  <Text style={styles.assignRowText}>Assign to student</Text>
-                </TouchableOpacity>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
 
-        {categories.map((cat) => {
-          const meta = CATEGORY_META[cat];
-          return (
-            <View key={cat} style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name={meta.icon} size={16} color={COLORS.primary} />
-                <Text style={styles.sectionTitle}>{meta.label}</Text>
+        {/* Layout editor toggle — reorder / show-hide the category sections */}
+        <View style={styles.layoutBar}>
+          <Text style={styles.layoutHint}>{editLayout ? 'Reorder or hide sections' : `Sections · ${instrument} · ${level}`}</Text>
+          <TouchableOpacity
+            style={[styles.layoutBtn, editLayout && styles.layoutBtnActive]}
+            onPress={() => (editLayout ? saveLayout() : setEditLayout(true))}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={editLayout ? 'checkmark' : 'options-outline'} size={15} color={editLayout ? '#fff' : COLORS.primary} />
+            <Text style={[styles.layoutBtnText, editLayout && { color: '#fff' }]}>{editLayout ? 'Done' : 'Edit layout'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {editLayout ? (
+          <CategoryEditList layout={mergedLayout} onReorder={setCatLayout} onToggle={toggleCatVisible} />
+        ) : (
+          orderedCats.map((entry) => {
+            const cat = entry.id;
+            const meta = CATEGORY_META[cat];
+            const items = visibleItems(cat);
+            const collapsed = collapsedCats.has(cat);
+            return (
+              <View key={cat} style={styles.section}>
+                <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleCollapse(cat)} activeOpacity={0.7}>
+                  <Ionicons name={meta.icon} size={16} color={COLORS.primary} />
+                  <Text style={[styles.sectionTitle, { flex: 1 }]}>{meta.label}</Text>
+                  <Text style={styles.sectionCount}>{items.length}</Text>
+                  <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
+                {!collapsed && (
+                  items.length === 0
+                    ? <Text style={styles.emptyRes}>All removed. Nothing here for {instrument} · {level}.</Text>
+                    : items.map((item, idx) => (
+                        <ResourceItem
+                          key={`${cat}_${idx}`}
+                          item={item}
+                          onAssign={cat === 'tips' ? null : setAssignTarget}
+                          onRemove={() => removeBuiltin(cat, item)}
+                        />
+                      ))
+                )}
               </View>
-              {data[cat].map((item, idx) => (
-                <ResourceItem key={`${cat}_${idx}`} item={item} onAssign={setAssignTarget} />
-              ))}
-            </View>
-          );
-        })}
+            );
+          })
+        )}
+
+        {hidden.length > 0 && !editLayout && (
+          <TouchableOpacity style={styles.restoreRow} onPress={() => saveHidden([])} activeOpacity={0.7}>
+            <Ionicons name="refresh" size={14} color={COLORS.textSecondary} />
+            <Text style={styles.restoreText}>Restore {hidden.length} removed resource{hidden.length === 1 ? '' : 's'}</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
@@ -226,8 +475,8 @@ export default function ResourceLibraryScreen() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Add resource</Text>
-              <Text style={styles.modalSub}>Saved under {instrument} · {level}</Text>
+              <Text style={styles.modalTitle}>{editingId ? 'Edit resource' : 'Add resource'}</Text>
+              <Text style={styles.modalSub}>{editingId ? 'Update this resource' : `Saved under ${instrument} · ${level}`}</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Title (e.g. Beginner strumming drill)"
@@ -254,11 +503,11 @@ export default function ResourceLibraryScreen() {
                 numberOfLines={3}
               />
               <View style={styles.modalBtns}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); setNewTitle(''); setNewUrl(''); setNewDesc(''); }}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={addResource}>
-                  <Text style={styles.saveText}>Add</Text>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveResource}>
+                  <Text style={styles.saveText}>{editingId ? 'Save' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -332,7 +581,23 @@ const styles = StyleSheet.create({
   pillTextActive: { color: COLORS.text },
   section: { marginTop: SPACING.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACING.sm },
+  editRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, height: 56,
+    backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm,
+  },
+  editRowDragging: { borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  editRowName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  grip: { paddingHorizontal: 2, paddingVertical: 4 },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+  sectionCount: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  layoutBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl },
+  layoutHint: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, flex: 1 },
+  layoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
+  layoutBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  layoutBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  restoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.lg },
+  restoreText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
   item: {
     backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md,
     marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border,
@@ -347,6 +612,16 @@ const styles = StyleSheet.create({
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm,
+  },
+  searchInput: { flex: 1, color: COLORS.text, fontSize: 14, padding: 0 },
+  resTag: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  resActions: { flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  resAction: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  resActionText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   pickLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: SPACING.md, marginBottom: SPACING.xs },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   pickName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },

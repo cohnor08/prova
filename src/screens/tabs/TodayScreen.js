@@ -735,6 +735,12 @@ export default function TodayScreen({ navigation }) {
           {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
         </Text>
 
+        {(userData?.streak || 0) > 0 && (
+          <View style={styles.streakChip}>
+            <Text style={styles.streakChipText}>🔥 {userData.streak} day{userData.streak === 1 ? '' : 's'} streak</Text>
+          </View>
+        )}
+
         {/* Day picker */}
         <View style={styles.dayRow}>
           {DAY_ORDER.map((day) => {
@@ -1052,6 +1058,12 @@ const styles = StyleSheet.create({
   dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted, marginTop: 3 },
   dayDotSelected: { backgroundColor: COLORS.text },
 
+  streakChip: {
+    alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.accent + '1A', borderRadius: 999, borderWidth: 1, borderColor: COLORS.accent + '44',
+    paddingVertical: 5, paddingHorizontal: 12, marginTop: SPACING.sm,
+  },
+  streakChipText: { color: COLORS.accent, fontSize: 13, fontWeight: '800' },
   summaryCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: SPACING.lg },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },

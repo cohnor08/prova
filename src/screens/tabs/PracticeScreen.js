@@ -41,7 +41,7 @@ const CATEGORY_COLORS = {
 const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
-const BPM_MAX = 200;
+const BPM_MAX = 250;
 const THUMB_SIZE = 26;
 const REC_ART = 130; // cover-tile size for "Picked for your level" carousel cards
 
@@ -238,6 +238,32 @@ function hzToNote(hz) {
     octave: Math.floor(midi / 12) - 1,
     cents: Math.round(1200 * Math.log2(hz / refHz)),
   };
+}
+
+// The tuning needle. Animates toward the target position so it glides smoothly
+// instead of snapping with every (slightly noisy) pitch reading.
+function TunerNeedle({ ratio, color, visible }) {
+  const anim = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: ratio, duration: 260, useNativeDriver: false }).start();
+  }, [ratio]);
+  const left = anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'], extrapolate: 'clamp' });
+  return (
+    <View style={styles.needleWrap}>
+      <View style={styles.needleTrack}>
+        <View style={styles.needleZone} />
+        <View style={styles.needleCenter} />
+        {visible && (
+          <Animated.View style={[styles.needleIndicator, { left, backgroundColor: color }]} />
+        )}
+      </View>
+      <View style={styles.needleLabels}>
+        <Text style={styles.needleLabel}>♭</Text>
+        <Text style={styles.needleLabel}>0</Text>
+        <Text style={styles.needleLabel}>♯</Text>
+      </View>
+    </View>
+  );
 }
 
 const TUNER_RECORDING_OPTIONS = {
@@ -506,10 +532,11 @@ export default function PracticeScreen({ route, navigation }) {
         const hz = parsed ? detectPitchHz(parsed.samples, parsed.sampleRate) : null;
         if (hz && isTuningRef.current) {
           misses = 0;
-          // Smooth readings with an EMA, but snap if the pitch jumps (new string)
+          // Smooth readings with a heavy EMA so the needle glides instead of
+          // jumping; snap straight to the new pitch if it jumps (new string).
           const prev = smoothedHzRef.current;
           const smoothed = (prev && Math.abs(hz - prev) / prev < 0.15)
-            ? prev * 0.5 + hz * 0.5
+            ? prev * 0.8 + hz * 0.2
             : hz;
           smoothedHzRef.current = smoothed;
           setDetectedHz(smoothed);
@@ -589,7 +616,7 @@ export default function PracticeScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.preGigBanner}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('Schedule')}
+            onPress={() => navigation.navigate('Schedule', { date: nextGig.date })}
           >
             <View style={styles.preGigIcon}>
               <Ionicons name="megaphone" size={20} color="#fff" />
@@ -891,27 +918,13 @@ export default function PracticeScreen({ route, navigation }) {
                       : inTune
                         ? '✓ In tune'
                         : note.cents < 0
-                          ? `${Math.abs(note.cents)}¢ flat · tune up`
-                          : `${note.cents}¢ sharp · tune down`}
+                          ? 'Tune up'
+                          : 'Tune down'}
                 </Text>
               </View>
 
-              {/* Needle / cents meter */}
-              <View style={styles.needleWrap}>
-                <View style={styles.needleTrack}>
-                  {/* in-tune zone */}
-                  <View style={styles.needleZone} />
-                  <View style={styles.needleCenter} />
-                  {note && (
-                    <View style={[styles.needleIndicator, { left: `${ratio * 100}%`, backgroundColor: color }]} />
-                  )}
-                </View>
-                <View style={styles.needleLabels}>
-                  <Text style={styles.needleLabel}>♭</Text>
-                  <Text style={styles.needleLabel}>0</Text>
-                  <Text style={styles.needleLabel}>♯</Text>
-                </View>
-              </View>
+              {/* Needle / cents meter — the bar is the tuning indicator */}
+              <TunerNeedle ratio={ratio} color={color} visible={!!note} />
 
               {/* Standard-tuning reference — highlights the string you're playing */}
               <View style={styles.tunerStringRow}>
