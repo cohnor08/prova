@@ -1358,7 +1358,12 @@ Sent from Prova`;
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = student.streak || 0;
-              const hours = Math.floor((student.totalMinutes || 0) / 60);
+              const totalMin = student.totalMinutes || 0;
+              const hrs = Math.floor(totalMin / 60);
+              const remMin = totalMin % 60;
+              const practiceLabel = hrs > 0
+                ? (remMin > 0 ? `${hrs}h ${remMin}m` : `${hrs}h`)
+                : `${remMin}m`;
               const assignedCount = student.assignedTasks?.length || 0;
               const doneCount = student.assignedTasks?.filter((t) => t.completed).length || 0;
               const hasPracticeToday = student.availableDays?.includes(todayName);
@@ -1398,7 +1403,7 @@ Sent from Prova`;
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statBox}>
-                          <Text style={styles.statValue}>{hours}h</Text>
+                          <Text style={styles.statValue}>{practiceLabel}</Text>
                           <Text style={styles.statLabel}>total practice</Text>
                         </View>
                         <View style={styles.statDivider} />
