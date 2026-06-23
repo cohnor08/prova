@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Keyboard,
 } from 'react-native';
@@ -45,7 +45,7 @@ const TYPE_META = {
   due: { color: COLORS.error, icon: 'alert-circle', label: 'Task due' },
 };
 
-export default function ScheduleScreen({ navigation }) {
+export default function ScheduleScreen({ navigation, route }) {
   const todayStr = ymd(new Date());
   const [lessons, setLessons] = useState([]);
   const [gigs, setGigs] = useState([]);
@@ -53,6 +53,16 @@ export default function ScheduleScreen({ navigation }) {
   const [tasks, setTasks] = useState([]);
   const [cursor, setCursor] = useState(new Date());
   const [selected, setSelected] = useState(todayStr);
+
+  // Open straight to a specific day when navigated with a `date` param (e.g.
+  // tapping the next-lesson row on Today).
+  useEffect(() => {
+    const d = route?.params?.date;
+    if (!d) return;
+    setSelected(d);
+    const parsed = parseYmd(d);
+    if (!isNaN(parsed)) setCursor(parsed);
+  }, [route?.params?.date]);
 
   const [showAddGig, setShowAddGig] = useState(false);
   const [newGigName, setNewGigName] = useState('');

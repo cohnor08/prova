@@ -49,6 +49,41 @@ function assignedDueLabel(due) {
   return { text: `Due ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
 }
 
+const pad2 = (n) => String(n).padStart(2, '0');
+const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// The next date a lesson lands on, today or later (handles weekly recurrence).
+// Returns a Date (midnight) or null if it has no upcoming occurrence.
+function nextLessonOccurrence(lesson, from) {
+  const startYmd = lesson.date;
+  if (!startYmd) return null;
+  if (lesson.repeat === 'weekly') {
+    const startDow = new Date(`${startYmd}T00:00:00`).getDay();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(from); d.setHours(0, 0, 0, 0); d.setDate(from.getDate() + i);
+      if (ymdLocal(d) >= startYmd && d.getDay() === startDow) return d;
+    }
+    return null;
+  }
+  return ymdLocal(from) <= startYmd ? new Date(`${startYmd}T00:00:00`) : null;
+}
+
+// "4:00 PM" from "16:00"
+function fmtLessonTime(hhmm) {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${(h % 12) || 12}:${pad2(m || 0)} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+// "Today" / "Tomorrow" / "Mon, Jun 30"
+function lessonDayLabel(d) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((d - t) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 // One teacher-assigned task on the student's Today screen. If the teacher set a
 // timer (durationMin), the "Done" button is locked until the countdown finishes,
 // so the student can't just tap Done without practising.
@@ -284,6 +319,7 @@ export default function TodayScreen({ navigation }) {
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
+  const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
@@ -418,6 +454,18 @@ export default function TodayScreen({ navigation }) {
       const weeklyPlan = data?.practicePlan?.weeklyPlan || {};
       setPlan(weeklyPlan);
       setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
+
+      // Pull this student's lessons from their linked teacher's doc, so we can
+      // surface the next upcoming lesson on Today.
+      if (data?.teacherUid) {
+        try {
+          const tSnap = await getDoc(doc(db, 'users', data.teacherUid));
+          const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
+          setLessons(all.filter((l) => l.studentUid === uid));
+        } catch { setLessons([]); }
+      } else {
+        setLessons([]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -648,6 +696,14 @@ export default function TodayScreen({ navigation }) {
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
 
+  // The soonest upcoming lesson from the student's teacher, surfaced on Today.
+  const nowDate = new Date();
+  const nextLesson = lessons
+    .map((l) => ({ lesson: l, when: nextLessonOccurrence(l, nowDate) }))
+    .filter((x) => x.when)
+    .sort((a, b) => a.when - b.when)[0] || null;
+  const lessonIsToday = nextLesson && lessonDayLabel(nextLesson.when) === 'Today';
+
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
@@ -792,7 +848,7 @@ export default function TodayScreen({ navigation }) {
         )}
 
         {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
-        {isToday && soloTasks.length > 0 && (
+        {isToday && (soloTasks.length > 0 || nextLesson) && (
           <View style={styles.teacherCard}>
             {soloTasks.length >= 3 ? (
               <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
@@ -806,6 +862,23 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
               </View>
+            )}
+            {nextLesson && (
+              <TouchableOpacity
+                style={styles.lessonRow}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Practice', {
+                  screen: 'Schedule',
+                  params: { date: ymdLocal(nextLesson.when) },
+                  initial: false,
+                })}
+              >
+                <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
+                <Text style={styles.lessonRowText} numberOfLines={1}>
+                  {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
             )}
             {(soloTasks.length < 3 || soloOpen) && soloTasks.map((t) => (
               <TeacherTaskCard
@@ -1105,6 +1178,12 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.accent + '18',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
+  lessonRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 9, paddingHorizontal: 10, marginTop: SPACING.sm,
+    backgroundColor: COLORS.primary + '12', borderRadius: 10,
+  },
+  lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
