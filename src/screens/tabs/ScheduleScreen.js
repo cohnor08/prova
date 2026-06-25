@@ -35,6 +35,22 @@ function timeLabel(v) {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+// Forgiving parse of a typed time into "HH:MM" 24h; accepts "16:30", "4:30 pm",
+// "4pm", "9". Returns '' if it can't make sense of it.
+function normalizeTime(raw) {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const ap = m[3] ? m[3].toLowerCase() : null;
+  if (ap === 'pm' && h < 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  if (h > 23 || min > 59) return '';
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
 function prettyDate(ymdStr) {
   return parseYmd(ymdStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
@@ -64,9 +80,14 @@ export default function ScheduleScreen({ navigation, route }) {
     if (!isNaN(parsed)) setCursor(parsed);
   }, [route?.params?.date]);
 
-  const [showAddGig, setShowAddGig] = useState(false);
+  const [personalEvents, setPersonalEvents] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addType, setAddType] = useState('gig'); // 'gig' | 'task' | 'lesson'
   const [newGigName, setNewGigName] = useState('');
   const [newGigSetlistId, setNewGigSetlistId] = useState(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [newNote, setNewNote] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -81,6 +102,7 @@ export default function ScheduleScreen({ navigation, route }) {
           setGigs(Array.isArray(me.gigs) ? me.gigs : []);
           setSetlists(Array.isArray(me.setlists) ? me.setlists : []);
           setTasks((Array.isArray(me.assignedTasks) ? me.assignedTasks : []).filter((t) => t.dueDate));
+          setPersonalEvents(Array.isArray(me.personalEvents) ? me.personalEvents : []);
           if (me.teacherUid) {
             const tSnap = await getDoc(doc(db, 'users', me.teacherUid));
             const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
@@ -104,24 +126,64 @@ export default function ScheduleScreen({ navigation, route }) {
     }
   };
 
-  const addGig = () => {
-    const name = newGigName.trim();
-    if (!name) { Alert.alert('Name your gig', 'Give the gig a name first.'); return; }
-    const gig = {
-      id: `gig_${Date.now()}`,
-      name: name.slice(0, 60),
+  const savePersonal = async (next) => {
+    setPersonalEvents(next);
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't save your event. Check your connection and try again.");
+    }
+  };
+
+  const resetForm = () => {
+    setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime(''); setNewNote('');
+    setShowAdd(false); Keyboard.dismiss();
+  };
+
+  // Add whatever type the chooser is on. Gigs live in `gigs`; self-assigned
+  // tasks and out-of-school lessons live in `personalEvents` on the user doc.
+  const addEvent = () => {
+    if (addType === 'gig') {
+      const name = newGigName.trim();
+      if (!name) { Alert.alert('Name your gig', 'Give the gig a name first.'); return; }
+      const gig = {
+        id: `gig_${Date.now()}`,
+        name: name.slice(0, 60),
+        date: selected,
+        setlistId: newGigSetlistId || null,
+        createdAt: new Date().toISOString(),
+      };
+      saveGigs([...gigs, gig].sort((a, b) => a.date.localeCompare(b.date)));
+      resetForm();
+      return;
+    }
+    const title = newTitle.trim();
+    if (!title) {
+      Alert.alert(addType === 'task' ? 'Name your task' : 'Name your lesson', 'Give it a name first.');
+      return;
+    }
+    const ev = {
+      id: `pe_${Date.now()}`,
+      type: addType, // 'task' | 'lesson'
+      title: title.slice(0, 80),
       date: selected,
-      setlistId: newGigSetlistId || null,
+      time: addType === 'lesson' ? normalizeTime(newTime) : '',
+      note: newNote.trim().slice(0, 140),
       createdAt: new Date().toISOString(),
     };
-    saveGigs([...gigs, gig].sort((a, b) => a.date.localeCompare(b.date)));
-    setNewGigName(''); setNewGigSetlistId(null); setShowAddGig(false);
-    Keyboard.dismiss();
+    savePersonal([...personalEvents, ev].sort((a, b) => a.date.localeCompare(b.date)));
+    resetForm();
   };
 
   const removeGig = (id, name) => Alert.alert('Remove gig?', name, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: () => saveGigs(gigs.filter((g) => g.id !== id)) },
+  ]);
+
+  const removePersonal = (id, title) => Alert.alert('Remove event?', title, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: () => savePersonal(personalEvents.filter((e) => e.id !== id)) },
   ]);
 
   const eventsOn = (dateStr) => {
@@ -139,6 +201,18 @@ export default function ScheduleScreen({ navigation, route }) {
         const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
         out.push({ type: 'due', title: t.title || 'Task due', sub: t.className || null, time: hh, done: !!t.completed });
       }
+    });
+    // Self-added events: personal tasks show as a due marker, out-of-school
+    // lessons as a lesson. Both are removable (they carry personalId).
+    personalEvents.forEach((p) => {
+      if (p.date !== dateStr) return;
+      out.push({
+        type: p.type === 'lesson' ? 'lesson' : 'due',
+        title: p.title || (p.type === 'lesson' ? 'Lesson' : 'Task'),
+        sub: p.note || null,
+        time: p.time || null,
+        personalId: p.id,
+      });
     });
     return out.sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
   };
@@ -220,7 +294,7 @@ export default function ScheduleScreen({ navigation, route }) {
             const allDueDone = dueEvents.length > 0 && dueEvents.every((e) => e.done);
             const dotColor = (tp) => (tp === 'due' && allDueDone ? COLORS.success : TYPE_META[tp].color);
             return (
-              <TouchableOpacity key={d} style={styles.cell} onPress={() => { setSelected(cellYmd); setShowAddGig(false); }} activeOpacity={0.7}>
+              <TouchableOpacity key={d} style={styles.cell} onPress={() => { setSelected(cellYmd); setShowAdd(false); }} activeOpacity={0.7}>
                 <View style={[styles.cellInner, isSel && styles.cellSelected, isToday && !isSel && styles.cellToday]}>
                   <Text style={[styles.cellText, isSel && { color: '#fff', fontWeight: '800' }]}>{d}</Text>
                 </View>
@@ -236,40 +310,108 @@ export default function ScheduleScreen({ navigation, route }) {
 
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle} numberOfLines={1}>{prettyDate(selected)}</Text>
-          <TouchableOpacity style={styles.addGigBtn} onPress={() => setShowAddGig((v) => !v)} activeOpacity={0.85}>
-            <Ionicons name={showAddGig ? 'close' : 'add'} size={15} color="#fff" />
-            <Text style={styles.addGigText}>{showAddGig ? 'Cancel' : 'Add gig'}</Text>
+          <TouchableOpacity style={styles.addGigBtn} onPress={() => setShowAdd((v) => !v)} activeOpacity={0.85}>
+            <Ionicons name={showAdd ? 'close' : 'add'} size={15} color="#fff" />
+            <Text style={styles.addGigText}>{showAdd ? 'Cancel' : 'Add event'}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Add-gig form (date = the selected calendar day) */}
-        {showAddGig && (
+        {/* Add-event form (date = the selected calendar day). The student picks
+            what kind of event: a gig, a task they set themselves, or an
+            out-of-school lesson. */}
+        {showAdd && (
           <View style={styles.gigForm}>
-            <TextInput
-              style={styles.gigInput}
-              placeholder="Gig name (e.g. Sarah's wedding)"
-              placeholderTextColor={COLORS.textMuted}
-              value={newGigName}
-              onChangeText={setNewGigName}
-              maxLength={60}
-            />
-            {setlists.length > 0 && (
+            <View style={styles.typeRow}>
+              {[
+                { key: 'gig', label: 'Gig', icon: 'mic' },
+                { key: 'task', label: 'Task', icon: 'checkbox-outline' },
+                { key: 'lesson', label: 'Lesson', icon: 'school' },
+              ].map((t) => {
+                const on = addType === t.key;
+                return (
+                  <TouchableOpacity key={t.key} style={[styles.typeChip, on && styles.typeChipOn]} onPress={() => setAddType(t.key)} activeOpacity={0.85}>
+                    <Ionicons name={t.icon} size={14} color={on ? COLORS.primary : COLORS.textMuted} />
+                    <Text style={[styles.typeChipText, on && styles.typeChipTextOn]}>{t.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {addType === 'gig' && (
               <>
-                <Text style={styles.gigFormLabel}>SETLIST (OPTIONAL)</Text>
-                <View style={styles.gigChips}>
-                  {setlists.map((s) => {
-                    const on = newGigSetlistId === s.id;
-                    return (
-                      <TouchableOpacity key={s.id} style={[styles.gigChip, on && styles.gigChipOn]} onPress={() => setNewGigSetlistId(on ? null : s.id)} activeOpacity={0.8}>
-                        <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                <TextInput
+                  style={styles.gigInput}
+                  placeholder="Gig name (e.g. Sarah's wedding)"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newGigName}
+                  onChangeText={setNewGigName}
+                  maxLength={60}
+                />
+                {setlists.length > 0 && (
+                  <>
+                    <Text style={styles.gigFormLabel}>SETLIST (OPTIONAL)</Text>
+                    <View style={styles.gigChips}>
+                      {setlists.map((s) => {
+                        const on = newGigSetlistId === s.id;
+                        return (
+                          <TouchableOpacity key={s.id} style={[styles.gigChip, on && styles.gigChipOn]} onPress={() => setNewGigSetlistId(on ? null : s.id)} activeOpacity={0.8}>
+                            <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
               </>
             )}
-            <TouchableOpacity style={styles.gigSaveBtn} onPress={addGig} activeOpacity={0.85}>
-              <Text style={styles.gigSaveText}>Add gig on {parseYmd(selected).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+
+            {addType === 'task' && (
+              <TextInput
+                style={styles.gigInput}
+                placeholder="Task (e.g. Practice barre chords)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                maxLength={80}
+              />
+            )}
+
+            {addType === 'lesson' && (
+              <>
+                <TextInput
+                  style={styles.gigInput}
+                  placeholder="Lesson (e.g. Lesson with Jane)"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newTitle}
+                  onChangeText={setNewTitle}
+                  maxLength={80}
+                />
+                <TextInput
+                  style={styles.gigInput}
+                  placeholder="Time, optional (e.g. 4:30 PM)"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newTime}
+                  onChangeText={setNewTime}
+                  maxLength={10}
+                />
+              </>
+            )}
+
+            {addType !== 'gig' && (
+              <TextInput
+                style={styles.gigInput}
+                placeholder="Note (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newNote}
+                onChangeText={setNewNote}
+                maxLength={140}
+              />
+            )}
+
+            <TouchableOpacity style={styles.gigSaveBtn} onPress={addEvent} activeOpacity={0.85}>
+              <Text style={styles.gigSaveText}>
+                Add {addType} on {parseYmd(selected).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -290,7 +432,9 @@ export default function ScheduleScreen({ navigation, route }) {
                   {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
                 </Text>
               </View>
-              {e.type === 'gig'
+              {e.personalId
+                ? <TouchableOpacity onPress={() => removePersonal(e.personalId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
+                : e.type === 'gig'
                 ? <TouchableOpacity onPress={() => removeGig(e.gigId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
                 : done ? <Ionicons name="checkmark-circle" size={18} color={COLORS.success} /> : null}
             </View>
@@ -341,6 +485,11 @@ const styles = StyleSheet.create({
   addGigText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   gigForm: { gap: SPACING.sm, marginBottom: SPACING.md },
+  typeRow: { flexDirection: 'row', gap: SPACING.sm },
+  typeChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
+  typeChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '18' },
+  typeChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  typeChipTextOn: { color: COLORS.primary },
   gigInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
   gigFormLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginTop: SPACING.xs },
   gigChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },

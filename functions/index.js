@@ -148,7 +148,13 @@ async function callClaude(apiKey, prompt, maxTokens, model = MODEL, timeoutMs = 
     });
 
     if (!response.ok) {
-      throw new HttpsError('internal', `Claude API error: ${response.status}`);
+      // Surface Anthropic's actual error so failures are diagnosable (a 400 with
+      // "credit balance is too low" reads very differently from a real bad
+      // request). Logged in full; truncated in the client-facing message.
+      let detail = '';
+      try { detail = await response.text(); } catch (_) {}
+      console.error('Claude API error', response.status, detail);
+      throw new HttpsError('internal', `Claude API error: ${response.status} ${detail}`.slice(0, 400));
     }
 
     const data = await response.json();

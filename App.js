@@ -27,6 +27,7 @@ import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
+import LibraryScreen from './src/screens/tabs/LibraryScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 
 const Stack = createNativeStackNavigator();
@@ -53,6 +54,7 @@ function PracticeStackScreen() {
         }}
       />
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
+      <PracticeStack.Screen name="Library" component={LibraryScreen} />
     </PracticeStack.Navigator>
   );
 }

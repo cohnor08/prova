@@ -31,6 +31,17 @@ export function taskPoints(session = {}) {
   return Math.round((session.duration || 0) * POINTS_PER_MIN * mult) + TASK_BASE;
 }
 
+// Teacher/class assignments pay a boosted rate, so doing the work your teacher
+// set is worth more than solo practice. Points are time-proportional (partial
+// credit) and banked per lap — practise 3 of 20 min and you still bank 3 min's
+// worth. The real-time timer is the anti-cheat: a lap can't be worth more than
+// the minutes actually spent, and repeats cost real minutes too.
+export const TEACHER_TASK_MULTIPLIER = 3;
+
+export function teacherTaskPoints(seconds) {
+  return Math.round((Math.max(0, seconds) / 60) * POINTS_PER_MIN * TEACHER_TASK_MULTIPLIER);
+}
+
 // The end-of-day bonus, on top of the per-task points already banked: a finish
 // reward + the streak term + the quality (rating) bonus.
 export function completionBonus(streakDay, rating) {

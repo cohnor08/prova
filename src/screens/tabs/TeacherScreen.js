@@ -1522,8 +1522,9 @@ Sent from Prova`;
                 const groupMap = {};
                 members.forEach((m) => (m.assignedTasks || []).filter((t) => t.classId === c.id).forEach((t) => {
                   const key = `${t.assignedAt}__${t.title}`;
-                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0 };
+                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0, points: 0 };
                   groupMap[key].count += 1;
+                  groupMap[key].points += (t.pointsEarned || 0);
                   if (t.completed) groupMap[key].done += 1;
                 }));
                 const classGroups = Object.values(groupMap).sort((a, b) => (b.assignedAt || '').localeCompare(a.assignedAt || ''));
@@ -1567,11 +1568,18 @@ Sent from Prova`;
                                 <Text style={[styles.classViewPillText, classView === 'progress' && styles.classViewPillTextActive]}>Progress</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
+                                style={[styles.classViewPill, classView === 'effort' && styles.classViewPillActive]}
+                                onPress={() => setClassView('effort')}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.classViewPillText, classView === 'effort' && styles.classViewPillTextActive]}>Class pts</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
                                 style={[styles.classViewPill, classView === 'leaderboard' && styles.classViewPillActive]}
                                 onPress={() => setClassView('leaderboard')}
                                 activeOpacity={0.8}
                               >
-                                <Text style={[styles.classViewPillText, classView === 'leaderboard' && styles.classViewPillTextActive]}>Leaderboard</Text>
+                                <Text style={[styles.classViewPillText, classView === 'leaderboard' && styles.classViewPillTextActive]}>Overall</Text>
                               </TouchableOpacity>
                             </View>
 
@@ -1583,6 +1591,7 @@ Sent from Prova`;
                                     {classGroups.map((g) => (
                                       <View key={g.key} style={styles.classGroupRow}>
                                         <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        {g.points > 0 && <Text style={styles.classGroupPts}>{g.points.toLocaleString()} pts</Text>}
                                         <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
                                         <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                           <Ionicons name="trash-outline" size={16} color={COLORS.error} />
@@ -1594,6 +1603,7 @@ Sent from Prova`;
                                 {members.map((m) => {
                                   const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
                                   const done = mt.filter((t) => t.completed).length;
+                                  const mPts = mt.reduce((sum, t) => sum + (t.pointsEarned || 0), 0);
                                   const sKey = `${c.id}_${m.uid}`;
                                   const sOpen = openStudents.has(sKey);
                                   return (
@@ -1601,6 +1611,7 @@ Sent from Prova`;
                                       <TouchableOpacity style={styles.classMemberRow} onPress={() => toggleStudent(sKey)} activeOpacity={0.7}>
                                         <Ionicons name={sOpen ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
                                         <Text style={styles.classMemberName} numberOfLines={1}>{displayName(m)}</Text>
+                                        {mPts > 0 && <Text style={styles.classMemberPts}>{mPts.toLocaleString()} pts</Text>}
                                         <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
                                           {mt.length ? `${done}/${mt.length}` : '—'}
                                         </Text>
@@ -1631,6 +1642,33 @@ Sent from Prova`;
                                   );
                                 })}
                               </>
+                            ) : classView === 'effort' ? (
+                              // Points each student has banked on THIS class's
+                              // assignments (partial credit + repeats) — the
+                              // assignment scoreboard, mirroring the student view.
+                              (() => {
+                                const ranked = [...members]
+                                  .map((m) => ({
+                                    m,
+                                    pts: (m.assignedTasks || [])
+                                      .filter((t) => t.classId === c.id)
+                                      .reduce((sum, t) => sum + (t.pointsEarned || 0), 0),
+                                  }))
+                                  .sort((a, b) => b.pts - a.pts);
+                                if (ranked.every((r) => r.pts === 0)) {
+                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practising the class tasks.</Text>;
+                                }
+                                return ranked.map(({ m, pts }, i) => {
+                                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                                  return (
+                                    <View key={m.uid} style={styles.lbRow}>
+                                      <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
+                                      <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
+                                      <Text style={styles.lbScore}>{pts.toLocaleString()}</Text>
+                                    </View>
+                                  );
+                                });
+                              })()
                             ) : (
                               [...members]
                                 .sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0))
@@ -1989,6 +2027,7 @@ const styles = StyleSheet.create({
   classMemberEmpty: { color: COLORS.textMuted, fontSize: 12, paddingLeft: 22, paddingBottom: 6 },
   classMemberName: { color: COLORS.text, fontSize: 13, fontWeight: '700', flex: 1, minWidth: 0 },
   classMemberProgress: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  classMemberPts: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700' },
   classTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingLeft: SPACING.xs },
   classTaskTitle: { color: COLORS.textSecondary, fontSize: 12, flex: 1, minWidth: 0 },
   classGroupBox: { backgroundColor: COLORS.surface, borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm },
@@ -1996,6 +2035,7 @@ const styles = StyleSheet.create({
   classGroupRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 6 },
   classGroupTitle: { color: COLORS.text, fontSize: 13, fontWeight: '600', flex: 1, minWidth: 0 },
   classGroupMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  classGroupPts: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700' },
   classViewToggle: { flexDirection: 'row', gap: SPACING.xs, backgroundColor: COLORS.surface, borderRadius: 10, padding: 3, marginBottom: SPACING.sm },
   classViewPill: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
   classViewPillActive: { backgroundColor: COLORS.primary },

@@ -7,9 +7,10 @@ import { PitchDetector } from 'pitchy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { taskPoints, displayScore, formatScore } from '../../lib/score';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -315,11 +316,39 @@ export default function PracticeScreen({ route, navigation }) {
   const [timerActive, setTimerActive] = useState(false);
   const timerRef = useRef(null);
   const timerSecondsRef = useRef(0); // always-current mirror of timerSeconds
+  const awardedRef = useRef({}); // session ids already banked this mount (avoid double-award)
 
-  // When navigated from Today with a specific session, snap to it
+  // Bank a finished session's points and record it as done for today, so it
+  // counts even when practised here in the Practice tab (the Today screen reads
+  // the same shared `sessionProgress` store and won't re-award it).
+  const completeSession = async (session) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !session || awardedRef.current[session.id]) return;
+    awardedRef.current[session.id] = true;
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      const data = snap.data() || {};
+      const today = new Date().toDateString();
+      const prior = data.sessionProgress?.date === today ? (data.sessionProgress.ids || []) : [];
+      if (prior.includes(session.id)) return; // already completed (e.g. on Today)
+      const pts = taskPoints(session);
+      const newScore = displayScore(data) + pts;
+      await updateDoc(doc(db, 'users', uid), {
+        provaScore: newScore,
+        sessionProgress: { date: today, ids: [...prior, session.id] },
+      });
+      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+    } catch (e) {
+      awardedRef.current[session.id] = false; // let them retry on failure
+    }
+  };
+
+  // When navigated from Today with a specific session, snap to it. Clear the
+  // param afterwards so the silent refresh-on-focus loader doesn't lose it.
   useEffect(() => {
     if (route?.params?.activeSession) {
       setActiveSession(route.params.activeSession);
+      navigation.setParams({ activeSession: undefined });
     }
   }, [route?.params?.activeSession]);
 
@@ -355,6 +384,7 @@ export default function PracticeScreen({ route, navigation }) {
           clearInterval(timerRef.current);
           timerRef.current = null;
           setTimerActive(false);
+          completeSession(activeSession); // bank points + mark done when it finishes
           return 0;
         }
         return next;
@@ -475,7 +505,9 @@ export default function PracticeScreen({ route, navigation }) {
       const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       const todaySessions = data?.practicePlan?.weeklyPlan?.[todayName]?.sessions || [];
       setSessions(todaySessions);
-      setActiveSession(todaySessions[0] || null);
+      // Keep whatever's already selected (e.g. the task tapped on Today) across
+      // a silent refresh; only fall back to the first session when nothing is.
+      setActiveSession((cur) => (cur && todaySessions.find((s) => s.id === cur.id)) || cur || todaySessions[0] || null);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -610,6 +642,14 @@ export default function PracticeScreen({ route, navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
+
+        {/* Browse the static lesson library (searchable, no AI) */}
+        <TouchableOpacity style={styles.libraryRow} onPress={() => navigation.navigate('Library')} activeOpacity={0.85}>
+          <Ionicons name="book-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.libraryRowText}>Browse the lesson library</Text>
+          <Ionicons name="search" size={16} color={COLORS.textMuted} />
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
@@ -978,6 +1018,8 @@ const styles = StyleSheet.create({
   toolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toolBtnText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
   toolBtnTextActive: { color: COLORS.text },
+  libraryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 18, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
+  libraryRowText: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
 
   // Task
   taskPlaceholder: { height: 100, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },

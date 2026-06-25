@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
+import { COLORS } from '../../constants/theme';
 import { generatePracticePlan } from '../../lib/claude';
 import { useAuthContext } from '../../contexts/AuthContext';
 import OnboardingInstrument from './OnboardingInstrument';
@@ -85,10 +88,16 @@ export default function OnboardingFlow() {
     if (step > 0) setStep(step - 1);
   };
 
-  if (firstWin) {
-    return <OnboardingFirstWin profile={firstWin.profile} plan={firstWin.plan} onFinish={finishOnboarding} />;
-  }
-  if (generating) return <OnboardingGenerating />;
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out?',
+      'Sign out and go back to the login screen to use a different account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log out', style: 'destructive', onPress: () => signOut(auth).catch(() => {}) },
+      ]
+    );
+  };
 
   const screens = [
     <OnboardingInstrument key="instrument" onNext={handleNext} onBack={null} data={profile} />,
@@ -97,5 +106,31 @@ export default function OnboardingFlow() {
     <OnboardingSchedule key="schedule" onNext={handleNext} onBack={handleBack} data={profile} />,
   ];
 
-  return screens[step];
+  let content;
+  if (firstWin) {
+    content = <OnboardingFirstWin profile={firstWin.profile} plan={firstWin.plan} onFinish={finishOnboarding} />;
+  } else if (generating) {
+    content = <OnboardingGenerating />;
+  } else {
+    content = screens[step];
+  }
+
+  // A persistent escape hatch so a half-finished signup isn't a dead end — drop
+  // back to the login screen to use an existing account.
+  return (
+    <View style={{ flex: 1 }}>
+      {content}
+      <SafeAreaView style={styles.logoutWrap} pointerEvents="box-none">
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+          <Text style={styles.logoutText}>Log out</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  logoutWrap: { position: 'absolute', top: 0, right: 0, alignItems: 'flex-end' },
+  logoutBtn: { marginTop: 6, marginRight: 16, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: (COLORS.card || '#1a1a1a') + 'cc' },
+  logoutText: { color: COLORS.textSecondary || '#aaa', fontSize: 13, fontWeight: '700' },
+});
