@@ -305,7 +305,9 @@ export default function SongsScreen({ route, navigation }) {
 
   // Song library — songs the user wants to learn
   const [songs, setSongs] = useState([]);
+  const [assignedTasks, setAssignedTasks] = useState([]); // teacher-assigned tasks (for their attached songs)
   const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
+  const [expandedSongId, setExpandedSongId] = useState(null); // song expanded into the big player card
   const [songSearch, setSongSearch] = useState('');          // filter the library
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
@@ -527,6 +529,7 @@ export default function SongsScreen({ route, navigation }) {
       setSessions(todaySessions);
       setActiveSession(todaySessions[0] || null);
       setSongs(Array.isArray(data?.songLibrary) ? data.songLibrary : []);
+      setAssignedTasks(Array.isArray(data?.assignedTasks) ? data.assignedTasks : []);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       setTipLink(data?.tipLink || '');
@@ -939,8 +942,41 @@ export default function SongsScreen({ route, navigation }) {
   // dominating the screen. Searching shows all matches (no collapse).
   const SONGS_COLLAPSED = 4;
   const songQuery = songSearch.trim().toLowerCase();
-  const sortedSongs = [...songs].sort((a, b) =>
-    (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+  const songKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
+
+  // Songs the teacher attached to assignments — surfaced here so the student can
+  // practise them, tagged "From your teacher". Not written into songLibrary, and
+  // deduped against songs already in the library.
+  const parseSong = (str) => {
+    const s = String(str).trim();
+    const m = s.match(/^(.*?)\s+(?:-|–|—|by)\s+(.*)$/i);
+    return m ? { title: m[1].trim(), artist: m[2].trim() } : { title: s, artist: '' };
+  };
+  const libKeys = new Set(songs.map(songKey));
+  const teacherSongs = [];
+  const tSeen = new Set();
+  for (const t of assignedTasks) {
+    if (!t || !t.song) continue;
+    const parsed = parseSong(t.song);
+    const k = songKey(parsed);
+    if (!k || tSeen.has(k) || libKeys.has(k)) continue;
+    tSeen.add(k);
+    teacherSongs.push({ id: `teacher-${t.id}`, ...parsed, fromTeacher: true });
+  }
+
+  // The song the user tapped on Today — pinned to the very top so it's easy to find.
+  const focusSong = route?.params?.focusSong || null;
+  const focusKey = focusSong ? songKey(focusSong) : null;
+
+  const rank = (s) => {
+    if (focusKey && songKey(s) === focusKey) return 0; // tapped song first
+    if (s.fromTeacher) return 1;                       // then teacher assignments
+    return 2;                                          // then the rest, alphabetical
+  };
+  const baseSongs = [...teacherSongs, ...songs];
+  const sortedSongs = [...baseSongs].sort((a, b) =>
+    rank(a) - rank(b)
+    || (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
   );
   const filteredSongs = songQuery
     ? sortedSongs.filter((s) =>
@@ -1200,7 +1236,7 @@ export default function SongsScreen({ route, navigation }) {
           )}
 
           {/* List */}
-          {songs.length === 0 ? (
+          {baseSongs.length === 0 ? (
             <View style={styles.songsEmpty}>
               <Ionicons name="musical-notes-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyTaskText}>No songs yet — add your first above</Text>
@@ -1214,32 +1250,85 @@ export default function SongsScreen({ route, navigation }) {
             <View style={styles.songList}>
               {shownSongs.map((s) => {
                 const isToday = songOfTheDay && s.id === songOfTheDay.id;
+                const isFocus = focusKey && songKey(s) === focusKey;
+                const isExpanded = expandedSongId === s.id;
+                const isLoading = loadingSongId === s.id;
+                const isThisPlaying = playingSongId === s.id;
                 return (
-                  <View key={s.id} style={[styles.songRow, isToday && styles.songRowToday]}>
-                    {renderArtwork(s, 48, 10)}
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.songRowTitle} numberOfLines={1}>{s.title}</Text>
-                      {!!s.artist && <Text style={styles.songRowArtist} numberOfLines={1}>{s.artist}</Text>}
-                    </View>
-                    {isToday && <Text style={styles.songRowTodayTag}>TODAY</Text>}
-                    {renderSongControls(s, 24)}
+                  <View key={s.id} style={[styles.songItem, (isToday || isFocus) && styles.songRowToday]}>
                     <TouchableOpacity
-                      onPress={() => removeSong(s.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.songRowInner}
+                      activeOpacity={0.7}
+                      onPress={() => setExpandedSongId(isExpanded ? null : s.id)}
                     >
-                      <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                      {renderArtwork(s, 48, 10, false)}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.songRowTitle} numberOfLines={1}>{s.title}</Text>
+                        {!!s.artist && <Text style={styles.songRowArtist} numberOfLines={1}>{s.artist}</Text>}
+                      </View>
+                      {!s.fromTeacher && isToday && <Text style={styles.songRowTodayTag}>TODAY</Text>}
+                      {!isExpanded && (
+                        <TouchableOpacity
+                          onPress={() => toggleSongPlayback(s)}
+                          disabled={isLoading}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={isLoading ? 'ellipsis-horizontal-circle-outline' : isThisPlaying ? 'pause-circle' : 'play-circle'}
+                            size={26} color={COLORS.primary}
+                          />
+                        </TouchableOpacity>
+                      )}
+                      <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
                     </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={styles.songExpanded}>
+                        {s.fromTeacher && <Text style={styles.songExpTeacherTag}>FROM YOUR TEACHER</Text>}
+                        {renderArtwork(s, 120, 14, false)}
+                        <Text style={styles.songExpTitle} numberOfLines={2}>{s.title}</Text>
+                        {!!s.artist && <Text style={styles.songExpArtist} numberOfLines={1}>{s.artist}</Text>}
+
+                        <TouchableOpacity
+                          style={styles.songExpPlay}
+                          onPress={() => toggleSongPlayback(s)}
+                          disabled={isLoading}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons
+                            name={isLoading ? 'ellipsis-horizontal' : isThisPlaying ? 'pause' : 'play'}
+                            size={22} color="#fff" style={{ marginLeft: isThisPlaying || isLoading ? 0 : 2 }}
+                          />
+                          <Text style={styles.songExpPlayText}>
+                            {isLoading ? 'Loading…' : isThisPlaying ? 'Pause preview' : 'Play preview'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.songExpActions}>
+                          <TouchableOpacity style={styles.songExpBtn} onPress={() => setOpenInSong(s)} activeOpacity={0.8}>
+                            <Ionicons name="open-outline" size={16} color={COLORS.primary} />
+                            <Text style={styles.songExpBtnText}>Open in…</Text>
+                          </TouchableOpacity>
+                          {!s.fromTeacher && (
+                            <TouchableOpacity style={styles.songExpBtn} onPress={() => removeSong(s.id)} activeOpacity={0.8}>
+                              <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                              <Text style={[styles.songExpBtnText, { color: COLORS.textMuted }]}>Remove</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
-              {!songQuery && songs.length > SONGS_COLLAPSED && (
+              {!songQuery && baseSongs.length > SONGS_COLLAPSED && (
                 <TouchableOpacity
                   style={styles.songsToggle}
                   activeOpacity={0.7}
                   onPress={() => setSongsExpanded((v) => !v)}
                 >
                   <Text style={styles.songsToggleText}>
-                    {songsExpanded ? 'Show less' : `Show all ${songs.length} songs`}
+                    {songsExpanded ? 'Show less' : `Show all ${baseSongs.length} songs`}
                   </Text>
                   <Ionicons
                     name={songsExpanded ? 'chevron-up' : 'chevron-down'}
@@ -1837,13 +1926,36 @@ const styles = StyleSheet.create({
     paddingVertical: 10, marginTop: 2,
   },
   songsToggleText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
-  songRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+  songItem: {
     backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  songRowInner: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
   },
+  songExpanded: {
+    alignItems: 'center', paddingHorizontal: SPACING.md, paddingTop: SPACING.sm, paddingBottom: SPACING.lg,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  songExpTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: SPACING.md },
+  songExpArtist: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 2 },
+  songExpPlay: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.primary, borderRadius: 999,
+    paddingVertical: 12, paddingHorizontal: 28, marginTop: SPACING.md,
+  },
+  songExpPlayText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  songExpActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
+  songExpBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
+    paddingVertical: 8, paddingHorizontal: 14,
+  },
+  songExpBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   songRowToday: { borderColor: COLORS.accent + '66', backgroundColor: COLORS.accent + '12' },
   songRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
   songRowArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   songRowTodayTag: { color: COLORS.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1, marginRight: 4 },
+  songExpTeacherTag: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm },
 });

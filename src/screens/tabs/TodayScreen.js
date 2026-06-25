@@ -6,18 +6,17 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
+import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
 import { COLORS, SPACING } from '../../constants/theme';
 import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore } from '../../lib/score';
+import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
+import { displayName } from '../../lib/displayName';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-// Demo: show a sample teacher-assigned task on Today so the feature is visible
-// without a real teacher assigning one. Set to false before launch.
-const SEED_DEMO_TEACHER_TASK = true;
 
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
@@ -49,6 +48,224 @@ function assignedDueLabel(due) {
   if (days === 0) return { text: `Due ${time}`, overdue: false };
   if (days === 1) return { text: `Tomorrow ${time}`, overdue: false };
   return { text: `Due ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`, overdue: false };
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// The next date a lesson lands on, today or later (handles weekly recurrence).
+// Returns a Date (midnight) or null if it has no upcoming occurrence.
+function nextLessonOccurrence(lesson, from) {
+  const startYmd = lesson.date;
+  if (!startYmd) return null;
+  if (lesson.repeat === 'weekly') {
+    const startDow = new Date(`${startYmd}T00:00:00`).getDay();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(from); d.setHours(0, 0, 0, 0); d.setDate(from.getDate() + i);
+      if (ymdLocal(d) >= startYmd && d.getDay() === startDow) return d;
+    }
+    return null;
+  }
+  return ymdLocal(from) <= startYmd ? new Date(`${startYmd}T00:00:00`) : null;
+}
+
+// "4:00 PM" from "16:00"
+function fmtLessonTime(hhmm) {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${(h % 12) || 12}:${pad2(m || 0)} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+// "Today" / "Tomorrow" / "Mon, Jun 30"
+function lessonDayLabel(d) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((d - t) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// One teacher-assigned task on the student's Today screen. The timer counts the
+// time actually practised; tapping "Done" banks points for THIS lap (partial
+// credit — 3 of 20 min still pays), then "Practice again" lets them run another
+// lap for more. Points are time-proportional, so the only way to score is to
+// put in the real minutes.
+function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong }) {
+  const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
+  const [elapsed, setElapsed] = useState(0);   // seconds practised THIS lap
+  const [running, setRunning] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  // Pause at the target as a natural stopping point — they can bank or keep going.
+  useEffect(() => {
+    if (target > 0 && elapsed >= target && running) setRunning(false);
+  }, [elapsed, target, running]);
+
+  const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  const due = assignedDueLabel(task.dueDate);
+  const lapPts = teacherTaskPoints(elapsed);
+  const reachedTarget = target > 0 && elapsed >= target;
+  const earnedSoFar = task.pointsEarned || 0;
+  const laps = task.timesCompleted || 0;
+
+  const bank = () => {
+    if (elapsed <= 0) return;
+    onBank(task.id, elapsed);
+    setRunning(false);
+    setElapsed(0);
+  };
+
+  return (
+    <View style={styles.teacherTask}>
+      <View style={styles.teacherTaskRow}>
+        <TouchableOpacity style={styles.teacherTaskMain} onPress={onToggle} activeOpacity={0.7}>
+          <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.teacherTaskTitle, task.completed && styles.teacherTaskDone]} numberOfLines={expanded ? undefined : 2}>{task.title}</Text>
+            {!task.completed && due && (
+              <Text style={[styles.teacherDue, due.overdue && styles.teacherDueOverdue]}>{due.text}</Text>
+            )}
+            {earnedSoFar > 0 && (
+              <Text style={styles.teacherEarned}>
+                {formatScore(earnedSoFar)} pts earned{laps > 1 ? ` (${laps} laps)` : ''}
+              </Text>
+            )}
+          </View>
+        </TouchableOpacity>
+        {task.completed && <Ionicons name="checkmark-circle" size={22} color={COLORS.success} style={{ marginLeft: 6 }} />}
+      </View>
+
+      {expanded && (
+      <View style={styles.ttTimer}>
+        {target > 0 && (
+          <View style={styles.ttTimerBarBg}>
+            <View style={[styles.ttTimerBarFill, { width: `${Math.min(1, elapsed / target) * 100}%` }]} />
+          </View>
+        )}
+        <View style={styles.ttTimerRow}>
+          <View style={styles.ttTimerLeft}>
+            <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
+            {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts} pts</Text>}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity style={styles.ttTimerBtn} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
+              <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
+              <Text style={styles.ttTimerBtnText}>
+                {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? 'Practice again' : 'Start'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
+              onPress={bank}
+              activeOpacity={elapsed > 0 ? 0.85 : 1}
+            >
+              <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]}>
+                {reachedTarget ? 'Done' : 'Bank'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+      )}
+
+      {expanded && !!task.description && <Text style={styles.teacherTaskDesc}>{task.description}</Text>}
+      {expanded && !!task.youtube && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.7}>
+          <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+          <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Watch: {task.youtube}</Text>
+        </TouchableOpacity>
+      )}
+      {expanded && !!task.song && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
+          <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
+          <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {task.song}</Text>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+// Live scoreboard for one class: ranks classmates by the points they've banked
+// on this class's assignments, so practising the teacher's tasks becomes a race.
+// Reads the teacher doc → class members → each member's assignedTasks (the same
+// reads the class leaderboard already does, so Firestore rules allow it).
+function ClassScoreboard({ classId, teacherUid, myUid }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState(null);
+
+  const load = async () => {
+    if (!teacherUid || !classId) return;
+    setLoading(true);
+    try {
+      const tSnap = await getDoc(doc(db, 'users', teacherUid));
+      const classes = Array.isArray(tSnap.data()?.classes) ? tSnap.data().classes : [];
+      const klass = classes.find((c) => c.id === classId);
+      const uids = (klass?.studentUids || []);
+      const memberSnaps = await Promise.all(uids.map((uid) => getDoc(doc(db, 'users', uid))));
+      const board = memberSnaps
+        .filter((s) => s.exists())
+        .map((s) => {
+          const d = s.data();
+          const points = (d.assignedTasks || [])
+            .filter((t) => t.classId === classId)
+            .reduce((sum, t) => sum + (t.pointsEarned || 0), 0);
+          return { uid: s.id, name: displayName(d), points };
+        })
+        .sort((a, b) => b.points - a.points);
+      setRows(board);
+    } catch (e) {
+      setRows([]);
+    }
+    setLoading(false);
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !loading) load(); // refetch on open so freshly-banked points show
+  };
+
+  return (
+    <View style={styles.scoreboard}>
+      <TouchableOpacity style={styles.scoreboardHeader} onPress={toggle} activeOpacity={0.7}>
+        <Ionicons name="trophy" size={15} color={COLORS.accent || COLORS.primary} />
+        <Text style={styles.scoreboardTitle}>Class scoreboard</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+      </TouchableOpacity>
+      {open && (
+        loading || rows === null ? (
+          <Text style={styles.scoreboardEmpty}>Loading…</Text>
+        ) : rows.length === 0 ? (
+          <Text style={styles.scoreboardEmpty}>No classmates yet.</Text>
+        ) : (
+          rows.map((r, i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+            const isMe = r.uid === myUid;
+            return (
+              <View key={r.uid} style={[styles.scoreboardRow, isMe && styles.scoreboardRowMe]}>
+                <Text style={styles.scoreboardRank}>{medal || `${i + 1}`}</Text>
+                <Text style={[styles.scoreboardName, isMe && styles.scoreboardNameMe]} numberOfLines={1}>
+                  {isMe ? 'You' : r.name}
+                </Text>
+                <Text style={styles.scoreboardPts}>{formatScore(r.points)}</Text>
+              </View>
+            );
+          })
+        )
+      )}
+    </View>
+  );
 }
 
 function SkeletonBlock({ width, height, style }) {
@@ -122,6 +339,10 @@ function SessionCard({ session, onComplete, completed, onStart }) {
         {expanded && (<>
         <Text style={styles.sessionDesc}>{session.description}</Text>
         <ReferenceLink reference={session.reference} />
+        <View style={styles.sessionPtsRow}>
+          <Ionicons name="sparkles" size={13} color={COLORS.accent} />
+          <Text style={styles.sessionPts}>Worth +{Math.round(taskPoints(session) / 5) * 5} Prova points</Text>
+        </View>
         {!completed && (
           <View>
             {timerActive && (
@@ -184,6 +405,7 @@ function PlanCard({ session }) {
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionDuration}>{session.duration} min</Text>
           <Text style={[styles.sessionCategory, { color }]}>{session.category.replace('_', ' ')}</Text>
+          <Text style={styles.sessionPts}>+{Math.round(taskPoints(session) / 5) * 5} pts</Text>
         </View>
       </View>
     </View>
@@ -194,18 +416,43 @@ export default function TodayScreen({ navigation }) {
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
+  const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [regenerating, setRegenerating] = useState(false);
-  const [demoTaskDone, setDemoTaskDone] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
+  const [challengeOpen, setChallengeOpen] = useState(false);
+  const [soloOpen, setSoloOpen] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
+  const toggleGroup = (key) => setCollapsedGroups((prev) => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    return n;
+  });
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(300)).current;
   const restorePromptedRef = useRef(false); // pop the restore modal once per app open
 
   useEffect(() => { loadData(); }, []);
+
+  // On refocus (e.g. returning from the Practice tab) pull the latest completed
+  // sessions + score so a session finished over there shows as done here too.
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      try {
+        const snap = await getDoc(doc(db, 'users', uid));
+        const d = snap.data() || {};
+        const todayKey = new Date().toDateString();
+        setCompletedIds(d.sessionProgress?.date === todayKey ? (d.sessionProgress.ids || []) : []);
+        if (typeof d.provaScore === 'number') setUserData((p) => (p ? { ...p, provaScore: d.provaScore } : p));
+      } catch { /* ignore */ }
+    });
+    return unsub;
+  }, [navigation]);
 
   // When the app opens and the user missed exactly one day (with a streak worth
   // saving + a restore available), pop the "you lost your streak" modal once.
@@ -222,6 +469,46 @@ export default function TodayScreen({ navigation }) {
       setShowRestoreModal(true);
     }
   }, [userData, selectedDay]);
+
+  // Streak-saver notification: if reminders are on and they have a streak worth
+  // saving but haven't practised today, schedule tonight's nudge. Cancel it once
+  // they've practised.
+  useEffect(() => {
+    if (!userData) return;
+    const streakVal = userData.streak || 0;
+    const todayStr = new Date().toDateString();
+    const lastStr = userData.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
+    const practicedToday = lastStr === todayStr || completedIds.length > 0;
+    if (userData.reminderEnabled && streakVal >= 2 && !practicedToday) {
+      scheduleStreakSaver(streakVal);
+    } else {
+      cancelStreakSaver();
+    }
+  }, [userData, completedIds]);
+
+  // New-task ping: when this device first sees a teacher task it hasn't seen
+  // before, fire a local notification. Seeds silently on first run so existing
+  // tasks don't all ping at once.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    const tasks = userData?.assignedTasks;
+    if (!uid || !Array.isArray(tasks)) return;
+    const key = `prova_seen_tasks_${uid}`;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(key);
+        const ids = tasks.map((t) => t.id);
+        if (raw === null) {
+          await AsyncStorage.setItem(key, JSON.stringify(ids));
+          return; // first run — seed without notifying
+        }
+        const seen = new Set(JSON.parse(raw));
+        const fresh = tasks.filter((t) => !t.completed && !seen.has(t.id));
+        if (fresh.length > 0) await notifyNewTasks(fresh.length);
+        await AsyncStorage.setItem(key, JSON.stringify(ids));
+      } catch (e) { /* ignore */ }
+    })();
+  }, [userData?.assignedTasks]);
 
   // Persist restore bookkeeping (monthly reset, baseline init, earned grants).
   // Converges: applying the updates changes the keys below, re-runs, then no-ops.
@@ -281,6 +568,24 @@ export default function TodayScreen({ navigation }) {
       const weeklyPlan = data?.practicePlan?.weeklyPlan || {};
       setPlan(weeklyPlan);
       setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
+
+      // Sessions completed today (here OR in the Practice tab) live in the shared
+      // `sessionProgress` store, so the checkmarks persist and points aren't
+      // double-banked across the two screens.
+      const todayKey = new Date().toDateString();
+      setCompletedIds(data?.sessionProgress?.date === todayKey ? (data.sessionProgress.ids || []) : []);
+
+      // Pull this student's lessons from their linked teacher's doc, so we can
+      // surface the next upcoming lesson on Today.
+      if (data?.teacherUid) {
+        try {
+          const tSnap = await getDoc(doc(db, 'users', data.teacherUid));
+          const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
+          setLessons(all.filter((l) => l.studentUid === uid));
+        } catch { setLessons([]); }
+      } else {
+        setLessons([]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -321,23 +626,44 @@ export default function TodayScreen({ navigation }) {
     );
   };
 
-  const handleComplete = (sessionId) => {
+  const handleComplete = async (sessionId) => {
     if (completedIds.includes(sessionId)) return;
-    const next = [...completedIds, sessionId];
-    setCompletedIds(next);
+    const optimistic = [...completedIds, sessionId]; // instant checkmark
+    setCompletedIds(optimistic);
+    const maybeRate = (ids) => { if (sessions.every(s => ids.includes(s.id))) setShowRating(true); };
 
-    // Bank this task's own points immediately, based on how long + hard it is.
     const session = sessions.find(s => s.id === sessionId);
-    if (session) {
-      const pts = taskPoints(session);
-      const newScore = displayScore(userData) + pts;
-      setUserData(p => ({ ...p, provaScore: newScore }));
-      const uid = auth.currentUser?.uid;
-      if (uid) updateDoc(doc(db, 'users', uid), { provaScore: newScore }).catch(() => {});
-      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
-    }
+    const uid = auth.currentUser?.uid;
+    if (!session || !uid) { maybeRate(optimistic); return; }
 
-    if (sessions.every(s => next.includes(s.id))) setShowRating(true);
+    const todayKey = new Date().toDateString();
+    try {
+      // Merge with the shared store so a session finished in the Practice tab
+      // isn't lost or re-awarded.
+      const snap = await getDoc(doc(db, 'users', uid));
+      const d = snap.data() || {};
+      const prior = d.sessionProgress?.date === todayKey ? (d.sessionProgress.ids || []) : [];
+      if (prior.includes(sessionId)) {
+        // Already completed elsewhere — sync checkmarks, don't re-award.
+        const merged = Array.from(new Set([...optimistic, ...prior]));
+        setCompletedIds(merged);
+        maybeRate(merged);
+        return;
+      }
+      const pts = taskPoints(session);
+      const newScore = displayScore(d) + pts;
+      const ids = Array.from(new Set([...prior, ...optimistic]));
+      await updateDoc(doc(db, 'users', uid), {
+        provaScore: newScore,
+        sessionProgress: { date: todayKey, ids },
+      });
+      setUserData(p => ({ ...p, provaScore: newScore }));
+      setCompletedIds(ids);
+      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+      maybeRate(ids);
+    } catch (e) {
+      maybeRate(optimistic); // keep the optimistic checkmark on failure
+    }
   };
 
   const handleRating = async (rating) => {
@@ -433,20 +759,33 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
-  // Mark a teacher-assigned task complete (writes back so the teacher sees it).
-  const completeAssignedTask = async (taskId) => {
-    if (taskId === 'demo_teacher_task') { setDemoTaskDone(true); return; }
+  // Bank a lap of practice on a teacher-assigned task: award time-proportional
+  // points for the minutes just practised, accumulate the task's totals, and
+  // write back so the teacher + class scoreboard see the progress.
+  const bankTeacherTask = async (taskId, lapSeconds) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
+    const pts = teacherTaskPoints(lapSeconds);
     const next = (userData?.assignedTasks || []).map((t) =>
-      t.id === taskId ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+      t.id === taskId
+        ? {
+            ...t,
+            completed: true,
+            completedAt: new Date().toISOString(),
+            practicedSec: (t.practicedSec || 0) + Math.round(lapSeconds),
+            pointsEarned: (t.pointsEarned || 0) + pts,
+            timesCompleted: (t.timesCompleted || 0) + 1,
+          }
+        : t
     );
-    setUserData((p) => ({ ...p, assignedTasks: next }));
+    const newScore = displayScore(userData) + pts;
+    setUserData((p) => ({ ...p, assignedTasks: next, provaScore: newScore }));
     try {
-      await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+      await updateDoc(doc(db, 'users', uid), { assignedTasks: next, provaScore: newScore });
     } catch (e) {
       Alert.alert('Error', "Couldn't save. Please try again.");
     }
+    if (pts > 0) Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
   };
 
   // Open an attachment a teacher added to a task: a raw URL opens directly,
@@ -458,6 +797,15 @@ export default function TodayScreen({ navigation }) {
       ? s
       : `https://www.youtube.com/results?search_query=${encodeURIComponent(s)}`;
     Linking.openURL(url).catch(() => {});
+  };
+
+  // Open a teacher-assigned song in the Songs library, pinned to the top there.
+  const openSongInLibrary = (songStr) => {
+    const s = (songStr || '').trim();
+    if (!s) return;
+    const m = s.match(/^(.*?)\s+(?:-|–|—|by)\s+(.*)$/i);
+    const focusSong = m ? { title: m[1].trim(), artist: m[2].trim() } : { title: s, artist: '' };
+    navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
@@ -485,19 +833,31 @@ export default function TodayScreen({ navigation }) {
   };
 
   const isToday = selectedDay === TODAY_NAME;
-  const assignedTasks = (userData?.assignedTasks?.length)
-    ? userData.assignedTasks
-    : (SEED_DEMO_TEACHER_TASK ? [{
-        id: 'demo_teacher_task',
-        title: 'Practice the F barre chord transition',
-        description: 'Switch F → C cleanly, 8 reps at 70 BPM. Film one take for me.',
-        completed: demoTaskDone,
-      }] : []);
+  const assignedTasks = userData?.assignedTasks || [];
+  // Separate one-to-one teacher tasks from class-assigned ones (which carry a
+  // classId/className), so the student can tell them apart.
+  const soloTasks = assignedTasks.filter((t) => !t.classId);
+  const classGroups = [];
+  assignedTasks.filter((t) => t.classId).forEach((t) => {
+    const key = t.className || 'Class';
+    let g = classGroups.find((x) => x.key === key);
+    if (!g) { g = { key, name: key, tasks: [] }; classGroups.push(g); }
+    g.tasks.push(t);
+  });
+
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
+
+  // The soonest upcoming lesson from the student's teacher, surfaced on Today.
+  const nowDate = new Date();
+  const nextLesson = lessons
+    .map((l) => ({ lesson: l, when: nextLessonOccurrence(l, nowDate) }))
+    .filter((x) => x.when)
+    .sort((a, b) => a.when - b.when)[0] || null;
+  const lessonIsToday = nextLesson && lessonDayLabel(nextLesson.when) === 'Today';
 
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
@@ -529,6 +889,12 @@ export default function TodayScreen({ navigation }) {
         <Text style={[styles.title, styles.headerCentered]}>
           {isToday ? "Today's Practice" : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
         </Text>
+
+        {(userData?.streak || 0) > 0 && (
+          <View style={styles.streakChip}>
+            <Text style={styles.streakChipText}>🔥 {userData.streak} day{userData.streak === 1 ? '' : 's'} streak</Text>
+          </View>
+        )}
 
         {/* Day picker */}
         <View style={styles.dayRow}>
@@ -581,82 +947,40 @@ export default function TodayScreen({ navigation }) {
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
-            <View style={styles.challengeHeader}>
+            <TouchableOpacity style={styles.challengeHeader} onPress={() => setChallengeOpen((o) => !o)} activeOpacity={0.7}>
               <View style={styles.challengeIcon}>
                 <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
               </View>
-              <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
-              <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>
-            </View>
-            <Text style={styles.challengeTitle}>{dailyChallenge.title}</Text>
-            <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
-            <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
-            {challengeDoneToday ? (
-              <View style={styles.challengeDone}>
-                <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
-                <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
+                <Text style={styles.challengeTitle} numberOfLines={challengeOpen ? undefined : 1}>{dailyChallenge.title}</Text>
               </View>
-            ) : (
-              <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
-                <Ionicons name="checkmark" size={16} color="#fff" />
-                <Text style={styles.challengeBtnText}>Mark complete</Text>
-              </TouchableOpacity>
+              {challengeDoneToday
+                ? <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                : <Text style={styles.challengePts}>+{CHALLENGE_POINTS} pts</Text>}
+              <Ionicons name={challengeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            {challengeOpen && (
+              <>
+                <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
+                <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
+                {challengeDoneToday ? (
+                  <View style={styles.challengeDone}>
+                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                    <Text style={styles.challengeDoneText}>Completed — nice one! Back tomorrow.</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                    <Text style={styles.challengeBtnText}>Mark complete</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         )}
 
-        {/* Tasks assigned by the student's teacher */}
-        {isToday && assignedTasks.length > 0 && (
-          <View style={styles.teacherCard}>
-            <View style={styles.teacherHeader}>
-              <Ionicons name="school" size={16} color={COLORS.primary} />
-              <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
-            </View>
-            {assignedTasks.map((t) => {
-              const open = expandedTask === t.id;
-              return (
-                <View key={t.id} style={styles.teacherTask}>
-                  <View style={styles.teacherTaskRow}>
-                    <TouchableOpacity
-                      style={styles.teacherTaskMain}
-                      onPress={() => setExpandedTask(open ? null : t.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
-                      <Text style={[styles.teacherTaskTitle, t.completed && styles.teacherTaskDone]} numberOfLines={1}>{t.title}</Text>
-                    </TouchableOpacity>
-                    {!t.completed && (() => {
-                      const d = assignedDueLabel(t.dueDate);
-                      return d ? <Text style={[styles.teacherDue, d.overdue && styles.teacherDueOverdue]}>{d.text}</Text> : null;
-                    })()}
-                    {t.completed ? (
-                      <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                    ) : (
-                      <TouchableOpacity style={styles.teacherDoneBtn} onPress={() => completeAssignedTask(t.id)} activeOpacity={0.85}>
-                        <Text style={styles.teacherDoneText}>Done</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  {open && !!t.description && <Text style={styles.teacherTaskDesc}>{t.description}</Text>}
-                  {open && !!t.youtube && (
-                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.youtube)} activeOpacity={0.7}>
-                      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Watch: {t.youtube}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {open && !!t.song && (
-                    <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(t.song)} activeOpacity={0.7}>
-                      <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
-                      <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {t.song}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {/* Sessions */}
+        {/* Sessions — the actual practice for the day */}
         {selectedSessions.length > 0 && (
           <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
         )}
@@ -684,12 +1008,99 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
+        {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
+        {isToday && (soloTasks.length > 0 || nextLesson) && (
+          <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
+            {soloTasks.length >= 3 ? (
+              <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
+                <Ionicons name="school" size={16} color={COLORS.primary} />
+                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
+                <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.teacherHeader}>
+                <Ionicons name="school" size={16} color={COLORS.primary} />
+                <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+              </View>
+            )}
+            {nextLesson && (
+              <TouchableOpacity
+                style={styles.lessonRow}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Practice', {
+                  screen: 'Schedule',
+                  params: { date: ymdLocal(nextLesson.when) },
+                  initial: false,
+                })}
+              >
+                <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
+                <Text style={styles.lessonRowText} numberOfLines={1}>
+                  {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
+            {(soloTasks.length < 3 || soloOpen) && soloTasks.map((t) => (
+              <TeacherTaskCard
+                key={t.id}
+                task={t}
+                expanded={expandedTask === t.id}
+                onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                onBank={bankTeacherTask}
+                openTaskLink={openTaskLink}
+                onOpenSong={openSongInLibrary}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Class-assigned tasks, grouped per class with a collapsible header */}
+        {isToday && classGroups.map((g) => {
+          const collapsed = collapsedGroups.has(g.key);
+          const doneCount = g.tasks.filter((t) => t.completed).length;
+          return (
+            <View key={g.key} style={styles.teacherCard}>
+              <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
+                <Ionicons name="people" size={16} color={COLORS.accent || COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.classGroupKicker} numberOfLines={1}>{g.name.toUpperCase()}</Text>
+                  <Text style={styles.classGroupSub}>{doneCount}/{g.tasks.length} done</Text>
+                </View>
+                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+              {!collapsed && g.tasks.map((t) => (
+                <TeacherTaskCard
+                  key={t.id}
+                  task={t}
+                  expanded={expandedTask === t.id}
+                  onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                  onBank={bankTeacherTask}
+                  openTaskLink={openTaskLink}
+                onOpenSong={openSongInLibrary}
+                />
+              ))}
+              {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
+                <ClassScoreboard
+                  classId={g.tasks[0].classId}
+                  teacherUid={userData.teacherUid}
+                  myUid={auth.currentUser?.uid}
+                />
+              )}
+            </View>
+          );
+        })}
+
         {/* Song to practice — matched to the player's level */}
         {isToday && songOfTheDay && (
           <TouchableOpacity
             style={styles.songCard}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Practice', { screen: 'Songs' })}
+            onPress={() => navigation.navigate('Practice', {
+              screen: 'Songs',
+              params: { focusSong: songOfTheDay },
+              initial: false,
+            })}
           >
             <View style={styles.songIcon}>
               <Ionicons name="musical-notes" size={20} color={COLORS.accent} />
@@ -788,7 +1199,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.xl },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.md },
   headerCentered: { textAlign: 'center', alignSelf: 'center' },
   regenBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -809,6 +1220,12 @@ const styles = StyleSheet.create({
   dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted, marginTop: 3 },
   dayDotSelected: { backgroundColor: COLORS.text },
 
+  streakChip: {
+    alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
+    paddingVertical: 5, paddingHorizontal: 12, marginBottom: SPACING.md,
+  },
+  streakChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
   summaryCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: SPACING.lg },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },
@@ -847,27 +1264,56 @@ const styles = StyleSheet.create({
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
+  classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', flex: 1 },
-  teacherTaskDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
+  teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  teacherTaskDone: { color: COLORS.textMuted },
   teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
-  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginRight: SPACING.sm },
+  teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 },
   teacherDueOverdue: { color: COLORS.error },
-  teacherDoneBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
+  teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
-  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  teacherDoneTextLocked: { color: COLORS.textMuted },
+  ttTimer: { marginLeft: 22, marginTop: SPACING.sm },
+  ttTimerBarBg: { height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' },
+  ttTimerBarFill: { height: 4, borderRadius: 2, backgroundColor: COLORS.primary },
+  ttTimerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  ttTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ttTimerText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  ttLapPts: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800' },
+  ttTimerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
+  ttTimerBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
+  ttBankBtn: { justifyContent: 'center', backgroundColor: COLORS.success, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
+  ttBankBtnDim: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  ttBankBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  ttBankBtnTextDim: { color: COLORS.textMuted },
+  teacherEarned: { color: COLORS.success, fontSize: 11, fontWeight: '700', marginTop: 2 },
+  scoreboard: { marginTop: SPACING.md, backgroundColor: COLORS.background, borderRadius: 12, padding: SPACING.sm },
+  scoreboardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+  scoreboardTitle: { flex: 1, color: COLORS.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+  scoreboardEmpty: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, paddingHorizontal: 4 },
+  scoreboardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, marginTop: 4 },
+  scoreboardRowMe: { backgroundColor: (COLORS.primary || '#000') + '18' },
+  scoreboardRank: { width: 22, textAlign: 'center', color: COLORS.textSecondary, fontSize: 13, fontWeight: '800' },
+  scoreboardName: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  scoreboardNameMe: { fontWeight: '800' },
+  scoreboardPts: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   challengeIcon: {
     width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
     alignItems: 'center', justifyContent: 'center',
   },
-  challengeKicker: { flex: 1, color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  challengeKicker: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
-  challengeTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
-  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md },
+  challengeTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: 2, lineHeight: 18 },
+  challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: SPACING.md, marginBottom: SPACING.md },
   challengeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 12,
@@ -879,14 +1325,16 @@ const styles = StyleSheet.create({
   card: { backgroundColor: COLORS.card, borderRadius: 16, marginBottom: SPACING.md, flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   cardCompleted: { opacity: 0.45 },
   categoryBar: { width: 4 },
-  cardContent: { flex: 1, padding: SPACING.md },
+  cardContent: { flex: 1, paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.md + SPACING.xs },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: 4 },
   categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   duration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  sessionPtsRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: SPACING.md },
+  sessionPts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
   sessionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: SPACING.xs },
   sessionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  sessionTitleCompleted: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  sessionTitleCompleted: { color: COLORS.textMuted },
   sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.sm },
   refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   refText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
@@ -921,6 +1369,12 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.accent + '18',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
+  lessonRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 9, paddingHorizontal: 10, marginTop: SPACING.sm,
+    backgroundColor: COLORS.primary + '12', borderRadius: 10,
+  },
+  lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
