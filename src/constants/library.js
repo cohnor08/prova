@@ -429,4 +429,473 @@ export const LIBRARY_TOPICS = [
       { text: 'Target chord tones on the downbeats over a slow ii–V–I loop; fill the gaps with scale/chromatic approach notes.', yt: 'targeting chord tones improvisation' },
     ],
   },
+
+  // ══════════════════════════ Library — part 2 ══════════════════════════
+
+  // ── Chords ────────────────────────────────────────────────────────────────
+  {
+    id: 'drop-d-riffs',
+    title: 'Drop D power chords & riffs',
+    instrument: 'Guitar', category: 'Chords', level: 'Novice',
+    tags: ['drop d', 'power chord', 'one finger', 'metal', 'tuning'],
+    summary: 'Tune the low E down to D so a whole power chord is one barred finger.',
+    tasks: [
+      { text: 'Tune low E down to D (match it to the open D string an octave below). One finger barres frets on strings 6-5-4 for a power chord — slide it around.', yt: 'drop d tuning power chords lesson' },
+      { text: 'Write a riff: chug the open D (strings 6-5-4 muted) then jump to the 3rd and 5th frets. Palm-mute for tightness.', yt: 'drop d riff lesson beginner' },
+    ],
+  },
+  {
+    id: 'sus-add-chords',
+    title: 'Sus2, sus4 & add9 chords',
+    instrument: 'Guitar', category: 'Chords', level: 'Intermediate',
+    tags: ['sus2', 'sus4', 'add9', 'colour', 'embellish'],
+    summary: 'Swap the 3rd for a 2nd/4th (sus) or add a 9th for shimmer.',
+    tasks: [
+      { text: 'From open D: lift/add the pinky to get Dsus2 and Dsus4, alternating back to D. Hear the tension resolve.', yt: 'sus2 sus4 chords guitar lesson' },
+      { text: 'Add an open high E or B to G and C shapes for add9 colour — great for ringing acoustic parts.', yt: 'add9 chords acoustic guitar' },
+    ],
+  },
+  {
+    id: 'triads-top-strings',
+    title: 'Triads on the top strings',
+    instrument: 'Guitar', category: 'Chords', level: 'Intermediate',
+    tags: ['triads', 'inversions', 'top strings', 'comping'],
+    summary: 'Small 3-note chord shapes up the neck for clean, modern voicings.',
+    tasks: [
+      { text: 'Learn C major triad in its 3 inversions on strings 1-2-3, then slide the shape up the neck to make F, G, etc.', yt: 'major triads top three strings guitar' },
+      { text: 'Comp a I-IV-V using only triads, keeping them in the same neck area (voice leading) instead of jumping shapes.', yt: 'triad chords comping guitar lesson' },
+    ],
+  },
+  {
+    id: 'bass-double-stops',
+    title: 'Bass double stops & chords',
+    instrument: 'Bass', category: 'Chords', level: 'Intermediate',
+    tags: ['double stop', 'chords', 'octaves', 'fills'],
+    summary: 'Two notes at once on bass — octaves, 5ths and tasteful chord fills.',
+    tasks: [
+      { text: 'Play octaves: root on the E string + octave on the D string, two strings apart. Mute the string between with your fretting finger.', yt: 'bass octaves technique lesson' },
+      { text: 'Add a 10th (root + major 3rd an octave up) as a chord fill at the end of a phrase.', yt: 'bass chords double stops lesson' },
+    ],
+  },
+  {
+    id: 'open-tunings',
+    title: 'Open & alternate tunings',
+    instrument: 'Guitar', category: 'Chords', level: 'Advanced',
+    tags: ['open g', 'dadgad', 'open d', 'slide', 'alternate tuning'],
+    summary: 'Retune the strings so open strings form a chord — folk, blues & slide.',
+    tasks: [
+      { text: 'Open G (D-G-D-G-B-D): strum open for a G chord, then barre any fret for instant major chords. Try a Stones-style riff.', yt: 'open g tuning guitar lesson' },
+      { text: 'DADGAD: explore the droney, modal sound with one-finger shapes. A staple of Celtic and modern fingerstyle.', yt: 'dadgad tuning beginner lesson' },
+    ],
+  },
+
+  // ── Scales ──────────────────────────────────────────────────────────────
+  {
+    id: 'major-pentatonic',
+    title: 'Major pentatonic scale',
+    instrument: 'Both', category: 'Scales', level: 'Novice',
+    tags: ['pentatonic', 'major', 'country', 'happy', 'solo'],
+    summary: 'The bright, happy cousin of the minor pentatonic — country and pop leads.',
+    tasks: [
+      { text: 'G major pentatonic is the same shape as E minor pentatonic, just centred differently. Play box 1 and resolve to G, not E.', yt: 'major pentatonic scale guitar box 1' },
+      { text: 'Solo over a G major backing track, landing on G, B and D. Notice the cheerful, open feel vs minor.', yt: 'major pentatonic backing track jam' },
+    ],
+  },
+  {
+    id: 'blues-scale',
+    title: 'Blues scale',
+    instrument: 'Both', category: 'Scales', level: 'Intermediate',
+    tags: ['blues', 'blue note', 'pentatonic', 'flat 5', 'solo'],
+    summary: 'Minor pentatonic + the "blue note" (♭5) for that crying blues sound.',
+    tasks: [
+      { text: 'A minor pentatonic box 1 with the added ♭5 (Eb) between the 4th and 5th. Slide into and out of the blue note — don’t sit on it.', yt: 'blues scale guitar box 1 blue note' },
+      { text: 'Play a call-and-response blues lick over a 12-bar in A, using bends up to the blue note.', yt: 'blues licks beginner guitar a' },
+    ],
+  },
+  {
+    id: 'natural-minor',
+    title: 'Natural minor scale',
+    instrument: 'Both', category: 'Scales', level: 'Novice',
+    tags: ['minor', 'aeolian', 'sad', 'scale', 'positions'],
+    summary: 'The full 7-note minor scale — darker than pentatonic, the basis of minor keys.',
+    tasks: [
+      { text: 'A natural minor (A B C D E F G) in one position. Play it slowly, saying note names, and hear its melancholy character vs major.', yt: 'natural minor scale guitar lesson' },
+      { text: 'Compare A minor to A major (raise the 3rd, 6th, 7th) so you feel exactly which notes make it minor.', yt: 'major vs minor scale difference guitar' },
+    ],
+  },
+  {
+    id: 'arpeggios',
+    title: 'Major & minor arpeggios',
+    instrument: 'Both', category: 'Scales', level: 'Intermediate',
+    tags: ['arpeggio', 'chord tones', 'outline', 'solo'],
+    summary: 'Playing a chord one note at a time — the strongest melodic outline for solos.',
+    tasks: [
+      { text: 'Play a C major arpeggio (C-E-G) across two octaves, then A minor (A-C-E). Strict alternate picking, 70 BPM.', yt: 'major minor arpeggios guitar exercise' },
+      { text: 'Over a chord progression, play the matching arpeggio for each chord instead of one scale — instantly more musical.', yt: 'arpeggios over chords soloing lesson' },
+    ],
+  },
+  {
+    id: 'three-nps-scales',
+    title: 'Three-note-per-string scales',
+    instrument: 'Guitar', category: 'Scales', level: 'Advanced',
+    tags: ['3nps', 'shred', 'legato', 'fluid', 'major scale'],
+    summary: 'Even 3-notes-per-string fingerings that make fast scalar runs flow.',
+    tasks: [
+      { text: 'Play the G major scale 3-notes-per-string across all six strings. The even layout suits legato and fast picking. 80 BPM, build up.', yt: 'three note per string scales guitar' },
+      { text: 'Practise the seven connected positions so you can run the scale anywhere on the neck.', yt: '3nps major scale positions connect' },
+    ],
+  },
+  {
+    id: 'harmonic-minor',
+    title: 'Harmonic minor scale',
+    instrument: 'Both', category: 'Scales', level: 'Advanced',
+    tags: ['harmonic minor', 'neoclassical', 'exotic', 'raised 7th'],
+    summary: 'Natural minor with a raised 7th — exotic, neoclassical, flamenco flavour.',
+    tasks: [
+      { text: 'A harmonic minor: A B C D E F G#. The gap between F and G# is the signature exotic sound. Play it over an E7→Am.', yt: 'harmonic minor scale guitar lesson' },
+      { text: 'Write a neoclassical lick emphasising the raised 7th resolving to the root.', yt: 'harmonic minor lick neoclassical guitar' },
+    ],
+  },
+
+  // ── Technique ───────────────────────────────────────────────────────────
+  {
+    id: 'bending-vibrato',
+    title: 'String bending & vibrato',
+    instrument: 'Guitar', category: 'Technique', level: 'Novice',
+    tags: ['bending', 'vibrato', 'expression', 'pitch', 'blues'],
+    summary: 'The two techniques that give a lead line its voice and emotion.',
+    tasks: [
+      { text: 'Bend the G string at the 7th fret UP a full tone — check it matches the 9th fret pitch exactly. Use 2-3 fingers for support.', yt: 'how to bend strings in tune guitar' },
+      { text: 'Add vibrato: bend slightly up and release repeatedly from the wrist, even and controlled. Hold one note for 4 beats with vibrato.', yt: 'guitar vibrato technique lesson' },
+    ],
+  },
+  {
+    id: 'slides-technique',
+    title: 'Slides & glissando',
+    instrument: 'Guitar', category: 'Technique', level: 'Novice',
+    tags: ['slide', 'glissando', 'legato', 'connect notes'],
+    summary: 'Connecting notes by sliding the fretting finger — smooth and vocal.',
+    tasks: [
+      { text: 'Pick a note at the 5th fret, slide up to the 7th without re-picking. Keep even pressure so the second note rings.', yt: 'guitar slides technique lesson' },
+      { text: 'Use a slide into the first note of a phrase for a vocal, expressive entrance.', yt: 'slide into notes guitar lead' },
+    ],
+  },
+  {
+    id: 'palm-muting',
+    title: 'Palm muting',
+    instrument: 'Guitar', category: 'Technique', level: 'Novice',
+    tags: ['palm mute', 'chug', 'rock', 'metal', 'control'],
+    summary: 'Resting the picking-hand palm on the strings for a tight, percussive chug.',
+    tasks: [
+      { text: 'Rest the edge of your palm lightly where the strings meet the bridge. Pick the low E — aim for a muted "chug", not a dead thud.', yt: 'palm muting technique guitar lesson' },
+      { text: 'Alternate 4 palm-muted chugs with 4 open rings on a power chord, controlling exactly when the mute is on.', yt: 'palm muting exercise rhythm guitar' },
+    ],
+  },
+  {
+    id: 'hybrid-picking',
+    title: 'Hybrid picking',
+    instrument: 'Guitar', category: 'Technique', level: 'Advanced',
+    tags: ['hybrid picking', 'pick and fingers', 'country', 'chicken pickin'],
+    summary: 'Pick plus middle/ring fingers together — country twang and wide intervals.',
+    tasks: [
+      { text: 'Hold the pick normally; pluck the higher string with your middle finger at the same time. Play pick-on-D + finger-on-G as pairs.', yt: 'hybrid picking for beginners lesson' },
+      { text: 'Play a country "chicken pickin" lick using the snap of the middle finger for the pop.', yt: 'chicken picking country guitar lesson' },
+    ],
+  },
+  {
+    id: 'string-skipping',
+    title: 'String skipping',
+    instrument: 'Guitar', category: 'Technique', level: 'Advanced',
+    tags: ['string skipping', 'wide intervals', 'accuracy', 'arpeggio'],
+    summary: 'Jumping over strings for wide, ear-catching intervals and arpeggios.',
+    tasks: [
+      { text: 'Play an A minor arpeggio skipping the B string each time (strings 4-2-... no, 4 then 1). Keep the skipped string muted. Slow and accurate first.', yt: 'string skipping exercise guitar' },
+      { text: 'Build a lick that leaps between low and high strings — the gap creates a wider, more interesting line than scalar runs.', yt: 'string skipping licks lesson' },
+    ],
+  },
+  {
+    id: 'pinch-harmonics',
+    title: 'Pinch (artificial) harmonics',
+    instrument: 'Guitar', category: 'Technique', level: 'Advanced',
+    tags: ['pinch harmonic', 'squeal', 'metal', 'zakk wylde'],
+    summary: 'The screaming "squeal" — catch the string with your thumb as you pick.',
+    tasks: [
+      { text: 'Choke up on the pick so only a tiny tip shows. Pick a fretted note and let your thumb graze the string right after — find the sweet spots over the pickups.', yt: 'pinch harmonics for beginners lesson' },
+      { text: 'Add a bend + vibrato to a pinch harmonic for the classic squealing lead sound.', yt: 'pinch harmonic squeal technique' },
+    ],
+  },
+  {
+    id: 'bass-finger-plucking',
+    title: 'Two & three-finger plucking',
+    instrument: 'Bass', category: 'Technique', level: 'Novice',
+    tags: ['fingerstyle', 'plucking', 'alternating', 'right hand', 'bass'],
+    summary: 'Clean, even right-hand fingerstyle — the foundation of bass tone and speed.',
+    tasks: [
+      { text: 'Alternate index and middle fingers on the open E, one per beat, perfectly even in tone and volume. 80 BPM for 3 min.', yt: 'bass two finger technique lesson' },
+      { text: 'Add the ring finger for a 3-finger roll to handle faster lines without tension.', yt: 'three finger bass technique lesson' },
+    ],
+  },
+  {
+    id: 'ghost-notes',
+    title: 'Ghost notes & muting',
+    instrument: 'Both', category: 'Technique', level: 'Intermediate',
+    tags: ['ghost notes', 'muting', 'groove', 'funk', 'percussive'],
+    summary: 'Muted, percussive "dead" notes that make a groove breathe and feel funky.',
+    tasks: [
+      { text: 'Lightly rest the fretting fingers (don’t press) and pick — you get a muted click. Work ghost notes between real notes in a simple groove.', yt: 'ghost notes bass groove lesson' },
+      { text: 'Play a 16th-note funk pattern with ghost notes on the off-beats for that percussive feel.', yt: 'funk ghost notes guitar lesson' },
+    ],
+  },
+  {
+    id: 'speed-building',
+    title: 'Building speed with a metronome',
+    instrument: 'Both', category: 'Technique', level: 'Intermediate',
+    tags: ['speed', 'metronome', 'practice method', 'accuracy'],
+    summary: 'The disciplined way to get faster without getting sloppy.',
+    tasks: [
+      { text: 'Pick any lick. Set the metronome where it’s perfectly clean. Play it 5x clean, bump +5 BPM, repeat. Drop back the moment it gets messy.', yt: 'how to build speed metronome guitar' },
+      { text: 'Practise in bursts: play the phrase as fast-but-clean as possible, rest, repeat. Accuracy always beats raw speed.', yt: 'speed bursts practice guitar' },
+    ],
+  },
+
+  // ── Theory ──────────────────────────────────────────────────────────────
+  {
+    id: 'reading-tab',
+    title: 'Reading TAB & chord diagrams',
+    instrument: 'Both', category: 'Theory', level: 'Beginner',
+    tags: ['tab', 'chord chart', 'reading', 'notation', 'beginner'],
+    summary: 'How to read the two systems every online lesson and songbook uses.',
+    tasks: [
+      { text: 'TAB: 6 lines = 6 strings (lowest at the bottom), numbers = frets. Read a simple riff left to right and play it.', yt: 'how to read guitar tabs beginner' },
+      { text: 'Chord diagrams: vertical = strings, horizontal = frets, dots = fingers, X = don’t play, O = open. Read and play a G chord from a diagram.', yt: 'how to read chord diagrams guitar' },
+    ],
+  },
+  {
+    id: 'rhythm-notation',
+    title: 'Rhythm notation & note values',
+    instrument: 'Both', category: 'Theory', level: 'Beginner',
+    tags: ['rhythm', 'note values', 'counting', 'quarter eighth', 'time'],
+    summary: 'Whole, half, quarter and eighth notes — how long each note lasts.',
+    tasks: [
+      { text: 'In 4/4: a whole note = 4 beats, half = 2, quarter = 1, eighth = ½. Clap each while counting "1-2-3-4".', yt: 'note values explained beginner music' },
+      { text: 'Play one note on the guitar using each value over a 70 BPM click, counting out loud.', yt: 'counting rhythm guitar beginner' },
+    ],
+  },
+  {
+    id: 'caged-system',
+    title: 'The CAGED system',
+    instrument: 'Guitar', category: 'Theory', level: 'Intermediate',
+    tags: ['caged', 'fretboard', 'chord shapes', 'positions'],
+    summary: 'Five movable shapes that map every chord and scale across the whole neck.',
+    tasks: [
+      { text: 'Learn the 5 open shapes (C-A-G-E-D) and see how they connect up the neck to play one chord (e.g. C) in five places.', yt: 'caged system explained guitar' },
+      { text: 'Play a C major scale linked through all five CAGED positions so you "see" the fretboard as connected shapes.', yt: 'caged scales fretboard lesson' },
+    ],
+  },
+  {
+    id: 'circle-of-fifths',
+    title: 'Circle of fifths',
+    instrument: 'Both', category: 'Theory', level: 'Intermediate',
+    tags: ['circle of fifths', 'keys', 'key signatures', 'theory'],
+    summary: 'The map of all 12 keys — how they relate and which chords belong together.',
+    tasks: [
+      { text: 'Memorise the circle clockwise (C-G-D-A-E…), each a 5th up and adding one sharp. It tells you every key’s sharps/flats.', yt: 'circle of fifths explained simply' },
+      { text: 'Use it to find a key’s I-IV-V: they sit next to each other on the circle. Try it for G.', yt: 'circle of fifths chord progressions' },
+    ],
+  },
+  {
+    id: 'capo-transpose',
+    title: 'Capo & transposing',
+    instrument: 'Guitar', category: 'Theory', level: 'Novice',
+    tags: ['capo', 'transpose', 'key', 'singer', 'shapes'],
+    summary: 'Use a capo to change key while keeping easy open-chord shapes.',
+    tasks: [
+      { text: 'Put a capo on fret 2 and play a G shape — it now sounds as A. Each fret up moves the key up one semitone.', yt: 'how to use a capo guitar transpose' },
+      { text: 'Find a comfortable key for a singer by moving the capo up/down while keeping the same shapes.', yt: 'capo transpose key for singing' },
+    ],
+  },
+
+  // ── Rhythm ──────────────────────────────────────────────────────────────
+  {
+    id: 'syncopation',
+    title: 'Syncopation',
+    instrument: 'Both', category: 'Rhythm', level: 'Intermediate',
+    tags: ['syncopation', 'off beat', 'funk', 'groove', 'accents'],
+    summary: 'Accenting the off-beats — the secret behind funk, reggae and great grooves.',
+    tasks: [
+      { text: 'Count "1-and-2-and"; play only on the "ands" (the off-beats). It feels lopsided at first — that’s the point.', yt: 'syncopation rhythm guitar lesson' },
+      { text: 'Play a chord stab on the "and" of beat 2 and 4 reggae-style, muting in between.', yt: 'reggae offbeat strumming lesson' },
+    ],
+  },
+  {
+    id: 'triplets-shuffle',
+    title: 'Triplets & shuffle feel',
+    instrument: 'Both', category: 'Rhythm', level: 'Intermediate',
+    tags: ['triplets', 'shuffle', 'swing', 'blues', 'feel'],
+    summary: 'Dividing the beat into 3 — the bouncy feel under blues, swing and shuffles.',
+    tasks: [
+      { text: 'Count "1-trip-let, 2-trip-let" and play a note on each — three even notes per beat at 70 BPM.', yt: 'triplets rhythm exercise guitar' },
+      { text: 'Play only the 1st and 3rd of each triplet for a shuffle/swing feel over a 12-bar blues.', yt: 'shuffle feel blues rhythm guitar' },
+    ],
+  },
+  {
+    id: 'time-signatures',
+    title: 'Odd time signatures',
+    instrument: 'Both', category: 'Rhythm', level: 'Advanced',
+    tags: ['time signature', '7/8', '5/4', 'odd meter', 'prog'],
+    summary: 'Playing in 5, 7 and beyond — the prog/math-rock challenge.',
+    tasks: [
+      { text: 'Count a bar of 7/8 as "1-2-3, 1-2, 1-2" and play a riff that lands with that grouping. Tap your foot on each "1".', yt: '7/8 time signature explained riff' },
+      { text: 'Loop a riff in 5/4 (like Take Five) until the odd count feels natural.', yt: '5/4 time signature lesson guitar' },
+    ],
+  },
+  {
+    id: 'funk-strumming',
+    title: 'Funk 16th-note strumming',
+    instrument: 'Guitar', category: 'Rhythm', level: 'Advanced',
+    tags: ['funk', '16th notes', 'strumming', 'rhythm', 'nile rodgers'],
+    summary: 'Tight, percussive 16th-note rhythm playing — the Nile Rodgers school.',
+    tasks: [
+      { text: 'Keep your hand moving in constant 16ths (down-up-down-up). Only let chosen strums hit the strings; mute the rest. Start at 70 BPM.', yt: 'funk rhythm guitar 16th notes lesson' },
+      { text: 'Use a tight 9th chord and add scratchy muted strums between the hits for groove.', yt: 'nile rodgers funk rhythm lesson' },
+    ],
+  },
+
+  // ── Ear Training ──────────────────────────────────────────────────────────
+  {
+    id: 'chord-quality-ear',
+    title: 'Hearing major vs minor',
+    instrument: 'Both', category: 'Ear Training', level: 'Novice',
+    tags: ['ear training', 'major minor', 'mood', 'recognise'],
+    summary: 'The first ear-training win: instantly telling happy (major) from sad (minor).',
+    tasks: [
+      { text: 'Play C then Cm back to back, eyes closed, and feel the mood flip. Have someone (or an app) play one at random — name it.', yt: 'major vs minor chord ear training' },
+      { text: 'Listen to songs and guess major or minor before checking — you’ll be right more than you expect.', yt: 'identify major minor by ear songs' },
+    ],
+  },
+  {
+    id: 'tune-by-ear',
+    title: 'Tuning by ear',
+    instrument: 'Both', category: 'Ear Training', level: 'Beginner',
+    tags: ['tuning', 'by ear', '5th fret', 'reference', 'beats'],
+    summary: 'Tune the guitar to itself using the 5th-fret method — no app needed.',
+    tasks: [
+      { text: '5th-fret method: fret the low E at 5 (an A) and match the open A string to it. Repeat across (the G string uses the 4th fret).', yt: 'tune guitar by ear 5th fret method' },
+      { text: 'Listen for the "beating" (wobble) between two notes — it slows and disappears as they come into tune.', yt: 'tuning by ear beats explained' },
+    ],
+  },
+  {
+    id: 'transcribe-bassline',
+    title: 'Transcribing a bassline',
+    instrument: 'Bass', category: 'Ear Training', level: 'Advanced',
+    tags: ['transcribe', 'by ear', 'bassline', 'learn songs'],
+    summary: 'Working out a real bassline by ear — the skill that makes you a pro.',
+    tasks: [
+      { text: 'Pick a groove-based song. Find the root of each chord first, then fill in the connecting notes a few seconds at a time.', yt: 'how to transcribe bass by ear' },
+      { text: 'Write out (or memorise) the line, then play along with the record to check timing and feel.', yt: 'learn bass lines by ear lesson' },
+    ],
+  },
+
+  // ── Songs ───────────────────────────────────────────────────────────────
+  {
+    id: 'songs-acoustic-novice',
+    title: 'Campfire acoustic songs',
+    instrument: 'Guitar', category: 'Songs', level: 'Novice',
+    tags: ['acoustic', 'open chords', 'strumming', 'easy songs'],
+    summary: 'Crowd-pleasers built from a handful of open chords and a steady strum.',
+    tasks: [
+      { text: 'Wonderwall-style G-Em-C-D and Wagon Wheel (G-D-Em-C) — same four chords, dozens of songs. Loop the changes in time.', yt: 'easy 4 chord acoustic songs guitar' },
+      { text: 'Three Little Birds (Bob Marley): A-D-E with an upbeat strum — practise switching cleanly.', yt: 'three little birds guitar lesson' },
+    ],
+  },
+  {
+    id: 'songs-riffs-intermediate',
+    title: 'Essential rock riffs',
+    instrument: 'Guitar', category: 'Songs', level: 'Intermediate',
+    tags: ['riffs', 'rock', 'power chords', 'intermediate songs'],
+    summary: 'The riffs every rock guitarist should have under their fingers.',
+    tasks: [
+      { text: 'Seven Nation Army, Back in Black (AC/DC), and Sunshine of Your Love (Cream) — single-note + power-chord riffs.', yt: 'essential rock riffs guitar lesson' },
+      { text: 'Day Tripper (Beatles): a precise single-note riff that builds picking accuracy.', yt: 'day tripper riff guitar lesson' },
+    ],
+  },
+  {
+    id: 'songs-guitar-advanced',
+    title: 'Advanced guitar workouts',
+    instrument: 'Guitar', category: 'Songs', level: 'Advanced',
+    tags: ['advanced songs', 'solos', 'technique', 'workout'],
+    summary: 'Demanding songs that level up technique, timing and stamina.',
+    tasks: [
+      { text: 'Sweet Child O’ Mine (intro string-skipping), Master of Puppets (down-picking stamina), Hotel California (the harmonised solo).', yt: 'intermediate to advanced guitar songs' },
+      { text: 'Crazy Train (Randy Rhoads): the riff + the iconic solo phrases, broken down slowly.', yt: 'crazy train guitar lesson solo' },
+    ],
+  },
+  {
+    id: 'songs-bass-intermediate',
+    title: 'Groove bass classics',
+    instrument: 'Bass', category: 'Songs', level: 'Intermediate',
+    tags: ['bass songs', 'groove', 'funk', 'intermediate'],
+    summary: 'Iconic basslines that teach groove, fingerstyle and feel.',
+    tasks: [
+      { text: 'Come Together (Beatles), Money (Pink Floyd, in 7/4), and Higher Ground (RHCP — a slap workout).', yt: 'iconic bass lines intermediate lesson' },
+      { text: 'Good Times (Chic): the bassline that launched a thousand grooves — lock it to the click.', yt: 'good times chic bass lesson' },
+    ],
+  },
+  {
+    id: 'fingerstyle-pieces',
+    title: 'Fingerstyle showpieces',
+    instrument: 'Guitar', category: 'Songs', level: 'Advanced',
+    tags: ['fingerstyle', 'arrangement', 'solo guitar', 'travis'],
+    summary: 'Standalone fingerstyle arrangements — melody, bass and harmony at once.',
+    tasks: [
+      { text: 'Blackbird (Beatles): the pull-off melody over a moving bass — a fingerstyle rite of passage. Hands separately first.', yt: 'blackbird beatles fingerstyle lesson' },
+      { text: 'Dust in the Wind: Travis-picked, constant alternating bass under a melody. Slow and steady.', yt: 'dust in the wind fingerstyle lesson' },
+    ],
+  },
+
+  // ── Gear & Tone ───────────────────────────────────────────────────────────
+  {
+    id: 'effects-pedals',
+    title: 'Effects pedals 101',
+    instrument: 'Both', category: 'Gear & Tone', level: 'Intermediate',
+    tags: ['pedals', 'effects', 'overdrive', 'delay', 'reverb', 'signal chain'],
+    summary: 'What the main pedal types do and the order to plug them in.',
+    tasks: [
+      { text: 'Learn the big four: overdrive/distortion (grit), delay (echo), reverb (space), modulation (chorus/phaser). Try each one at a time.', yt: 'guitar pedals explained for beginners' },
+      { text: 'Signal-chain order: tuner → drive → modulation → delay → reverb. Hear how reordering changes the sound.', yt: 'pedalboard signal chain order explained' },
+    ],
+  },
+  {
+    id: 'guitar-setup',
+    title: 'Setting up your instrument',
+    instrument: 'Both', category: 'Gear & Tone', level: 'Advanced',
+    tags: ['setup', 'action', 'intonation', 'truss rod', 'maintenance'],
+    summary: 'Action, intonation and neck relief — make any guitar play its best.',
+    tasks: [
+      { text: 'Action: lower the bridge saddles so strings are close to the frets without buzzing — easier playing. Adjust in tiny steps.', yt: 'guitar setup action adjustment lesson' },
+      { text: 'Intonation: check the 12th-fret harmonic vs fretted note; move the saddle to make them match so it plays in tune up the neck.', yt: 'how to set guitar intonation' },
+    ],
+  },
+  {
+    id: 'bass-tone',
+    title: 'Shaping your bass tone',
+    instrument: 'Bass', category: 'Gear & Tone', level: 'Intermediate',
+    tags: ['bass tone', 'eq', 'pickups', 'fingers vs pick'],
+    summary: 'Pickup selection, EQ and right-hand position to dial in your bass sound.',
+    tasks: [
+      { text: 'Roll between neck and bridge pickups and hear fat vs punchy. Then sweep the tone knob to tame or add bite.', yt: 'bass tone pickups eq explained' },
+      { text: 'Pluck near the neck for warmth, near the bridge for growl — your right-hand position is half your tone.', yt: 'bass right hand position tone' },
+    ],
+  },
+  {
+    id: 'looper-pedal',
+    title: 'Using a looper pedal',
+    instrument: 'Both', category: 'Gear & Tone', level: 'Advanced',
+    tags: ['looper', 'practice tool', 'layering', 'solo over loop'],
+    summary: 'Record a chord loop and solo over yourself — the ultimate practice tool.',
+    tasks: [
+      { text: 'Lay down a clean 4-bar chord loop, tapping in exact time so it loops seamlessly. Timing on the punch-in is everything.', yt: 'how to use a looper pedal beginner' },
+      { text: 'Solo over your loop using the scale that fits — instant backing track for improv practice.', yt: 'practising improvisation with a looper' },
+    ],
+  },
 ];

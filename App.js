@@ -23,6 +23,8 @@ import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import TeacherCalendarScreen from './src/screens/tabs/TeacherCalendarScreen';
+import TeacherOverviewScreen from './src/screens/tabs/TeacherOverviewScreen';
+import LessonNoteScreen from './src/screens/tabs/LessonNoteScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
@@ -65,6 +67,8 @@ function TeacherHomeStackScreen() {
     <TeacherHomeStack.Navigator screenOptions={{ headerShown: false }}>
       <TeacherHomeStack.Screen name="TeacherHomeMain" component={TeacherHomeScreen} />
       <TeacherHomeStack.Screen name="TeacherCalendar" component={TeacherCalendarScreen} />
+      <TeacherHomeStack.Screen name="TeacherOverview" component={TeacherOverviewScreen} />
+      <TeacherHomeStack.Screen name="LessonNote" component={LessonNoteScreen} />
     </TeacherHomeStack.Navigator>
   );
 }

@@ -1228,13 +1228,42 @@ function TeacherDashboard() {
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
       const h = Math.floor(weekMins / 60); const m = weekMins % 60;
       const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+      // Pull lesson attendance, marks and the latest note from the teacher's own
+      // doc (recorded on the lesson calendar) for the last ~term.
+      let lessonLines = '';
+      try {
+        const meSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const att = meSnap.data()?.attendance || {};
+        const c = new Date(); c.setDate(c.getDate() - 91);
+        const cutoffYmd = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
+        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0;
+        let latestNote = null, latestNoteDate = '';
+        Object.values(att).forEach((r) => {
+          if (r.studentUid !== student.uid || (r.date || '') < cutoffYmd) return;
+          if (r.status === 'present') present++;
+          else if (r.status === 'late') late++;
+          else if (r.status === 'absent') absent++;
+          if (r.mark) { markSum += r.mark; markCount++; }
+          if (r.note && (r.date || '') >= latestNoteDate) { latestNote = r.note; latestNoteDate = r.date || ''; }
+        });
+        const denom = present + late + absent;
+        if (denom > 0) {
+          const pct = Math.round(((present + late) / denom) * 100);
+          lessonLines += `\nLessons this term: ${present + late} of ${denom} attended (${pct}%)`;
+          if (absent > 0) lessonLines += ` · ${absent} missed`;
+        }
+        if (markCount > 0) lessonLines += `\nAverage lesson mark: ${(markSum / markCount).toFixed(1)} / 5 ⭐`;
+        if (latestNote) lessonLines += `\nLatest teacher note: ${latestNote}`;
+      } catch (e) { /* attendance is optional — skip if it fails */ }
+
       const report =
 `🎸 Prova practice report — ${name}
 
 This week: practised ${daysPracticed} of 7 days · ${timeStr} total
 Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
 Assigned tasks: ${done} of ${assigned} completed
-Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})
+Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})${lessonLines}
 
 Sent from Prova`;
       await Share.share({ message: report });
