@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -8,6 +8,8 @@ import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 're
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
+import { makeChatId, sendChatMessage } from '../../lib/chat';
+import { displayName } from '../../lib/displayName';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -700,6 +702,11 @@ export default function ProgressScreen() {
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const [editMode, setEditMode] = useState(false);
+  const [weekPoints, setWeekPoints] = useState(0);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [convos, setConvos] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [sendingTo, setSendingTo] = useState(null);
   const lastFetchRef = useRef(0);
 
   useFocusEffect(
@@ -722,6 +729,19 @@ export default function ProgressScreen() {
       const data = userSnap.data();
       setUserData(data);
       setLayout(mergeLayout(data?.studentWidgets));
+
+      // Rolling 7-day Prova-point gain. We anchor a baseline score on the user
+      // doc; if it's missing or older than a week, restart the window from the
+      // current score (so "this week" stays a true 7-day figure).
+      const score = displayScore(data);
+      const now = Date.now();
+      const baseDate = data?.weekScoreDate ? new Date(data.weekScoreDate).getTime() : null;
+      if (data?.weekScoreBaseline == null || !baseDate || now - baseDate >= 7 * 86400000) {
+        setWeekPoints(0);
+        updateDoc(doc(db, 'users', uid), { weekScoreBaseline: score, weekScoreDate: new Date().toISOString() }).catch(() => {});
+      } else {
+        setWeekPoints(Math.max(0, score - data.weekScoreBaseline));
+      }
 
       const map = {};
       logsSnap.forEach(d => { map[d.id] = d.data(); });
@@ -813,6 +833,78 @@ export default function ProgressScreen() {
   const categoryData = buildCategoryData(logMap);
   const milestones   = computeMilestones(streak, totalMins, totalSessions);
 
+  // This week's practice from the daily logs (last 7 calendar days).
+  const wkCut = new Date(); wkCut.setDate(wkCut.getDate() - 6);
+  const cutoffYmd = `${wkCut.getFullYear()}-${String(wkCut.getMonth() + 1).padStart(2, '0')}-${String(wkCut.getDate()).padStart(2, '0')}`;
+  let weekMins = 0; let daysPracticed = 0;
+  Object.entries(logMap).forEach(([date, log]) => {
+    if (date >= cutoffYmd && (log.totalMinutes || 0) > 0) { weekMins += log.totalMinutes; daysPracticed += 1; }
+  });
+
+  const buildReportText = () => {
+    const h = Math.floor(weekMins / 60); const m = weekMins % 60;
+    const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    const rank = scoreRank(provaScore);
+    return (
+`🎸 My Prova week
+
++${formatScore(weekPoints)} Prova points this week
+Practised ${daysPracticed}/7 days · ${timeStr}
+🔥 ${streak}-day streak
+Total: ${formatScore(provaScore)} pts · ${rank.name}
+Level: ${level}`);
+  };
+
+  // Open the share sheet: load the user's in-app conversations so they can send
+  // the report straight to a friend, with "share outside the app" as a fallback.
+  const openShare = async () => {
+    setShareOpen(true);
+    setShareLoading(true);
+    try {
+      const uid = auth.currentUser?.uid;
+      const snap = await getDocs(collection(db, 'userChats', uid, 'conversations'));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.otherUid);
+      const withNames = await Promise.all(list.map(async (c) => {
+        let name = c.otherEmail ? c.otherEmail.split('@')[0] : 'Someone';
+        try { const us = await getDoc(doc(db, 'users', c.otherUid)); name = displayName({ uid: c.otherUid, ...us.data() }); } catch (e) { /* fall back to email */ }
+        return { ...c, name };
+      }));
+      withNames.sort((a, b) => a.name.localeCompare(b.name));
+      setConvos(withNames);
+    } catch (e) {
+      setConvos([]);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const shareExternal = async () => {
+    setShareOpen(false);
+    try { await Share.share({ message: buildReportText() }); } catch (e) { /* user cancelled */ }
+  };
+
+  const sendToConversation = async (c) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setSendingTo(c.otherUid);
+    try {
+      await sendChatMessage({
+        chatId: c.chatId || makeChatId(uid, c.otherUid),
+        senderUid: uid,
+        senderEmail: auth.currentUser?.email || '',
+        otherUid: c.otherUid,
+        otherEmail: c.otherEmail || '',
+        text: buildReportText(),
+      });
+      setShareOpen(false);
+      Alert.alert('Sent!', `Your progress was sent to ${c.name}.`);
+    } catch (e) {
+      Alert.alert('Error', "Couldn't send. Please try again.");
+    } finally {
+      setSendingTo(null);
+    }
+  };
+
   const renderWidget = (id) => {
     switch (id) {
       case 'stats':
@@ -887,6 +979,14 @@ export default function ProgressScreen() {
           <Text style={styles.editHelp}>Reorder with the arrows or hide a card with the eye. Tap Done to save.</Text>
         )}
 
+        {!editMode && (
+          <TouchableOpacity style={styles.shareBtn} onPress={openShare} activeOpacity={0.85}>
+            <Ionicons name="share-outline" size={16} color="#fff" />
+            <Text style={styles.shareBtnText}>Share my progress</Text>
+            <Text style={styles.shareBtnPts}>+{formatScore(weekPoints)} pts this week</Text>
+          </TouchableOpacity>
+        )}
+
         <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
 
         {layout.map((w, i) => {
@@ -916,6 +1016,39 @@ export default function ProgressScreen() {
           return w.enabled ? <View key={w.id}>{content}</View> : null;
         })}
       </ScrollView>
+
+      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+        <TouchableOpacity style={styles.shareBackdrop} activeOpacity={1} onPress={() => setShareOpen(false)}>
+          <TouchableOpacity style={styles.shareSheet} activeOpacity={1}>
+            <View style={styles.shareSheetHandle} />
+            <Text style={styles.shareSheetTitle}>Share my progress</Text>
+            <Text style={styles.shareSheetSub}>Send it to a friend in the app, or share it anywhere.</Text>
+
+            {shareLoading ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
+            ) : convos.length === 0 ? (
+              <Text style={styles.shareEmpty}>No chats yet — start a conversation in Messages first, or share outside the app below.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 260 }}>
+                {convos.map((c) => (
+                  <TouchableOpacity key={c.id} style={styles.shareRow} onPress={() => sendToConversation(c)} disabled={sendingTo != null} activeOpacity={0.7}>
+                    <View style={styles.shareAvatar}><Text style={styles.shareAvatarText}>{c.name.charAt(0).toUpperCase()}</Text></View>
+                    <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
+                    {sendingTo === c.otherUid
+                      ? <ActivityIndicator size="small" color={COLORS.primary} />
+                      : <Ionicons name="send" size={16} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity style={styles.shareExternalBtn} onPress={shareExternal} activeOpacity={0.85}>
+              <Ionicons name="share-outline" size={16} color={COLORS.text} />
+              <Text style={styles.shareExternalText}>Share outside the app</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -932,6 +1065,25 @@ const styles = StyleSheet.create({
   editBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   editBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   editHelp: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginBottom: SPACING.md, marginTop: -SPACING.sm },
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.primary, borderRadius: 14,
+    paddingVertical: 13, paddingHorizontal: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  shareBtnText: { color: '#fff', fontSize: 15, fontWeight: '800', flex: 1 },
+  shareBtnPts: { color: '#fff', fontSize: 12, fontWeight: '700', opacity: 0.85 },
+  shareBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  shareSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
+  shareSheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, marginBottom: SPACING.md },
+  shareSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  shareSheetSub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.md },
+  shareEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginVertical: SPACING.md },
+  shareRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  shareAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' },
+  shareAvatarText: { color: COLORS.primary, fontSize: 16, fontWeight: '800' },
+  shareRowName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  shareExternalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: SPACING.lg, paddingVertical: 13, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
+  shareExternalText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   editWrap: { borderWidth: 1, borderColor: COLORS.primary + '55', borderRadius: 16, padding: SPACING.sm, marginBottom: SPACING.md, backgroundColor: COLORS.primary + '0C' },
   editBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: 4 },
   editName: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },

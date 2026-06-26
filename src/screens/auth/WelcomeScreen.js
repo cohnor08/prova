@@ -14,7 +14,13 @@ const ROLES = [
     role: 'student',
     icon: 'musical-notes',
     title: "I'm a Student",
-    subtitle: 'Get an AI practice plan and track your progress',
+    subtitle: 'Learn with a teacher — get assigned tasks and lessons',
+  },
+  {
+    role: 'personal',
+    icon: 'person',
+    title: 'Personal',
+    subtitle: 'Practise solo with an AI plan and progress tracking',
   },
   {
     role: 'teacher',

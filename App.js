@@ -31,11 +31,13 @@ import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import LibraryScreen from './src/screens/tabs/LibraryScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
+import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const PracticeStack = createNativeStackNavigator();
 const TeacherHomeStack = createNativeStackNavigator();
+const TodayStack = createNativeStackNavigator();
 
 // The Practice tab is a small stack so it can push deeper pages (Gigs &
 // Setlists) without adding another bottom tab.
@@ -57,7 +59,19 @@ function PracticeStackScreen() {
       />
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
       <PracticeStack.Screen name="Library" component={LibraryScreen} />
+      <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
     </PracticeStack.Navigator>
+  );
+}
+
+// The Today tab is a small stack so it can push the read-only lesson-notes page
+// in its own window (instead of jumping over to the calendar).
+function TodayStackScreen() {
+  return (
+    <TodayStack.Navigator screenOptions={{ headerShown: false }}>
+      <TodayStack.Screen name="TodayHome" component={TodayScreen} />
+      <TodayStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
+    </TodayStack.Navigator>
   );
 }
 
@@ -119,7 +133,7 @@ function MainTabs({ role }) {
         </>
       ) : (
         <>
-          <Tab.Screen name="Today" component={TodayScreen} />
+          <Tab.Screen name="Today" component={TodayStackScreen} />
           <Tab.Screen name="Practice" component={PracticeStackScreen} />
           <Tab.Screen name="Progress" component={ProgressScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />

@@ -522,8 +522,8 @@ export default function ProfileScreen() {
         )}
 
         {/* Practice settings + goals are student-only — teachers don't have a practice plan */}
-        {userData?.role !== 'teacher' && (<>
-        {/* My Teacher */}
+        {userData?.role !== 'teacher' && userData?.role !== 'personal' && (<>
+        {/* My Teacher (students only — personal accounts have no teacher) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>MY TEACHER</Text>
           {userData?.teacherUid ? (

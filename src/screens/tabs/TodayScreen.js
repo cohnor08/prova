@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
 import { COLORS, SPACING } from '../../constants/theme';
-import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
+import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
@@ -83,6 +83,36 @@ function lessonDayLabel(d) {
   if (diff === 0) return 'Today';
   if (diff === 1) return 'Tomorrow';
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function pastDayLabel(ymdStr) {
+  const [y, m, d] = ymdStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - date) / 86400000);
+  if (diff <= 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Attendance the teacher set (read-only for the student). The numeric mark is
+// intentionally NOT shown to the student — only status + note.
+const ATT_META = {
+  present: { color: '#22C55E', label: 'Present' },
+  late: { color: '#E0A800', label: 'Late' },
+  absent: { color: '#EF4444', label: 'Absent' },
+  excused: { color: '#94A3B8', label: 'Excused' },
+};
+
+// Small "Notes" pill in the FROM YOUR TEACHER header that opens the read-only
+// lesson-notes window.
+function NotesChip({ onPress }) {
+  return (
+    <TouchableOpacity style={styles.notesChip} onPress={onPress} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+      <Ionicons name="document-text-outline" size={13} color={COLORS.primary} />
+      <Text style={styles.notesChipText}>Notes</Text>
+    </TouchableOpacity>
+  );
 }
 
 // One teacher-assigned task on the student's Today screen. The timer counts the
@@ -417,11 +447,11 @@ export default function TodayScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
   const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
+  const [attendance, setAttendance] = useState({}); // teacher-set attendance map `${lessonId}__${ymd}` -> { status, note }
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
-  const [regenerating, setRegenerating] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [soloOpen, setSoloOpen] = useState(true);
@@ -580,11 +610,14 @@ export default function TodayScreen({ navigation }) {
       if (data?.teacherUid) {
         try {
           const tSnap = await getDoc(doc(db, 'users', data.teacherUid));
-          const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
+          const tData = tSnap.data() || {};
+          const all = Array.isArray(tData.lessons) ? tData.lessons : [];
           setLessons(all.filter((l) => l.studentUid === uid));
-        } catch { setLessons([]); }
+          setAttendance(tData.attendance || {});
+        } catch { setLessons([]); setAttendance({}); }
       } else {
         setLessons([]);
+        setAttendance({});
       }
     } catch (e) {
       console.error(e);
@@ -593,38 +626,7 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
-  const runRegenerate = async () => {
-    if (regenerating || !userData) return;
-    setRegenerating(true);
-    try {
-      const uid = auth.currentUser.uid;
-      const newPlan = await generatePracticePlan(userData);
-      await setDoc(doc(db, 'users', uid), {
-        practicePlan: newPlan,
-        planGeneratedAt: new Date().toISOString(),
-      }, { merge: true });
-      const weeklyPlan = newPlan?.weeklyPlan || {};
-      setPlan(weeklyPlan);
-      setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
-      setCompletedIds([]);
-      Alert.alert('Done!', 'Your fresh practice plan is ready.');
-    } catch (err) {
-      Alert.alert('Could not regenerate', err.message || 'Please try again.');
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
-  const handleRegeneratePlan = () => {
-    Alert.alert(
-      'Regenerate plan?',
-      'Build a fresh practice plan from your current settings. This replaces your existing plan.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Regenerate', onPress: runRegenerate },
-      ]
-    );
-  };
+  // Plan regeneration now lives only on the Profile tab.
 
   const handleComplete = async (sessionId) => {
     if (completedIds.includes(sessionId)) return;
@@ -859,6 +861,17 @@ export default function TodayScreen({ navigation }) {
     .sort((a, b) => a.when - b.when)[0] || null;
   const lessonIsToday = nextLesson && lessonDayLabel(nextLesson.when) === 'Today';
 
+  // Most recent lesson the teacher has marked attendance for (status + note only,
+  // never the numeric mark). Keys are `${lessonId}__${YYYY-MM-DD}`.
+  const myUid = auth.currentUser?.uid;
+  const todayYmd = ymdLocal(nowDate);
+  const lastAttended = Object.entries(attendance)
+    .map(([key, rec]) => ({ date: key.split('__')[1], rec }))
+    .filter((x) => x.rec && x.rec.status && x.rec.studentUid === myUid && x.date && x.date <= todayYmd && ATT_META[x.rec.status])
+    .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  // Whether there's any lesson feedback to open in the notes window.
+  const hasLessonNotes = Object.values(attendance).some((r) => r && r.studentUid === myUid && (r.note || r.status));
+
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
@@ -1009,19 +1022,21 @@ export default function TodayScreen({ navigation }) {
         )}
 
         {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
-        {isToday && (soloTasks.length > 0 || nextLesson) && (
+        {isToday && (soloTasks.length > 0 || nextLesson || lastAttended) && (
           <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
             {soloTasks.length >= 3 ? (
               <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                {hasLessonNotes && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
                 <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
                 <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             ) : (
               <View style={styles.teacherHeader}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                {hasLessonNotes && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
               </View>
             )}
             {nextLesson && (
@@ -1038,6 +1053,24 @@ export default function TodayScreen({ navigation }) {
                 <Text style={styles.lessonRowText} numberOfLines={1}>
                   {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
                 </Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
+            {lastAttended && (
+              <TouchableOpacity
+                style={styles.lessonRow}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
+              >
+                <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.lessonRowText} numberOfLines={1}>
+                    Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
+                  </Text>
+                  {lastAttended.rec.note ? (
+                    <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
+                  ) : null}
+                </View>
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
@@ -1118,26 +1151,6 @@ export default function TodayScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* Regenerate plan — rebuilds the AI plan from your current settings */}
-        {isToday && (
-          <>
-            <TouchableOpacity
-              style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
-              onPress={handleRegeneratePlan}
-              disabled={regenerating}
-              activeOpacity={0.8}
-            >
-              {regenerating
-                ? <ActivityIndicator size="small" color={COLORS.primary} />
-                : <Ionicons name="refresh" size={16} color={COLORS.primary} />}
-              <Text style={styles.regenBtnText}>{regenerating ? 'Building your plan…' : 'Regenerate plan'}</Text>
-            </TouchableOpacity>
-            {regenerating && (
-              <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
-            )}
-          </>
-        )}
-
       </ScrollView>
 
       <Modal visible={showRating} transparent animationType="none">
@@ -1201,15 +1214,6 @@ const styles = StyleSheet.create({
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
   title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.md },
   headerCentered: { textAlign: 'center', alignSelf: 'center' },
-  regenBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    alignSelf: 'center', marginTop: SPACING.lg,
-    paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999,
-    backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '40',
-  },
-  regenBtnDisabled: { opacity: 0.6 },
-  regenBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
-  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center', fontStyle: 'italic' },
 
   dayRow: { flexDirection: 'row', gap: 6, marginBottom: SPACING.lg },
   dayBtn: { flex: 1, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.card, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
@@ -1375,6 +1379,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '12', borderRadius: 10,
   },
   lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  attDot: { width: 9, height: 9, borderRadius: 5 },
+  attNoteText: { color: COLORS.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
+  notesChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: COLORS.primary + '18', borderWidth: 1, borderColor: COLORS.primary + '33',
+    marginLeft: 8,
+  },
+  notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },

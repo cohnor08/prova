@@ -9,7 +9,7 @@ import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
-  onSnapshot, orderBy, doc, getDoc,
+  onSnapshot, orderBy, doc, getDoc, deleteDoc, setDoc,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
@@ -110,6 +110,38 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
     }
   };
 
+  // Delete a message for everyone in the chat. Both participants read the same
+  // messages collection, so deleting the doc removes it on both sides. You can
+  // only delete your own messages. If it was the latest message, the thread
+  // preview in each person's conversation list is refreshed too.
+  const deleteMessage = (item) => {
+    if (item.senderUid !== myUid) return;
+    Alert.alert('Delete message', 'This removes it for everyone in this chat.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          const wasLast = messages.length > 0 && messages[messages.length - 1].id === item.id;
+          try {
+            await deleteDoc(doc(db, 'chats', chatId, 'messages', item.id));
+            if (wasLast) {
+              const prev = messages[messages.length - 2] || null;
+              const preview = prev
+                ? (prev.mediaUrl ? (prev.mediaType === 'video' ? '🎥 Video' : '📷 Photo') : prev.text)
+                : '';
+              const meta = { lastMessage: preview, lastSenderUid: prev?.senderUid || '' };
+              await Promise.all([
+                setDoc(doc(db, 'userChats', myUid, 'conversations', chatId), meta, { merge: true }),
+                otherUid ? setDoc(doc(db, 'userChats', otherUid, 'conversations', chatId), meta, { merge: true }) : Promise.resolve(),
+              ]);
+            }
+          } catch (e) {
+            Alert.alert('Error', "Couldn't delete the message. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.chatNavHeader}>
@@ -155,10 +187,19 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
                   </Text>
                 </View>
               );
-            if (!showReceipt) return body;
+            const wrapped = (
+              <TouchableOpacity
+                activeOpacity={isMe ? 0.7 : 1}
+                onLongPress={isMe ? () => deleteMessage(item) : undefined}
+                delayLongPress={300}
+              >
+                {body}
+              </TouchableOpacity>
+            );
+            if (!showReceipt) return wrapped;
             return (
               <View>
-                {body}
+                {wrapped}
                 <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>
               </View>
             );
@@ -300,7 +341,7 @@ export default function MessagesScreen() {
 
   if (activeChat) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <ChatView
           chatId={activeChat.chatId}
           myUid={myUid}
@@ -339,7 +380,7 @@ export default function MessagesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
         <TouchableOpacity onPress={() => setShowNewChat(true)} style={styles.newBtn} activeOpacity={0.7}>
