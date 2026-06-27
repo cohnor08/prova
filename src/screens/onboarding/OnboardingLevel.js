@@ -11,7 +11,7 @@ const LEVEL_DESCRIPTIONS = {
   Elite: 'Professional level, complex solos, improvise freely',
 };
 
-export default function OnboardingLevel({ onNext, onBack, data }) {
+export default function OnboardingLevel({ onNext, onBack, data, steps = 4 }) {
   const [selected, setSelected] = useState(data?.level || null);
 
   return (
@@ -21,7 +21,7 @@ export default function OnboardingLevel({ onNext, onBack, data }) {
           <Ionicons name="arrow-back" size={24} color={COLORS.textSecondary} />
         </TouchableOpacity>
         <View style={styles.stepPills}>
-          {[0, 1, 2, 3].map(i => (
+          {Array.from({ length: steps }).map((_, i) => (
             <View key={i} style={[styles.pill, i === 1 && styles.pillActive, i < 1 && styles.pillDone]} />
           ))}
         </View>

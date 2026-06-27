@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +15,9 @@ import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
 import { displayName } from '../../lib/displayName';
+import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
+import { Video, ResizeMode } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -120,7 +123,7 @@ function NotesChip({ onPress }) {
 // credit — 3 of 20 min still pays), then "Practice again" lets them run another
 // lap for more. Points are time-proportional, so the only way to score is to
 // put in the real minutes.
-function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong }) {
+function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy }) {
   const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
   const [elapsed, setElapsed] = useState(0);   // seconds practised THIS lap
   const [running, setRunning] = useState(false);
@@ -220,6 +223,32 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
           <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {task.song}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
+      )}
+
+      {expanded && (
+        task.proofUrl ? (
+          <View style={styles.proofRow}>
+            <Ionicons name={task.proofVerified ? 'checkmark-circle' : 'videocam'} size={15} color={task.proofVerified ? COLORS.success : COLORS.primary} />
+            <Text style={styles.proofRowText} numberOfLines={1}>
+              {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
+            </Text>
+            <TouchableOpacity onPress={() => onViewProof(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={styles.proofViewLink}>View</Text>
+            </TouchableOpacity>
+            {!task.proofVerified && (
+              <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Replace'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
+            {proofBusy
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
+            <Text style={styles.proofAddText}>{proofBusy ? 'Uploading…' : 'Add proof of practice'}</Text>
+          </TouchableOpacity>
+        )
       )}
     </View>
   );
@@ -454,6 +483,8 @@ export default function TodayScreen({ navigation }) {
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
+  const [proofBusyId, setProofBusyId] = useState(null); // task id currently uploading a proof clip
+  const [proofView, setProofView] = useState(null);     // { url, type } currently being watched
   const [soloOpen, setSoloOpen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -790,6 +821,58 @@ export default function TodayScreen({ navigation }) {
     if (pts > 0) Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
   };
 
+  // Record/pick a short clip as proof a teacher task was practised, upload it,
+  // and store the URL on that task. Clears any prior teacher verification when
+  // re-submitting so the teacher re-checks the new clip.
+  const runProofUpload = async (taskId, getMedia) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setProofBusyId(taskId);
+    try {
+      const picked = await getMedia();
+      if (!picked) { setProofBusyId(null); return; }
+      if (picked.error) { Alert.alert('Proof', picked.error); setProofBusyId(null); return; }
+      const url = await uploadProofMedia(picked.uri, uid, picked.type);
+      const next = (userData?.assignedTasks || []).map((t) =>
+        t.id === taskId
+          ? { ...t, proofUrl: url, proofType: picked.type, proofAt: new Date().toISOString(), proofVerified: false }
+          : t
+      );
+      setUserData((p) => ({ ...p, assignedTasks: next }));
+      await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+      Alert.alert('Proof submitted 🎥', 'Your teacher can now review it.');
+    } catch (e) {
+      Alert.alert('Upload failed', "Couldn't upload your clip. Please try again.");
+    } finally {
+      setProofBusyId(null);
+    }
+  };
+
+  const attachProof = (taskId) => {
+    Alert.alert('Add proof of practice', 'Show your teacher you practised this.', [
+      { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia) },
+      { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const viewProof = (task) => {
+    if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video' });
+  };
+
+  // Free student accounts don't get the AI personalised plan — it's part of a
+  // paid Personal account. Confirm, then send them to the upgrade screen.
+  const promptUpgrade = () => {
+    Alert.alert(
+      'Upgrade to Personal',
+      'Get your own AI practice plan that adapts to you — alongside your teacher’s tasks.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'See plans', onPress: () => navigation.navigate('Paywall') },
+      ]
+    );
+  };
+
   // Open an attachment a teacher added to a task: a raw URL opens directly,
   // anything else becomes a YouTube search (handles links and song names).
   const openTaskLink = (value) => {
@@ -848,6 +931,9 @@ export default function TodayScreen({ navigation }) {
   });
 
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
+  // A student account is free and has no AI plan unless they opt in. Distinguish
+  // "no plan at all" from a genuine rest day inside an existing plan.
+  const hasPlan = !!plan && Object.keys(plan).length > 0;
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -998,13 +1084,43 @@ export default function TodayScreen({ navigation }) {
           <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
         )}
         {selectedSessions.length === 0 ? (
-          <View style={styles.restDay}>
-            <View style={styles.restIconWrap}>
-              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+          isToday && !hasPlan ? (
+            userData?.role === 'student' ? (
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.accent || '#06B6D4']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={styles.upgradeHero}
+              >
+                <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={22} color="#fff" /></View>
+                <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
+                <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
+                <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.9}>
+                  <Ionicons name="star" size={15} color={COLORS.primary} />
+                  <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : (
+              <View style={styles.restDay}>
+                <View style={styles.restIconWrap}>
+                  <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
+                </View>
+                <Text style={styles.restTitle}>No plan yet</Text>
+                <Text style={styles.restSubtitle}>Build your personalised plan from Profile whenever you’re ready.</Text>
+                <TouchableOpacity style={styles.makePlanBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.85}>
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.makePlanText}>Create a plan</Text>
+                </TouchableOpacity>
+              </View>
+            )
+          ) : (
+            <View style={styles.restDay}>
+              <View style={styles.restIconWrap}>
+                <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+              </View>
+              <Text style={styles.restTitle}>Rest Day</Text>
+              <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
             </View>
-            <Text style={styles.restTitle}>Rest Day</Text>
-            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
-          </View>
+          )
         ) : isToday ? (
           selectedSessions.map(session => (
             <SessionCard
@@ -1083,6 +1199,9 @@ export default function TodayScreen({ navigation }) {
                 onBank={bankTeacherTask}
                 openTaskLink={openTaskLink}
                 onOpenSong={openSongInLibrary}
+                onAttachProof={attachProof}
+                onViewProof={viewProof}
+                proofBusy={proofBusyId === t.id}
               />
             ))}
           </View>
@@ -1111,6 +1230,9 @@ export default function TodayScreen({ navigation }) {
                   onBank={bankTeacherTask}
                   openTaskLink={openTaskLink}
                 onOpenSong={openSongInLibrary}
+                  onAttachProof={attachProof}
+                  onViewProof={viewProof}
+                  proofBusy={proofBusyId === t.id}
                 />
               ))}
               {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
@@ -1200,6 +1322,22 @@ export default function TodayScreen({ navigation }) {
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowRestoreModal(false)} activeOpacity={0.7} style={styles.restoreModalDismissBtn}>
               <Text style={styles.restoreModalDismiss}>No thanks, let it reset</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
+        <View style={styles.proofBackdrop}>
+          <View style={styles.proofViewer}>
+            {proofView?.type === 'video' ? (
+              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
+            ) : proofView ? (
+              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            ) : null}
+            <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
+              <Ionicons name="close" size={20} color="#fff" />
+              <Text style={styles.proofCloseText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1388,6 +1526,17 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: SPACING.sm, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: COLORS.card },
+  proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  proofViewLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  proofReplaceLink: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  proofViewer: { width: '100%', alignItems: 'center' },
+  proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  proofCloseBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 10, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
+  proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
@@ -1395,7 +1544,15 @@ const styles = StyleSheet.create({
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
   restTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
-  restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
+  makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
+  makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginBottom: SPACING.md },
+  upgradeBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
+  upgradeTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'center' },
+  upgradeSub: { color: 'rgba(255,255,255,0.92)', fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: SPACING.xl, borderRadius: 999, backgroundColor: '#fff' },
+  upgradeBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
 
   ratingBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   ratingSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },

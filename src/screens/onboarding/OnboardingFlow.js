@@ -16,7 +16,12 @@ import OnboardingGenerating from './OnboardingGenerating';
 import OnboardingFirstWin, { FIRST_WIN_POINTS, FIRST_WIN_MINUTES } from './OnboardingFirstWin';
 
 export default function OnboardingFlow() {
-  const { setOnboardingComplete } = useAuthContext();
+  const { setOnboardingComplete, role } = useAuthContext();
+  // A "student" learns through a teacher, so their account is free and skips the
+  // AI personalised plan — they only pick instrument + level. A "personal"
+  // account is a solo learner who gets the full survey + generated plan.
+  const isStudent = role === 'student';
+  const lastStep = isStudent ? 1 : 3;
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState({});
   const [generating, setGenerating] = useState(false);
@@ -26,8 +31,27 @@ export default function OnboardingFlow() {
     const updatedProfile = { ...profile, ...stepData };
     setProfile(updatedProfile);
 
-    if (step < 3) {
+    if (step < lastStep) {
       setStep(step + 1);
+      return;
+    }
+
+    // Students: no AI plan (free account). Save the basics and enter the app —
+    // they can opt into a personalised plan later from Profile.
+    if (isStudent) {
+      try {
+        const uid = auth.currentUser.uid;
+        await setDoc(doc(db, 'users', uid), {
+          ...updatedProfile,
+          onboardingComplete: true,
+          streak: 0,
+          totalMinutes: 0,
+        }, { merge: true });
+        await AsyncStorage.setItem(`onboarding_${uid}`, 'true');
+        setOnboardingComplete(true);
+      } catch (error) {
+        Alert.alert('Error', `Couldn't finish setting up: ${error.message}`);
+      }
       return;
     }
 
@@ -99,11 +123,15 @@ export default function OnboardingFlow() {
     );
   };
 
+  const totalSteps = isStudent ? 2 : 4;
   const screens = [
-    <OnboardingInstrument key="instrument" onNext={handleNext} onBack={null} data={profile} />,
-    <OnboardingLevel key="level" onNext={handleNext} onBack={handleBack} data={profile} />,
-    <OnboardingGoals key="goals" onNext={handleNext} onBack={handleBack} data={profile} />,
-    <OnboardingSchedule key="schedule" onNext={handleNext} onBack={handleBack} data={profile} />,
+    <OnboardingInstrument key="instrument" onNext={handleNext} onBack={null} data={profile} steps={totalSteps} />,
+    <OnboardingLevel key="level" onNext={handleNext} onBack={handleBack} data={profile} steps={totalSteps} />,
+    // Goals + schedule only feed the AI plan, so students (no plan) skip them.
+    ...(isStudent ? [] : [
+      <OnboardingGoals key="goals" onNext={handleNext} onBack={handleBack} data={profile} />,
+      <OnboardingSchedule key="schedule" onNext={handleNext} onBack={handleBack} data={profile} />,
+    ]),
   ];
 
   let content;

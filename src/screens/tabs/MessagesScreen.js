@@ -14,6 +14,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
+import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -40,6 +41,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sendingProgress, setSendingProgress] = useState(false);
   const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
@@ -114,6 +116,20 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   // messages collection, so deleting the doc removes it on both sides. You can
   // only delete your own messages. If it was the latest message, the thread
   // preview in each person's conversation list is refreshed too.
+  // Share my latest weekly progress straight into this chat.
+  const sendProgress = async () => {
+    if (sendingProgress) return;
+    setSendingProgress(true);
+    try {
+      const report = await fetchProgressReport(myUid);
+      await sendChatMessage({ chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail, text: report });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't send your progress. Please try again.");
+    } finally {
+      setSendingProgress(false);
+    }
+  };
+
   const deleteMessage = (item) => {
     if (item.senderUid !== myUid) return;
     Alert.alert('Delete message', 'This removes it for everyone in this chat.', [
@@ -155,7 +171,12 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           </View>
           <Text style={styles.chatNavEmail} numberOfLines={1}>{headerName}</Text>
         </View>
-        <View style={{ width: 90 }} />
+        <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          {sendingProgress
+            ? <ActivityIndicator size="small" color={COLORS.primary} />
+            : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
+          <Text style={styles.progressBtnText}>Progress</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -513,6 +534,8 @@ const styles = StyleSheet.create({
   chatNavHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 90 },
   backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
+  progressBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, width: 90 },
+  progressBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   chatNavCenter: { flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm },
   chatAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   chatAvatarText: { color: COLORS.text, fontSize: 12, fontWeight: '800' },

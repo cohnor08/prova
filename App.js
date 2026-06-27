@@ -32,6 +32,7 @@ import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import LibraryScreen from './src/screens/tabs/LibraryScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
+import PaywallScreen from './src/screens/tabs/PaywallScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -71,6 +72,7 @@ function TodayStackScreen() {
     <TodayStack.Navigator screenOptions={{ headerShown: false }}>
       <TodayStack.Screen name="TodayHome" component={TodayScreen} />
       <TodayStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
+      <TodayStack.Screen name="Paywall" component={PaywallScreen} />
     </TodayStack.Navigator>
   );
 }
@@ -178,7 +180,7 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ setOnboardingComplete }}>
+    <AuthContext.Provider value={{ setOnboardingComplete, role }}>
       <NavigationContainer>
         <StatusBar style="light" />
         {!user ? (

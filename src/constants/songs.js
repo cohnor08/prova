@@ -182,6 +182,36 @@ async function _lookupSong(title, artist) {
   return result;
 }
 
+// Resolve a free-text query (e.g. "good times bad times by led zep") to the
+// canonical track via Apple's iTunes Search API. Returns the proper, fully
+// spelled title + artist ("Led Zeppelin", not "led") plus artwork/preview, or
+// null if nothing matches. Primes the lookup cache so the resolved song's
+// cover/preview aren't fetched again.
+export async function searchTrack(queryStr) {
+  const q = String(queryStr || '').trim();
+  if (!q) return null;
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=1`;
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+    const hit = json?.results?.[0];
+    if (!hit || !hit.trackName) return null;
+    const art = hit.artworkUrl100;
+    const result = {
+      title: hit.trackName,
+      artist: hit.artistName || '',
+      artwork: art ? art.replace('100x100bb', '300x300bb') : null,
+      preview: hit.previewUrl || null,
+    };
+    const key = `${result.title.toLowerCase().trim()}|${result.artist.toLowerCase().trim()}`;
+    _itunesCache.set(key, { artwork: result.artwork, preview: result.preview });
+    return result;
+  } catch (e) {
+    console.warn('iTunes track search failed:', e);
+    return null;
+  }
+}
+
 // Fetch a 30-second preview clip URL for a song using Apple's free iTunes
 // Search API (no auth required). Returns null if no match/preview is found.
 export async function fetchSongPreview(title, artist) {

@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard,
+  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard, Image,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -383,6 +384,89 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
               {/* Stays tappable even when dimmed so it can tell the teacher what's missing. */}
               <TouchableOpacity style={[styles.modalAssignBtn, !name.trim() && { opacity: 0.5 }]} onPress={create}>
                 <Text style={styles.modalAssignText}>Create class</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// Add more students to an EXISTING class, optionally back-assigning every task
+// the class has already been given so the newcomers catch up.
+function AddStudentsModal({ visible, klass, students, onClose, onAdd }) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [assignTasks, setAssignTasks] = useState(true);
+  const reset = () => { setSearch(''); setSelected(new Set()); setAssignTasks(true); };
+
+  const memberSet = new Set(klass?.studentUids || []);
+  const available = students.filter((s) => !memberSet.has(s.uid));
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? available.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    : available;
+
+  const toggle = (uid) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(uid)) n.delete(uid); else n.add(uid);
+    return n;
+  });
+  const submit = () => {
+    if (selected.size === 0) { Alert.alert('Pick students', 'Select at least one student to add.'); return; }
+    onAdd([...selected], assignTasks);
+    reset();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add students{klass ? ` to ${klass.name}` : ''}</Text>
+            {available.length === 0 ? (
+              <Text style={styles.tplSheetEmpty}>All your students are already in this class.</Text>
+            ) : (
+              <>
+                <Text style={styles.tplLabel}>STUDENTS ({selected.size})</Text>
+                {available.length > 5 && (
+                  <TextInput
+                    style={[styles.input, { marginBottom: SPACING.sm }]}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
+                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                  {shown.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
+                  ) : shown.map((s) => {
+                    const on = selected.has(s.uid);
+                    return (
+                      <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={styles.classPickName} numberOfLines={1}>{displayName(s)}</Text>
+                        {!!s.level && <Text style={styles.classPickMeta}>{s.level}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity style={styles.assignTasksRow} onPress={() => setAssignTasks((v) => !v)} activeOpacity={0.7}>
+                  <Ionicons name={assignTasks ? 'checkbox' : 'square-outline'} size={20} color={assignTasks ? COLORS.primary : COLORS.textMuted} />
+                  <Text style={styles.assignTasksText}>Also give them the class’s current tasks</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalAssignBtn, selected.size === 0 && { opacity: 0.5 }]} onPress={submit}>
+                <Text style={styles.modalAssignText}>Add{selected.size > 0 ? ` (${selected.size})` : ''}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1029,6 +1113,7 @@ function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [proofView, setProofView] = useState(null); // { url, type, studentUid, taskId, verified, title }
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
@@ -1036,6 +1121,7 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [addToClass, setAddToClass] = useState(null); // class we're adding students to
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
   const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
@@ -1116,6 +1202,66 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Add students to an existing class. If `assignExisting`, back-assign every
+  // task the class has already been given (one fresh copy per task, per newcomer).
+  const addStudentsToClass = async (klass, uids, assignExisting) => {
+    if (!klass || uids.length === 0) { setAddToClass(null); return; }
+    const merged = [...new Set([...(klass.studentUids || []), ...uids])];
+    saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, studentUids: merged } : c)));
+
+    if (assignExisting) {
+      // One representative per task batch (same classId + assignedAt + title) from
+      // the students already in the class.
+      const batches = new Map();
+      (klass.studentUids || []).forEach((muid) => {
+        const m = students.find((s) => s.uid === muid);
+        (m?.assignedTasks || []).forEach((t) => {
+          if (t.classId !== klass.id) return;
+          const k = `${t.assignedAt}__${t.title}`;
+          if (!batches.has(k)) batches.set(k, t);
+        });
+      });
+      const templates = [...batches.values()].map((t) => ({
+        title: t.title, description: t.description || '', youtube: t.youtube || '', song: t.song || '',
+        dueDate: t.dueDate || null, durationMin: t.durationMin || 0,
+        completed: false, assignedAt: t.assignedAt, teacherUid: auth.currentUser.uid,
+        classId: klass.id, className: klass.name,
+      }));
+      if (templates.length > 0) {
+        try {
+          await Promise.all(uids.map((uid, ui) => {
+            const tasks = templates.map((tpl, ti) => ({ ...tpl, id: `${Date.now()}_${ui}_${ti}` }));
+            return updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion(...tasks) });
+          }));
+        } catch (e) { Alert.alert('Note', "Students were added, but assigning the existing tasks failed. Try again."); }
+      }
+    }
+    setAddToClass(null);
+    await loadStudents();
+    Alert.alert('Added', `${uids.length} student${uids.length === 1 ? '' : 's'} added to ${klass.name}.`);
+  };
+
+  // Remove a student from a class (off the roster + drop that class's tasks from
+  // their account). They stay connected to the teacher.
+  const removeStudentFromClass = (klass, uid, name) => {
+    Alert.alert('Remove from class?', `Remove ${name} from ${klass.name}? Their tasks from this class will be removed too.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: async () => {
+          saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, studentUids: (c.studentUids || []).filter((u) => u !== uid) } : c)));
+          const s = students.find((x) => x.uid === uid);
+          const next = (s?.assignedTasks || []).filter((t) => t.classId !== klass.id);
+          try {
+            await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+            setStudents((prev) => prev.map((x) => (x.uid === uid ? { ...x, assignedTasks: next } : x)));
+          } catch (e) {
+            Alert.alert('Error', "Couldn't remove the student's class tasks. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
   const addStudent = async () => {
     if (DEMO_MODE) { Alert.alert('Demo mode', 'Adding students is disabled in demo mode.'); return; }
     const email = inviteEmail.trim().toLowerCase();
@@ -1176,6 +1322,20 @@ function TeacherDashboard() {
         },
       },
     ]);
+  };
+
+  // Mark a student's practice-proof clip as verified (writes the student's
+  // assignedTasks — allowed for the linked teacher).
+  const verifyProof = async (studentUid, taskId) => {
+    const s = students.find((x) => x.uid === studentUid);
+    const next = (s?.assignedTasks || []).map((t) => (t.id === taskId ? { ...t, proofVerified: true, proofVerifiedAt: new Date().toISOString() } : t));
+    try {
+      await updateDoc(doc(db, 'users', studentUid), { assignedTasks: next });
+      setStudents((prev) => prev.map((x) => (x.uid === studentUid ? { ...x, assignedTasks: next } : x)));
+      setProofView((p) => (p ? { ...p, verified: true } : p));
+    } catch (e) {
+      Alert.alert('Error', "Couldn't verify the proof. Please try again.");
+    }
   };
 
   // Remove a class task from EVERY student it was assigned to. A class batch
@@ -1483,6 +1643,15 @@ Sent from Prova`;
                                 const d = taskDueLabel(t.dueDate);
                                 return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
                               })()}
+                              {t.proofUrl && (
+                                <TouchableOpacity
+                                  onPress={() => setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: student.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title })}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  <Ionicons name={t.proofVerified ? 'checkmark-done-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                                </TouchableOpacity>
+                              )}
                               <TouchableOpacity
                                 onPress={() => removeAssignedTask(student.uid, t.id, t.title)}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1644,6 +1813,9 @@ Sent from Prova`;
                                         <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
                                           {mt.length ? `${done}/${mt.length}` : '—'}
                                         </Text>
+                                        <TouchableOpacity onPress={() => removeStudentFromClass(c, m.uid, displayName(m))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 4 }}>
+                                          <Ionicons name="close" size={16} color={COLORS.textMuted} />
+                                        </TouchableOpacity>
                                       </TouchableOpacity>
                                       {sOpen && (
                                         mt.length === 0 ? (
@@ -1717,15 +1889,25 @@ Sent from Prova`;
                       </View>
                     )}
 
-                    <TouchableOpacity
-                      style={[styles.classAssignBtn, members.length === 0 && { opacity: 0.5 }]}
-                      onPress={() => setSelectedClass(c)}
-                      disabled={members.length === 0}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
-                      <Text style={styles.classAssignBtnText}>Assign task to class</Text>
-                    </TouchableOpacity>
+                    <View style={styles.classBtnRow}>
+                      <TouchableOpacity
+                        style={styles.classAddBtn}
+                        onPress={() => setAddToClass(c)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="person-add-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.classAssignBtnText}>Add students</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.classAddBtn, members.length === 0 && { opacity: 0.5 }]}
+                        onPress={() => setSelectedClass(c)}
+                        disabled={members.length === 0}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.classAssignBtnText}>Assign task</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })
@@ -1821,6 +2003,43 @@ Sent from Prova`;
         onClose={() => setShowCreateClass(false)}
         onCreate={createClass}
       />
+
+      <AddStudentsModal
+        visible={!!addToClass}
+        klass={addToClass}
+        students={students}
+        onClose={() => setAddToClass(null)}
+        onAdd={(uids, assignExisting) => addStudentsToClass(addToClass, uids, assignExisting)}
+      />
+
+      <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
+        <View style={styles.proofBackdrop}>
+          <View style={styles.proofViewer}>
+            {!!proofView && <Text style={styles.proofTitle} numberOfLines={1}>{proofView.title}</Text>}
+            {proofView?.type === 'video' ? (
+              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
+            ) : proofView ? (
+              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            ) : null}
+            <View style={styles.proofActions}>
+              {proofView?.verified ? (
+                <View style={styles.proofVerifiedTag}>
+                  <Ionicons name="checkmark-done-circle" size={18} color={COLORS.success} />
+                  <Text style={styles.proofVerifiedText}>Verified</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.proofVerifyBtn} onPress={() => verifyProof(proofView.studentUid, proofView.taskId)} activeOpacity={0.85}>
+                  <Ionicons name="checkmark" size={17} color="#fff" />
+                  <Text style={styles.proofVerifyText}>Verify</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
+                <Text style={styles.proofCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -2049,6 +2268,10 @@ const styles = StyleSheet.create({
   classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  classBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  classAddBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  assignTasksRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.md, paddingVertical: 4 },
+  assignTasksText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
   classExpand: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
   classMemberBlock: { marginBottom: 6, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
@@ -2139,6 +2362,17 @@ const styles = StyleSheet.create({
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  proofViewer: { width: '100%', alignItems: 'center' },
+  proofTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm, maxWidth: '100%' },
+  proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  proofActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginTop: SPACING.lg },
+  proofVerifyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.success },
+  proofVerifyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  proofVerifiedTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  proofVerifiedText: { color: COLORS.success, fontSize: 14, fontWeight: '800' },
+  proofCloseBtn: { paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
+  proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
   miniDueOverdue: { color: COLORS.error },
 

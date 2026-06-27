@@ -49,3 +49,16 @@ export async function uploadChatMedia(uri, chatId, type) {
   await uploadBytes(storageRef, blob);
   return getDownloadURL(storageRef);
 }
+
+// Uploads a practice-proof clip for a student's task. Stored under the chatMedia
+// rule space (`chatMedia/proof_{uid}`) so the existing Storage rules already
+// cover it — any signed-in user can read (so the teacher can watch) and upload.
+export async function uploadProofMedia(uri, uid, type) {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  const ext = type === 'video' ? 'mp4' : 'jpg';
+  const path = `chatMedia/proof_${uid}/${Date.now()}.${ext}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, blob);
+  return getDownloadURL(storageRef);
+}

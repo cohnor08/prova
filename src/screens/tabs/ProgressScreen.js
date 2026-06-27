@@ -10,6 +10,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
+import { formatProgressReport } from '../../lib/progressReport';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -841,19 +842,10 @@ export default function ProgressScreen() {
     if (date >= cutoffYmd && (log.totalMinutes || 0) > 0) { weekMins += log.totalMinutes; daysPracticed += 1; }
   });
 
-  const buildReportText = () => {
-    const h = Math.floor(weekMins / 60); const m = weekMins % 60;
-    const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    const rank = scoreRank(provaScore);
-    return (
-`🎸 My Prova week
-
-+${formatScore(weekPoints)} Prova points this week
-Practised ${daysPracticed}/7 days · ${timeStr}
-🔥 ${streak}-day streak
-Total: ${formatScore(provaScore)} pts · ${rank.name}
-Level: ${level}`);
-  };
+  const buildReportText = () => formatProgressReport({
+    weekPoints, daysPracticed, weekMins, streak, provaScore,
+    rankName: scoreRank(provaScore).name, level,
+  });
 
   // Open the share sheet: load the user's in-app conversations so they can send
   // the report straight to a friend, with "share outside the app" as a fallback.
