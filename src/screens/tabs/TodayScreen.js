@@ -184,28 +184,26 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             <View style={[styles.ttTimerBarFill, { width: `${Math.min(1, elapsed / target) * 100}%` }]} />
           </View>
         )}
-        <View style={styles.ttTimerRow}>
-          <View style={styles.ttTimerLeft}>
-            <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
-            {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts} pts</Text>}
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={styles.ttTimerBtn} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
-              <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
-              <Text style={styles.ttTimerBtnText}>
-                {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? 'Practice again' : 'Start'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
-              onPress={bank}
-              activeOpacity={elapsed > 0 ? 0.85 : 1}
-            >
-              <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]}>
-                {reachedTarget ? 'Done' : 'Bank'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.ttTimerInfo}>
+          <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
+          {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts} pts</Text>}
+        </View>
+        <View style={styles.ttBtnRow}>
+          <TouchableOpacity style={styles.ttTimerBtn} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
+            <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
+            <Text style={styles.ttTimerBtnText} numberOfLines={1}>
+              {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? `Lap ×${laps + 1}` : 'Start'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
+            onPress={bank}
+            activeOpacity={elapsed > 0 ? 0.85 : 1}
+          >
+            <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]} numberOfLines={1}>
+              {reachedTarget ? 'Done' : 'Bank'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
       )}
@@ -956,7 +954,6 @@ export default function TodayScreen({ navigation }) {
     .filter((x) => x.rec && x.rec.status && x.rec.studentUid === myUid && x.date && x.date <= todayYmd && ATT_META[x.rec.status])
     .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
   // Whether there's any lesson feedback to open in the notes window.
-  const hasLessonNotes = Object.values(attendance).some((r) => r && r.studentUid === myUid && (r.note || r.status));
 
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
@@ -1085,21 +1082,9 @@ export default function TodayScreen({ navigation }) {
         )}
         {selectedSessions.length === 0 ? (
           isToday && !hasPlan ? (
-            userData?.role === 'student' ? (
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.accent || '#06B6D4']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={styles.upgradeHero}
-              >
-                <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={22} color="#fff" /></View>
-                <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
-                <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
-                <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.9}>
-                  <Ionicons name="star" size={15} color={COLORS.primary} />
-                  <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
-                </TouchableOpacity>
-              </LinearGradient>
-            ) : (
+            // Students: the "unlock your AI plan" hero is rendered at the BOTTOM
+            // (teacher tasks/classes/song take priority), so nothing here.
+            userData?.role === 'student' ? null : (
               <View style={styles.restDay}>
                 <View style={styles.restIconWrap}>
                   <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
@@ -1138,13 +1123,13 @@ export default function TodayScreen({ navigation }) {
         )}
 
         {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
-        {isToday && (soloTasks.length > 0 || nextLesson || lastAttended) && (
+        {isToday && (soloTasks.length > 0 || nextLesson || lastAttended || userData?.teacherUid) && (
           <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
             {soloTasks.length >= 3 ? (
               <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
-                {hasLessonNotes && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
+                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
                 <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
                 <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
@@ -1152,7 +1137,7 @@ export default function TodayScreen({ navigation }) {
               <View style={styles.teacherHeader}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
-                {hasLessonNotes && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
+                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
               </View>
             )}
             {nextLesson && (
@@ -1271,6 +1256,24 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
+        )}
+
+        {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
+            tasks, classes and the song — those take priority. */}
+        {isToday && !hasPlan && userData?.role === 'student' && (
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.accent || '#06B6D4']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.upgradeHero}
+          >
+            <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={22} color="#fff" /></View>
+            <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
+            <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
+            <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.9}>
+              <Ionicons name="star" size={15} color={COLORS.primary} />
+              <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
+            </TouchableOpacity>
+          </LinearGradient>
         )}
 
       </ScrollView>
@@ -1426,13 +1429,13 @@ const styles = StyleSheet.create({
   ttTimer: { marginLeft: 22, marginTop: SPACING.sm },
   ttTimerBarBg: { height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' },
   ttTimerBarFill: { height: 4, borderRadius: 2, backgroundColor: COLORS.primary },
-  ttTimerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  ttTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ttTimerInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, marginBottom: SPACING.sm },
   ttTimerText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
   ttLapPts: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800' },
-  ttTimerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
-  ttTimerBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
-  ttBankBtn: { justifyContent: 'center', backgroundColor: COLORS.success, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
+  ttBtnRow: { flexDirection: 'row', gap: SPACING.sm },
+  ttTimerBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 9 },
+  ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  ttBankBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.success, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 9 },
   ttBankBtnDim: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   ttBankBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   ttBankBtnTextDim: { color: COLORS.textMuted },
@@ -1547,7 +1550,7 @@ const styles = StyleSheet.create({
   restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
   makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
   makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginBottom: SPACING.md },
+  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md },
   upgradeBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
   upgradeTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'center' },
   upgradeSub: { color: 'rgba(255,255,255,0.92)', fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },

@@ -11,7 +11,17 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
+import DueDatePicker from '../../components/DueDatePicker';
 import { COLORS, SPACING } from '../../constants/theme';
+
+// Friendly label for a stored ISO due date.
+function dueLabel(iso) {
+  if (!iso) return 'No due date';
+  const d = new Date(iso);
+  if (isNaN(d)) return 'No due date';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
@@ -62,6 +72,17 @@ export default function ResourceLibraryScreen() {
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [assignTarget, setAssignTarget] = useState(null); // { title, url, description } | null
+  const [assignInstructions, setAssignInstructions] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState(null); // ISO datetime or null
+  const [showAssignDuePicker, setShowAssignDuePicker] = useState(false);
+
+  // Seed the instructions/due-date when a resource is chosen to assign.
+  useEffect(() => {
+    if (assignTarget) {
+      setAssignInstructions(assignTarget.description || '');
+      setAssignDueDate(null);
+    }
+  }, [assignTarget]);
 
   const loadResources = (uid) => {
     if (!uid) return;
@@ -90,10 +111,10 @@ export default function ResourceLibraryScreen() {
     if (!assignTarget || recipientUids.length === 0) return;
     const base = {
       title: assignTarget.title,
-      description: assignTarget.description || '',
+      description: assignInstructions.trim(),
       youtube: assignTarget.url,
       song: '',
-      dueDate: null,
+      dueDate: assignDueDate,
       durationMin: 0,
       completed: false,
       assignedAt: new Date().toISOString(),
@@ -425,7 +446,23 @@ export default function ResourceLibraryScreen() {
             </View>
             <Text style={styles.modalSub}>Sends it as a task with the link attached.</Text>
 
-            <ScrollView style={{ maxHeight: 360 }}>
+            <TextInput
+              style={styles.assignInstructions}
+              placeholder="Extra instructions (optional) — what should they do?"
+              placeholderTextColor={COLORS.textMuted}
+              value={assignInstructions}
+              onChangeText={setAssignInstructions}
+              multiline
+            />
+            <TouchableOpacity style={styles.assignDueRow} onPress={() => setShowAssignDuePicker(true)} activeOpacity={0.7}>
+              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.assignDueLabel}>Due date</Text>
+              <Text style={[styles.assignDueValue, assignDueDate && { color: COLORS.text }]}>{dueLabel(assignDueDate)}</Text>
+              <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <Text style={styles.pickLabel}>SEND TO</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
               {classes.length > 0 && <Text style={styles.pickLabel}>CLASSES</Text>}
               {classes.map((c) => {
                 const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
@@ -457,6 +494,13 @@ export default function ResourceLibraryScreen() {
               )}
             </ScrollView>
           </View>
+          {showAssignDuePicker && (
+            <DueDatePicker
+              initial={assignDueDate}
+              onClose={() => setShowAssignDuePicker(false)}
+              onSet={setAssignDueDate}
+            />
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -485,6 +529,10 @@ const styles = StyleSheet.create({
   addResBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
   addResBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   emptyRes: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
+  assignInstructions: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: 14, minHeight: 64, textAlignVertical: 'top', marginBottom: SPACING.sm },
+  assignDueRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 11, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  assignDueLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  assignDueValue: { flex: 1, textAlign: 'right', color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },

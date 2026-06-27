@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard, Image,
+  KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -570,9 +570,11 @@ function DueDatePicker({ initial, onClose, onSet }) {
   );
 }
 
-function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAssigned }) {
-  // The modal assigns to one student, or to every student in a class at once.
+function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onClose, onAssigned }) {
+  // The modal assigns to one student, or to every student in a class at once —
+  // or, when editTask is passed, edits one student's existing task in place.
   const isClass = !!klass;
+  const isEdit = !!editTask;
   const recipients = isClass ? (recipientUids || []) : (student ? [student.uid] : []);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -601,6 +603,18 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
       .then((s) => setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []))
       .catch(() => {});
   }, []);
+
+  // Pre-fill the fields when opening to edit an existing task.
+  useEffect(() => {
+    if (visible && editTask) {
+      setTitle(editTask.title || '');
+      setDescription(editTask.description || '');
+      setYoutube(editTask.youtube || '');
+      setSong(editTask.song || '');
+      setDueDate(editTask.dueDate || null);
+      setDurationMin(editTask.durationMin || 0);
+    }
+  }, [visible, editTask]);
 
   const saveTemplates = (next) => {
     setTemplates(next);
@@ -635,6 +649,26 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
     if (!title.trim()) return;
     if (DEMO_MODE) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
+      return;
+    }
+    // Edit mode: update the one existing task on this student's doc.
+    if (isEdit) {
+      Keyboard.dismiss();
+      setLoading(true);
+      try {
+        const next = (student.assignedTasks || []).map((t) =>
+          t.id === editTask.id
+            ? { ...t, title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(), dueDate, durationMin: durationMin || 0 }
+            : t
+        );
+        await updateDoc(doc(db, 'users', student.uid), { assignedTasks: next });
+        onAssigned();
+        close();
+      } catch (err) {
+        Alert.alert('Error', err.message);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (recipients.length === 0) {
@@ -680,19 +714,20 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{isClass ? 'Assign to Class' : 'Assign Task'}</Text>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={{ paddingBottom: SPACING.lg }}
+              >
+              <Text style={styles.modalTitle}>{isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
-                  : `To: ${displayName(student)}`}
+                  : `${isEdit ? 'For' : 'To'}: ${displayName(student)}`}
                 {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
@@ -756,21 +791,39 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
               </TouchableOpacity>
 
               <Text style={styles.dueLabel}>TIMER</Text>
-              <Text style={styles.timerHint}>Student must run this timer before they can mark it done.</Text>
-              <View style={styles.durRow}>
-                {[0, 5, 10, 15, 20, 30].map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.durChip, durationMin === m && styles.durChipActive]}
-                    onPress={() => { Keyboard.dismiss(); setDurationMin(m); }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.durChipText, durationMin === m && styles.durChipTextActive]}>
-                      {m === 0 ? 'None' : `${m}m`}
-                    </Text>
+              <Text style={styles.timerHint}>Minutes the student must practise before they can mark it done. Leave blank for no timer.</Text>
+              <View style={styles.durInputRow}>
+                <TextInput
+                  style={styles.durInput}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={durationMin ? String(durationMin) : ''}
+                  onChangeText={(t) => {
+                    const n = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                    setDurationMin(isNaN(n) ? 0 : Math.min(n, 600));
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={3}
+                  returnKeyType="done"
+                  blurOnSubmit
+                  inputAccessoryViewID={Platform.OS === 'ios' ? 'taskTimerDone' : undefined}
+                />
+                <Text style={styles.durUnit}>minutes</Text>
+                {durationMin > 0 && (
+                  <TouchableOpacity onPress={() => setDurationMin(0)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 4 }}>
+                    <Text style={styles.durClear}>Clear</Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
+              {Platform.OS === 'ios' && (
+                <InputAccessoryView nativeID="taskTimerDone">
+                  <View style={styles.accessoryBar}>
+                    <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.accessoryDone}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </InputAccessoryView>
+              )}
 
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
@@ -783,7 +836,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                 >
                   {loading
                     ? <ActivityIndicator color={COLORS.text} size="small" />
-                    : <Text style={styles.modalAssignText}>Assign task</Text>}
+                    : <Text style={styles.modalAssignText}>{isEdit ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
               </ScrollView>
@@ -829,8 +882,6 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
               </View>
             )}
           </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1122,6 +1173,8 @@ function TeacherDashboard() {
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
   const [addToClass, setAddToClass] = useState(null); // class we're adding students to
+  const [studentSearch, setStudentSearch] = useState('');
+  const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
   const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
@@ -1462,6 +1515,11 @@ Sent from Prova`;
     );
   }
 
+  const sQuery = studentSearch.trim().toLowerCase();
+  const filteredStudents = sQuery
+    ? students.filter((s) => displayName(s).toLowerCase().includes(sQuery) || (s.email || '').toLowerCase().includes(sQuery))
+    : students;
+
   return (
     <>
       <ScrollView contentContainerStyle={styles.content}>
@@ -1543,7 +1601,30 @@ Sent from Prova`;
               </View>
             )}
 
-            {students.map((student) => {
+            {students.length > 0 && (
+              <View style={styles.studentSearchRow}>
+                <Ionicons name="search" size={16} color={COLORS.textMuted} />
+                <TextInput
+                  style={styles.studentSearchInput}
+                  placeholder="Search students…"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={studentSearch}
+                  onChangeText={setStudentSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {studentSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setStudentSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {students.length > 0 && filteredStudents.length === 0 && (
+              <Text style={styles.studentSearchEmpty}>No students match “{studentSearch.trim()}”.</Text>
+            )}
+
+            {filteredStudents.map((student) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = student.streak || 0;
@@ -1627,18 +1708,20 @@ Sent from Prova`;
                           <Text style={styles.taskSectionLabel}>ASSIGNED TASKS</Text>
                           {student.assignedTasks.map((t) => (
                             <View key={t.id} style={styles.miniTask}>
-                              <Ionicons
-                                name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                size={15}
-                                color={t.completed ? COLORS.success : COLORS.textMuted}
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text
-                                style={[styles.miniTaskText, t.completed && styles.miniTaskDone]}
-                                numberOfLines={1}
-                              >
-                                {t.title}
-                              </Text>
+                              <TouchableOpacity style={styles.miniTaskMain} onPress={() => setEditTaskCtx({ student, task: t })} activeOpacity={0.7}>
+                                <Ionicons
+                                  name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                  size={15}
+                                  color={t.completed ? COLORS.success : COLORS.textMuted}
+                                  style={{ marginRight: 8 }}
+                                />
+                                <Text
+                                  style={[styles.miniTaskText, t.completed && styles.miniTaskDone]}
+                                  numberOfLines={1}
+                                >
+                                  {t.title}
+                                </Text>
+                              </TouchableOpacity>
                               {!t.completed && (() => {
                                 const d = taskDueLabel(t.dueDate);
                                 return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
@@ -2012,6 +2095,14 @@ Sent from Prova`;
         onAdd={(uids, assignExisting) => addStudentsToClass(addToClass, uids, assignExisting)}
       />
 
+      <AssignTaskModal
+        student={editTaskCtx?.student}
+        editTask={editTaskCtx?.task}
+        visible={!!editTaskCtx}
+        onClose={() => setEditTaskCtx(null)}
+        onAssigned={loadStudents}
+      />
+
       <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
@@ -2251,6 +2342,9 @@ const styles = StyleSheet.create({
   codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
   shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
   shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  studentSearchRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
+  studentSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
+  studentSearchEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.lg },
   emptyStudents: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyStudentsText: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   emptyStudentsSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
@@ -2360,6 +2454,7 @@ const styles = StyleSheet.create({
   chartTickToday: { color: COLORS.accent },
 
   miniTask: { flexDirection: 'row', alignItems: 'center' },
+  miniTaskMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
   proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
@@ -2453,6 +2548,12 @@ const styles = StyleSheet.create({
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
+  durInputRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  durInput: { width: 90, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 10, paddingHorizontal: SPACING.md, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  durUnit: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  durClear: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  accessoryBar: { backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 8, paddingHorizontal: SPACING.lg, alignItems: 'flex-end' },
+  accessoryDone: { color: COLORS.primary, fontSize: 16, fontWeight: '800' },
   durRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
   durChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   durChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
