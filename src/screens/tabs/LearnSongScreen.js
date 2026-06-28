@@ -68,10 +68,10 @@ export default function LearnSongScreen({ navigation }) {
   const instrument = userData?.instrument === 'Bass' ? 'Bass' : 'Guitar';
   const songs = userData?.learningSongs || [];
 
-  const persist = async (nextSongs, addedScore = 0) => {
+  const persist = async (nextSongs, addedScore = 0, extra = {}) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-    const patch = { learningSongs: nextSongs };
+    const patch = { learningSongs: nextSongs, ...extra };
     if (addedScore) patch.provaScore = (userData?.provaScore || 0) + addedScore;
     setUserData((u) => ({ ...(u || {}), ...patch }));
     await setDoc(doc(db, 'users', uid), patch, { merge: true });
@@ -96,7 +96,18 @@ export default function LearnSongScreen({ navigation }) {
       };
       // Replace if the same song is already in the list.
       const next = [entry, ...songs.filter((s) => s.songKey !== plan.key)];
-      await persist(next);
+
+      // Also drop it into the song library so it shows up in "songs to practise".
+      const lib = userData?.songLibrary || [];
+      const inLib = lib.some(
+        (s) => (s.title || '').toLowerCase() === plan.title.toLowerCase()
+          && (s.artist || '').toLowerCase() === (plan.artist || '').toLowerCase()
+      );
+      const nextLib = inLib
+        ? lib
+        : [{ id: `lib_${Date.now()}`, title: plan.title, artist: plan.artist || '', addedAt: new Date().toISOString() }, ...lib];
+
+      await persist(next, 0, { songLibrary: nextLib });
       setAddOpen(false);
       setSearch(''); setFreeTitle(''); setFreeArtist('');
       setExpandedSong(plan.key);
@@ -122,6 +133,13 @@ export default function LearnSongScreen({ navigation }) {
   // ── Per-step practice timer ───────────────────────────────────────────────
   const startStep = (songKey, stepId) => {
     clearInterval(tickRef.current);
+    // Practising (again) un-completes the step so it lights up while you work on it.
+    const next = songs.map((s) =>
+      s.songKey === songKey
+        ? { ...s, steps: s.steps.map((st) => (st.id === stepId ? { ...st, done: false } : st)) }
+        : s
+    );
+    persist(next);
     setActive({ songKey, stepId, seconds: 0 });
     tickRef.current = setInterval(() => {
       setActive((a) => (a ? { ...a, seconds: a.seconds + 1 } : a));
@@ -285,7 +303,7 @@ export default function LearnSongScreen({ navigation }) {
                                   ) : (
                                     <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)}>
                                       <Ionicons name="play" size={14} color={COLORS.primary} />
-                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practise again' : 'Practise this step'}</Text>
+                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practise again' : 'Practise'}</Text>
                                     </TouchableOpacity>
                                   )}
                                 </>
