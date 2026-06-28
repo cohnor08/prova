@@ -319,7 +319,8 @@ export default function SongsScreen({ route, navigation }) {
   const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
   const [gigSetting, setGigSetting] = useState('');
   const [gigAudience, setGigAudience] = useState('');
-  const [gigVibe, setGigVibe] = useState('');
+  const [gigVibe, setGigVibe] = useState('');       // genres
+  const [gigArtists, setGigArtists] = useState(''); // inspiration artists (optional)
   const [gigSongCount, setGigSongCount] = useState(10);
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
@@ -588,6 +589,7 @@ export default function SongsScreen({ route, navigation }) {
         instrument, level,
         setting, audience,
         vibe: gigVibe.trim() || null,
+        artists: gigArtists.trim() || null,
         songCount: gigSongCount,
         library: songs.map((s) => ({ title: s.title, artist: s.artist || '' })),
       });
@@ -615,6 +617,7 @@ export default function SongsScreen({ route, navigation }) {
         name: String(result?.name || 'Gig setlist').slice(0, 50),
         setting, audience,
         vibe: gigVibe.trim(),
+        artists: gigArtists.trim(),
         songs: picks,
         createdAt: new Date().toISOString(),
       };
@@ -628,7 +631,7 @@ export default function SongsScreen({ route, navigation }) {
       if (additions.length > 0) await saveSongs([...additions, ...songs]);
 
       // Reset the form and jump straight into the new setlist.
-      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigSongCount(10);
+      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigArtists(''); setGigSongCount(10);
       setShowGigForm(false);
       setViewingSetlist(setlist);
     } catch (err) {
@@ -1541,13 +1544,23 @@ export default function SongsScreen({ route, navigation }) {
               editable={!generatingSetlist}
             />
 
-            <Text style={styles.gigLabel}>Vibe (optional)</Text>
+            <Text style={styles.gigLabel}>Genres (optional)</Text>
             <TextInput
               style={styles.songInput}
-              placeholder="e.g. laid-back acoustic, high-energy rock"
+              placeholder="e.g. house & UK garage; laid-back acoustic; high-energy rock"
               placeholderTextColor={COLORS.textMuted}
               value={gigVibe}
               onChangeText={setGigVibe}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Inspiration artists (optional)</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. KETTAMA, Fred again.., Disclosure"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigArtists}
+              onChangeText={setGigArtists}
               editable={!generatingSetlist}
             />
 

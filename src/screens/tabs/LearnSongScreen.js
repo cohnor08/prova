@@ -36,6 +36,7 @@ export default function LearnSongScreen({ navigation }) {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedSong, setExpandedSong] = useState(null);
+  const [openSteps, setOpenSteps] = useState(new Set()); // `${songKey}_${stepId}` of expanded steps
 
   // Add / generate modal
   const [addOpen, setAddOpen] = useState(false);
@@ -153,6 +154,14 @@ export default function LearnSongScreen({ navigation }) {
     if (gained > 0) Alert.alert('Step complete', `+${gained} Prova points 🎸`);
   };
 
+  const toggleStepOpen = (stepKey) => {
+    setOpenSteps((prev) => {
+      const next = new Set(prev);
+      next.has(stepKey) ? next.delete(stepKey) : next.add(stepKey);
+      return next;
+    });
+  };
+
   const toggleStepDone = async (songKey, stepId) => {
     const next = songs.map((s) =>
       s.songKey === songKey
@@ -226,6 +235,8 @@ export default function LearnSongScreen({ navigation }) {
                         {!!s.overview && <Text style={styles.overview}>{s.overview}</Text>}
                         {s.steps.map((st, i) => {
                           const isActive = active && active.songKey === s.songKey && active.stepId === st.id;
+                          const stepKey = `${s.songKey}_${st.id}`;
+                          const stepOpen = openSteps.has(stepKey) || isActive; // a running timer forces it open
                           return (
                             <View key={st.id} style={[styles.step, st.done && styles.stepDone]}>
                               <View style={styles.stepHeadRow}>
@@ -236,40 +247,48 @@ export default function LearnSongScreen({ navigation }) {
                                     color={st.done ? COLORS.success : COLORS.textMuted}
                                   />
                                 </TouchableOpacity>
-                                <Text style={[styles.stepTitle, st.done && styles.stepTitleDone]}>
-                                  {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
-                                </Text>
+                                <TouchableOpacity style={styles.stepHeadMain} onPress={() => toggleStepOpen(stepKey)} activeOpacity={0.7}>
+                                  <Text style={[styles.stepTitle, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
+                                    {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
+                                  </Text>
+                                  <Ionicons name={stepOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+                                </TouchableOpacity>
                               </View>
-                              {!!st.summary && <Text style={styles.stepSummary}>{st.summary}</Text>}
-                              {(st.tasks || []).map((t, ti) => (
-                                <View key={ti} style={styles.taskRow}>
-                                  <Text style={styles.taskDot}>•</Text>
-                                  <Text style={styles.taskText}>{t}</Text>
-                                </View>
-                              ))}
-                              {!!st.yt && (
-                                <TouchableOpacity style={styles.watchRow} onPress={() => Linking.openURL(ytUrl(st.yt))}>
-                                  <Ionicons name="logo-youtube" size={16} color={COLORS.error} />
-                                  <Text style={styles.watchText}>Watch a tutorial</Text>
-                                </TouchableOpacity>
-                              )}
 
-                              {isActive ? (
-                                <View style={styles.timerRow}>
-                                  <Text style={styles.timerClock}>{fmtClock(active.seconds)}</Text>
-                                  <Text style={styles.timerPts}>+{stepPoints(active.seconds)} pts</Text>
-                                  <TouchableOpacity style={styles.timerGhost} onPress={stopStep}>
-                                    <Text style={styles.timerGhostText}>Cancel</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity style={styles.timerDone} onPress={finishStep}>
-                                    <Text style={styles.timerDoneText}>Done</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ) : (
-                                <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)}>
-                                  <Ionicons name="play" size={14} color={COLORS.primary} />
-                                  <Text style={styles.practiceBtnText}>{st.done ? 'Practise again' : 'Practise this step'}</Text>
-                                </TouchableOpacity>
+                              {stepOpen && (
+                                <>
+                                  {!!st.summary && <Text style={styles.stepSummary}>{st.summary}</Text>}
+                                  {(st.tasks || []).map((t, ti) => (
+                                    <View key={ti} style={styles.taskRow}>
+                                      <Text style={styles.taskDot}>•</Text>
+                                      <Text style={styles.taskText}>{t}</Text>
+                                    </View>
+                                  ))}
+                                  {!!st.yt && (
+                                    <TouchableOpacity style={styles.watchRow} onPress={() => Linking.openURL(ytUrl(st.yt))}>
+                                      <Ionicons name="logo-youtube" size={16} color={COLORS.error} />
+                                      <Text style={styles.watchText}>Watch a tutorial</Text>
+                                    </TouchableOpacity>
+                                  )}
+
+                                  {isActive ? (
+                                    <View style={styles.timerRow}>
+                                      <Text style={styles.timerClock}>{fmtClock(active.seconds)}</Text>
+                                      <Text style={styles.timerPts}>+{stepPoints(active.seconds)} pts</Text>
+                                      <TouchableOpacity style={styles.timerGhost} onPress={stopStep}>
+                                        <Text style={styles.timerGhostText}>Cancel</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity style={styles.timerDone} onPress={finishStep}>
+                                        <Text style={styles.timerDoneText}>Done</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ) : (
+                                    <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)}>
+                                      <Ionicons name="play" size={14} color={COLORS.primary} />
+                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practise again' : 'Practise this step'}</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </>
                               )}
                             </View>
                           );
@@ -396,6 +415,7 @@ const styles = StyleSheet.create({
   step: { backgroundColor: COLORS.surface, borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   stepDone: { opacity: 0.7 },
   stepHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepHeadMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   stepTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', flex: 1 },
   stepTitleDone: { textDecorationLine: 'line-through', color: COLORS.textSecondary },
   stepSummary: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 6 },

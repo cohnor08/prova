@@ -433,7 +433,7 @@ exports.generateSetlist = onCall(
 
     await checkRateLimit(uid, 'generateSetlist');
 
-    const { instrument, level, setting, audience, vibe, songCount, library } = request.data;
+    const { instrument, level, setting, audience, vibe, artists, songCount, library } = request.data;
 
     // ── Validate input ──
     if (!ALLOWED_INSTRUMENTS.has(instrument))
@@ -446,6 +446,8 @@ exports.generateSetlist = onCall(
       throw new HttpsError('invalid-argument', 'Audience must be 1–300 characters');
     if (vibe !== undefined && vibe !== null && (typeof vibe !== 'string' || vibe.length > 300))
       throw new HttpsError('invalid-argument', 'Vibe too long (max 300 chars)');
+    if (artists !== undefined && artists !== null && (typeof artists !== 'string' || artists.length > 300))
+      throw new HttpsError('invalid-argument', 'Inspiration artists too long (max 300 chars)');
     if (typeof songCount !== 'number' || songCount < 3 || songCount > 30)
       throw new HttpsError('invalid-argument', 'songCount must be 3–30');
     if (!Array.isArray(library) || library.length > 200)
@@ -461,7 +463,8 @@ exports.generateSetlist = onCall(
 THE GIG (this is what matters most — the setlist must clearly match it):
 - Setting: ${setting}
 - Audience: ${audience}
-- Desired vibe / genre: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
+- Desired genres / vibe: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
+- Inspiration artists (use as a STYLE reference for the genre, energy and song choices — you may include their songs where they fit, but don't limit the setlist to only them): ${artists || 'none given'}
 - Player skill level: ${level}
 - Number of songs wanted: ${songCount}
 
@@ -469,7 +472,7 @@ Songs already in the player's library:
 ${libList || '(library is empty)'}
 
 How to choose the songs:
-1. The gig's genre, vibe, setting and audience are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers). Two gigs with different descriptions MUST produce clearly different setlists.
+1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
 2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
 3. Only include a library song if it GENUINELY fits the gig's genre and vibe — never force-fit library songs just because they're in the library. If a library song doesn't suit the gig, leave it out. The library is a tiebreaker, not a constraint.
 4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
