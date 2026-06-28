@@ -30,6 +30,7 @@ import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import LibraryScreen from './src/screens/tabs/LibraryScreen';
+import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
@@ -60,6 +61,7 @@ function PracticeStackScreen() {
       />
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
       <PracticeStack.Screen name="Library" component={LibraryScreen} />
+      <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
       <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
     </PracticeStack.Navigator>
   );

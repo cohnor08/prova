@@ -101,6 +101,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Cached song-learning plans — any signed-in user can READ (so cache hits are
+    // shared), but only the generateSongPlan Cloud Function (admin SDK) may write.
+    match /songPlans/{key} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
     // Deny everything else ───────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -60,3 +60,11 @@ export async function adjustSessionFromRating(sessions, rating, feedback) {
 export async function generateSetlist(gig) {
   return callFunction('generateSetlist', gig, 60000);
 }
+
+// Generate (or fetch the cached) step-by-step plan for learning ONE song.
+// `song` = { instrument, title, artist }. Returns
+// { key, title, artist, instrument, overview, steps: [{id,title,summary,tasks,targetBpm,yt}], cached }.
+// Cache hits are free and don't count against the weekly limit.
+export async function generateSongPlan(song) {
+  return callFunction('generateSongPlan', song, 120000);
+}

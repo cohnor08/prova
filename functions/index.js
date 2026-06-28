@@ -20,45 +20,66 @@ const RATE_LIMITS = {
   generatePracticePlan:   { requests: 15, tokens: 250000 },
   adjustSessionFromRating: { requests: 10, tokens: 15000 },
   generateSetlist:        { requests: 15, tokens: 40000 },
+  // Song-learning plans are capped PER WEEK (not per day) for both teacher and
+  // personal accounts. A cache hit on songPlans/{key} never reaches the limiter,
+  // so popular songs are effectively free after the first generation.
+  generateSongPlan:       { requests: 5, tokens: 80000, period: 'week' },
 };
+
+// Returns the bucket key for an action's rate-limit period. Daily actions key on
+// the UTC date; weekly actions key on the Monday (UTC) of the current week, so a
+// weekly counter resets at the week boundary instead of every day.
+function periodKeyFor(action) {
+  const period = (RATE_LIMITS[action] && RATE_LIMITS[action].period) || 'day';
+  const now = new Date();
+  if (period === 'week') {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dow = d.getUTCDay();                 // 0=Sun … 6=Sat
+    d.setUTCDate(d.getUTCDate() + (dow === 0 ? -6 : 1 - dow)); // back to Monday
+    return 'w' + d.toISOString().split('T')[0];
+  }
+  return now.toISOString().split('T')[0];
+}
 
 // Check request count atomically; token ceiling is checked non-transactionally
 // before the call and then the actual usage is written after.
 async function checkRateLimit(uid, action) {
-  const today = new Date().toISOString().split('T')[0];
+  const key = periodKeyFor(action);
+  const span = (RATE_LIMITS[action].period === 'week') ? 'Weekly' : 'Daily';
+  const again = (RATE_LIMITS[action].period === 'week') ? 'next week' : 'tomorrow';
   const ref = db.doc(`rateLimits/${uid}/actions/${action}`);
   const limits = RATE_LIMITS[action];
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.data() || {};
-    const fresh = data.date !== today;
+    const fresh = data.date !== key;
     const requests = fresh ? 0 : (data.requests || 0);
     const tokens   = fresh ? 0 : (data.tokens   || 0);
 
     if (requests >= limits.requests) {
       throw new HttpsError(
         'resource-exhausted',
-        `Daily request limit reached (${limits.requests}/day). Try again tomorrow.`
+        `${span} limit reached (${limits.requests}). Try again ${again}.`
       );
     }
     if (tokens >= limits.tokens) {
       throw new HttpsError(
         'resource-exhausted',
-        'Daily usage limit reached. Try again tomorrow.'
+        `${span} usage limit reached. Try again ${again}.`
       );
     }
 
-    tx.set(ref, { date: today, requests: requests + 1, tokens });
+    tx.set(ref, { date: key, requests: requests + 1, tokens });
   });
 }
 
 // Add actual token usage after a successful Claude call.
 async function recordTokenUsage(uid, action, tokensUsed) {
-  const today = new Date().toISOString().split('T')[0];
+  const key = periodKeyFor(action);
   const ref = db.doc(`rateLimits/${uid}/actions/${action}`);
   await ref.set(
-    { tokens: admin.firestore.FieldValue.increment(tokensUsed), date: today },
+    { tokens: admin.firestore.FieldValue.increment(tokensUsed), date: key },
     { merge: true }
   );
 }
@@ -104,10 +125,10 @@ async function writeUsageLog(uid, action, { tokensIn, tokensOut, durationMs, suc
 // a single day (e.g. hitting the cap repeatedly via concurrent requests).
 async function flagAbuseIfNeeded(uid, action, tokensUsed) {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const key = periodKeyFor(action);
     const snap = await db.doc(`rateLimits/${uid}/actions/${action}`).get();
     const data = snap.data() || {};
-    if (data.date !== today) return;
+    if (data.date !== key) return;
 
     const limit = RATE_LIMITS[action].tokens;
     if ((data.tokens || 0) + tokensUsed > limit * 2) {
@@ -494,5 +515,159 @@ Return only valid JSON, no markdown fences, no explanation.`;
     ]).catch(() => {});
 
     return setlist;
+  }
+);
+
+// ─── generateSongPlan ─────────────────────────────────────────────────────────
+// Builds an ordered, step-by-step plan for learning ONE song on a given
+// instrument. Results are cached globally in songPlans/{key} keyed on
+// instrument+title+artist, so the same song is only ever generated once and
+// later requests (by anyone) return the cache for free — without touching the
+// per-user weekly rate limit.
+function songPlanKey(instrument, title, artist) {
+  const norm = (s) => String(s || '')
+    .toLowerCase()
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return `${norm(instrument)}__${norm(title)}__${norm(artist) || 'unknown'}`;
+}
+
+exports.generateSongPlan = onCall(
+  { ...BASE_OPTIONS, timeoutSeconds: 120, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const uid = request.auth.uid;
+    const appCheckPresent = !!request.app;
+    const startTime = Date.now();
+
+    const { instrument, title, artist } = request.data || {};
+
+    // ── Validate input ──
+    if (!ALLOWED_INSTRUMENTS.has(instrument))
+      throw new HttpsError('invalid-argument', 'Invalid instrument');
+    if (typeof title !== 'string' || title.trim().length === 0 || title.length > 120)
+      throw new HttpsError('invalid-argument', 'Song title must be 1–120 characters');
+    if (artist !== undefined && artist !== null && (typeof artist !== 'string' || artist.length > 120))
+      throw new HttpsError('invalid-argument', 'Artist too long (max 120 chars)');
+
+    const cleanTitle  = title.trim();
+    const cleanArtist = (artist || '').trim();
+    const key = songPlanKey(instrument, cleanTitle, cleanArtist);
+    const cacheRef = db.doc(`songPlans/${key}`);
+
+    // ── Cache hit: return for free, don't count against the weekly limit ──
+    const cached = await cacheRef.get();
+    if (cached.exists) {
+      return { ...cached.data(), cached: true };
+    }
+
+    // ── Cache miss: this is a real generation, so it costs quota ──
+    await checkRateLimit(uid, 'generateSongPlan');
+
+    const prompt = `You are Prova, an expert ${instrument} teacher building a step-by-step plan for a student to learn ONE specific song from scratch.
+
+THE SONG:
+- Title: ${cleanTitle}
+- Artist: ${cleanArtist || 'unknown — infer the most likely well-known version'}
+- Instrument: ${instrument}
+
+If you do not recognise this exact song, build the most sensible plan you can for a song of this title/artist on ${instrument}; never refuse.
+
+Break learning this song into an ORDERED sequence of practice steps that ramp from easiest to full-speed performance. A good sequence looks like: learn the core chords/notes → the shapes/fingerings → the strumming/picking or groove → each section (intro, verse, chorus, bridge, solo) → transitions between sections → play along slowly → bring it up to full tempo. Adapt to what THIS song actually needs (e.g. a riff-based song leads with the riff; a fingerstyle song leads with the pattern).
+
+Each step must be CONCRETE and specific to ${instrument}: name the actual chords, frets, strings, fingerings, BPM targets, or techniques — never vague ("practice the chorus" is bad; "play the C–G–Am–F chorus progression at 70 BPM, 1 strum per beat" is good).
+
+Return a JSON object with this exact structure:
+{
+  "title": "${cleanTitle}",
+  "artist": "${cleanArtist}",
+  "instrument": "${instrument}",
+  "overview": "one-sentence summary of what makes this song a good learning target and its overall difficulty (max 140 chars)",
+  "steps": [
+    {
+      "title": "short step name (max 50 chars)",
+      "summary": "what to do and why, 1–2 sentences with concrete details",
+      "tasks": [ "specific actionable task with frets/chords/BPM", "another task" ],
+      "targetBpm": 90,
+      "yt": "a YouTube SEARCH PHRASE to find a helpful tutorial for this step (never a URL)"
+    }
+  ]
+}
+
+Rules:
+- 5 to 9 steps, ordered easiest → full performance.
+- "targetBpm" is optional — include it only where a tempo target makes sense (omit for pure chord-learning steps).
+- "yt" is a search phrase like "${cleanTitle} ${instrument} chords tutorial", never a link.
+- Return only valid JSON, no markdown fences, no explanation.`;
+
+    let result;
+    try {
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 4000, MODEL_SMART, 110000);
+    } catch (err) {
+      await writeUsageLog(uid, 'generateSongPlan', {
+        tokensIn: 0, tokensOut: 0,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error',
+        appCheckPresent,
+      });
+      throw err;
+    }
+
+    let plan;
+    try {
+      const raw = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      plan = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+    } catch (err) {
+      await writeUsageLog(uid, 'generateSongPlan', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'parse_error',
+        appCheckPresent,
+      });
+      throw new HttpsError('internal', 'Could not build a plan for that song. Try again.');
+    }
+
+    // Stamp ids/order on the steps so the client can track per-step progress.
+    const steps = (Array.isArray(plan.steps) ? plan.steps : []).map((s, i) => ({
+      id: `${i}`,
+      title: String(s.title || `Step ${i + 1}`).slice(0, 60),
+      summary: String(s.summary || '').slice(0, 400),
+      tasks: Array.isArray(s.tasks) ? s.tasks.filter(t => typeof t === 'string').slice(0, 8) : [],
+      targetBpm: (typeof s.targetBpm === 'number' && s.targetBpm > 0) ? Math.round(s.targetBpm) : null,
+      yt: typeof s.yt === 'string' ? s.yt.slice(0, 120) : '',
+    }));
+
+    if (steps.length === 0) {
+      throw new HttpsError('internal', 'Could not build a plan for that song. Try again.');
+    }
+
+    const record = {
+      key,
+      title: cleanTitle,
+      artist: cleanArtist,
+      instrument,
+      overview: String(plan.overview || '').slice(0, 160),
+      steps,
+      model: MODEL_SMART,
+      createdAt: new Date().toISOString(),
+    };
+
+    await cacheRef.set(record);
+
+    Promise.all([
+      recordTokenUsage(uid, 'generateSongPlan', result.tokensIn + result.tokensOut),
+      writeUsageLog(uid, 'generateSongPlan', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: true,
+        appCheckPresent,
+      }),
+      flagAbuseIfNeeded(uid, 'generateSongPlan', result.tokensIn + result.tokensOut),
+    ]).catch(() => {});
+
+    return { ...record, cached: false };
   }
 );

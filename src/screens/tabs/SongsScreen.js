@@ -353,6 +353,7 @@ export default function SongsScreen({ route, navigation }) {
   // Player profile — drives level-matched song recommendations
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
+  const [role, setRole] = useState(null); // 'student' (free) | 'personal' | undefined (legacy = personal)
 
   // Song playback — 30s in-app preview (iTunes) + "open in" deep links
   const [playingSongId, setPlayingSongId] = useState(null);
@@ -535,6 +536,7 @@ export default function SongsScreen({ route, navigation }) {
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       setTipLink(data?.tipLink || '');
+      setRole(data?.role || null);
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -1178,6 +1180,24 @@ export default function SongsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* ── Learn a song (paid: personal / legacy; free students upgrade) ── */}
+        {role !== 'student' && (
+          <TouchableOpacity
+            style={styles.learnCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('LearnSong')}
+          >
+            <View style={styles.learnIcon}>
+              <Ionicons name="school" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.learnTitle}>Learn a song</Text>
+              <Text style={styles.learnSub}>Pick any song → get the step-by-step plan to play it</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+
         {/* ── Gig Setlists ── */}
         {(
         <View style={styles.card}>
@@ -1701,6 +1721,17 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: SPACING.sm },
   card: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  learnCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary,
+    padding: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  learnIcon: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  learnTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  learnSub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
 
   // Tool selector
   toolSelector: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, marginBottom: SPACING.lg },

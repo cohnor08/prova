@@ -14,6 +14,7 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { generateSongPlan } from '../../lib/claude';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
@@ -567,6 +568,147 @@ function DueDatePicker({ initial, onClose, onSet }) {
           </View>
         </View>
     </View>
+  );
+}
+
+// Teacher: pick a song → generate the step-by-step plan → tick which steps to
+// hand the student → each ticked step becomes an ordered assigned task. Uses the
+// student's instrument so the breakdown fits what they actually play.
+function AssignSongModal({ student, visible, onClose, onAssigned }) {
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [plan, setPlan] = useState(null);          // { title, artist, instrument, steps:[...] }
+  const [picked, setPicked] = useState(new Set()); // step ids the teacher will assign
+  const [assigning, setAssigning] = useState(false);
+
+  const instrument = student?.instrument === 'Bass' ? 'Bass' : 'Guitar';
+
+  const reset = () => {
+    setTitle(''); setArtist(''); setPlan(null); setPicked(new Set());
+    setGenerating(false); setAssigning(false);
+  };
+  const close = () => { reset(); onClose(); };
+
+  const generate = async () => {
+    if (!title.trim()) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
+    Keyboard.dismiss();
+    setGenerating(true);
+    try {
+      const p = await generateSongPlan({ instrument, title: title.trim(), artist: artist.trim() });
+      setPlan(p);
+      setPicked(new Set((p.steps || []).map((s) => s.id))); // default: all selected
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (msg.toLowerCase().includes('limit reached')) {
+        Alert.alert('Weekly limit reached', "You've used your 5 song plans for this week. Already-generated songs are still free to assign.");
+      } else {
+        Alert.alert('Could not build a plan', 'Something went wrong generating that song. Please try again.');
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleStep = (id) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const assign = async () => {
+    if (!student || !plan) return;
+    const steps = (plan.steps || []).filter((s) => picked.has(s.id));
+    if (steps.length === 0) { Alert.alert('No steps', 'Tick at least one step to assign.'); return; }
+    setAssigning(true);
+    try {
+      const stamp = Date.now();
+      const tasks = steps.map((s, i) => ({
+        id: `${stamp}_${i}`,
+        title: `${plan.title} — ${s.title}`,
+        description: [s.summary, ...(s.tasks || [])].filter(Boolean).join('\n• '),
+        youtube: s.yt || `${plan.title} ${instrument} tutorial`,
+        song: plan.title,
+        songPlanKey: plan.key,
+        songStepOrder: i,
+        dueDate: null,
+        durationMin: 0,
+        completed: false,
+        assignedAt: new Date().toISOString(),
+        teacherUid: auth.currentUser.uid,
+      }));
+      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(...tasks) });
+      onAssigned && onAssigned();
+      Alert.alert('Assigned', `${tasks.length} step${tasks.length === 1 ? '' : 's'} of "${plan.title}" assigned.`);
+      close();
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => !assigning && !generating && close()}>
+      <View style={styles.songModalWrap}>
+        <View style={styles.songModalCard}>
+          <View style={styles.songModalHead}>
+            <Text style={styles.songModalTitle}>Assign a song to learn</Text>
+            <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {generating ? (
+            <View style={styles.songGenBox}>
+              <ActivityIndicator color={COLORS.primary} />
+              <Text style={styles.songGenText}>Building the step-by-step plan…</Text>
+            </View>
+          ) : !plan ? (
+            <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+              <Text style={styles.songFieldLabel}>Song title</Text>
+              <TextInput style={styles.songInput} placeholder="e.g. Wonderwall" placeholderTextColor={COLORS.textMuted} value={title} onChangeText={setTitle} />
+              <Text style={styles.songFieldLabel}>Artist (optional)</Text>
+              <TextInput style={styles.songInput} placeholder="e.g. Oasis" placeholderTextColor={COLORS.textMuted} value={artist} onChangeText={setArtist} />
+              <Text style={styles.songCapHint}>Plan is built for {instrument.toLowerCase()} (this student's instrument). 5 new song plans per week — reused songs are free.</Text>
+              <TouchableOpacity style={[styles.songGenBtn, !title.trim() && styles.songGenBtnOff]} disabled={!title.trim()} onPress={generate}>
+                <Text style={styles.songGenBtnText}>Build the plan</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <>
+              <Text style={styles.songPlanHeading}>{plan.title}{plan.artist ? ` — ${plan.artist}` : ''}</Text>
+              {!!plan.overview && <Text style={styles.songPlanOverview}>{plan.overview}</Text>}
+              <Text style={styles.songCapHint}>Tick the steps to give this student. They'll appear as ordered tasks on their Today.</Text>
+              <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+                {(plan.steps || []).map((s, i) => {
+                  const on = picked.has(s.id);
+                  return (
+                    <TouchableOpacity key={s.id} style={styles.songStepRow} onPress={() => toggleStep(s.id)} activeOpacity={0.7}>
+                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.songStepTitle}>{i + 1}. {s.title}{s.targetBpm ? `  ·  ${s.targetBpm} BPM` : ''}</Text>
+                        {!!s.summary && <Text style={styles.songStepSummary} numberOfLines={2}>{s.summary}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.songPlanActions}>
+                <TouchableOpacity style={styles.songBackBtn} onPress={() => { setPlan(null); setPicked(new Set()); }}>
+                  <Text style={styles.songBackText}>Pick another</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.songAssignBtn} onPress={assign} disabled={assigning}>
+                  {assigning ? <ActivityIndicator color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1163,6 +1305,7 @@ function TeacherDashboard() {
   const [inviting, setInviting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [songStudent, setSongStudent] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [proofView, setProofView] = useState(null); // { url, type, studentUid, taskId, verified, title }
   const [activeTab, setActiveTab] = useState('students');
@@ -1765,6 +1908,12 @@ Sent from Prova`;
                         </TouchableOpacity>
                       </View>
 
+                      {/* Assign a song to learn (AI step-by-step) */}
+                      <TouchableOpacity style={styles.songBtn} onPress={() => setSongStudent(student)} activeOpacity={0.85}>
+                        <Ionicons name="school" size={15} color={COLORS.background} style={{ marginRight: 6 }} />
+                        <Text style={styles.songBtnText}>Assign a song to learn</Text>
+                      </TouchableOpacity>
+
                       {/* Parent progress report */}
                       <TouchableOpacity style={styles.parentReportBtn} onPress={() => sendParentReport(student)} activeOpacity={0.85}>
                         <Ionicons name="share-outline" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
@@ -2100,6 +2249,13 @@ Sent from Prova`;
         editTask={editTaskCtx?.task}
         visible={!!editTaskCtx}
         onClose={() => setEditTaskCtx(null)}
+        onAssigned={loadStudents}
+      />
+
+      <AssignSongModal
+        student={songStudent}
+        visible={!!songStudent}
+        onClose={() => setSongStudent(null)}
         onAssigned={loadStudents}
       />
 
@@ -2440,6 +2596,36 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.primary + '33',
   },
   parentReportText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+
+  songBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary,
+  },
+  songBtnText: { color: COLORS.background, fontSize: 14, fontWeight: '800' },
+
+  // AssignSongModal
+  songModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  songModalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, maxHeight: '88%' },
+  songModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  songModalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
+  songFieldLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: SPACING.sm },
+  songInput: { backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15 },
+  songCapHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
+  songGenBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm },
+  songGenBtnOff: { opacity: 0.4 },
+  songGenBtnText: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
+  songGenBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
+  songGenText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  songPlanHeading: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  songPlanOverview: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 4, lineHeight: 19 },
+  songStepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  songStepTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  songStepSummary: { color: COLORS.textSecondary, fontSize: 13, marginTop: 3, lineHeight: 18 },
+  songPlanActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  songBackBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  songBackText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+  songAssignBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
+  songAssignText: { color: COLORS.background, fontSize: 15, fontWeight: '800' },
 
   // Per-student practice bar chart
   chartWrap: { gap: SPACING.sm },
