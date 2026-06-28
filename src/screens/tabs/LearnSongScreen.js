@@ -97,7 +97,7 @@ export default function LearnSongScreen({ navigation }) {
       // Replace if the same song is already in the list.
       const next = [entry, ...songs.filter((s) => s.songKey !== plan.key)];
 
-      // Also drop it into the song library so it shows up in "songs to practise".
+      // Also drop it into the song library so it shows up in "songs to practice".
       const lib = userData?.songLibrary || [];
       const inLib = lib.some(
         (s) => (s.title || '').toLowerCase() === plan.title.toLowerCase()
@@ -114,7 +114,7 @@ export default function LearnSongScreen({ navigation }) {
     } catch (e) {
       const msg = String(e?.message || '');
       if (msg.toLowerCase().includes('limit reached')) {
-        Alert.alert('Weekly limit reached', "You've used your 5 song plans for this week. They reset next week — already-generated songs stay free to practise.");
+        Alert.alert('Weekly limit reached', "You've used your 5 song plans for this week. They reset next week — already-generated songs stay free to practice.");
       } else {
         Alert.alert('Could not build a plan', 'Something went wrong generating that song. Please try again.');
       }
@@ -133,7 +133,7 @@ export default function LearnSongScreen({ navigation }) {
   // ── Per-step practice timer ───────────────────────────────────────────────
   const startStep = (songKey, stepId) => {
     clearInterval(tickRef.current);
-    // Practising (again) un-completes the step so it lights up while you work on it.
+    // Practicing (again) un-completes the step so it lights up while you work on it.
     const next = songs.map((s) =>
       s.songKey === songKey
         ? { ...s, steps: s.steps.map((st) => (st.id === stepId ? { ...st, done: false } : st)) }
@@ -301,9 +301,11 @@ export default function LearnSongScreen({ navigation }) {
                                       </TouchableOpacity>
                                     </View>
                                   ) : (
-                                    <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)}>
-                                      <Ionicons name="play" size={14} color={COLORS.primary} />
-                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practise again' : 'Practise'}</Text>
+                                    <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)} activeOpacity={0.85}>
+                                      <View style={styles.practicePlayBox}>
+                                        <Ionicons name="play" size={13} color={COLORS.background} />
+                                      </View>
+                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practice again' : 'Practice'}</Text>
                                     </TouchableOpacity>
                                   )}
                                 </>
@@ -388,7 +390,7 @@ export default function LearnSongScreen({ navigation }) {
                 >
                   <Text style={styles.genBtnText}>Build my plan</Text>
                 </TouchableOpacity>
-                <Text style={styles.capHint}>5 new song plans per week. Songs already learned are free to practise.</Text>
+                <Text style={styles.capHint}>5 new song plans per week. Songs already learned are free to practice.</Text>
               </ScrollView>
             )}
           </View>
@@ -443,7 +445,15 @@ const styles = StyleSheet.create({
   watchRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   watchText: { color: COLORS.error, fontSize: 13, fontWeight: '600' },
 
-  practiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start' },
+  practiceBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, alignSelf: 'flex-start',
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.primary + '55',
+    borderRadius: 10, paddingVertical: 7, paddingLeft: 7, paddingRight: 14,
+  },
+  practicePlayBox: {
+    width: 26, height: 26, borderRadius: 7, backgroundColor: COLORS.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
   practiceBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
 
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 10 },

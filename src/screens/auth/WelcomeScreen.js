@@ -20,7 +20,7 @@ const ROLES = [
     role: 'personal',
     icon: 'person',
     title: 'Personal',
-    subtitle: 'Practise solo with an AI plan and progress tracking',
+    subtitle: 'Practice solo with an AI plan and progress tracking',
   },
   {
     role: 'teacher',

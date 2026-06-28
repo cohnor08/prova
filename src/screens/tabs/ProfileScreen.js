@@ -98,7 +98,7 @@ Practice Profile
 During onboarding and through Profile settings, you provide your instrument, skill level, practice goals, focus skills, available practice days, and daily practice duration. This information is used solely to generate and personalise your practice plans.
 
 Practice Activity
-When you complete a session, we record the date, duration, categories practised (e.g. warmup, technique), and your session rating (too easy / just right / too hard). We do not record audio, video, or the specific notes or exercises you play.
+When you complete a session, we record the date, duration, categories practiced (e.g. warmup, technique), and your session rating (too easy / just right / too hard). We do not record audio, video, or the specific notes or exercises you play.
 
 Usage Metadata
 For security and service improvement, our backend logs each AI request with metadata including: your user ID, request timestamp, model used, and token count. We do not log the content of prompts sent to our AI provider.
@@ -626,7 +626,7 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
-          <Text style={styles.reminderHint}>A daily nudge to practise, plus a heads-up if your streak is about to break.</Text>
+          <Text style={styles.reminderHint}>A daily nudge to practice, plus a heads-up if your streak is about to break.</Text>
         </View>
 
         {/* Practice Settings */}
@@ -866,7 +866,7 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Reminder time</Text>
-            <Text style={styles.usernameHint}>When should we nudge you to practise each day?</Text>
+            <Text style={styles.usernameHint}>When should we nudge you to practice each day?</Text>
             <View style={{ marginVertical: SPACING.lg }}>
               <TimeWheel value={pendingTime} onChange={setPendingTime} />
             </View>

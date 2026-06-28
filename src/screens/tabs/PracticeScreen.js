@@ -319,7 +319,7 @@ export default function PracticeScreen({ route, navigation }) {
   const awardedRef = useRef({}); // session ids already banked this mount (avoid double-award)
 
   // Bank a finished session's points and record it as done for today, so it
-  // counts even when practised here in the Practice tab (the Today screen reads
+  // counts even when practiced here in the Practice tab (the Today screen reads
   // the same shared `sessionProgress` store and won't re-award it).
   const completeSession = async (session) => {
     const uid = auth.currentUser?.uid;

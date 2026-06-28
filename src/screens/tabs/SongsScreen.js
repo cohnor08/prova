@@ -574,7 +574,7 @@ export default function SongsScreen({ route, navigation }) {
 
   // Ask Claude for a gig setlist, then save it as a playlist. Any suggested song
   // not already in the library is also copied in, so previews/covers light up and
-  // the user can practise it.
+  // the user can practice it.
   const handleGenerateSetlist = async () => {
     const setting = gigSetting.trim();
     const audience = gigAudience.trim();
@@ -994,7 +994,7 @@ export default function SongsScreen({ route, navigation }) {
   const songKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
 
   // Songs the teacher attached to assignments — surfaced here so the student can
-  // practise them, tagged "From your teacher". Not written into songLibrary, and
+  // practice them, tagged "From your teacher". Not written into songLibrary, and
   // deduped against songs already in the library.
   const parseSong = (str) => {
     const s = String(str).trim();

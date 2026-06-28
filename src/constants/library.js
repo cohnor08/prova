@@ -81,7 +81,7 @@ export const LIBRARY_TOPICS = [
     summary: 'The parent scale of Western music — learn it and the modes/keys open up.',
     tasks: [
       { text: 'C major scale, one position (open or 5th fret). Play it ascending/descending saying the note names aloud.', yt: 'major scale guitar one position note names' },
-      { text: 'Practise the same shape in 3 keys by sliding it up the neck (G, A, C). 80 BPM, even notes.', yt: 'movable major scale shape guitar' },
+      { text: 'Practice the same shape in 3 keys by sliding it up the neck (G, A, C). 80 BPM, even notes.', yt: 'movable major scale shape guitar' },
     ],
   },
   {
@@ -542,7 +542,7 @@ export const LIBRARY_TOPICS = [
     summary: 'Even 3-notes-per-string fingerings that make fast scalar runs flow.',
     tasks: [
       { text: 'Play the G major scale 3-notes-per-string across all six strings. The even layout suits legato and fast picking. 80 BPM, build up.', yt: 'three note per string scales guitar' },
-      { text: 'Practise the seven connected positions so you can run the scale anywhere on the neck.', yt: '3nps major scale positions connect' },
+      { text: 'Practice the seven connected positions so you can run the scale anywhere on the neck.', yt: '3nps major scale positions connect' },
     ],
   },
   {
@@ -654,7 +654,7 @@ export const LIBRARY_TOPICS = [
     summary: 'The disciplined way to get faster without getting sloppy.',
     tasks: [
       { text: 'Pick any lick. Set the metronome where it’s perfectly clean. Play it 5x clean, bump +5 BPM, repeat. Drop back the moment it gets messy.', yt: 'how to build speed metronome guitar' },
-      { text: 'Practise in bursts: play the phrase as fast-but-clean as possible, rest, repeat. Accuracy always beats raw speed.', yt: 'speed bursts practice guitar' },
+      { text: 'Practice in bursts: play the phrase as fast-but-clean as possible, rest, repeat. Accuracy always beats raw speed.', yt: 'speed bursts practice guitar' },
     ],
   },
 
@@ -805,7 +805,7 @@ export const LIBRARY_TOPICS = [
     summary: 'Crowd-pleasers built from a handful of open chords and a steady strum.',
     tasks: [
       { text: 'Wonderwall-style G-Em-C-D and Wagon Wheel (G-D-Em-C) — same four chords, dozens of songs. Loop the changes in time.', yt: 'easy 4 chord acoustic songs guitar' },
-      { text: 'Three Little Birds (Bob Marley): A-D-E with an upbeat strum — practise switching cleanly.', yt: 'three little birds guitar lesson' },
+      { text: 'Three Little Birds (Bob Marley): A-D-E with an upbeat strum — practice switching cleanly.', yt: 'three little birds guitar lesson' },
     ],
   },
   {
@@ -895,7 +895,7 @@ export const LIBRARY_TOPICS = [
     summary: 'Record a chord loop and solo over yourself — the ultimate practice tool.',
     tasks: [
       { text: 'Lay down a clean 4-bar chord loop, tapping in exact time so it loops seamlessly. Timing on the punch-in is everything.', yt: 'how to use a looper pedal beginner' },
-      { text: 'Solo over your loop using the scale that fits — instant backing track for improv practice.', yt: 'practising improvisation with a looper' },
+      { text: 'Solo over your loop using the scale that fits — instant backing track for improv practice.', yt: 'practicing improvisation with a looper' },
     ],
   },
 ];

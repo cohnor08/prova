@@ -122,7 +122,7 @@ function smoothLinePath(pts) {
 
 // Build a 7-row (Mon→Sun) × N-week grid of intensity buckets, oldest week first.
 // Buckets: -1 future · 0 none · 1 <15m · 2 15–30m · 3 30m+. Also returns how many
-// days were practised in the window and the hours logged, for the footer.
+// days were practiced in the window and the hours logged, for the footer.
 function buildHeatmapData(logMap) {
   const today = new Date();
   const dow = (today.getDay() + 6) % 7; // 0 = Mon

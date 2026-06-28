@@ -933,7 +933,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
               </TouchableOpacity>
 
               <Text style={styles.dueLabel}>TIMER</Text>
-              <Text style={styles.timerHint}>Minutes the student must practise before they can mark it done. Leave blank for no timer.</Text>
+              <Text style={styles.timerHint}>Minutes the student must practice before they can mark it done. Leave blank for no timer.</Text>
               <View style={styles.durInputRow}>
                 <TextInput
                   style={styles.durInput}
@@ -1616,7 +1616,7 @@ function TeacherDashboard() {
       const report =
 `🎸 Prova practice report — ${name}
 
-This week: practised ${daysPracticed} of 7 days · ${timeStr} total
+This week: practiced ${daysPracticed} of 7 days · ${timeStr} total
 Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
 Assigned tasks: ${done} of ${assigned} completed
 Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})${lessonLines}
@@ -2089,7 +2089,7 @@ Sent from Prova`;
                                   }))
                                   .sort((a, b) => b.pts - a.pts);
                                 if (ranked.every((r) => r.pts === 0)) {
-                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practising the class tasks.</Text>;
+                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practicing the class tasks.</Text>;
                                 }
                                 return ranked.map(({ m, pts }, i) => {
                                   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;

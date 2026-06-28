@@ -11,7 +11,7 @@ export function formatProgressReport({ weekPoints, daysPracticed, weekMins, stre
 `🎸 My Prova week
 
 +${formatScore(weekPoints)} Prova points this week
-Practised ${daysPracticed}/7 days · ${timeStr}
+Practiced ${daysPracticed}/7 days · ${timeStr}
 🔥 ${streak}-day streak
 Total: ${formatScore(provaScore)} pts · ${rankName}
 Level: ${level}`);

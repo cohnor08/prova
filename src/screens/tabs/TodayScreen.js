@@ -119,13 +119,13 @@ function NotesChip({ onPress }) {
 }
 
 // One teacher-assigned task on the student's Today screen. The timer counts the
-// time actually practised; tapping "Done" banks points for THIS lap (partial
+// time actually practiced; tapping "Done" banks points for THIS lap (partial
 // credit — 3 of 20 min still pays), then "Practice again" lets them run another
 // lap for more. Points are time-proportional, so the only way to score is to
 // put in the real minutes.
 function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy }) {
   const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
-  const [elapsed, setElapsed] = useState(0);   // seconds practised THIS lap
+  const [elapsed, setElapsed] = useState(0);   // seconds practiced THIS lap
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
 
@@ -253,7 +253,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
 }
 
 // Live scoreboard for one class: ranks classmates by the points they've banked
-// on this class's assignments, so practising the teacher's tasks becomes a race.
+// on this class's assignments, so practicing the teacher's tasks becomes a race.
 // Reads the teacher doc → class members → each member's assignedTasks (the same
 // reads the class leaderboard already does, so Firestore rules allow it).
 function ClassScoreboard({ classId, teacherUid, myUid }) {
@@ -530,8 +530,8 @@ export default function TodayScreen({ navigation }) {
   }, [userData, selectedDay]);
 
   // Streak-saver notification: if reminders are on and they have a streak worth
-  // saving but haven't practised today, schedule tonight's nudge. Cancel it once
-  // they've practised.
+  // saving but haven't practiced today, schedule tonight's nudge. Cancel it once
+  // they've practiced.
   useEffect(() => {
     if (!userData) return;
     const streakVal = userData.streak || 0;
@@ -791,7 +791,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   // Bank a lap of practice on a teacher-assigned task: award time-proportional
-  // points for the minutes just practised, accumulate the task's totals, and
+  // points for the minutes just practiced, accumulate the task's totals, and
   // write back so the teacher + class scoreboard see the progress.
   const bankTeacherTask = async (taskId, lapSeconds) => {
     const uid = auth.currentUser?.uid;
@@ -819,7 +819,7 @@ export default function TodayScreen({ navigation }) {
     if (pts > 0) Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
   };
 
-  // Record/pick a short clip as proof a teacher task was practised, upload it,
+  // Record/pick a short clip as proof a teacher task was practiced, upload it,
   // and store the URL on that task. Clears any prior teacher verification when
   // re-submitting so the teacher re-checks the new clip.
   const runProofUpload = async (taskId, getMedia) => {
@@ -847,7 +847,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   const attachProof = (taskId) => {
-    Alert.alert('Add proof of practice', 'Show your teacher you practised this.', [
+    Alert.alert('Add proof of practice', 'Show your teacher you practiced this.', [
       { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia) },
       { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia) },
       { text: 'Cancel', style: 'cancel' },
@@ -892,7 +892,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
-  // activity marker so practising today continues the chain instead of resetting.
+  // activity marker so practicing today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -909,7 +909,7 @@ export default function TodayScreen({ navigation }) {
     setUserData((p) => ({ ...p, ...updates }));
     try {
       await updateDoc(doc(db, 'users', uid), updates);
-      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practise today to keep it going.`);
+      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practice today to keep it going.`);
     } catch (e) {
       Alert.alert('Error', "Couldn't restore your streak. Please try again.");
     }

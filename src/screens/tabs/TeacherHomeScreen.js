@@ -418,7 +418,7 @@ export default function TeacherHomeScreen({ navigation }) {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Needs a nudge</Text>
             {flagged.length === 0 ? (
-              <Text style={styles.emptyMini}>Everyone's practised recently 🎉</Text>
+              <Text style={styles.emptyMini}>Everyone's practiced recently 🎉</Text>
             ) : flagged.slice(0, 5).map((s, i) => {
               const days = s.lastSessionDate ? Math.floor((now - new Date(s.lastSessionDate).getTime()) / 86400000) : null;
               return (

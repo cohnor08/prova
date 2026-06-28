@@ -33,7 +33,7 @@ export function taskPoints(session = {}) {
 
 // Teacher/class assignments pay a boosted rate, so doing the work your teacher
 // set is worth more than solo practice. Points are time-proportional (partial
-// credit) and banked per lap — practise 3 of 20 min and you still bank 3 min's
+// credit) and banked per lap — practice 3 of 20 min and you still bank 3 min's
 // worth. The real-time timer is the anti-cheat: a lap can't be worth more than
 // the minutes actually spent, and repeats cost real minutes too.
 export const TEACHER_TASK_MULTIPLIER = 3;
@@ -64,7 +64,7 @@ export function sessionPoints(minutes, streakDay, rating) {
   );
 }
 
-// For users who practised before the score field existed, estimate a starting
+// For users who practiced before the score field existed, estimate a starting
 // total from their lifetime stats (historical per-session streaks are lost, so
 // we approximate with the current streak + last rating). Used once, then the
 // banked total takes over.
