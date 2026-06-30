@@ -5,6 +5,11 @@ export const COLORS = {
   primary: '#3B82F6',
   primaryDark: '#1D4ED8',
   accent: '#06B6D4',
+  // Semantic "energy & reward" accents — kept distinct from the blue primary so
+  // the app isn't one monochrome colour. streak = the 🔥 warmth, reward = points
+  // / challenges / achievements (amber-gold).
+  streak: '#FB923C',
+  reward: '#F59E0B',
   text: '#F0F4FF',
   textSecondary: '#8B9CC8',
   textMuted: '#3D4F7A',

@@ -268,14 +268,30 @@ function RanksModal({ visible, score, onClose }) {
   );
 }
 
+// A friendly chart placeholder — an icon, a headline and a hint — so a new
+// account doesn't see a wall of blank boxes that reads as "broken".
+function ChartEmpty({ icon, title, hint }) {
+  return (
+    <View style={styles.emptyChart}>
+      <View style={styles.emptyIconCircle}>
+        <Ionicons name={icon} size={22} color={COLORS.primary} />
+      </View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyHint}>{hint}</Text>
+    </View>
+  );
+}
+
 function LineGraph({ data }) {
   if (!data || data.every(d => d.mins === 0)) {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>DAILY PRACTICE — LAST 14 DAYS</Text>
-        <View style={[styles.emptyChart, { height: GRAPH_H }]}>
-          <Text style={styles.emptyText}>Complete sessions to see your chart</Text>
-        </View>
+        <ChartEmpty
+          icon="musical-notes-outline"
+          title="Your first session starts the story"
+          hint="Finish a practice session and your daily activity fills in right here."
+        />
       </View>
     );
   }
@@ -422,7 +438,11 @@ function ActivityGraph({ data, streak }) {
           <Text style={styles.trendSummary}>{totalH}h total · peak {peak}h/week</Text>
         </View>
       ) : (
-        <View style={styles.emptyChart}><Text style={styles.emptyText}>Practice to see your trend graph</Text></View>
+        <ChartEmpty
+          icon="trending-up-outline"
+          title="Your trend is taking shape"
+          hint="Log a few sessions and your 12-week practice trend appears here."
+        />
       )}
     </View>
   );
@@ -433,9 +453,11 @@ function CategoryBreakdown({ data }) {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>TIME BY CATEGORY</Text>
-        <View style={styles.emptyChart}>
-          <Text style={styles.emptyText}>Complete sessions to see your breakdown</Text>
-        </View>
+        <ChartEmpty
+          icon="pie-chart-outline"
+          title="See where your time goes"
+          hint="Once you practise, this breaks your minutes down by technique, theory, songs and more."
+        />
       </View>
     );
   }
@@ -903,13 +925,13 @@ export default function ProgressScreen() {
         return (
           <View style={styles.statsRow}>
             {[
-              { value: streak, unit: '🔥', label: 'Day Streak' },
+              { value: streak, unit: '🔥', label: 'Day Streak', color: streak > 0 ? COLORS.streak : undefined },
               { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
               { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
               { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
             ].map(s => (
               <View key={s.label} style={styles.statCard}>
-                <Text style={styles.statValue}>{s.value}</Text>
+                <Text style={[styles.statValue, s.color && { color: s.color }]}>{s.value}</Text>
                 <Text style={styles.statUnit}>{s.unit}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
               </View>
@@ -1130,7 +1152,10 @@ const styles = StyleSheet.create({
   section: { marginBottom: SPACING.xl },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.md },
 
-  emptyChart: { height: 80, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  emptyChart: { minHeight: 132, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl, gap: 6 },
+  emptyIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '1A', alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  emptyTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  emptyHint: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 18 },
   emptyText: { color: COLORS.textMuted, fontSize: 13 },
 
   graphContainer: { position: 'relative', width: '100%', backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
