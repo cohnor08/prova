@@ -18,6 +18,7 @@ import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
+import GroupChatView from '../../components/GroupChatView';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -271,6 +272,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
 
 export default function MessagesScreen() {
   const [conversations, setConversations] = useState([]);
+  const [groupChats, setGroupChats] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
   const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
   const [loading, setLoading] = useState(true);
@@ -292,6 +295,17 @@ export default function MessagesScreen() {
       setConversations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     }, () => setLoading(false));
+  }, [myUid]);
+
+  // Class group chats I'm a member of (teacher-run announcements channels).
+  useEffect(() => {
+    if (!myUid) return;
+    const q = query(collection(db, 'groupChats'), where('memberUids', 'array-contains', myUid));
+    return onSnapshot(q, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.lastMessageAt?.toMillis?.() || 0) - (a.lastMessageAt?.toMillis?.() || 0));
+      setGroupChats(rows);
+    }, ignorePermissionDenied);
   }, [myUid]);
 
   // Resolve each conversation partner's username (chats only store email).
@@ -360,6 +374,20 @@ export default function MessagesScreen() {
     }
   };
 
+  if (activeGroup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <GroupChatView
+          group={activeGroup}
+          myUid={myUid}
+          myName=""
+          isTeacher={activeGroup.teacherUid === myUid}
+          onBack={() => setActiveGroup(null)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (activeChat) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -395,8 +423,12 @@ export default function MessagesScreen() {
     listData.push({ type: 'header', id: 'h-teacher', label: 'YOUR TEACHER' });
     teacherRows.forEach((c) => listData.push(c));
   }
+  if (groupChats.length) {
+    listData.push({ type: 'header', id: 'h-groups', label: 'CLASS CHATS' });
+    groupChats.forEach((g) => listData.push({ ...g, type: 'group' }));
+  }
   if (otherRows.length) {
-    if (teacherRows.length) listData.push({ type: 'header', id: 'h-other', label: 'MESSAGES' });
+    if (teacherRows.length || groupChats.length) listData.push({ type: 'header', id: 'h-other', label: 'MESSAGES' });
     otherRows.forEach((c) => listData.push(c));
   }
 
@@ -430,6 +462,32 @@ export default function MessagesScreen() {
           renderItem={({ item }) => {
             if (item.type === 'header') {
               return <Text style={styles.sectionHeader}>{item.label}</Text>;
+            }
+            if (item.type === 'group') {
+              const members = (item.memberUids || []).length;
+              return (
+                <TouchableOpacity
+                  style={styles.convoItem}
+                  onPress={() => setActiveGroup(item)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.convoAvatar, styles.convoAvatarTeacher]}>
+                    <Ionicons name="people" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.convoInfo}>
+                    <Text style={styles.convoEmail} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.convoLast} numberOfLines={1}>
+                      {item.lastMessage
+                        ? `${item.lastSenderUid === myUid ? 'You: ' : ''}${item.lastMessage}`
+                        : `${members} member${members === 1 ? '' : 's'} · announcements`}
+                    </Text>
+                  </View>
+                  <View style={styles.convoRight}>
+                    {!!item.lastMessageAt && <Text style={styles.convoTime}>{formatTime(item.lastMessageAt)}</Text>}
+                    <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} style={{ marginTop: 4 }} />
+                  </View>
+                </TouchableOpacity>
+              );
             }
             const isTeacher = item.otherUid === teacherUid;
             const name = nameMap[item.otherUid] || (item.otherEmail ? item.otherEmail.split('@')[0] : item.otherUid);

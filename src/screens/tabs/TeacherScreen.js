@@ -17,10 +17,12 @@ import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan } from '../../lib/claude';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
+import GroupChatView from '../../components/GroupChatView';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
@@ -385,6 +387,120 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
               {/* Stays tappable even when dimmed so it can tell the teacher what's missing. */}
               <TouchableOpacity style={[styles.modalAssignBtn, !name.trim() && { opacity: 0.5 }]} onPress={create}>
                 <Text style={styles.modalAssignText}>Create class</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// Create a class group chat (announcements). The teacher either picks a class
+// (pre-fills its students) or hand-picks students. Only the teacher can post in
+// the resulting thread; students react.
+function CreateGroupChatModal({ visible, students, classes, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [classId, setClassId] = useState(null);
+
+  const reset = () => { setName(''); setSearch(''); setSelected(new Set()); setClassId(null); };
+  const toggle = (uid) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(uid)) n.delete(uid); else n.add(uid);
+    return n;
+  });
+
+  // Picking a class fills the selection with its (still-connected) members and
+  // seeds the name. Tapping it again clears back to manual mode.
+  const pickClass = (c) => {
+    if (classId === c.id) { setClassId(null); setSelected(new Set()); return; }
+    const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+    setClassId(c.id);
+    setSelected(new Set(memberUids));
+    if (!name.trim()) setName(c.name);
+  };
+
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? students.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    : students;
+
+  const create = () => {
+    if (!name.trim()) { Alert.alert('Name the group', 'Give the group chat a name first.'); return; }
+    if (selected.size === 0) { Alert.alert('Add members', 'Pick a class or at least one student.'); return; }
+    onCreate(name.trim(), [...selected], classId);
+    reset();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>New group chat</Text>
+            <Text style={styles.tplSheetEmpty}>Only you can post — students can react.</Text>
+            <TextInput
+              style={[styles.input, { marginTop: SPACING.sm }]}
+              placeholder="Group name (e.g. Tuesday Beginners)"
+              placeholderTextColor={COLORS.textMuted}
+              value={name}
+              onChangeText={setName}
+            />
+            {classes.length > 0 && (
+              <>
+                <Text style={styles.tplLabel}>USE A CLASS</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
+                  {classes.map((c) => {
+                    const on = classId === c.id;
+                    return (
+                      <TouchableOpacity key={c.id} style={[styles.classPickChip, on && styles.classPickChipOn]} onPress={() => pickClass(c)} activeOpacity={0.8}>
+                        <Text style={[styles.classPickChipText, on && styles.classPickChipTextOn]} numberOfLines={1}>{c.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            <Text style={styles.tplLabel}>MEMBERS ({selected.size})</Text>
+            {students.length === 0 ? (
+              <Text style={styles.tplSheetEmpty}>No students yet — connect students with your join code first.</Text>
+            ) : (
+              <>
+                {students.length > 5 && (
+                  <TextInput
+                    style={[styles.input, { marginBottom: SPACING.sm }]}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
+                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                  {shown.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
+                  ) : shown.map((s) => {
+                    const on = selected.has(s.uid);
+                    return (
+                      <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={styles.classPickName} numberOfLines={1}>{displayName(s)}</Text>
+                        {!!s.level && <Text style={styles.classPickMeta}>{s.level}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalAssignBtn, (!name.trim() || selected.size === 0) && { opacity: 0.5 }]} onPress={create}>
+                <Text style={styles.modalAssignText}>Create chat</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1311,6 +1427,10 @@ function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
+  const [groupChats, setGroupChats] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [myName, setMyName] = useState('');
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
@@ -1354,6 +1474,41 @@ function TeacherDashboard() {
       setConvoMap(map);
     }, ignorePermissionDenied);
   }, [myUid]);
+
+  // Resolve my own display name (for labelling group-chat posts).
+  useEffect(() => {
+    if (!myUid) return;
+    getDoc(doc(db, 'users', myUid))
+      .then((s) => setMyName(displayName({ uid: myUid, ...(s.data() || {}) })))
+      .catch(() => {});
+  }, [myUid]);
+
+  // Class group chats I own/belong to (newest activity first).
+  useEffect(() => {
+    if (!myUid || DEMO_MODE) return;
+    const q = query(collection(db, 'groupChats'), where('memberUids', 'array-contains', myUid));
+    return onSnapshot(q, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.lastMessageAt?.toMillis?.() || 0) - (a.lastMessageAt?.toMillis?.() || 0));
+      setGroupChats(rows);
+    }, ignorePermissionDenied);
+  }, [myUid]);
+
+  const createGroup = async (name, studentUids, classId) => {
+    setShowCreateGroup(false);
+    try {
+      await createGroupChat({ teacherUid: myUid, name, studentUids, classId });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't create the group chat. Please try again.");
+    }
+  };
+
+  const removeGroup = (group) => {
+    Alert.alert('Delete group chat?', `"${group.name}" will be removed for everyone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteGroupChat(group.id).catch(() => {}) },
+    ]);
+  };
 
   const loadStudents = async () => {
     setLoading(true);
@@ -1655,6 +1810,21 @@ Sent from Prova`;
         </View>
         <InlineChatView student={activeChatStudent} myUid={myUid} isDemo={DEMO_MODE} />
       </View>
+    );
+  }
+
+  // ── Group chat view ──
+  if (activeGroup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <GroupChatView
+          group={activeGroup}
+          myUid={myUid}
+          myName={myName}
+          isTeacher
+          onBack={() => setActiveGroup(null)}
+        />
+      </SafeAreaView>
     );
   }
 
@@ -2150,6 +2320,45 @@ Sent from Prova`;
         {/* ── Messages tab ── */}
         {activeTab === 'chats' && (
           <>
+            {students.length > 0 && (
+              <>
+                <View style={styles.groupHeaderRow}>
+                  <Text style={styles.tplLabel}>GROUP CHATS</Text>
+                  <TouchableOpacity style={styles.newGroupBtn} onPress={() => setShowCreateGroup(true)} activeOpacity={0.8}>
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Text style={styles.newGroupBtnText}>New</Text>
+                  </TouchableOpacity>
+                </View>
+                {groupChats.length === 0 ? (
+                  <Text style={styles.chatPreviewEmpty}>Create a class announcements chat — only you can post, students react.</Text>
+                ) : groupChats.map((g) => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={styles.chatListItem}
+                    onPress={() => setActiveGroup(g)}
+                    onLongPress={() => removeGroup(g)}
+                    delayLongPress={400}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.studentAvatar, { backgroundColor: COLORS.accent || COLORS.primary }]}>
+                      <Ionicons name="people" size={20} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.studentName} numberOfLines={1}>{g.name}</Text>
+                      {g.lastMessage ? (
+                        <Text style={styles.chatPreviewText} numberOfLines={1}>
+                          {g.lastSenderUid === myUid ? 'You: ' : ''}{g.lastMessage}
+                        </Text>
+                      ) : (
+                        <Text style={styles.chatPreviewEmpty}>{(g.memberUids || []).length} members · tap to post</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                ))}
+                <Text style={[styles.tplLabel, { marginTop: SPACING.lg }]}>DIRECT MESSAGES</Text>
+              </>
+            )}
             {students.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textMuted} style={{ marginBottom: SPACING.md }} />
@@ -2234,6 +2443,14 @@ Sent from Prova`;
         students={students}
         onClose={() => setShowCreateClass(false)}
         onCreate={createClass}
+      />
+
+      <CreateGroupChatModal
+        visible={showCreateGroup}
+        students={students}
+        classes={classes}
+        onClose={() => setShowCreateGroup(false)}
+        onCreate={createGroup}
       />
 
       <AddStudentsModal
@@ -2509,6 +2726,13 @@ const styles = StyleSheet.create({
   classPickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   classPickName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
   classPickMeta: { color: COLORS.textMuted, fontSize: 12 },
+  classPickChip: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, maxWidth: 160 },
+  classPickChipOn: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary },
+  classPickChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  classPickChipTextOn: { color: COLORS.primary },
+  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  newGroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.primary + '1A', borderRadius: 12, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
+  newGroupBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   newClassBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: SPACING.lg },
   newClassBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   classCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.md },
