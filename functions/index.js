@@ -6,6 +6,7 @@ admin.initializeApp();
 const db = admin.firestore();
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+const YOUTUBE_API_KEY = defineSecret('YOUTUBE_API_KEY');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
 // Sonnet for tasks that need genuinely specific, reasoned output (practice plans,
@@ -24,6 +25,12 @@ const RATE_LIMITS = {
   // personal accounts. A cache hit on songPlans/{key} never reaches the limiter,
   // so popular songs are effectively free after the first generation.
   generateSongPlan:       { requests: 5, tokens: 80000, period: 'week' },
+  // YouTube search doesn't use Claude tokens — `tokens` is just a guard rail that
+  // never trips (we never record tokens for it). The real cost control is the
+  // ytSearches/{key} cache: a repeated query never reaches the YouTube API or the
+  // limiter. `requests` caps how many NEW (uncached) searches one user can trigger
+  // per day, protecting the project's shared 10k-unit/day YouTube quota.
+  searchYouTube:          { requests: 40, tokens: 1 },
 };
 
 // Returns the bucket key for an action's rate-limit period. Daily actions key on
@@ -672,5 +679,92 @@ Rules:
     ]).catch(() => {});
 
     return { ...record, cached: false };
+  }
+);
+
+// ─── searchYouTube ────────────────────────────────────────────────────────────
+// Turns a search phrase into real, embeddable YouTube videos so the app can show
+// thumbnails + play them in-app instead of bouncing the user to a search page.
+//
+// Cost control (YouTube gives the whole project ~10,000 quota units/day and each
+// search costs 100 units → ~100 NEW searches/day across ALL users):
+//   1. Results are cached forever in ytSearches/{key} keyed by the normalised
+//      query. A repeated phrase is served from Firestore for free and never hits
+//      the YouTube API or the per-user rate limit.
+//   2. On a cache miss we charge the per-user daily request cap (abuse guard).
+function ytCacheKey(q) {
+  return String(q || '')
+    .toLowerCase()
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+exports.searchYouTube = onCall(
+  { region: 'us-central1', secrets: [YOUTUBE_API_KEY], invoker: 'public', timeoutSeconds: 30, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+    const uid = request.auth.uid;
+
+    const { q, max } = request.data || {};
+    if (typeof q !== 'string' || q.trim().length === 0)
+      throw new HttpsError('invalid-argument', 'Search query is required');
+    if (q.length > 150)
+      throw new HttpsError('invalid-argument', 'Search query too long (max 150 chars)');
+
+    const query = q.trim();
+    const maxResults = Math.min(Math.max(parseInt(max, 10) || 6, 1), 10);
+    const key = ytCacheKey(query);
+
+    // ── Cache hit: free, no quota, no rate limit ──
+    const cacheRef = db.doc(`ytSearches/${key}`);
+    const cached = await cacheRef.get();
+    if (cached.exists) {
+      const data = cached.data() || {};
+      return { results: (data.results || []).slice(0, maxResults), cached: true };
+    }
+
+    // ── Cache miss: a real YouTube API call, so it costs the user a request ──
+    await checkRateLimit(uid, 'searchYouTube');
+
+    const url = 'https://www.googleapis.com/youtube/v3/search'
+      + '?part=snippet&type=video&videoEmbeddable=true&safeSearch=moderate'
+      + `&maxResults=${maxResults}`
+      + `&q=${encodeURIComponent(query)}`
+      + `&key=${YOUTUBE_API_KEY.value()}`;
+
+    let payload;
+    try {
+      const res = await fetch(url);
+      payload = await res.json();
+      if (!res.ok) {
+        // YouTube returns 403 when the daily quota is exhausted.
+        const reason = payload?.error?.errors?.[0]?.reason || '';
+        if (res.status === 403 && /quota/i.test(reason)) {
+          throw new HttpsError('resource-exhausted', "Today's video search limit was reached. Try again tomorrow.");
+        }
+        console.error('YouTube API error', res.status, JSON.stringify(payload?.error || {}).slice(0, 300));
+        throw new HttpsError('internal', 'Could not search videos right now.');
+      }
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error('YouTube fetch failed', err?.message);
+      throw new HttpsError('internal', 'Could not reach YouTube. Try again.');
+    }
+
+    const results = (Array.isArray(payload.items) ? payload.items : [])
+      .map((it) => ({
+        videoId: it?.id?.videoId || '',
+        title: String(it?.snippet?.title || '').slice(0, 200),
+        channel: String(it?.snippet?.channelTitle || '').slice(0, 120),
+        thumbnail: it?.snippet?.thumbnails?.medium?.url || it?.snippet?.thumbnails?.default?.url || '',
+      }))
+      .filter((r) => r.videoId);
+
+    // Cache even an empty result set so a dud query doesn't burn quota on repeat.
+    await cacheRef.set({ query, key, results, createdAt: new Date().toISOString() });
+
+    return { results, cached: false };
   }
 );

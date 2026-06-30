@@ -18,6 +18,7 @@ import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -340,17 +341,19 @@ function SkeletonBlock({ width, height, style }) {
 
 // Opens a YouTube search for the exercise. We build a search URL (never a
 // hard-coded video link) so it always resolves to real, current results.
-function ReferenceLink({ reference }) {
+function ReferenceLink({ reference, label }) {
+  const [open, setOpen] = useState(false);
   if (!reference) return null;
-  const open = () => {
-    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(reference)}`;
-    Linking.openURL(url).catch(() => {});
-  };
+  const cta = label ? `Watch videos on ${label}` : 'Watch lesson videos';
   return (
-    <TouchableOpacity style={styles.refRow} onPress={open} activeOpacity={0.7}>
-      <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-      <Text style={styles.refText} numberOfLines={1}>Watch: {reference}</Text>
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity style={styles.refRow} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Ionicons name="play-circle" size={18} color={COLORS.primary} />
+        <Text style={styles.refText} numberOfLines={1}>{cta}</Text>
+        <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
+      </TouchableOpacity>
+      <YouTubePlayerModal visible={open} query={reference} title={label ? `Videos on ${label}` : 'Watch'} onClose={() => setOpen(false)} />
+    </>
   );
 }
 
@@ -395,7 +398,7 @@ function SessionCard({ session, onComplete, completed, onStart }) {
         </TouchableOpacity>
         {expanded && (<>
         <Text style={styles.sessionDesc}>{session.description}</Text>
-        <ReferenceLink reference={session.reference} />
+        <ReferenceLink reference={session.reference} label={session.title} />
         <View style={styles.sessionPtsRow}>
           <Ionicons name="sparkles" size={13} color={COLORS.accent} />
           <Text style={styles.sessionPts}>Worth +{Math.round(taskPoints(session) / 5) * 5} Prova points</Text>
@@ -458,7 +461,7 @@ function PlanCard({ session }) {
       <View style={styles.planRight}>
         <Text style={styles.sessionTitle}>{session.title}</Text>
         <Text style={styles.sessionDesc}>{session.description}</Text>
-        <ReferenceLink reference={session.reference} />
+        <ReferenceLink reference={session.reference} label={session.title} />
         <View style={styles.sessionMeta}>
           <Text style={styles.sessionDuration}>{session.duration} min</Text>
           <Text style={[styles.sessionCategory, { color }]}>{session.category.replace('_', ' ')}</Text>
@@ -1059,7 +1062,7 @@ export default function TodayScreen({ navigation }) {
             {challengeOpen && (
               <>
                 <Text style={styles.challengeDetail}>{dailyChallenge.detail}</Text>
-                <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} />
+                <ReferenceLink reference={`${dailyChallenge.title} ${userData?.instrument || 'guitar'} lesson`} label={dailyChallenge.title} />
                 {challengeDoneToday ? (
                   <View style={styles.challengeDone}>
                     <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
@@ -1481,8 +1484,8 @@ const styles = StyleSheet.create({
   sessionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   sessionTitleCompleted: { color: COLORS.textMuted },
   sessionDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.sm },
-  refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
-  refText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
+  refRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md, paddingVertical: 4 },
+  refText: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: '600' },
   timerProgress: { height: 3, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: SPACING.sm, overflow: 'hidden' },
   timerProgressFill: { height: '100%', borderRadius: 2 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },

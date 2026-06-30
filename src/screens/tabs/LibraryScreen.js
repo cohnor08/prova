@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +8,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
-
-// Open a YouTube SEARCH for a task (never a hard-coded video link).
-function openSearch(phrase) {
-  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(phrase)}`;
-  Linking.openURL(url).catch(() => {});
-}
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 
 const norm = (s) => (s || '').toLowerCase();
 
@@ -23,6 +18,7 @@ export default function LibraryScreen({ navigation }) {
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
   const [openId, setOpenId] = useState(null);
+  const [watch, setWatch] = useState(null); // { query } for the in-app video player
 
   useEffect(() => {
     (async () => {
@@ -148,9 +144,10 @@ export default function LibraryScreen({ navigation }) {
                       <View key={i} style={styles.task}>
                         <Text style={styles.taskText}>{task.text}</Text>
                         {!!task.yt && (
-                          <TouchableOpacity style={styles.watch} onPress={() => openSearch(task.yt)} activeOpacity={0.7}>
-                            <Ionicons name="logo-youtube" size={14} color="#FF0000" />
-                            <Text style={styles.watchText} numberOfLines={1}>Watch: {task.yt}</Text>
+                          <TouchableOpacity style={styles.watchBtn} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.8}>
+                            <Ionicons name="play-circle" size={18} color={COLORS.primary} />
+                            <Text style={styles.watchBtnText} numberOfLines={1}>Watch videos on {t.title}</Text>
+                            <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -162,6 +159,13 @@ export default function LibraryScreen({ navigation }) {
           })
         )}
       </ScrollView>
+
+      <YouTubePlayerModal
+        visible={!!watch}
+        query={watch?.query}
+        title={watch?.title ? `Videos on ${watch.title}` : 'Watch'}
+        onClose={() => setWatch(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -194,8 +198,8 @@ const styles = StyleSheet.create({
   summary: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
   task: { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
   taskText: { color: COLORS.text, fontSize: 13, lineHeight: 19 },
-  watch: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  watchText: { color: COLORS.textSecondary, fontSize: 12, textDecorationLine: 'underline', flexShrink: 1 },
+  watchBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 4 },
+  watchBtnText: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: '600' },
 
   empty: { alignItems: 'center', paddingVertical: SPACING.xl },
   emptyText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
