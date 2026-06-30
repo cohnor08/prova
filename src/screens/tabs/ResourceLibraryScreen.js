@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
-  Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated, PanResponder,
+  Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,8 +11,18 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
+import DueDatePicker from '../../components/DueDatePicker';
 import { COLORS, SPACING } from '../../constants/theme';
-import { RESOURCES, RESOURCE_LEVELS, RESOURCE_LEVEL_FALLBACK, CATEGORY_META } from '../../constants/resources';
+
+// Friendly label for a stored ISO due date.
+function dueLabel(iso) {
+  if (!iso) return 'No due date';
+  const d = new Date(iso);
+  if (isNaN(d)) return 'No due date';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
 
@@ -31,114 +41,9 @@ function openResource(value) {
 
 function Pill({ label, active, onPress }) {
   return (
-    <TouchableOpacity
-      style={[styles.pill, active && styles.pillActive]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
+    <TouchableOpacity style={[styles.pill, active && styles.pillActive]} onPress={onPress} activeOpacity={0.8}>
       <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
     </TouchableOpacity>
-  );
-}
-
-function ResourceItem({ item, onAssign, onRemove }) {
-  return (
-    <View style={styles.item}>
-      <View style={styles.customRow}>
-        <Text style={[styles.itemTitle, { flex: 1 }]}>{item.title}</Text>
-        {onRemove && (
-          <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-          </TouchableOpacity>
-        )}
-      </View>
-      <Text style={styles.itemDetail}>{item.detail}</Text>
-      {item.yt && (
-        <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(item.yt)} activeOpacity={0.7}>
-          <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-          <Text style={styles.ytText} numberOfLines={1}>Watch: {item.yt}</Text>
-        </TouchableOpacity>
-      )}
-      {onAssign && (
-        <TouchableOpacity style={styles.assignRow} onPress={() => onAssign({ title: item.title, url: item.yt || item.title, description: item.detail || '' })} activeOpacity={0.7}>
-          <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
-          <Text style={styles.assignRowText}>Assign to student</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-// Drag-to-reorder list for the category sections (Exercises / Songs / Tips).
-// Hold the ≡ grip and drag a row; tap the eye to show/hide. PanResponder-based,
-// no extra deps. Rows are a fixed height since each is a single label.
-const CAT_ROW_H = 56;
-function CategoryEditList({ layout, onReorder, onToggle }) {
-  const [dragId, setDragId] = useState(null);
-  const orderRef = useRef(layout);
-  orderRef.current = layout;
-  const pan = useRef(new Animated.Value(0)).current;
-  const startTop = useRef(0);
-  const responders = useRef({});
-
-  const getResponder = (id) => {
-    if (responders.current[id]) return responders.current[id];
-    responders.current[id] = PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        startTop.current = orderRef.current.findIndex((x) => x.id === id) * CAT_ROW_H;
-        pan.setValue(0);
-        setDragId(id);
-      },
-      onPanResponderMove: (_, g) => {
-        const order = orderRef.current;
-        const desiredTop = startTop.current + g.dy;
-        const center = desiredTop + CAT_ROW_H / 2;
-        let target = Math.max(0, Math.min(order.length - 1, Math.floor(center / CAT_ROW_H)));
-        const curIndex = order.findIndex((x) => x.id === id);
-        if (target !== curIndex) {
-          const arr = [...order];
-          const [it] = arr.splice(curIndex, 1);
-          arr.splice(target, 0, it);
-          onReorder(arr);
-          pan.setValue(desiredTop - target * CAT_ROW_H);
-        } else {
-          pan.setValue(desiredTop - curIndex * CAT_ROW_H);
-        }
-      },
-      onPanResponderRelease: () => { setDragId(null); pan.setValue(0); },
-      onPanResponderTerminate: () => { setDragId(null); pan.setValue(0); },
-    });
-    return responders.current[id];
-  };
-
-  return (
-    <View style={{ marginTop: SPACING.sm }}>
-      {layout.map((entry) => {
-        const meta = CATEGORY_META[entry.id];
-        const dragging = dragId === entry.id;
-        return (
-          <Animated.View
-            key={entry.id}
-            style={[
-              styles.editRow,
-              dragging && styles.editRowDragging,
-              dragging && { transform: [{ translateY: pan }], zIndex: 20, elevation: 8 },
-            ]}
-          >
-            <View {...getResponder(entry.id).panHandlers} style={styles.grip}>
-              <Ionicons name="reorder-three" size={26} color={COLORS.textSecondary} />
-            </View>
-            <Ionicons name={meta.icon} size={16} color={COLORS.primary} />
-            <Text style={[styles.editRowName, !entry.visible && { color: COLORS.textMuted }]}>{meta.label}</Text>
-            <TouchableOpacity onPress={() => onToggle(entry.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name={entry.visible ? 'eye' : 'eye-off'} size={20} color={entry.visible ? COLORS.primary : COLORS.textMuted} />
-            </TouchableOpacity>
-          </Animated.View>
-        );
-      })}
-    </View>
   );
 }
 
@@ -149,35 +54,42 @@ export default function ResourceLibraryScreen() {
   // Teacher-added resources, stored on the teacher's own user doc.
   const [custom, setCustom] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState(null); // resource id being edited, or null when adding
+  const [editingId, setEditingId] = useState(null);
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [resSearch, setResSearch] = useState('');     // search across all your resources
-  const [expandedRes, setExpandedRes] = useState(null); // which resource card is expanded
-  const [hidden, setHidden] = useState([]);            // built-in item ids the teacher removed
-  const [catLayout, setCatLayout] = useState(null);    // section order + visibility, or null = default
-  const [collapsedCats, setCollapsedCats] = useState(() => new Set(Object.keys(CATEGORY_META))); // start compact
-  const [editLayout, setEditLayout] = useState(false); // layout edit mode (like the Home screen)
+  const [newInstrument, setNewInstrument] = useState('Guitar'); // where this resource is filed
+  const [newLevel, setNewLevel] = useState('Beginner');
+  const [resSearch, setResSearch] = useState('');       // search across the teacher's own resources
+  const [expandedRes, setExpandedRes] = useState(null);
 
-  // For assigning a resource to a student/class.
+  // The shared lesson-library bank shown right on this page.
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [libCat, setLibCat] = useState('All');           // category filter for the library
+  const [expandedTopic, setExpandedTopic] = useState(null);
+
+  // For assigning a resource / library task to a student or class.
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [assignTarget, setAssignTarget] = useState(null); // { title, url } | null
+  const [assignTarget, setAssignTarget] = useState(null); // { title, url, description } | null
+  const [assignInstructions, setAssignInstructions] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState(null); // ISO datetime or null
+  const [showAssignDuePicker, setShowAssignDuePicker] = useState(false);
+
+  // Seed the instructions/due-date when a resource is chosen to assign.
+  useEffect(() => {
+    if (assignTarget) {
+      setAssignInstructions(assignTarget.description || '');
+      setAssignDueDate(null);
+    }
+  }, [assignTarget]);
 
   const loadResources = (uid) => {
     if (!uid) return;
     getDoc(doc(db, 'users', uid))
       .then((s) => {
-        const cust = Array.isArray(s.data()?.customResources) ? s.data().customResources : [];
-        setCustom(cust);
+        setCustom(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
         setClasses(Array.isArray(s.data()?.classes) ? s.data().classes : []);
-        setHidden(Array.isArray(s.data()?.hiddenResources) ? s.data().hiddenResources : []);
-        if (Array.isArray(s.data()?.resourceLayout)) setCatLayout(s.data().resourceLayout);
-        // New teachers (no library of their own yet) get the built-in sections
-        // expanded so they see ready-to-use content; once they've built up their
-        // own resources, the stock sections stay collapsed to reduce clutter.
-        if (cust.length === 0) setCollapsedCats(new Set());
       })
       .catch(() => {});
     getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)))
@@ -187,22 +99,22 @@ export default function ResourceLibraryScreen() {
 
   // Load once auth is ready. On a cold reopen this screen can mount before
   // Firebase Auth restores the session, so we wait for the auth state to resolve
-  // (and reload on any sign-in) rather than bailing once and never retrying.
+  // rather than bailing once and never retrying.
   useEffect(() => {
     if (auth.currentUser?.uid) loadResources(auth.currentUser.uid);
     const unsub = onAuthStateChanged(auth, (u) => { if (u?.uid) loadResources(u.uid); });
     return unsub;
   }, []);
 
-  // Assign the selected resource as a task (with its link) to recipients.
+  // Assign the selected resource / task (with its link) to recipients.
   const assignResourceTo = async (recipientUids, klass) => {
     if (!assignTarget || recipientUids.length === 0) return;
     const base = {
       title: assignTarget.title,
-      description: assignTarget.description || '',
+      description: assignInstructions.trim(),
       youtube: assignTarget.url,
       song: '',
-      dueDate: null,
+      dueDate: assignDueDate,
       durationMin: 0,
       completed: false,
       assignedAt: new Date().toISOString(),
@@ -218,7 +130,7 @@ export default function ResourceLibraryScreen() {
       setAssignTarget(null);
       Alert.alert('Assigned', klass
         ? `Sent to ${recipientUids.length} student${recipientUids.length === 1 ? '' : 's'} in ${klass.name}.`
-        : 'Resource sent to the student.');
+        : 'Sent to the student.');
     } catch (e) {
       Alert.alert('Error', e.message);
     }
@@ -231,14 +143,16 @@ export default function ResourceLibraryScreen() {
   };
 
   const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); };
-
-  const openAdd = () => { resetForm(); setShowAdd(true); };
-
+  // New resources default to the currently-viewed instrument/level; editing keeps
+  // the resource's own.
+  const openAdd = () => { resetForm(); setNewInstrument(instrument); setNewLevel(level); setShowAdd(true); };
   const openEdit = (r) => {
     setEditingId(r.id);
     setNewTitle(r.title || '');
     setNewUrl(r.url || '');
     setNewDesc(r.description || '');
+    setNewInstrument(r.instrument || 'Guitar');
+    setNewLevel(r.level || 'Beginner');
     setShowAdd(true);
   };
 
@@ -248,12 +162,11 @@ export default function ResourceLibraryScreen() {
       return;
     }
     if (editingId) {
-      // Edit in place, keeping the resource's original instrument/level.
       saveCustom(custom.map((x) => x.id === editingId
-        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim() }
+        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel }
         : x));
     } else {
-      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument, level };
+      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel };
       saveCustom([item, ...custom]);
     }
     resetForm(); setShowAdd(false);
@@ -266,45 +179,8 @@ export default function ResourceLibraryScreen() {
     ]);
   };
 
-  // A stable id for a built-in item, so a teacher can hide it per their account.
-  const builtinId = (cat, item) => `${instrument}|${level}|${cat}|${item.title}`;
-
-  const saveHidden = (next) => {
-    setHidden(next);
-    const uid = auth.currentUser?.uid;
-    if (uid) updateDoc(doc(db, 'users', uid), { hiddenResources: next }).catch(() => {});
-  };
-  const removeBuiltin = (cat, item) => {
-    const id = builtinId(cat, item);
-    Alert.alert('Remove resource?', item.title, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => saveHidden([...hidden, id]) },
-    ]);
-  };
-
-  const toggleCollapse = (cat) => setCollapsedCats((prev) => {
-    const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n;
-  });
-
-  // Section layout (order + visibility), Home-screen style. Merge any saved
-  // layout with the full category list so new categories still appear.
-  const allCats = Object.keys(CATEGORY_META);
-  const mergedLayout = (() => {
-    const saved = Array.isArray(catLayout) ? catLayout.filter((x) => allCats.includes(x.id)) : [];
-    const have = new Set(saved.map((x) => x.id));
-    return [...saved, ...allCats.filter((c) => !have.has(c)).map((c) => ({ id: c, visible: true }))];
-  })();
-  const toggleCatVisible = (id) =>
-    setCatLayout(mergedLayout.map((x) => (x.id === id ? { ...x, visible: !x.visible } : x)));
-  const saveLayout = () => {
-    setEditLayout(false);
-    const uid = auth.currentUser?.uid;
-    if (uid) updateDoc(doc(db, 'users', uid), { resourceLayout: mergedLayout }).catch(() => {});
-  };
-
-  // The teacher's own links. When searching, match across ALL their resources
-  // (any instrument/level) by title, description or link; otherwise show the
-  // ones for the currently selected instrument + level.
+  // The teacher's own links. When searching, match across ALL their resources;
+  // otherwise show the ones for the currently selected instrument + level.
   const resQuery = resSearch.trim().toLowerCase();
   const myResources = resQuery
     ? custom.filter((r) =>
@@ -313,21 +189,25 @@ export default function ResourceLibraryScreen() {
         || (r.url || '').toLowerCase().includes(resQuery))
     : custom.filter((r) => r.instrument === instrument && r.level === level);
 
-  const effLevel = RESOURCES[instrument]?.[level] ? level : (RESOURCE_LEVEL_FALLBACK[level] || level);
-  const data = RESOURCES[instrument]?.[effLevel] || {};
-  const hiddenSet = new Set(hidden);
-  // Items per category with hidden ones filtered out.
-  const visibleItems = (cat) => (data[cat] || []).filter((it) => !hiddenSet.has(builtinId(cat, it)));
-  // Sections in the teacher's chosen order — only visible ones that still have
-  // items (the drag editor handles reordering/hiding separately).
-  const orderedCats = mergedLayout.filter((x) => x.visible && visibleItems(x.id).length > 0);
+  // The shared lesson library. The category chip always applies. Search matches
+  // the WHOLE bank; browsing (no search) narrows to the selected instrument
+  // (+ 'Both') and level.
+  const libQuery = librarySearch.trim().toLowerCase();
+  const libraryTopics = LIBRARY_TOPICS.filter((t) => {
+    if (libCat !== 'All' && t.category !== libCat) return false;
+    if (libQuery) {
+      const hay = `${t.title} ${t.summary} ${t.category} ${(t.tags || []).join(' ')}`.toLowerCase();
+      return libQuery.split(/\s+/).every((w) => hay.includes(w));
+    }
+    return (t.instrument === 'Both' || t.instrument === instrument) && t.level === level;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.kicker}>TEACHING LIBRARY</Text>
         <Text style={styles.title}>Resources</Text>
-        <Text style={styles.subtitle}>Ready-to-use exercises, tips and songs to hand to your students.</Text>
+        <Text style={styles.subtitle}>Your own links, plus a full searchable lesson library — assign any of it to a student or class.</Text>
 
         <View style={styles.pillRow}>
           {INSTRUMENTS.map((i) => (
@@ -335,12 +215,12 @@ export default function ResourceLibraryScreen() {
           ))}
         </View>
         <View style={styles.pillRow}>
-          {RESOURCE_LEVELS.map((l) => (
+          {LIBRARY_LEVELS.map((l) => (
             <Pill key={l} label={l} active={level === l} onPress={() => setLevel(l)} />
           ))}
         </View>
 
-        {/* Teacher's own added resources for this instrument + level */}
+        {/* ── Your resources ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="bookmark" size={16} color={COLORS.primary} />
@@ -383,12 +263,12 @@ export default function ResourceLibraryScreen() {
                 <View key={r.id} style={styles.item}>
                   <TouchableOpacity style={styles.customRow} onPress={() => setExpandedRes(open ? null : r.id)} activeOpacity={0.7}>
                     <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
-                    <Text style={[styles.itemTitle, { flex: 1 }]} numberOfLines={1}>{r.title}</Text>
+                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>{r.title}</Text>
                     {resQuery ? <Text style={styles.resTag}>{r.instrument} · {r.level}</Text> : null}
                   </TouchableOpacity>
                   {open && (
                     <>
-                      {!!r.description && <Text style={styles.itemDetail}>{r.description}</Text>}
+                      {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
                       <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
                         <Ionicons name="logo-youtube" size={15} color="#FF0000" />
                         <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
@@ -415,68 +295,95 @@ export default function ResourceLibraryScreen() {
           )}
         </View>
 
-        {/* Layout editor toggle — reorder / show-hide the category sections */}
-        <View style={styles.layoutBar}>
-          <Text style={styles.layoutHint}>{editLayout ? 'Reorder or hide sections' : `Sections · ${instrument} · ${level}`}</Text>
-          <TouchableOpacity
-            style={[styles.layoutBtn, editLayout && styles.layoutBtnActive]}
-            onPress={() => (editLayout ? saveLayout() : setEditLayout(true))}
-            activeOpacity={0.85}
-          >
-            <Ionicons name={editLayout ? 'checkmark' : 'options-outline'} size={15} color={editLayout ? '#fff' : COLORS.primary} />
-            <Text style={[styles.layoutBtnText, editLayout && { color: '#fff' }]}>{editLayout ? 'Done' : 'Edit layout'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ── Lesson library (searchable bank, assign any task) ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="book" size={16} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Lesson library</Text>
+          </View>
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={15} color={COLORS.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search the whole library — barre chords, slap, modes…"
+              placeholderTextColor={COLORS.textMuted}
+              value={librarySearch}
+              onChangeText={setLibrarySearch}
+              autoCapitalize="none"
+            />
+            {!!librarySearch && (
+              <TouchableOpacity onPress={() => setLibrarySearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
 
-        {editLayout ? (
-          <CategoryEditList layout={mergedLayout} onReorder={setCatLayout} onToggle={toggleCatVisible} />
-        ) : (
-          orderedCats.map((entry) => {
-            const cat = entry.id;
-            const meta = CATEGORY_META[cat];
-            const items = visibleItems(cat);
-            const collapsed = collapsedCats.has(cat);
-            return (
-              <View key={cat} style={styles.section}>
-                <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleCollapse(cat)} activeOpacity={0.7}>
-                  <Ionicons name={meta.icon} size={16} color={COLORS.primary} />
-                  <Text style={[styles.sectionTitle, { flex: 1 }]}>{meta.label}</Text>
-                  <Text style={styles.sectionCount}>{items.length}</Text>
-                  <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
+          {/* Category chips — tap one to filter (Chords, Scales, Songs…) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll} style={{ marginBottom: SPACING.sm }}>
+            {['All', ...LIBRARY_CATEGORIES].map((c) => {
+              const on = libCat === c;
+              return (
+                <TouchableOpacity key={c} style={[styles.catChip, on && styles.catChipOn]} onPress={() => setLibCat(c)} activeOpacity={0.85}>
+                  <Text style={[styles.catChipText, on && styles.catChipTextOn]}>{c}</Text>
                 </TouchableOpacity>
-                {!collapsed && (
-                  items.length === 0
-                    ? <Text style={styles.emptyRes}>All removed. Nothing here for {instrument} · {level}.</Text>
-                    : items.map((item, idx) => (
-                        <ResourceItem
-                          key={`${cat}_${idx}`}
-                          item={item}
-                          onAssign={cat === 'tips' ? null : setAssignTarget}
-                          onRemove={() => removeBuiltin(cat, item)}
-                        />
-                      ))
-                )}
-              </View>
-            );
-          })
-        )}
+              );
+            })}
+          </ScrollView>
 
-        {hidden.length > 0 && !editLayout && (
-          <TouchableOpacity style={styles.restoreRow} onPress={() => saveHidden([])} activeOpacity={0.7}>
-            <Ionicons name="refresh" size={14} color={COLORS.textSecondary} />
-            <Text style={styles.restoreText}>Restore {hidden.length} removed resource{hidden.length === 1 ? '' : 's'}</Text>
-          </TouchableOpacity>
-        )}
+          {libraryTopics.length === 0 ? (
+            <Text style={styles.emptyRes}>
+              {libQuery ? `No topics match “${librarySearch.trim()}”.` : `Nothing for ${instrument} · ${level} — try the search.`}
+            </Text>
+          ) : (
+            libraryTopics.map((t) => {
+              const open = expandedTopic === t.id;
+              return (
+                <View key={t.id} style={styles.item}>
+                  <TouchableOpacity style={styles.customRow} onPress={() => setExpandedTopic(open ? null : t.id)} activeOpacity={0.7}>
+                    <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
+                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>{t.title}</Text>
+                    <Text style={styles.resTag}>{t.category} · {t.level}</Text>
+                  </TouchableOpacity>
+                  {open && (
+                    <>
+                      {!!t.summary && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{t.summary}</Text>}
+                      {(t.tasks || []).map((task, i) => (
+                        <View key={i} style={styles.libTask}>
+                          <Text style={styles.itemDetail}>{task.text}</Text>
+                          {!!task.yt && (
+                            <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(task.yt)} activeOpacity={0.7}>
+                              <Ionicons name="logo-youtube" size={15} color="#FF0000" />
+                              <Text style={styles.ytText} numberOfLines={1}>Watch: {task.yt}</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={styles.assignRow}
+                            onPress={() => setAssignTarget({ title: t.title, url: task.yt || t.title, description: task.text })}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                            <Text style={styles.assignRowText}>Assign to student</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
+      {/* Add / edit a resource */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit resource' : 'Add resource'}</Text>
-              <Text style={styles.modalSub}>{editingId ? 'Update this resource' : `Saved under ${instrument} · ${level}`}</Text>
+              <Text style={styles.modalSub}>Add a link and choose where it’s filed.</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Title (e.g. Beginner strumming drill)"
@@ -502,6 +409,18 @@ export default function ResourceLibraryScreen() {
                 multiline
                 numberOfLines={3}
               />
+              <Text style={styles.pickLabel}>INSTRUMENT</Text>
+              <View style={styles.pillRow}>
+                {INSTRUMENTS.map((i) => (
+                  <Pill key={i} label={i} active={newInstrument === i} onPress={() => setNewInstrument(i)} />
+                ))}
+              </View>
+              <Text style={styles.pickLabel}>LEVEL</Text>
+              <View style={styles.pillRow}>
+                {LIBRARY_LEVELS.map((l) => (
+                  <Pill key={l} label={l} active={newLevel === l} onPress={() => setNewLevel(l)} />
+                ))}
+              </View>
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
                   <Text style={styles.cancelText}>Cancel</Text>
@@ -515,7 +434,7 @@ export default function ResourceLibraryScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Pick who to assign the chosen resource to */}
+      {/* Pick who to assign the chosen resource / task to */}
       <Modal visible={!!assignTarget} transparent animationType="slide" onRequestClose={() => setAssignTarget(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -527,7 +446,23 @@ export default function ResourceLibraryScreen() {
             </View>
             <Text style={styles.modalSub}>Sends it as a task with the link attached.</Text>
 
-            <ScrollView style={{ maxHeight: 360 }}>
+            <TextInput
+              style={styles.assignInstructions}
+              placeholder="Extra instructions (optional) — what should they do?"
+              placeholderTextColor={COLORS.textMuted}
+              value={assignInstructions}
+              onChangeText={setAssignInstructions}
+              multiline
+            />
+            <TouchableOpacity style={styles.assignDueRow} onPress={() => setShowAssignDuePicker(true)} activeOpacity={0.7}>
+              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.assignDueLabel}>Due date</Text>
+              <Text style={[styles.assignDueValue, assignDueDate && { color: COLORS.text }]}>{dueLabel(assignDueDate)}</Text>
+              <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <Text style={styles.pickLabel}>SEND TO</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
               {classes.length > 0 && <Text style={styles.pickLabel}>CLASSES</Text>}
               {classes.map((c) => {
                 const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
@@ -559,6 +494,13 @@ export default function ResourceLibraryScreen() {
               )}
             </ScrollView>
           </View>
+          {showAssignDuePicker && (
+            <DueDatePicker
+              initial={assignDueDate}
+              onClose={() => setShowAssignDuePicker(false)}
+              onSet={setAssignDueDate}
+            />
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -572,36 +514,14 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 26, fontWeight: '800' },
   subtitle: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: SPACING.xs, marginBottom: SPACING.lg },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
-  pill: {
-    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999,
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-  },
+  pill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   pillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   pillText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   pillTextActive: { color: COLORS.text },
   section: { marginTop: SPACING.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACING.sm },
-  editRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, height: 56,
-    backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm,
-  },
-  editRowDragging: { borderColor: COLORS.primary, backgroundColor: COLORS.surface },
-  editRowName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
-  grip: { paddingHorizontal: 2, paddingVertical: 4 },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
-  sectionCount: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  layoutBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl },
-  layoutHint: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, flex: 1 },
-  layoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
-  layoutBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  layoutBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  restoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.lg },
-  restoreText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textDecorationLine: 'underline' },
-  item: {
-    backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md,
-    marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border,
-  },
+  item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   itemDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
   ytRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
@@ -609,14 +529,20 @@ const styles = StyleSheet.create({
   addResBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
   addResBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   emptyRes: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
+  assignInstructions: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, fontSize: 14, minHeight: 64, textAlignVertical: 'top', marginBottom: SPACING.sm },
+  assignDueRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 11, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+  assignDueLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  assignDueValue: { flex: 1, textAlign: 'right', color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm,
-  },
+  libTask: { marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
+  catScroll: { gap: SPACING.sm, paddingRight: SPACING.lg },
+  catChip: { paddingHorizontal: SPACING.md, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
+  catChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
+  catChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  catChipTextOn: { color: COLORS.primary },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm },
   searchInput: { flex: 1, color: COLORS.text, fontSize: 14, padding: 0 },
   resTag: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
   resActions: { flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },

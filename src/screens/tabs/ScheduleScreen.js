@@ -61,9 +61,19 @@ const TYPE_META = {
   due: { color: COLORS.error, icon: 'alert-circle', label: 'Task due' },
 };
 
+// Attendance set by the teacher (read-only on the student side). The numeric
+// mark is deliberately NOT surfaced to students — only status + note.
+const ATT_META = {
+  present: { color: '#22C55E', label: 'Present' },
+  late: { color: '#E0A800', label: 'Late' },
+  absent: { color: '#EF4444', label: 'Absent' },
+  excused: { color: '#94A3B8', label: 'Excused' },
+};
+
 export default function ScheduleScreen({ navigation, route }) {
   const todayStr = ymd(new Date());
   const [lessons, setLessons] = useState([]);
+  const [attendance, setAttendance] = useState({}); // `${lessonId}__${ymd}` -> { status, note } from teacher
   const [gigs, setGigs] = useState([]);
   const [setlists, setSetlists] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -105,10 +115,15 @@ export default function ScheduleScreen({ navigation, route }) {
           setPersonalEvents(Array.isArray(me.personalEvents) ? me.personalEvents : []);
           if (me.teacherUid) {
             const tSnap = await getDoc(doc(db, 'users', me.teacherUid));
-            const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
-            if (!cancelled) setLessons(all.filter((l) => l.studentUid === uid));
+            const tData = tSnap.data() || {};
+            const all = Array.isArray(tData.lessons) ? tData.lessons : [];
+            if (!cancelled) {
+              setLessons(all.filter((l) => l.studentUid === uid));
+              setAttendance(tData.attendance || {});
+            }
           } else {
             setLessons([]);
+            setAttendance({});
           }
         } catch (e) { /* ignore */ }
       })();
@@ -188,7 +203,13 @@ export default function ScheduleScreen({ navigation, route }) {
 
   const eventsOn = (dateStr) => {
     const out = [];
-    lessons.forEach((l) => { if (lessonOccursOn(l, dateStr)) out.push({ type: 'lesson', title: 'Lesson with your teacher', sub: l.note, time: l.time }); });
+    lessons.forEach((l) => {
+      if (!lessonOccursOn(l, dateStr)) return;
+      const rec = attendance[`${l.id}__${dateStr}`];
+      // Only surface status + note to the student — never the numeric mark.
+      const att = rec && rec.status ? { status: rec.status, note: rec.note || null } : null;
+      out.push({ type: 'lesson', title: 'Lesson with your teacher', sub: l.note, time: l.time, att });
+    });
     gigs.forEach((g) => {
       if (g.date === dateStr) {
         const sl = g.setlistId ? setlists.find((s) => s.id === g.setlistId) : null;
@@ -421,8 +442,16 @@ export default function ScheduleScreen({ navigation, route }) {
         ) : dayEvents.map((e, i) => {
           const meta = TYPE_META[e.type];
           const done = e.type === 'due' && e.done;
+          const att = e.att && ATT_META[e.att.status] ? e.att : null;
+          // A marked lesson opens its note in its own window when pressed.
+          const Card = att ? TouchableOpacity : View;
           return (
-            <View key={i} style={styles.eventCard}>
+            <Card
+              key={i}
+              style={styles.eventCard}
+              activeOpacity={att ? 0.7 : 1}
+              {...(att ? { onPress: () => navigation.navigate('LessonNotes', { date: selected }) } : {})}
+            >
               <View style={[styles.eventIcon, { backgroundColor: (done ? COLORS.success : meta.color) + '22' }]}>
                 <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
               </View>
@@ -431,13 +460,22 @@ export default function ScheduleScreen({ navigation, route }) {
                 <Text style={styles.eventSub} numberOfLines={1}>
                   {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
                 </Text>
+                {att && (
+                  <View style={styles.attRow}>
+                    <View style={[styles.attPill, { backgroundColor: ATT_META[att.status].color + '22' }]}>
+                      <Text style={[styles.attPillText, { color: ATT_META[att.status].color }]}>{ATT_META[att.status].label}</Text>
+                    </View>
+                    {att.note ? <Text style={styles.attNoteHint}>View note ›</Text> : null}
+                  </View>
+                )}
               </View>
               {e.personalId
                 ? <TouchableOpacity onPress={() => removePersonal(e.personalId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
                 : e.type === 'gig'
                 ? <TouchableOpacity onPress={() => removeGig(e.gigId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
+                : att ? <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                 : done ? <Ionicons name="checkmark-circle" size={18} color={COLORS.success} /> : null}
-            </View>
+            </Card>
           );
         })}
       </ScrollView>
@@ -505,4 +543,8 @@ const styles = StyleSheet.create({
   eventIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   eventTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   eventSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  attRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
+  attPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  attPillText: { fontSize: 11, fontWeight: '800' },
+  attNoteHint: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
 });

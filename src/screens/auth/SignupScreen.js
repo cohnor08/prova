@@ -26,7 +26,8 @@ const FIREBASE_ERRORS = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen({ navigation, route }) {
-  const role = route?.params?.role === 'teacher' ? 'teacher' : 'student';
+  const paramRole = route?.params?.role;
+  const role = ['teacher', 'personal'].includes(paramRole) ? paramRole : 'student';
   const isTeacher = role === 'teacher';
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -104,13 +105,13 @@ export default function SignupScreen({ navigation, route }) {
         <View style={styles.roleBadgeRow}>
           <View style={styles.roleBadge}>
             <Ionicons
-              name={isTeacher ? 'school' : 'musical-notes'}
+              name={isTeacher ? 'school' : role === 'personal' ? 'person' : 'musical-notes'}
               size={14}
               color={COLORS.primary}
               style={{ marginRight: 6 }}
             />
             <Text style={styles.roleBadgeText}>
-              {isTeacher ? 'Signing up as a Teacher' : 'Signing up as a Student'}
+              {isTeacher ? 'Signing up as a Teacher' : role === 'personal' ? 'Signing up as a Personal account' : 'Signing up as a Student'}
             </Text>
           </View>
           <TouchableOpacity

@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
-  KeyboardAvoidingView, Platform, Share, TouchableWithoutFeedback, Keyboard,
+  KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -13,12 +14,15 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
+import { generateSongPlan } from '../../lib/claude';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
+import GroupChatView from '../../components/GroupChatView';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
@@ -392,6 +396,203 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
   );
 }
 
+// Create a class group chat (announcements). The teacher either picks a class
+// (pre-fills its students) or hand-picks students. Only the teacher can post in
+// the resulting thread; students react.
+function CreateGroupChatModal({ visible, students, classes, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [classId, setClassId] = useState(null);
+
+  const reset = () => { setName(''); setSearch(''); setSelected(new Set()); setClassId(null); };
+  const toggle = (uid) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(uid)) n.delete(uid); else n.add(uid);
+    return n;
+  });
+
+  // Picking a class fills the selection with its (still-connected) members and
+  // seeds the name. Tapping it again clears back to manual mode.
+  const pickClass = (c) => {
+    if (classId === c.id) { setClassId(null); setSelected(new Set()); return; }
+    const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+    setClassId(c.id);
+    setSelected(new Set(memberUids));
+    if (!name.trim()) setName(c.name);
+  };
+
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? students.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    : students;
+
+  const create = () => {
+    if (!name.trim()) { Alert.alert('Name the group', 'Give the group chat a name first.'); return; }
+    if (selected.size === 0) { Alert.alert('Add members', 'Pick a class or at least one student.'); return; }
+    onCreate(name.trim(), [...selected], classId);
+    reset();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>New group chat</Text>
+            <Text style={styles.tplSheetEmpty}>Only you can post — students can react.</Text>
+            <TextInput
+              style={[styles.input, { marginTop: SPACING.sm }]}
+              placeholder="Group name (e.g. Tuesday Beginners)"
+              placeholderTextColor={COLORS.textMuted}
+              value={name}
+              onChangeText={setName}
+            />
+            {classes.length > 0 && (
+              <>
+                <Text style={styles.tplLabel}>USE A CLASS</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
+                  {classes.map((c) => {
+                    const on = classId === c.id;
+                    return (
+                      <TouchableOpacity key={c.id} style={[styles.classPickChip, on && styles.classPickChipOn]} onPress={() => pickClass(c)} activeOpacity={0.8}>
+                        <Text style={[styles.classPickChipText, on && styles.classPickChipTextOn]} numberOfLines={1}>{c.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            <Text style={styles.tplLabel}>MEMBERS ({selected.size})</Text>
+            {students.length === 0 ? (
+              <Text style={styles.tplSheetEmpty}>No students yet — connect students with your join code first.</Text>
+            ) : (
+              <>
+                {students.length > 5 && (
+                  <TextInput
+                    style={[styles.input, { marginBottom: SPACING.sm }]}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
+                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                  {shown.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
+                  ) : shown.map((s) => {
+                    const on = selected.has(s.uid);
+                    return (
+                      <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={styles.classPickName} numberOfLines={1}>{displayName(s)}</Text>
+                        {!!s.level && <Text style={styles.classPickMeta}>{s.level}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalAssignBtn, (!name.trim() || selected.size === 0) && { opacity: 0.5 }]} onPress={create}>
+                <Text style={styles.modalAssignText}>Create chat</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// Add more students to an EXISTING class, optionally back-assigning every task
+// the class has already been given so the newcomers catch up.
+function AddStudentsModal({ visible, klass, students, onClose, onAdd }) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
+  const [assignTasks, setAssignTasks] = useState(true);
+  const reset = () => { setSearch(''); setSelected(new Set()); setAssignTasks(true); };
+
+  const memberSet = new Set(klass?.studentUids || []);
+  const available = students.filter((s) => !memberSet.has(s.uid));
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? available.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    : available;
+
+  const toggle = (uid) => setSelected((prev) => {
+    const n = new Set(prev);
+    if (n.has(uid)) n.delete(uid); else n.add(uid);
+    return n;
+  });
+  const submit = () => {
+    if (selected.size === 0) { Alert.alert('Pick students', 'Select at least one student to add.'); return; }
+    onAdd([...selected], assignTasks);
+    reset();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add students{klass ? ` to ${klass.name}` : ''}</Text>
+            {available.length === 0 ? (
+              <Text style={styles.tplSheetEmpty}>All your students are already in this class.</Text>
+            ) : (
+              <>
+                <Text style={styles.tplLabel}>STUDENTS ({selected.size})</Text>
+                {available.length > 5 && (
+                  <TextInput
+                    style={[styles.input, { marginBottom: SPACING.sm }]}
+                    placeholder="Search students…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
+                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                  {shown.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
+                  ) : shown.map((s) => {
+                    const on = selected.has(s.uid);
+                    return (
+                      <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={styles.classPickName} numberOfLines={1}>{displayName(s)}</Text>
+                        {!!s.level && <Text style={styles.classPickMeta}>{s.level}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity style={styles.assignTasksRow} onPress={() => setAssignTasks((v) => !v)} activeOpacity={0.7}>
+                  <Ionicons name={assignTasks ? 'checkbox' : 'square-outline'} size={20} color={assignTasks ? COLORS.primary : COLORS.textMuted} />
+                  <Text style={styles.assignTasksText}>Also give them the class’s current tasks</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalAssignBtn, selected.size === 0 && { opacity: 0.5 }]} onPress={submit}>
+                <Text style={styles.modalAssignText}>Add{selected.size > 0 ? ` (${selected.size})` : ''}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── Assign Task Modal ────────────────────────────────────────────────────────
 
 // Calendar + time picker for a task due date (no external dependency). Rendered
@@ -486,9 +687,152 @@ function DueDatePicker({ initial, onClose, onSet }) {
   );
 }
 
-function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAssigned }) {
-  // The modal assigns to one student, or to every student in a class at once.
+// Teacher: pick a song → generate the step-by-step plan → tick which steps to
+// hand the student → each ticked step becomes an ordered assigned task. Uses the
+// student's instrument so the breakdown fits what they actually play.
+function AssignSongModal({ student, visible, onClose, onAssigned }) {
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [plan, setPlan] = useState(null);          // { title, artist, instrument, steps:[...] }
+  const [picked, setPicked] = useState(new Set()); // step ids the teacher will assign
+  const [assigning, setAssigning] = useState(false);
+
+  const instrument = student?.instrument === 'Bass' ? 'Bass' : 'Guitar';
+
+  const reset = () => {
+    setTitle(''); setArtist(''); setPlan(null); setPicked(new Set());
+    setGenerating(false); setAssigning(false);
+  };
+  const close = () => { reset(); onClose(); };
+
+  const generate = async () => {
+    if (!title.trim()) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
+    Keyboard.dismiss();
+    setGenerating(true);
+    try {
+      const p = await generateSongPlan({ instrument, title: title.trim(), artist: artist.trim() });
+      setPlan(p);
+      setPicked(new Set((p.steps || []).map((s) => s.id))); // default: all selected
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (msg.toLowerCase().includes('limit reached')) {
+        Alert.alert('Weekly limit reached', "You've used your 5 song plans for this week. Already-generated songs are still free to assign.");
+      } else {
+        Alert.alert('Could not build a plan', 'Something went wrong generating that song. Please try again.');
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleStep = (id) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const assign = async () => {
+    if (!student || !plan) return;
+    const steps = (plan.steps || []).filter((s) => picked.has(s.id));
+    if (steps.length === 0) { Alert.alert('No steps', 'Tick at least one step to assign.'); return; }
+    setAssigning(true);
+    try {
+      const stamp = Date.now();
+      const tasks = steps.map((s, i) => ({
+        id: `${stamp}_${i}`,
+        title: `${plan.title} — ${s.title}`,
+        description: [s.summary, ...(s.tasks || [])].filter(Boolean).join('\n• '),
+        youtube: s.yt || `${plan.title} ${instrument} tutorial`,
+        song: plan.title,
+        songPlanKey: plan.key,
+        songStepOrder: i,
+        dueDate: null,
+        durationMin: 0,
+        completed: false,
+        assignedAt: new Date().toISOString(),
+        teacherUid: auth.currentUser.uid,
+      }));
+      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(...tasks) });
+      onAssigned && onAssigned();
+      Alert.alert('Assigned', `${tasks.length} step${tasks.length === 1 ? '' : 's'} of "${plan.title}" assigned.`);
+      close();
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => !assigning && !generating && close()}>
+      <View style={styles.songModalWrap}>
+        <View style={styles.songModalCard}>
+          <View style={styles.songModalHead}>
+            <Text style={styles.songModalTitle}>Assign a song to learn</Text>
+            <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {generating ? (
+            <View style={styles.songGenBox}>
+              <ActivityIndicator color={COLORS.primary} />
+              <Text style={styles.songGenText}>Building the step-by-step plan…</Text>
+            </View>
+          ) : !plan ? (
+            <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+              <Text style={styles.songFieldLabel}>Song title</Text>
+              <TextInput style={styles.songInput} placeholder="e.g. Wonderwall" placeholderTextColor={COLORS.textMuted} value={title} onChangeText={setTitle} />
+              <Text style={styles.songFieldLabel}>Artist (optional)</Text>
+              <TextInput style={styles.songInput} placeholder="e.g. Oasis" placeholderTextColor={COLORS.textMuted} value={artist} onChangeText={setArtist} />
+              <Text style={styles.songCapHint}>Plan is built for {instrument.toLowerCase()} (this student's instrument). 5 new song plans per week — reused songs are free.</Text>
+              <TouchableOpacity style={[styles.songGenBtn, !title.trim() && styles.songGenBtnOff]} disabled={!title.trim()} onPress={generate}>
+                <Text style={styles.songGenBtnText}>Build the plan</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : (
+            <>
+              <Text style={styles.songPlanHeading}>{plan.title}{plan.artist ? ` — ${plan.artist}` : ''}</Text>
+              {!!plan.overview && <Text style={styles.songPlanOverview}>{plan.overview}</Text>}
+              <Text style={styles.songCapHint}>Tick the steps to give this student. They'll appear as ordered tasks on their Today.</Text>
+              <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+                {(plan.steps || []).map((s, i) => {
+                  const on = picked.has(s.id);
+                  return (
+                    <TouchableOpacity key={s.id} style={styles.songStepRow} onPress={() => toggleStep(s.id)} activeOpacity={0.7}>
+                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.songStepTitle}>{i + 1}. {s.title}{s.targetBpm ? `  ·  ${s.targetBpm} BPM` : ''}</Text>
+                        {!!s.summary && <Text style={styles.songStepSummary} numberOfLines={2}>{s.summary}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.songPlanActions}>
+                <TouchableOpacity style={styles.songBackBtn} onPress={() => { setPlan(null); setPicked(new Set()); }}>
+                  <Text style={styles.songBackText}>Pick another</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.songAssignBtn} onPress={assign} disabled={assigning}>
+                  {assigning ? <ActivityIndicator color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onClose, onAssigned }) {
+  // The modal assigns to one student, or to every student in a class at once —
+  // or, when editTask is passed, edits one student's existing task in place.
   const isClass = !!klass;
+  const isEdit = !!editTask;
   const recipients = isClass ? (recipientUids || []) : (student ? [student.uid] : []);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -517,6 +861,18 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
       .then((s) => setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []))
       .catch(() => {});
   }, []);
+
+  // Pre-fill the fields when opening to edit an existing task.
+  useEffect(() => {
+    if (visible && editTask) {
+      setTitle(editTask.title || '');
+      setDescription(editTask.description || '');
+      setYoutube(editTask.youtube || '');
+      setSong(editTask.song || '');
+      setDueDate(editTask.dueDate || null);
+      setDurationMin(editTask.durationMin || 0);
+    }
+  }, [visible, editTask]);
 
   const saveTemplates = (next) => {
     setTemplates(next);
@@ -551,6 +907,26 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
     if (!title.trim()) return;
     if (DEMO_MODE) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
+      return;
+    }
+    // Edit mode: update the one existing task on this student's doc.
+    if (isEdit) {
+      Keyboard.dismiss();
+      setLoading(true);
+      try {
+        const next = (student.assignedTasks || []).map((t) =>
+          t.id === editTask.id
+            ? { ...t, title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(), dueDate, durationMin: durationMin || 0 }
+            : t
+        );
+        await updateDoc(doc(db, 'users', student.uid), { assignedTasks: next });
+        onAssigned();
+        close();
+      } catch (err) {
+        Alert.alert('Error', err.message);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (recipients.length === 0) {
@@ -596,19 +972,20 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{isClass ? 'Assign to Class' : 'Assign Task'}</Text>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={{ paddingBottom: SPACING.lg }}
+              >
+              <Text style={styles.modalTitle}>{isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
-                  : `To: ${displayName(student)}`}
+                  : `${isEdit ? 'For' : 'To'}: ${displayName(student)}`}
                 {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
@@ -672,21 +1049,39 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
               </TouchableOpacity>
 
               <Text style={styles.dueLabel}>TIMER</Text>
-              <Text style={styles.timerHint}>Student must run this timer before they can mark it done.</Text>
-              <View style={styles.durRow}>
-                {[0, 5, 10, 15, 20, 30].map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.durChip, durationMin === m && styles.durChipActive]}
-                    onPress={() => { Keyboard.dismiss(); setDurationMin(m); }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.durChipText, durationMin === m && styles.durChipTextActive]}>
-                      {m === 0 ? 'None' : `${m}m`}
-                    </Text>
+              <Text style={styles.timerHint}>Minutes the student must practice before they can mark it done. Leave blank for no timer.</Text>
+              <View style={styles.durInputRow}>
+                <TextInput
+                  style={styles.durInput}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={durationMin ? String(durationMin) : ''}
+                  onChangeText={(t) => {
+                    const n = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                    setDurationMin(isNaN(n) ? 0 : Math.min(n, 600));
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={3}
+                  returnKeyType="done"
+                  blurOnSubmit
+                  inputAccessoryViewID={Platform.OS === 'ios' ? 'taskTimerDone' : undefined}
+                />
+                <Text style={styles.durUnit}>minutes</Text>
+                {durationMin > 0 && (
+                  <TouchableOpacity onPress={() => setDurationMin(0)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 4 }}>
+                    <Text style={styles.durClear}>Clear</Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
+              {Platform.OS === 'ios' && (
+                <InputAccessoryView nativeID="taskTimerDone">
+                  <View style={styles.accessoryBar}>
+                    <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.accessoryDone}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </InputAccessoryView>
+              )}
 
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
@@ -699,7 +1094,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                 >
                   {loading
                     ? <ActivityIndicator color={COLORS.text} size="small" />
-                    : <Text style={styles.modalAssignText}>Assign task</Text>}
+                    : <Text style={styles.modalAssignText}>{isEdit ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
               </ScrollView>
@@ -745,8 +1140,6 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
               </View>
             )}
           </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1028,14 +1421,23 @@ function TeacherDashboard() {
   const [inviting, setInviting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [songStudent, setSongStudent] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [proofView, setProofView] = useState(null); // { url, type, studentUid, taskId, verified, title }
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
+  const [groupChats, setGroupChats] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [myName, setMyName] = useState('');
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [addToClass, setAddToClass] = useState(null); // class we're adding students to
+  const [studentSearch, setStudentSearch] = useState('');
+  const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
   const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
@@ -1072,6 +1474,41 @@ function TeacherDashboard() {
       setConvoMap(map);
     }, ignorePermissionDenied);
   }, [myUid]);
+
+  // Resolve my own display name (for labelling group-chat posts).
+  useEffect(() => {
+    if (!myUid) return;
+    getDoc(doc(db, 'users', myUid))
+      .then((s) => setMyName(displayName({ uid: myUid, ...(s.data() || {}) })))
+      .catch(() => {});
+  }, [myUid]);
+
+  // Class group chats I own/belong to (newest activity first).
+  useEffect(() => {
+    if (!myUid || DEMO_MODE) return;
+    const q = query(collection(db, 'groupChats'), where('memberUids', 'array-contains', myUid));
+    return onSnapshot(q, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.lastMessageAt?.toMillis?.() || 0) - (a.lastMessageAt?.toMillis?.() || 0));
+      setGroupChats(rows);
+    }, ignorePermissionDenied);
+  }, [myUid]);
+
+  const createGroup = async (name, studentUids, classId) => {
+    setShowCreateGroup(false);
+    try {
+      await createGroupChat({ teacherUid: myUid, name, studentUids, classId });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't create the group chat. Please try again.");
+    }
+  };
+
+  const removeGroup = (group) => {
+    Alert.alert('Delete group chat?', `"${group.name}" will be removed for everyone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteGroupChat(group.id).catch(() => {}) },
+    ]);
+  };
 
   const loadStudents = async () => {
     setLoading(true);
@@ -1113,6 +1550,66 @@ function TeacherDashboard() {
     Alert.alert('Delete class?', `"${name}" — the students stay connected to you.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => saveClasses(classes.filter((c) => c.id !== id)) },
+    ]);
+  };
+
+  // Add students to an existing class. If `assignExisting`, back-assign every
+  // task the class has already been given (one fresh copy per task, per newcomer).
+  const addStudentsToClass = async (klass, uids, assignExisting) => {
+    if (!klass || uids.length === 0) { setAddToClass(null); return; }
+    const merged = [...new Set([...(klass.studentUids || []), ...uids])];
+    saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, studentUids: merged } : c)));
+
+    if (assignExisting) {
+      // One representative per task batch (same classId + assignedAt + title) from
+      // the students already in the class.
+      const batches = new Map();
+      (klass.studentUids || []).forEach((muid) => {
+        const m = students.find((s) => s.uid === muid);
+        (m?.assignedTasks || []).forEach((t) => {
+          if (t.classId !== klass.id) return;
+          const k = `${t.assignedAt}__${t.title}`;
+          if (!batches.has(k)) batches.set(k, t);
+        });
+      });
+      const templates = [...batches.values()].map((t) => ({
+        title: t.title, description: t.description || '', youtube: t.youtube || '', song: t.song || '',
+        dueDate: t.dueDate || null, durationMin: t.durationMin || 0,
+        completed: false, assignedAt: t.assignedAt, teacherUid: auth.currentUser.uid,
+        classId: klass.id, className: klass.name,
+      }));
+      if (templates.length > 0) {
+        try {
+          await Promise.all(uids.map((uid, ui) => {
+            const tasks = templates.map((tpl, ti) => ({ ...tpl, id: `${Date.now()}_${ui}_${ti}` }));
+            return updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion(...tasks) });
+          }));
+        } catch (e) { Alert.alert('Note', "Students were added, but assigning the existing tasks failed. Try again."); }
+      }
+    }
+    setAddToClass(null);
+    await loadStudents();
+    Alert.alert('Added', `${uids.length} student${uids.length === 1 ? '' : 's'} added to ${klass.name}.`);
+  };
+
+  // Remove a student from a class (off the roster + drop that class's tasks from
+  // their account). They stay connected to the teacher.
+  const removeStudentFromClass = (klass, uid, name) => {
+    Alert.alert('Remove from class?', `Remove ${name} from ${klass.name}? Their tasks from this class will be removed too.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: async () => {
+          saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, studentUids: (c.studentUids || []).filter((u) => u !== uid) } : c)));
+          const s = students.find((x) => x.uid === uid);
+          const next = (s?.assignedTasks || []).filter((t) => t.classId !== klass.id);
+          try {
+            await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+            setStudents((prev) => prev.map((x) => (x.uid === uid ? { ...x, assignedTasks: next } : x)));
+          } catch (e) {
+            Alert.alert('Error', "Couldn't remove the student's class tasks. Please try again.");
+          }
+        },
+      },
     ]);
   };
 
@@ -1178,6 +1675,20 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Mark a student's practice-proof clip as verified (writes the student's
+  // assignedTasks — allowed for the linked teacher).
+  const verifyProof = async (studentUid, taskId) => {
+    const s = students.find((x) => x.uid === studentUid);
+    const next = (s?.assignedTasks || []).map((t) => (t.id === taskId ? { ...t, proofVerified: true, proofVerifiedAt: new Date().toISOString() } : t));
+    try {
+      await updateDoc(doc(db, 'users', studentUid), { assignedTasks: next });
+      setStudents((prev) => prev.map((x) => (x.uid === studentUid ? { ...x, assignedTasks: next } : x)));
+      setProofView((p) => (p ? { ...p, verified: true } : p));
+    } catch (e) {
+      Alert.alert('Error', "Couldn't verify the proof. Please try again.");
+    }
+  };
+
   // Remove a class task from EVERY student it was assigned to. A class batch
   // shares the same classId + assignedAt + title, so match on that.
   const removeClassTask = (klass, group) => {
@@ -1228,13 +1739,42 @@ function TeacherDashboard() {
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
       const h = Math.floor(weekMins / 60); const m = weekMins % 60;
       const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+      // Pull lesson attendance, marks and the latest note from the teacher's own
+      // doc (recorded on the lesson calendar) for the last ~term.
+      let lessonLines = '';
+      try {
+        const meSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const att = meSnap.data()?.attendance || {};
+        const c = new Date(); c.setDate(c.getDate() - 91);
+        const cutoffYmd = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
+        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0;
+        let latestNote = null, latestNoteDate = '';
+        Object.values(att).forEach((r) => {
+          if (r.studentUid !== student.uid || (r.date || '') < cutoffYmd) return;
+          if (r.status === 'present') present++;
+          else if (r.status === 'late') late++;
+          else if (r.status === 'absent') absent++;
+          if (r.mark) { markSum += r.mark; markCount++; }
+          if (r.note && (r.date || '') >= latestNoteDate) { latestNote = r.note; latestNoteDate = r.date || ''; }
+        });
+        const denom = present + late + absent;
+        if (denom > 0) {
+          const pct = Math.round(((present + late) / denom) * 100);
+          lessonLines += `\nLessons this term: ${present + late} of ${denom} attended (${pct}%)`;
+          if (absent > 0) lessonLines += ` · ${absent} missed`;
+        }
+        if (markCount > 0) lessonLines += `\nAverage lesson mark: ${(markSum / markCount).toFixed(1)} / 5 ⭐`;
+        if (latestNote) lessonLines += `\nLatest teacher note: ${latestNote}`;
+      } catch (e) { /* attendance is optional — skip if it fails */ }
+
       const report =
 `🎸 Prova practice report — ${name}
 
-This week: practised ${daysPracticed} of 7 days · ${timeStr} total
+This week: practiced ${daysPracticed} of 7 days · ${timeStr} total
 Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
 Assigned tasks: ${done} of ${assigned} completed
-Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})
+Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})${lessonLines}
 
 Sent from Prova`;
       await Share.share({ message: report });
@@ -1272,6 +1812,26 @@ Sent from Prova`;
       </View>
     );
   }
+
+  // ── Group chat view ──
+  if (activeGroup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <GroupChatView
+          group={activeGroup}
+          myUid={myUid}
+          myName={myName}
+          isTeacher
+          onBack={() => setActiveGroup(null)}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  const sQuery = studentSearch.trim().toLowerCase();
+  const filteredStudents = sQuery
+    ? students.filter((s) => displayName(s).toLowerCase().includes(sQuery) || (s.email || '').toLowerCase().includes(sQuery))
+    : students;
 
   return (
     <>
@@ -1354,7 +1914,30 @@ Sent from Prova`;
               </View>
             )}
 
-            {students.map((student) => {
+            {students.length > 0 && (
+              <View style={styles.studentSearchRow}>
+                <Ionicons name="search" size={16} color={COLORS.textMuted} />
+                <TextInput
+                  style={styles.studentSearchInput}
+                  placeholder="Search students…"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={studentSearch}
+                  onChangeText={setStudentSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {studentSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setStudentSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {students.length > 0 && filteredStudents.length === 0 && (
+              <Text style={styles.studentSearchEmpty}>No students match “{studentSearch.trim()}”.</Text>
+            )}
+
+            {filteredStudents.map((student) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = student.streak || 0;
@@ -1438,22 +2021,33 @@ Sent from Prova`;
                           <Text style={styles.taskSectionLabel}>ASSIGNED TASKS</Text>
                           {student.assignedTasks.map((t) => (
                             <View key={t.id} style={styles.miniTask}>
-                              <Ionicons
-                                name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                size={15}
-                                color={t.completed ? COLORS.success : COLORS.textMuted}
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text
-                                style={[styles.miniTaskText, t.completed && styles.miniTaskDone]}
-                                numberOfLines={1}
-                              >
-                                {t.title}
-                              </Text>
+                              <TouchableOpacity style={styles.miniTaskMain} onPress={() => setEditTaskCtx({ student, task: t })} activeOpacity={0.7}>
+                                <Ionicons
+                                  name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                  size={15}
+                                  color={t.completed ? COLORS.success : COLORS.textMuted}
+                                  style={{ marginRight: 8 }}
+                                />
+                                <Text
+                                  style={[styles.miniTaskText, t.completed && styles.miniTaskDone]}
+                                  numberOfLines={1}
+                                >
+                                  {t.title}
+                                </Text>
+                              </TouchableOpacity>
                               {!t.completed && (() => {
                                 const d = taskDueLabel(t.dueDate);
                                 return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
                               })()}
+                              {t.proofUrl && (
+                                <TouchableOpacity
+                                  onPress={() => setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: student.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title })}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  style={{ marginLeft: 8 }}
+                                >
+                                  <Ionicons name={t.proofVerified ? 'checkmark-done-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                                </TouchableOpacity>
+                              )}
                               <TouchableOpacity
                                 onPress={() => removeAssignedTask(student.uid, t.id, t.title)}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1483,6 +2077,12 @@ Sent from Prova`;
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
                       </View>
+
+                      {/* Assign a song to learn (AI step-by-step) */}
+                      <TouchableOpacity style={styles.songBtn} onPress={() => setSongStudent(student)} activeOpacity={0.85}>
+                        <Ionicons name="school" size={15} color={COLORS.background} style={{ marginRight: 6 }} />
+                        <Text style={styles.songBtnText}>Assign a song to learn</Text>
+                      </TouchableOpacity>
 
                       {/* Parent progress report */}
                       <TouchableOpacity style={styles.parentReportBtn} onPress={() => sendParentReport(student)} activeOpacity={0.85}>
@@ -1615,6 +2215,9 @@ Sent from Prova`;
                                         <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
                                           {mt.length ? `${done}/${mt.length}` : '—'}
                                         </Text>
+                                        <TouchableOpacity onPress={() => removeStudentFromClass(c, m.uid, displayName(m))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 4 }}>
+                                          <Ionicons name="close" size={16} color={COLORS.textMuted} />
+                                        </TouchableOpacity>
                                       </TouchableOpacity>
                                       {sOpen && (
                                         mt.length === 0 ? (
@@ -1656,7 +2259,7 @@ Sent from Prova`;
                                   }))
                                   .sort((a, b) => b.pts - a.pts);
                                 if (ranked.every((r) => r.pts === 0)) {
-                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practising the class tasks.</Text>;
+                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practicing the class tasks.</Text>;
                                 }
                                 return ranked.map(({ m, pts }, i) => {
                                   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
@@ -1688,15 +2291,25 @@ Sent from Prova`;
                       </View>
                     )}
 
-                    <TouchableOpacity
-                      style={[styles.classAssignBtn, members.length === 0 && { opacity: 0.5 }]}
-                      onPress={() => setSelectedClass(c)}
-                      disabled={members.length === 0}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
-                      <Text style={styles.classAssignBtnText}>Assign task to class</Text>
-                    </TouchableOpacity>
+                    <View style={styles.classBtnRow}>
+                      <TouchableOpacity
+                        style={styles.classAddBtn}
+                        onPress={() => setAddToClass(c)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="person-add-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.classAssignBtnText}>Add students</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.classAddBtn, members.length === 0 && { opacity: 0.5 }]}
+                        onPress={() => setSelectedClass(c)}
+                        disabled={members.length === 0}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.classAssignBtnText}>Assign task</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })
@@ -1707,6 +2320,45 @@ Sent from Prova`;
         {/* ── Messages tab ── */}
         {activeTab === 'chats' && (
           <>
+            {students.length > 0 && (
+              <>
+                <View style={styles.groupHeaderRow}>
+                  <Text style={styles.tplLabel}>GROUP CHATS</Text>
+                  <TouchableOpacity style={styles.newGroupBtn} onPress={() => setShowCreateGroup(true)} activeOpacity={0.8}>
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Text style={styles.newGroupBtnText}>New</Text>
+                  </TouchableOpacity>
+                </View>
+                {groupChats.length === 0 ? (
+                  <Text style={styles.chatPreviewEmpty}>Create a class announcements chat — only you can post, students react.</Text>
+                ) : groupChats.map((g) => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={styles.chatListItem}
+                    onPress={() => setActiveGroup(g)}
+                    onLongPress={() => removeGroup(g)}
+                    delayLongPress={400}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.studentAvatar, { backgroundColor: COLORS.accent || COLORS.primary }]}>
+                      <Ionicons name="people" size={20} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.studentName} numberOfLines={1}>{g.name}</Text>
+                      {g.lastMessage ? (
+                        <Text style={styles.chatPreviewText} numberOfLines={1}>
+                          {g.lastSenderUid === myUid ? 'You: ' : ''}{g.lastMessage}
+                        </Text>
+                      ) : (
+                        <Text style={styles.chatPreviewEmpty}>{(g.memberUids || []).length} members · tap to post</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                ))}
+                <Text style={[styles.tplLabel, { marginTop: SPACING.lg }]}>DIRECT MESSAGES</Text>
+              </>
+            )}
             {students.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textMuted} style={{ marginBottom: SPACING.md }} />
@@ -1792,6 +2444,66 @@ Sent from Prova`;
         onClose={() => setShowCreateClass(false)}
         onCreate={createClass}
       />
+
+      <CreateGroupChatModal
+        visible={showCreateGroup}
+        students={students}
+        classes={classes}
+        onClose={() => setShowCreateGroup(false)}
+        onCreate={createGroup}
+      />
+
+      <AddStudentsModal
+        visible={!!addToClass}
+        klass={addToClass}
+        students={students}
+        onClose={() => setAddToClass(null)}
+        onAdd={(uids, assignExisting) => addStudentsToClass(addToClass, uids, assignExisting)}
+      />
+
+      <AssignTaskModal
+        student={editTaskCtx?.student}
+        editTask={editTaskCtx?.task}
+        visible={!!editTaskCtx}
+        onClose={() => setEditTaskCtx(null)}
+        onAssigned={loadStudents}
+      />
+
+      <AssignSongModal
+        student={songStudent}
+        visible={!!songStudent}
+        onClose={() => setSongStudent(null)}
+        onAssigned={loadStudents}
+      />
+
+      <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
+        <View style={styles.proofBackdrop}>
+          <View style={styles.proofViewer}>
+            {!!proofView && <Text style={styles.proofTitle} numberOfLines={1}>{proofView.title}</Text>}
+            {proofView?.type === 'video' ? (
+              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
+            ) : proofView ? (
+              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            ) : null}
+            <View style={styles.proofActions}>
+              {proofView?.verified ? (
+                <View style={styles.proofVerifiedTag}>
+                  <Ionicons name="checkmark-done-circle" size={18} color={COLORS.success} />
+                  <Text style={styles.proofVerifiedText}>Verified</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.proofVerifyBtn} onPress={() => verifyProof(proofView.studentUid, proofView.taskId)} activeOpacity={0.85}>
+                  <Ionicons name="checkmark" size={17} color="#fff" />
+                  <Text style={styles.proofVerifyText}>Verify</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
+                <Text style={styles.proofCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -2003,6 +2715,9 @@ const styles = StyleSheet.create({
   codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
   shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
   shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  studentSearchRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
+  studentSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
+  studentSearchEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.lg },
   emptyStudents: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg },
   emptyStudentsText: { color: COLORS.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   emptyStudentsSub: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
@@ -2011,6 +2726,13 @@ const styles = StyleSheet.create({
   classPickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   classPickName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
   classPickMeta: { color: COLORS.textMuted, fontSize: 12 },
+  classPickChip: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, maxWidth: 160 },
+  classPickChipOn: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary },
+  classPickChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  classPickChipTextOn: { color: COLORS.primary },
+  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  newGroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.primary + '1A', borderRadius: 12, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
+  newGroupBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   newClassBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: SPACING.lg },
   newClassBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   classCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.md },
@@ -2020,6 +2742,10 @@ const styles = StyleSheet.create({
   classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  classBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  classAddBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  assignTasksRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.md, paddingVertical: 4 },
+  assignTasksText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
   classExpand: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
   classMemberBlock: { marginBottom: 6, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
@@ -2095,6 +2821,36 @@ const styles = StyleSheet.create({
   },
   parentReportText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
+  songBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary,
+  },
+  songBtnText: { color: COLORS.background, fontSize: 14, fontWeight: '800' },
+
+  // AssignSongModal
+  songModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  songModalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, maxHeight: '88%' },
+  songModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  songModalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
+  songFieldLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: SPACING.sm },
+  songInput: { backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15 },
+  songCapHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
+  songGenBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm },
+  songGenBtnOff: { opacity: 0.4 },
+  songGenBtnText: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
+  songGenBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
+  songGenText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  songPlanHeading: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  songPlanOverview: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 4, lineHeight: 19 },
+  songStepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  songStepTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  songStepSummary: { color: COLORS.textSecondary, fontSize: 13, marginTop: 3, lineHeight: 18 },
+  songPlanActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  songBackBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  songBackText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+  songAssignBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
+  songAssignText: { color: COLORS.background, fontSize: 15, fontWeight: '800' },
+
   // Per-student practice bar chart
   chartWrap: { gap: SPACING.sm },
   chartHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
@@ -2108,8 +2864,20 @@ const styles = StyleSheet.create({
   chartTickToday: { color: COLORS.accent },
 
   miniTask: { flexDirection: 'row', alignItems: 'center' },
+  miniTaskMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  proofViewer: { width: '100%', alignItems: 'center' },
+  proofTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm, maxWidth: '100%' },
+  proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  proofActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginTop: SPACING.lg },
+  proofVerifyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.success },
+  proofVerifyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  proofVerifiedTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  proofVerifiedText: { color: COLORS.success, fontSize: 14, fontWeight: '800' },
+  proofCloseBtn: { paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
+  proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
   miniDueOverdue: { color: COLORS.error },
 
@@ -2190,6 +2958,12 @@ const styles = StyleSheet.create({
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
+  durInputRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  durInput: { width: 90, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 10, paddingHorizontal: SPACING.md, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  durUnit: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  durClear: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  accessoryBar: { backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 8, paddingHorizontal: SPACING.lg, alignItems: 'flex-end' },
+  accessoryDone: { color: COLORS.primary, fontSize: 16, fontWeight: '800' },
   durRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
   durChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   durChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

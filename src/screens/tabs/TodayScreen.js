@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,11 +10,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
 import { COLORS, SPACING } from '../../constants/theme';
-import { adjustSessionFromRating, generatePracticePlan } from '../../lib/claude';
+import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
 import { displayName } from '../../lib/displayName';
+import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
+import { Video, ResizeMode } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -85,14 +88,44 @@ function lessonDayLabel(d) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function pastDayLabel(ymdStr) {
+  const [y, m, d] = ymdStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - date) / 86400000);
+  if (diff <= 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Attendance the teacher set (read-only for the student). The numeric mark is
+// intentionally NOT shown to the student — only status + note.
+const ATT_META = {
+  present: { color: '#22C55E', label: 'Present' },
+  late: { color: '#E0A800', label: 'Late' },
+  absent: { color: '#EF4444', label: 'Absent' },
+  excused: { color: '#94A3B8', label: 'Excused' },
+};
+
+// Small "Notes" pill in the FROM YOUR TEACHER header that opens the read-only
+// lesson-notes window.
+function NotesChip({ onPress }) {
+  return (
+    <TouchableOpacity style={styles.notesChip} onPress={onPress} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+      <Ionicons name="document-text-outline" size={13} color={COLORS.primary} />
+      <Text style={styles.notesChipText}>Notes</Text>
+    </TouchableOpacity>
+  );
+}
+
 // One teacher-assigned task on the student's Today screen. The timer counts the
-// time actually practised; tapping "Done" banks points for THIS lap (partial
+// time actually practiced; tapping "Done" banks points for THIS lap (partial
 // credit — 3 of 20 min still pays), then "Practice again" lets them run another
 // lap for more. Points are time-proportional, so the only way to score is to
 // put in the real minutes.
-function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong }) {
+function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy }) {
   const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
-  const [elapsed, setElapsed] = useState(0);   // seconds practised THIS lap
+  const [elapsed, setElapsed] = useState(0);   // seconds practiced THIS lap
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
 
@@ -151,28 +184,26 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             <View style={[styles.ttTimerBarFill, { width: `${Math.min(1, elapsed / target) * 100}%` }]} />
           </View>
         )}
-        <View style={styles.ttTimerRow}>
-          <View style={styles.ttTimerLeft}>
-            <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
-            {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts} pts</Text>}
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={styles.ttTimerBtn} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
-              <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
-              <Text style={styles.ttTimerBtnText}>
-                {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? 'Practice again' : 'Start'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
-              onPress={bank}
-              activeOpacity={elapsed > 0 ? 0.85 : 1}
-            >
-              <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]}>
-                {reachedTarget ? 'Done' : 'Bank'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.ttTimerInfo}>
+          <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
+          {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts} pts</Text>}
+        </View>
+        <View style={styles.ttBtnRow}>
+          <TouchableOpacity style={styles.ttTimerBtn} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
+            <Ionicons name={running ? 'pause' : 'play'} size={13} color={COLORS.text} />
+            <Text style={styles.ttTimerBtnText} numberOfLines={1}>
+              {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? `Lap ×${laps + 1}` : 'Start'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
+            onPress={bank}
+            activeOpacity={elapsed > 0 ? 0.85 : 1}
+          >
+            <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]} numberOfLines={1}>
+              {reachedTarget ? 'Done' : 'Bank'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
       )}
@@ -191,12 +222,38 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
+
+      {expanded && (
+        task.proofUrl ? (
+          <View style={styles.proofRow}>
+            <Ionicons name={task.proofVerified ? 'checkmark-circle' : 'videocam'} size={15} color={task.proofVerified ? COLORS.success : COLORS.primary} />
+            <Text style={styles.proofRowText} numberOfLines={1}>
+              {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
+            </Text>
+            <TouchableOpacity onPress={() => onViewProof(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={styles.proofViewLink}>View</Text>
+            </TouchableOpacity>
+            {!task.proofVerified && (
+              <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Replace'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
+            {proofBusy
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
+            <Text style={styles.proofAddText}>{proofBusy ? 'Uploading…' : 'Add proof of practice'}</Text>
+          </TouchableOpacity>
+        )
+      )}
     </View>
   );
 }
 
 // Live scoreboard for one class: ranks classmates by the points they've banked
-// on this class's assignments, so practising the teacher's tasks becomes a race.
+// on this class's assignments, so practicing the teacher's tasks becomes a race.
 // Reads the teacher doc → class members → each member's assignedTasks (the same
 // reads the class leaderboard already does, so Firestore rules allow it).
 function ClassScoreboard({ classId, teacherUid, myUid }) {
@@ -417,13 +474,15 @@ export default function TodayScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
   const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
+  const [attendance, setAttendance] = useState({}); // teacher-set attendance map `${lessonId}__${ymd}` -> { status, note }
   const [loading, setLoading] = useState(true);
   const [showRating, setShowRating] = useState(false);
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
-  const [regenerating, setRegenerating] = useState(false);
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
+  const [proofBusyId, setProofBusyId] = useState(null); // task id currently uploading a proof clip
+  const [proofView, setProofView] = useState(null);     // { url, type } currently being watched
   const [soloOpen, setSoloOpen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -471,8 +530,8 @@ export default function TodayScreen({ navigation }) {
   }, [userData, selectedDay]);
 
   // Streak-saver notification: if reminders are on and they have a streak worth
-  // saving but haven't practised today, schedule tonight's nudge. Cancel it once
-  // they've practised.
+  // saving but haven't practiced today, schedule tonight's nudge. Cancel it once
+  // they've practiced.
   useEffect(() => {
     if (!userData) return;
     const streakVal = userData.streak || 0;
@@ -580,11 +639,14 @@ export default function TodayScreen({ navigation }) {
       if (data?.teacherUid) {
         try {
           const tSnap = await getDoc(doc(db, 'users', data.teacherUid));
-          const all = Array.isArray(tSnap.data()?.lessons) ? tSnap.data().lessons : [];
+          const tData = tSnap.data() || {};
+          const all = Array.isArray(tData.lessons) ? tData.lessons : [];
           setLessons(all.filter((l) => l.studentUid === uid));
-        } catch { setLessons([]); }
+          setAttendance(tData.attendance || {});
+        } catch { setLessons([]); setAttendance({}); }
       } else {
         setLessons([]);
+        setAttendance({});
       }
     } catch (e) {
       console.error(e);
@@ -593,38 +655,7 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
-  const runRegenerate = async () => {
-    if (regenerating || !userData) return;
-    setRegenerating(true);
-    try {
-      const uid = auth.currentUser.uid;
-      const newPlan = await generatePracticePlan(userData);
-      await setDoc(doc(db, 'users', uid), {
-        practicePlan: newPlan,
-        planGeneratedAt: new Date().toISOString(),
-      }, { merge: true });
-      const weeklyPlan = newPlan?.weeklyPlan || {};
-      setPlan(weeklyPlan);
-      setSessions(weeklyPlan[TODAY_NAME]?.sessions || []);
-      setCompletedIds([]);
-      Alert.alert('Done!', 'Your fresh practice plan is ready.');
-    } catch (err) {
-      Alert.alert('Could not regenerate', err.message || 'Please try again.');
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
-  const handleRegeneratePlan = () => {
-    Alert.alert(
-      'Regenerate plan?',
-      'Build a fresh practice plan from your current settings. This replaces your existing plan.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Regenerate', onPress: runRegenerate },
-      ]
-    );
-  };
+  // Plan regeneration now lives only on the Profile tab.
 
   const handleComplete = async (sessionId) => {
     if (completedIds.includes(sessionId)) return;
@@ -760,7 +791,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   // Bank a lap of practice on a teacher-assigned task: award time-proportional
-  // points for the minutes just practised, accumulate the task's totals, and
+  // points for the minutes just practiced, accumulate the task's totals, and
   // write back so the teacher + class scoreboard see the progress.
   const bankTeacherTask = async (taskId, lapSeconds) => {
     const uid = auth.currentUser?.uid;
@@ -788,6 +819,58 @@ export default function TodayScreen({ navigation }) {
     if (pts > 0) Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
   };
 
+  // Record/pick a short clip as proof a teacher task was practiced, upload it,
+  // and store the URL on that task. Clears any prior teacher verification when
+  // re-submitting so the teacher re-checks the new clip.
+  const runProofUpload = async (taskId, getMedia) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setProofBusyId(taskId);
+    try {
+      const picked = await getMedia();
+      if (!picked) { setProofBusyId(null); return; }
+      if (picked.error) { Alert.alert('Proof', picked.error); setProofBusyId(null); return; }
+      const url = await uploadProofMedia(picked.uri, uid, picked.type);
+      const next = (userData?.assignedTasks || []).map((t) =>
+        t.id === taskId
+          ? { ...t, proofUrl: url, proofType: picked.type, proofAt: new Date().toISOString(), proofVerified: false }
+          : t
+      );
+      setUserData((p) => ({ ...p, assignedTasks: next }));
+      await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+      Alert.alert('Proof submitted 🎥', 'Your teacher can now review it.');
+    } catch (e) {
+      Alert.alert('Upload failed', "Couldn't upload your clip. Please try again.");
+    } finally {
+      setProofBusyId(null);
+    }
+  };
+
+  const attachProof = (taskId) => {
+    Alert.alert('Add proof of practice', 'Show your teacher you practiced this.', [
+      { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia) },
+      { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const viewProof = (task) => {
+    if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video' });
+  };
+
+  // Free student accounts don't get the AI personalised plan — it's part of a
+  // paid Personal account. Confirm, then send them to the upgrade screen.
+  const promptUpgrade = () => {
+    Alert.alert(
+      'Upgrade to Personal',
+      'Get your own AI practice plan that adapts to you — alongside your teacher’s tasks.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'See plans', onPress: () => navigation.navigate('Paywall') },
+      ]
+    );
+  };
+
   // Open an attachment a teacher added to a task: a raw URL opens directly,
   // anything else becomes a YouTube search (handles links and song names).
   const openTaskLink = (value) => {
@@ -809,7 +892,7 @@ export default function TodayScreen({ navigation }) {
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
-  // activity marker so practising today continues the chain instead of resetting.
+  // activity marker so practicing today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -826,7 +909,7 @@ export default function TodayScreen({ navigation }) {
     setUserData((p) => ({ ...p, ...updates }));
     try {
       await updateDoc(doc(db, 'users', uid), updates);
-      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practise today to keep it going.`);
+      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practice today to keep it going.`);
     } catch (e) {
       Alert.alert('Error', "Couldn't restore your streak. Please try again.");
     }
@@ -846,6 +929,9 @@ export default function TodayScreen({ navigation }) {
   });
 
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
+  // A student account is free and has no AI plan unless they opt in. Distinguish
+  // "no plan at all" from a genuine rest day inside an existing plan.
+  const hasPlan = !!plan && Object.keys(plan).length > 0;
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -858,6 +944,16 @@ export default function TodayScreen({ navigation }) {
     .filter((x) => x.when)
     .sort((a, b) => a.when - b.when)[0] || null;
   const lessonIsToday = nextLesson && lessonDayLabel(nextLesson.when) === 'Today';
+
+  // Most recent lesson the teacher has marked attendance for (status + note only,
+  // never the numeric mark). Keys are `${lessonId}__${YYYY-MM-DD}`.
+  const myUid = auth.currentUser?.uid;
+  const todayYmd = ymdLocal(nowDate);
+  const lastAttended = Object.entries(attendance)
+    .map(([key, rec]) => ({ date: key.split('__')[1], rec }))
+    .filter((x) => x.rec && x.rec.status && x.rec.studentUid === myUid && x.date && x.date <= todayYmd && ATT_META[x.rec.status])
+    .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  // Whether there's any lesson feedback to open in the notes window.
 
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
@@ -985,13 +1081,31 @@ export default function TodayScreen({ navigation }) {
           <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
         )}
         {selectedSessions.length === 0 ? (
-          <View style={styles.restDay}>
-            <View style={styles.restIconWrap}>
-              <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+          isToday && !hasPlan ? (
+            // Students: the "unlock your AI plan" hero is rendered at the BOTTOM
+            // (teacher tasks/classes/song take priority), so nothing here.
+            userData?.role === 'student' ? null : (
+              <View style={styles.restDay}>
+                <View style={styles.restIconWrap}>
+                  <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
+                </View>
+                <Text style={styles.restTitle}>No plan yet</Text>
+                <Text style={styles.restSubtitle}>Build your personalised plan from Profile whenever you’re ready.</Text>
+                <TouchableOpacity style={styles.makePlanBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.85}>
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.makePlanText}>Create a plan</Text>
+                </TouchableOpacity>
+              </View>
+            )
+          ) : (
+            <View style={styles.restDay}>
+              <View style={styles.restIconWrap}>
+                <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+              </View>
+              <Text style={styles.restTitle}>Rest Day</Text>
+              <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
             </View>
-            <Text style={styles.restTitle}>Rest Day</Text>
-            <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
-          </View>
+          )
         ) : isToday ? (
           selectedSessions.map(session => (
             <SessionCard
@@ -1009,19 +1123,21 @@ export default function TodayScreen({ navigation }) {
         )}
 
         {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
-        {isToday && (soloTasks.length > 0 || nextLesson) && (
+        {isToday && (soloTasks.length > 0 || nextLesson || lastAttended || userData?.teacherUid) && (
           <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
             {soloTasks.length >= 3 ? (
               <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
                 <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
                 <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             ) : (
               <View style={styles.teacherHeader}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={styles.teacherKicker}>FROM YOUR TEACHER</Text>
+                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
               </View>
             )}
             {nextLesson && (
@@ -1041,6 +1157,24 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
+            {lastAttended && (
+              <TouchableOpacity
+                style={styles.lessonRow}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
+              >
+                <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.lessonRowText} numberOfLines={1}>
+                    Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
+                  </Text>
+                  {lastAttended.rec.note ? (
+                    <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
             {(soloTasks.length < 3 || soloOpen) && soloTasks.map((t) => (
               <TeacherTaskCard
                 key={t.id}
@@ -1050,6 +1184,9 @@ export default function TodayScreen({ navigation }) {
                 onBank={bankTeacherTask}
                 openTaskLink={openTaskLink}
                 onOpenSong={openSongInLibrary}
+                onAttachProof={attachProof}
+                onViewProof={viewProof}
+                proofBusy={proofBusyId === t.id}
               />
             ))}
           </View>
@@ -1078,6 +1215,9 @@ export default function TodayScreen({ navigation }) {
                   onBank={bankTeacherTask}
                   openTaskLink={openTaskLink}
                 onOpenSong={openSongInLibrary}
+                  onAttachProof={attachProof}
+                  onViewProof={viewProof}
+                  proofBusy={proofBusyId === t.id}
                 />
               ))}
               {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
@@ -1118,24 +1258,22 @@ export default function TodayScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* Regenerate plan — rebuilds the AI plan from your current settings */}
-        {isToday && (
-          <>
-            <TouchableOpacity
-              style={[styles.regenBtn, regenerating && styles.regenBtnDisabled]}
-              onPress={handleRegeneratePlan}
-              disabled={regenerating}
-              activeOpacity={0.8}
-            >
-              {regenerating
-                ? <ActivityIndicator size="small" color={COLORS.primary} />
-                : <Ionicons name="refresh" size={16} color={COLORS.primary} />}
-              <Text style={styles.regenBtnText}>{regenerating ? 'Building your plan…' : 'Regenerate plan'}</Text>
+        {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
+            tasks, classes and the song — those take priority. */}
+        {isToday && !hasPlan && userData?.role === 'student' && (
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.accent || '#06B6D4']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.upgradeHero}
+          >
+            <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={22} color="#fff" /></View>
+            <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
+            <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
+            <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.9}>
+              <Ionicons name="star" size={15} color={COLORS.primary} />
+              <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
             </TouchableOpacity>
-            {regenerating && (
-              <Text style={styles.regenHint}>Writing your plan with AI — this can take up to a minute. Keep the app open.</Text>
-            )}
-          </>
+          </LinearGradient>
         )}
 
       </ScrollView>
@@ -1191,6 +1329,22 @@ export default function TodayScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
+        <View style={styles.proofBackdrop}>
+          <View style={styles.proofViewer}>
+            {proofView?.type === 'video' ? (
+              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
+            ) : proofView ? (
+              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            ) : null}
+            <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
+              <Ionicons name="close" size={20} color="#fff" />
+              <Text style={styles.proofCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1201,15 +1355,6 @@ const styles = StyleSheet.create({
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
   title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: SPACING.md },
   headerCentered: { textAlign: 'center', alignSelf: 'center' },
-  regenBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    alignSelf: 'center', marginTop: SPACING.lg,
-    paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999,
-    backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '40',
-  },
-  regenBtnDisabled: { opacity: 0.6 },
-  regenBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
-  regenHint: { color: COLORS.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center', fontStyle: 'italic' },
 
   dayRow: { flexDirection: 'row', gap: 6, marginBottom: SPACING.lg },
   dayBtn: { flex: 1, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.card, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
@@ -1284,13 +1429,13 @@ const styles = StyleSheet.create({
   ttTimer: { marginLeft: 22, marginTop: SPACING.sm },
   ttTimerBarBg: { height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' },
   ttTimerBarFill: { height: 4, borderRadius: 2, backgroundColor: COLORS.primary },
-  ttTimerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  ttTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ttTimerInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, marginBottom: SPACING.sm },
   ttTimerText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
   ttLapPts: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800' },
-  ttTimerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
-  ttTimerBtnText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
-  ttBankBtn: { justifyContent: 'center', backgroundColor: COLORS.success, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 7 },
+  ttBtnRow: { flexDirection: 'row', gap: SPACING.sm },
+  ttTimerBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primaryDark || COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 9 },
+  ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  ttBankBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.success, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 9 },
   ttBankBtnDim: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   ttBankBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   ttBankBtnTextDim: { color: COLORS.textMuted },
@@ -1375,6 +1520,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '12', borderRadius: 10,
   },
   lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  attDot: { width: 9, height: 9, borderRadius: 5 },
+  attNoteText: { color: COLORS.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
+  notesChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: COLORS.primary + '18', borderWidth: 1, borderColor: COLORS.primary + '33',
+    marginLeft: 8,
+  },
+  notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: SPACING.sm, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: COLORS.card },
+  proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  proofViewLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  proofReplaceLink: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
+  proofViewer: { width: '100%', alignItems: 'center' },
+  proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  proofCloseBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 10, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
+  proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
@@ -1382,7 +1547,15 @@ const styles = StyleSheet.create({
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
   restTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
-  restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
+  makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
+  makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md },
+  upgradeBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
+  upgradeTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'center' },
+  upgradeSub: { color: 'rgba(255,255,255,0.92)', fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: SPACING.xl, borderRadius: 999, backgroundColor: '#fff' },
+  upgradeBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
 
   ratingBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   ratingSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },

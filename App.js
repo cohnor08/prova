@@ -23,17 +23,23 @@ import ProfileScreen from './src/screens/tabs/ProfileScreen';
 import TeacherScreen from './src/screens/tabs/TeacherScreen';
 import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import TeacherCalendarScreen from './src/screens/tabs/TeacherCalendarScreen';
+import TeacherOverviewScreen from './src/screens/tabs/TeacherOverviewScreen';
+import LessonNoteScreen from './src/screens/tabs/LessonNoteScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import LibraryScreen from './src/screens/tabs/LibraryScreen';
+import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
+import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
+import PaywallScreen from './src/screens/tabs/PaywallScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const PracticeStack = createNativeStackNavigator();
 const TeacherHomeStack = createNativeStackNavigator();
+const TodayStack = createNativeStackNavigator();
 
 // The Practice tab is a small stack so it can push deeper pages (Gigs &
 // Setlists) without adding another bottom tab.
@@ -55,7 +61,21 @@ function PracticeStackScreen() {
       />
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
       <PracticeStack.Screen name="Library" component={LibraryScreen} />
+      <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
+      <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
     </PracticeStack.Navigator>
+  );
+}
+
+// The Today tab is a small stack so it can push the read-only lesson-notes page
+// in its own window (instead of jumping over to the calendar).
+function TodayStackScreen() {
+  return (
+    <TodayStack.Navigator screenOptions={{ headerShown: false }}>
+      <TodayStack.Screen name="TodayHome" component={TodayScreen} />
+      <TodayStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
+      <TodayStack.Screen name="Paywall" component={PaywallScreen} />
+    </TodayStack.Navigator>
   );
 }
 
@@ -65,6 +85,8 @@ function TeacherHomeStackScreen() {
     <TeacherHomeStack.Navigator screenOptions={{ headerShown: false }}>
       <TeacherHomeStack.Screen name="TeacherHomeMain" component={TeacherHomeScreen} />
       <TeacherHomeStack.Screen name="TeacherCalendar" component={TeacherCalendarScreen} />
+      <TeacherHomeStack.Screen name="TeacherOverview" component={TeacherOverviewScreen} />
+      <TeacherHomeStack.Screen name="LessonNote" component={LessonNoteScreen} />
     </TeacherHomeStack.Navigator>
   );
 }
@@ -115,7 +137,7 @@ function MainTabs({ role }) {
         </>
       ) : (
         <>
-          <Tab.Screen name="Today" component={TodayScreen} />
+          <Tab.Screen name="Today" component={TodayStackScreen} />
           <Tab.Screen name="Practice" component={PracticeStackScreen} />
           <Tab.Screen name="Progress" component={ProgressScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
@@ -160,7 +182,7 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ setOnboardingComplete }}>
+    <AuthContext.Provider value={{ setOnboardingComplete, role }}>
       <NavigationContainer>
         <StatusBar style="light" />
         {!user ? (
