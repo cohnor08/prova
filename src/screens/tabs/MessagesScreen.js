@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
+import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -32,7 +33,8 @@ function formatTime(ts) {
 
 // ─── Chat View ────────────────────────────────────────────────────────────────
 
-function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
+function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
+  const headerName = otherName || (otherEmail ? otherEmail.split('@')[0] : '');
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -117,9 +119,9 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
         </TouchableOpacity>
         <View style={styles.chatNavCenter}>
           <View style={styles.chatAvatar}>
-            <Text style={styles.chatAvatarText}>{(otherEmail || '?')[0].toUpperCase()}</Text>
+            <Text style={styles.chatAvatarText}>{(headerName || '?')[0].toUpperCase()}</Text>
           </View>
-          <Text style={styles.chatNavEmail} numberOfLines={1}>{otherEmail}</Text>
+          <Text style={styles.chatNavEmail} numberOfLines={1}>{headerName}</Text>
         </View>
         <View style={{ width: 90 }} />
       </View>
@@ -207,6 +209,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, onBack }) {
 
 export default function MessagesScreen() {
   const [conversations, setConversations] = useState([]);
+  const [nameMap, setNameMap] = useState({}); // uid -> display name
+  const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
   const [loading, setLoading] = useState(true);
   const [activeChat, setActiveChat] = useState(null);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -228,6 +232,22 @@ export default function MessagesScreen() {
     }, () => setLoading(false));
   }, [myUid]);
 
+  // Resolve each conversation partner's username (chats only store email).
+  useEffect(() => {
+    const missing = conversations.map((c) => c.otherUid).filter((uid) => uid && !nameMap[uid]);
+    if (missing.length === 0) return;
+    (async () => {
+      const updates = {};
+      await Promise.all([...new Set(missing)].map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, 'users', uid));
+          updates[uid] = displayName({ uid, ...snap.data() });
+        } catch (e) { /* ignore */ }
+      }));
+      if (Object.keys(updates).length) setNameMap((m) => ({ ...m, ...updates }));
+    })();
+  }, [conversations]);
+
   // Self-heal: if this student is linked to a teacher but has no chat thread yet
   // (linked before auto-seeding existed), create it so it shows up here.
   useEffect(() => {
@@ -238,11 +258,14 @@ export default function MessagesScreen() {
         const teacherUid = meSnap.data()?.teacherUid;
         if (!teacherUid) return;
         const teacherSnap = await getDoc(doc(db, 'users', teacherUid));
+        const td = teacherSnap.data() || {};
+        setTeacher({ uid: teacherUid, email: td.email || '' });
+        setNameMap((m) => ({ ...m, [teacherUid]: displayName({ uid: teacherUid, ...td }) }));
         await ensureChatThread({
           aUid: myUid,
           aEmail: myEmail,
           bUid: teacherUid,
-          bEmail: teacherSnap.data()?.email || '',
+          bEmail: td.email || '',
         });
       } catch (e) { /* non-fatal */ }
     })();
@@ -283,10 +306,36 @@ export default function MessagesScreen() {
           myUid={myUid}
           myEmail={myEmail}
           otherEmail={activeChat.otherEmail}
+          otherName={activeChat.otherName}
           onBack={() => setActiveChat(null)}
         />
       </SafeAreaView>
     );
+  }
+
+  // Put the linked teacher in its own "Your Teacher" section at the top, and
+  // surface them even before any message exists (synthesize a tap-to-chat row).
+  const teacherUid = teacher?.uid || null;
+  let teacherRows = conversations.filter((c) => c.otherUid === teacherUid);
+  if (teacherUid && teacherRows.length === 0) {
+    teacherRows = [{
+      id: `teacher-${teacherUid}`,
+      chatId: makeChatId(myUid, teacherUid),
+      otherUid: teacherUid,
+      otherEmail: teacher.email,
+      lastMessage: null,
+      lastMessageAt: null,
+    }];
+  }
+  const otherRows = conversations.filter((c) => c.otherUid !== teacherUid);
+  const listData = [];
+  if (teacherRows.length) {
+    listData.push({ type: 'header', id: 'h-teacher', label: 'YOUR TEACHER' });
+    teacherRows.forEach((c) => listData.push(c));
+  }
+  if (otherRows.length) {
+    if (teacherRows.length) listData.push({ type: 'header', id: 'h-other', label: 'MESSAGES' });
+    otherRows.forEach((c) => listData.push(c));
   }
 
   return (
@@ -300,7 +349,7 @@ export default function MessagesScreen() {
 
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
-      ) : conversations.length === 0 ? (
+      ) : listData.length === 0 ? (
         <View style={styles.empty}>
           <View style={styles.emptyIcon}>
             <Ionicons name="chatbubbles-outline" size={40} color={COLORS.primary} />
@@ -313,34 +362,41 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={listData}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            if (item.type === 'header') {
+              return <Text style={styles.sectionHeader}>{item.label}</Text>;
+            }
+            const isTeacher = item.otherUid === teacherUid;
+            const name = nameMap[item.otherUid] || (item.otherEmail ? item.otherEmail.split('@')[0] : item.otherUid);
+            return (
             <TouchableOpacity
               style={styles.convoItem}
-              onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid })}
+              onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid, otherName: name })}
               activeOpacity={0.8}
             >
-              <View style={styles.convoAvatar}>
-                <Text style={styles.convoAvatarText}>
-                  {(item.otherEmail || '?')[0].toUpperCase()}
-                </Text>
+              <View style={[styles.convoAvatar, isTeacher && styles.convoAvatarTeacher]}>
+                {isTeacher
+                  ? <Ionicons name="school" size={20} color="#fff" />
+                  : <Text style={styles.convoAvatarText}>{(name || '?')[0].toUpperCase()}</Text>}
               </View>
               <View style={styles.convoInfo}>
-                <Text style={styles.convoEmail} numberOfLines={1}>{item.otherEmail || item.otherUid}</Text>
+                <Text style={styles.convoEmail} numberOfLines={1}>{name}</Text>
                 <Text style={styles.convoLast} numberOfLines={1}>
                   {item.lastMessage
                     ? `${item.lastSenderUid === myUid ? 'You: ' : ''}${item.lastMessage}`
-                    : 'Tap to start chatting'}
+                    : isTeacher ? 'Tap to message your teacher' : 'Tap to start chatting'}
                 </Text>
               </View>
               <View style={styles.convoRight}>
-                <Text style={styles.convoTime}>{formatTime(item.lastMessageAt)}</Text>
+                {!!item.lastMessageAt && <Text style={styles.convoTime}>{formatTime(item.lastMessageAt)}</Text>}
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} style={{ marginTop: 4 }} />
               </View>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />
       )}
 
@@ -391,10 +447,12 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 26, fontWeight: '800' },
   newBtn: { padding: SPACING.xs },
   list: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm },
+  sectionHeader: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: SPACING.md, marginBottom: SPACING.xs },
 
   // Conversation item
   convoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.md },
   convoAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  convoAvatarTeacher: { backgroundColor: COLORS.accent || COLORS.primary },
   convoAvatarText: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   convoInfo: { flex: 1, minWidth: 0 },
   convoEmail: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 3 },

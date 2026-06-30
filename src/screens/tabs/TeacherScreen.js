@@ -15,6 +15,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -318,7 +319,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
 
   const q = search.trim().toLowerCase();
   const shown = q
-    ? students.filter((s) => (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+    ? students.filter((s) => displayName(s).toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
     : students;
   const create = () => {
     if (!name.trim()) { Alert.alert('Name your class', 'Give the class a name first.'); return; }
@@ -360,7 +361,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
                     <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
                   ) : shown.map((s) => {
                   const on = selected.has(s.uid);
-                  const nm = s.name || s.email || 'Student';
+                  const nm = displayName(s);
                   return (
                     <TouchableOpacity key={s.uid} style={styles.classPickRow} onPress={() => toggle(s.uid)} activeOpacity={0.7}>
                       <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
@@ -495,6 +496,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
   const [song, setSong] = useState('');
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
+  const [durationMin, setDurationMin] = useState(0); // 0 = no timer
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
@@ -503,7 +505,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong('');
-    setDueDate(null); setJustAdded(0); setShowTemplates(false);
+    setDueDate(null); setDurationMin(0); setJustAdded(0); setShowTemplates(false);
     onClose();
   };
 
@@ -564,6 +566,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         youtube: youtube.trim(),
         song: song.trim(),
         dueDate,
+        durationMin: durationMin || 0,
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
@@ -578,7 +581,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         )
       );
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(0);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -600,11 +603,12 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
+              <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>{isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
-                  : `To: ${student?.name || student?.email}`}
+                  : `To: ${displayName(student)}`}
                 {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
@@ -667,6 +671,23 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                 <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
               </TouchableOpacity>
 
+              <Text style={styles.dueLabel}>TIMER</Text>
+              <Text style={styles.timerHint}>Student must run this timer before they can mark it done.</Text>
+              <View style={styles.durRow}>
+                {[0, 5, 10, 15, 20, 30].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.durChip, durationMin === m && styles.durChipActive]}
+                    onPress={() => { Keyboard.dismiss(); setDurationMin(m); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.durChipText, durationMin === m && styles.durChipTextActive]}>
+                      {m === 0 ? 'None' : `${m}m`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
                   <Text style={styles.modalCancelText}>{justAdded > 0 ? 'Done' : 'Cancel'}</Text>
@@ -681,6 +702,7 @@ function AssignTaskModal({ student, klass, recipientUids, visible, onClose, onAs
                     : <Text style={styles.modalAssignText}>Assign task</Text>}
                 </TouchableOpacity>
               </View>
+              </ScrollView>
             </View>
             {showDuePicker && (
               <DueDatePicker
@@ -1016,6 +1038,12 @@ function TeacherDashboard() {
   const [selectedClass, setSelectedClass] = useState(null);
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
+  const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
+  const toggleStudent = (key) => setOpenStudents((prev) => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    return n;
+  });
 
   const myUid = auth.currentUser?.uid;
 
@@ -1150,6 +1178,36 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Remove a class task from EVERY student it was assigned to. A class batch
+  // shares the same classId + assignedAt + title, so match on that.
+  const removeClassTask = (klass, group) => {
+    Alert.alert(
+      'Remove from whole class?',
+      `"${group.title}" will be removed from all ${group.count} student${group.count === 1 ? '' : 's'} in ${klass.name}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove from class', style: 'destructive', onPress: async () => {
+            const memberUids = (klass.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+            const matches = (t) => t.classId === klass.id && t.assignedAt === group.assignedAt && t.title === group.title;
+            try {
+              await Promise.all(memberUids.map((uid) => {
+                const s = students.find((x) => x.uid === uid);
+                const next = (s?.assignedTasks || []).filter((t) => !matches(t));
+                return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+              }));
+              setStudents((prev) => prev.map((x) =>
+                memberUids.includes(x.uid) ? { ...x, assignedTasks: (x.assignedTasks || []).filter((t) => !matches(t)) } : x
+              ));
+            } catch (e) {
+              Alert.alert('Error', "Couldn't remove the task for the class. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // One-tap parent report: compile this week's practice + share it.
   const sendParentReport = async (student) => {
     try {
@@ -1164,7 +1222,7 @@ function TeacherDashboard() {
         const day = new Date(`${d.id}T00:00:00`);
         if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
       });
-      const name = student.name || student.email?.split('@')[0] || 'Your student';
+      const name = displayName(student);
       const streak = student.streak || 0;
       const assigned = student.assignedTasks?.length || 0;
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
@@ -1196,7 +1254,7 @@ Sent from Prova`;
 
   // ── Inline chat view ──
   if (activeChatStudent) {
-    const displayName = activeChatStudent.name || activeChatStudent.email;
+    const chatTitle = displayName(activeChatStudent);
     return (
       <View style={{ flex: 1 }}>
         <View style={styles.chatNavHeader}>
@@ -1205,7 +1263,7 @@ Sent from Prova`;
             <Text style={styles.chatNavBackText}>Messages</Text>
           </TouchableOpacity>
           <View style={styles.chatNavCenter}>
-            <Text style={styles.chatNavTitle} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.chatNavTitle} numberOfLines={1}>{chatTitle}</Text>
             <Text style={styles.chatNavSub}>{activeChatStudent.level} · {activeChatStudent.instrument}</Text>
           </View>
           <View style={{ width: 80 }} />
@@ -1300,12 +1358,17 @@ Sent from Prova`;
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = student.streak || 0;
-              const hours = Math.floor((student.totalMinutes || 0) / 60);
+              const totalMin = student.totalMinutes || 0;
+              const hrs = Math.floor(totalMin / 60);
+              const remMin = totalMin % 60;
+              const practiceLabel = hrs > 0
+                ? (remMin > 0 ? `${hrs}h ${remMin}m` : `${hrs}h`)
+                : `${remMin}m`;
               const assignedCount = student.assignedTasks?.length || 0;
               const doneCount = student.assignedTasks?.filter((t) => t.completed).length || 0;
               const hasPracticeToday = student.availableDays?.includes(todayName);
-              const displayName = student.name || student.email;
-              const initial = displayName[0].toUpperCase();
+              const nm = displayName(student);
+              const initial = nm[0].toUpperCase();
 
               return (
                 <View key={student.uid} style={styles.studentCard}>
@@ -1319,7 +1382,7 @@ Sent from Prova`;
                     </View>
                     <View style={styles.studentInfo}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.studentName}>{displayName}</Text>
+                        <Text style={styles.studentName}>{nm}</Text>
                       </View>
                       <Text style={styles.studentMeta}>{student.level} · {student.instrument}</Text>
                       <View style={styles.statusRow}>
@@ -1340,7 +1403,7 @@ Sent from Prova`;
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statBox}>
-                          <Text style={styles.statValue}>{hours}h</Text>
+                          <Text style={styles.statValue}>{practiceLabel}</Text>
                           <Text style={styles.statLabel}>total practice</Text>
                         </View>
                         <View style={styles.statDivider} />
@@ -1415,7 +1478,7 @@ Sent from Prova`;
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.actionBtnRemove}
-                          onPress={() => removeStudent(student.uid, displayName)}
+                          onPress={() => removeStudent(student.uid, nm)}
                         >
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
@@ -1454,6 +1517,17 @@ Sent from Prova`;
                   .map((uid) => students.find((s) => s.uid === uid))
                   .filter(Boolean);
                 const open = expandedClassId === c.id;
+                // Group this class's assigned tasks (one row per batch) so the
+                // teacher can remove a task from the whole class at once.
+                const groupMap = {};
+                members.forEach((m) => (m.assignedTasks || []).filter((t) => t.classId === c.id).forEach((t) => {
+                  const key = `${t.assignedAt}__${t.title}`;
+                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0, points: 0 };
+                  groupMap[key].count += 1;
+                  groupMap[key].points += (t.pointsEarned || 0);
+                  if (t.completed) groupMap[key].done += 1;
+                }));
+                const classGroups = Object.values(groupMap).sort((a, b) => (b.assignedAt || '').localeCompare(a.assignedAt || ''));
                 return (
                   <View key={c.id} style={styles.classCard}>
                     <View style={styles.classCardTop}>
@@ -1475,7 +1549,7 @@ Sent from Prova`;
 
                     {!open && members.length > 0 && (
                       <Text style={styles.classCardMembers} numberOfLines={2}>
-                        {members.map((m) => m.name || m.email).join(', ')}
+                        {members.map((m) => displayName(m)).join(', ')}
                       </Text>
                     )}
 
@@ -1494,44 +1568,107 @@ Sent from Prova`;
                                 <Text style={[styles.classViewPillText, classView === 'progress' && styles.classViewPillTextActive]}>Progress</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
+                                style={[styles.classViewPill, classView === 'effort' && styles.classViewPillActive]}
+                                onPress={() => setClassView('effort')}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.classViewPillText, classView === 'effort' && styles.classViewPillTextActive]}>Class pts</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
                                 style={[styles.classViewPill, classView === 'leaderboard' && styles.classViewPillActive]}
                                 onPress={() => setClassView('leaderboard')}
                                 activeOpacity={0.8}
                               >
-                                <Text style={[styles.classViewPillText, classView === 'leaderboard' && styles.classViewPillTextActive]}>Leaderboard</Text>
+                                <Text style={[styles.classViewPillText, classView === 'leaderboard' && styles.classViewPillTextActive]}>Overall</Text>
                               </TouchableOpacity>
                             </View>
 
                             {classView === 'progress' ? (
-                              members.map((m) => {
-                                const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
-                                const done = mt.filter((t) => t.completed).length;
-                                return (
-                                  <View key={m.uid} style={styles.classMemberBlock}>
-                                    <View style={styles.classMemberRow}>
-                                      <Text style={styles.classMemberName} numberOfLines={1}>{m.name || m.email}</Text>
-                                      <Text style={styles.classMemberProgress}>
-                                        {mt.length ? `${done}/${mt.length} done` : 'no class tasks'}
-                                      </Text>
-                                    </View>
-                                    {mt.map((t) => (
-                                      <View key={t.id} style={styles.classTaskRow}>
-                                        <Ionicons
-                                          name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                          size={15}
-                                          color={t.completed ? COLORS.success : COLORS.textMuted}
-                                        />
-                                        <Text
-                                          style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
-                                          numberOfLines={1}
-                                        >
-                                          {t.title}
-                                        </Text>
+                              <>
+                                {classGroups.length > 0 && (
+                                  <View style={styles.classGroupBox}>
+                                    <Text style={styles.classGroupLabel}>CLASS TASKS</Text>
+                                    {classGroups.map((g) => (
+                                      <View key={g.key} style={styles.classGroupRow}>
+                                        <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        {g.points > 0 && <Text style={styles.classGroupPts}>{g.points.toLocaleString()} pts</Text>}
+                                        <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
+                                        <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                          <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+                                        </TouchableOpacity>
                                       </View>
                                     ))}
                                   </View>
-                                );
-                              })
+                                )}
+                                {members.map((m) => {
+                                  const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
+                                  const done = mt.filter((t) => t.completed).length;
+                                  const mPts = mt.reduce((sum, t) => sum + (t.pointsEarned || 0), 0);
+                                  const sKey = `${c.id}_${m.uid}`;
+                                  const sOpen = openStudents.has(sKey);
+                                  return (
+                                    <View key={m.uid} style={styles.classMemberBlock}>
+                                      <TouchableOpacity style={styles.classMemberRow} onPress={() => toggleStudent(sKey)} activeOpacity={0.7}>
+                                        <Ionicons name={sOpen ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
+                                        <Text style={styles.classMemberName} numberOfLines={1}>{displayName(m)}</Text>
+                                        {mPts > 0 && <Text style={styles.classMemberPts}>{mPts.toLocaleString()} pts</Text>}
+                                        <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
+                                          {mt.length ? `${done}/${mt.length}` : '—'}
+                                        </Text>
+                                      </TouchableOpacity>
+                                      {sOpen && (
+                                        mt.length === 0 ? (
+                                          <Text style={styles.classMemberEmpty}>No class tasks assigned to {displayName(m)} yet.</Text>
+                                        ) : mt.map((t) => (
+                                          <View key={t.id} style={styles.classTaskRow}>
+                                            <Ionicons
+                                              name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                              size={15}
+                                              color={t.completed ? COLORS.success : COLORS.textMuted}
+                                            />
+                                            <Text
+                                              style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
+                                              numberOfLines={1}
+                                            >
+                                              {t.title}
+                                            </Text>
+                                            <TouchableOpacity onPress={() => removeAssignedTask(m.uid, t.id, t.title)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                              <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                                            </TouchableOpacity>
+                                          </View>
+                                        ))
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                              </>
+                            ) : classView === 'effort' ? (
+                              // Points each student has banked on THIS class's
+                              // assignments (partial credit + repeats) — the
+                              // assignment scoreboard, mirroring the student view.
+                              (() => {
+                                const ranked = [...members]
+                                  .map((m) => ({
+                                    m,
+                                    pts: (m.assignedTasks || [])
+                                      .filter((t) => t.classId === c.id)
+                                      .reduce((sum, t) => sum + (t.pointsEarned || 0), 0),
+                                  }))
+                                  .sort((a, b) => b.pts - a.pts);
+                                if (ranked.every((r) => r.pts === 0)) {
+                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practising the class tasks.</Text>;
+                                }
+                                return ranked.map(({ m, pts }, i) => {
+                                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                                  return (
+                                    <View key={m.uid} style={styles.lbRow}>
+                                      <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
+                                      <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
+                                      <Text style={styles.lbScore}>{pts.toLocaleString()}</Text>
+                                    </View>
+                                  );
+                                });
+                              })()
                             ) : (
                               [...members]
                                 .sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0))
@@ -1540,7 +1677,7 @@ Sent from Prova`;
                                   return (
                                     <View key={m.uid} style={styles.lbRow}>
                                       <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
-                                      <Text style={styles.lbName} numberOfLines={1}>{m.name || m.email}</Text>
+                                      <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
                                       <Text style={styles.lbScore}>{(m.provaScore || 0).toLocaleString()}</Text>
                                     </View>
                                   );
@@ -1596,8 +1733,8 @@ Sent from Prova`;
                     lastMine = conv.lastSenderUid === myUid;
                   }
                 }
-                const displayName = student.name || student.email;
-                const initial = displayName[0].toUpperCase();
+                const nm = displayName(student);
+                const initial = nm[0].toUpperCase();
                 const status = getStudentStatus(student);
                 return (
                   <TouchableOpacity
@@ -1611,7 +1748,7 @@ Sent from Prova`;
                       <View style={[styles.avatarStatusDot, { backgroundColor: status.color }]} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.studentName}>{displayName}</Text>
+                      <Text style={styles.studentName}>{nm}</Text>
                       {lastText ? (
                         <Text style={styles.chatPreviewText} numberOfLines={1}>
                           {lastMine ? 'You: ' : ''}{lastText}
@@ -1885,12 +2022,20 @@ const styles = StyleSheet.create({
   classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
   classExpand: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
-  classMemberBlock: { marginBottom: SPACING.sm },
-  classMemberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
+  classMemberBlock: { marginBottom: 6, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
+  classMemberRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 8 },
+  classMemberEmpty: { color: COLORS.textMuted, fontSize: 12, paddingLeft: 22, paddingBottom: 6 },
   classMemberName: { color: COLORS.text, fontSize: 13, fontWeight: '700', flex: 1, minWidth: 0 },
   classMemberProgress: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  classMemberPts: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700' },
   classTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingLeft: SPACING.xs },
   classTaskTitle: { color: COLORS.textSecondary, fontSize: 12, flex: 1, minWidth: 0 },
+  classGroupBox: { backgroundColor: COLORS.surface, borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm },
+  classGroupLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
+  classGroupRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 6 },
+  classGroupTitle: { color: COLORS.text, fontSize: 13, fontWeight: '600', flex: 1, minWidth: 0 },
+  classGroupMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  classGroupPts: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700' },
   classViewToggle: { flexDirection: 'row', gap: SPACING.xs, backgroundColor: COLORS.surface, borderRadius: 10, padding: 3, marginBottom: SPACING.sm },
   classViewPill: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
   classViewPillActive: { backgroundColor: COLORS.primary },
@@ -2016,7 +2161,7 @@ const styles = StyleSheet.create({
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl, maxHeight: '88%' },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.xs },
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
@@ -2044,6 +2189,12 @@ const styles = StyleSheet.create({
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
+  durRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  durChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  durChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  durChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  durChipTextActive: { color: COLORS.text },
   dueFieldText: { flex: 1, color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 
   // Due date+time picker overlay
