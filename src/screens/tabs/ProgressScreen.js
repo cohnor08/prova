@@ -925,13 +925,13 @@ export default function ProgressScreen() {
         return (
           <View style={styles.statsRow}>
             {[
-              { value: streak, unit: '🔥', label: 'Day Streak', color: streak > 0 ? COLORS.streak : undefined },
+              { value: streak, unit: '🔥', label: 'Day Streak' },
               { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
               { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
               { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
             ].map(s => (
               <View key={s.label} style={styles.statCard}>
-                <Text style={[styles.statValue, s.color && { color: s.color }]}>{s.value}</Text>
+                <Text style={styles.statValue}>{s.value}</Text>
                 <Text style={styles.statUnit}>{s.unit}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
               </View>

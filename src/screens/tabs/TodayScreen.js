@@ -1045,7 +1045,7 @@ export default function TodayScreen({ navigation }) {
           <View style={styles.challengeCard}>
             <TouchableOpacity style={styles.challengeHeader} onPress={() => setChallengeOpen((o) => !o)} activeOpacity={0.7}>
               <View style={styles.challengeIcon}>
-                <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.reward} />
+                <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
@@ -1367,10 +1367,10 @@ const styles = StyleSheet.create({
 
   streakChip: {
     alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.streak + '1A', borderRadius: 999, borderWidth: 1, borderColor: COLORS.streak + '40',
+    backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
     paddingVertical: 5, paddingHorizontal: 12, marginBottom: SPACING.md,
   },
-  streakChipText: { color: COLORS.streak, fontSize: 12, fontWeight: '800' },
+  streakChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
   summaryCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: SPACING.lg },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },
@@ -1452,11 +1452,11 @@ const styles = StyleSheet.create({
   scoreboardPts: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   challengeIcon: {
-    width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.reward + '22',
+    width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.accent + '22',
     alignItems: 'center', justifyContent: 'center',
   },
-  challengeKicker: { color: COLORS.reward, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  challengePts: { color: COLORS.reward, fontSize: 12, fontWeight: '800' },
+  challengeKicker: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  challengePts: { color: COLORS.accent, fontSize: 12, fontWeight: '800' },
   challengeTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginTop: 2, lineHeight: 18 },
   challengeDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: SPACING.md, marginBottom: SPACING.md },
   challengeBtn: {
