@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,8 +9,8 @@ import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
+import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
-import { adjustSessionFromRating } from '../../lib/claude';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
@@ -31,11 +31,43 @@ const CATEGORY_COLORS = {
   improvisation: '#6366F1',
 };
 
-const RATING_OPTIONS = [
-  { key: 'too_easy',   label: 'Too Easy',    sub: 'Step it up next time',    icon: 'trending-up' },
-  { key: 'just_right', label: 'Just Right',  sub: 'Perfect challenge level', icon: 'checkmark-circle' },
-  { key: 'too_hard',   label: 'Too Hard',    sub: 'Dial it back a bit',      icon: 'trending-down' },
+// Compact one-tap difficulty options shown inline on each completed session.
+// Keys match the values Prova's plan logic already understands (too_hard etc.).
+const DIFF_OPTS = [
+  { key: 'too_hard',   label: 'Too hard' },
+  { key: 'just_right', label: 'Just right' },
+  { key: 'too_easy',   label: 'Too easy' },
 ];
+
+// Build a { sessionId: { difficulty, note } } map of TODAY's session feedback
+// from the rolling users.weekFeedback log, so ratings persist across reloads.
+function todayFeedbackMap(d, todayKey) {
+  const arr = Array.isArray(d?.weekFeedback) ? d.weekFeedback : [];
+  const map = {};
+  arr.forEach((e) => {
+    if (e && e.date === todayKey && e.sessionId) map[e.sessionId] = { difficulty: e.difficulty, note: e.note || '' };
+  });
+  return map;
+}
+
+// Whether to surface the "week in review" card: there's feedback to learn from
+// and it's been ≥7 days since the last review (or there's never been one).
+function weekReviewDue(d) {
+  const fb = Array.isArray(d?.weekFeedback) ? d.weekFeedback : [];
+  if (fb.length === 0) return false;
+  const last = d?.lastWeekReviewAt ? new Date(d.lastWeekReviewAt).getTime() : 0;
+  return Date.now() - last >= 7 * 86400000;
+}
+
+// Most common difficulty among today's ratings (defaults to 'just_right'); used
+// only for the small end-of-day quality bonus now that adaptation is weekly.
+function aggregateDifficulty(map) {
+  const counts = {};
+  Object.values(map || {}).forEach((f) => { if (f?.difficulty) counts[f.difficulty] = (counts[f.difficulty] || 0) + 1; });
+  let best = 'just_right', bestN = 0;
+  Object.entries(counts).forEach(([k, n]) => { if (n > bestN) { best = k; bestN = n; } });
+  return best;
+}
 
 const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
@@ -479,7 +511,14 @@ export default function TodayScreen({ navigation }) {
   const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
   const [attendance, setAttendance] = useState({}); // teacher-set attendance map `${lessonId}__${ymd}` -> { status, note }
   const [loading, setLoading] = useState(true);
-  const [showRating, setShowRating] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState({}); // today's per-session { difficulty, note }
+  const finalizedRef = useRef(null); // guards the once-a-day finish bonus
+  const [reviewOpen, setReviewOpen] = useState(false);   // week-in-review modal
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewData, setReviewData] = useState(null);    // { changeSummary, weeklyPlan }
+  const [dayReviewOpen, setDayReviewOpen] = useState(false); // end-of-day "how did today go?" pop-up
+  const [dayRatings, setDayRatings] = useState({});      // { sessionId: difficulty } — uncommitted until Submit
+  const [dayNote, setDayNote] = useState('');
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [expandedTask, setExpandedTask] = useState(null);
@@ -494,7 +533,6 @@ export default function TodayScreen({ navigation }) {
     return n;
   });
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const slideAnim = useRef(new Animated.Value(300)).current;
   const restorePromptedRef = useRef(false); // pop the restore modal once per app open
 
   useEffect(() => { loadData(); }, []);
@@ -510,6 +548,7 @@ export default function TodayScreen({ navigation }) {
         const d = snap.data() || {};
         const todayKey = new Date().toDateString();
         setCompletedIds(d.sessionProgress?.date === todayKey ? (d.sessionProgress.ids || []) : []);
+        setFeedbackMap(todayFeedbackMap(d, todayKey));
         if (typeof d.provaScore === 'number') setUserData((p) => (p ? { ...p, provaScore: d.provaScore } : p));
       } catch { /* ignore */ }
     });
@@ -584,13 +623,6 @@ export default function TodayScreen({ navigation }) {
     setUserData((p) => ({ ...p, ...updates }));
   }, [userData?.provaScore, userData?.restoreMonth, userData?.restoreBaseline]);
 
-  useEffect(() => {
-    if (showRating) {
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }).start();
-    } else {
-      slideAnim.setValue(300);
-    }
-  }, [showRating]);
 
   const loadData = async () => {
     try {
@@ -636,6 +668,7 @@ export default function TodayScreen({ navigation }) {
       // double-banked across the two screens.
       const todayKey = new Date().toDateString();
       setCompletedIds(data?.sessionProgress?.date === todayKey ? (data.sessionProgress.ids || []) : []);
+      setFeedbackMap(todayFeedbackMap(data, todayKey));
 
       // Pull this student's lessons from their linked teacher's doc, so we can
       // surface the next upcoming lesson on Today.
@@ -664,7 +697,7 @@ export default function TodayScreen({ navigation }) {
     if (completedIds.includes(sessionId)) return;
     const optimistic = [...completedIds, sessionId]; // instant checkmark
     setCompletedIds(optimistic);
-    const maybeRate = (ids) => { if (sessions.every(s => ids.includes(s.id))) setShowRating(true); };
+    const maybeRate = (ids) => { if (sessions.length > 0 && sessions.every(s => ids.includes(s.id))) openDayReview(); };
 
     const session = sessions.find(s => s.id === sessionId);
     const uid = auth.currentUser?.uid;
@@ -700,31 +733,88 @@ export default function TodayScreen({ navigation }) {
     }
   };
 
-  const handleRating = async (rating) => {
-    setShowRating(false);
+  // ── End-of-day session review ──────────────────────────────────────────────
+  // Open the one-shot "How did today go?" pop-up, pre-filling any picks already
+  // saved for today so re-opening shows the current state.
+  const openDayReview = () => {
+    const seed = {};
+    Object.entries(feedbackMap).forEach(([id, f]) => { if (f?.difficulty) seed[id] = f.difficulty; });
+    setDayRatings(seed);
+    setDayNote('');
+    setDayReviewOpen(true);
+  };
+
+  // Submit the whole day's ratings + optional note at once, then close out the
+  // day. Selecting difficulty chips only updates local state; nothing is saved
+  // until this runs.
+  const submitDayReview = () => {
+    const uid = auth.currentUser?.uid;
+    const todayKey = new Date().toDateString();
+    const note = dayNote.trim();
+    const picks = { ...dayRatings };
+    // Close instantly and close out the day; persistence runs in the background so
+    // Submit never feels like it hangs on a slow connection.
+    setDayReviewOpen(false);
+    const fm = {}; Object.entries(picks).forEach(([id, difficulty]) => { if (difficulty) fm[id] = { difficulty, note: '' }; });
+    setFeedbackMap(fm);
+    const agg = {}; Object.entries(picks).forEach(([id, difficulty]) => { if (difficulty) agg[id] = { difficulty }; });
+    finalizeDay(aggregateDifficulty(agg));
+    if (!uid) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', uid));
+        const d = snap.data() || {};
+        const arr = Array.isArray(d.weekFeedback) ? d.weekFeedback : [];
+        const cutoff = Date.now() - 9 * 86400000;
+        // Drop today's prior entries, prune very old ones, then add this submission.
+        const kept = arr.filter(e => (e && e.date === todayKey) ? false : (!e?.ts || e.ts >= cutoff));
+        sessions.forEach((s) => {
+          const difficulty = picks[s.id];
+          if (!difficulty) return; // unrated tasks are left neutral
+          kept.push({ date: todayKey, ts: Date.now(), sessionId: s.id, title: s.title || '', category: s.category || '', difficulty, note: '' });
+        });
+        if (note) kept.push({ date: todayKey, ts: Date.now(), sessionId: '__day__', title: 'Overall note for the day', category: 'note', difficulty: null, note: note.slice(0, 300) });
+        await updateDoc(doc(db, 'users', uid), { weekFeedback: kept });
+      } catch (e) { console.error(e); }
+    })();
+  };
+
+  // Dismiss without rating — still close out the day so the streak/bonus survive.
+  const skipDayReview = () => {
+    setDayReviewOpen(false);
+    finalizeDay('just_right');
+  };
+
+  // Close out the day: streak, finish bonus, sessionHistory log. Adaptation is
+  // weekly (Stage 2), so this no longer rewrites today's plan. `aggRating` only
+  // feeds the small quality bonus.
+  const finalizeDay = async (aggRating = 'just_right') => {
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
       const todayStr = new Date().toDateString();
+      if (finalizedRef.current === todayStr) return; // don't double-award
+      finalizedRef.current = todayStr;
+
       const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
       const lastStr = userData?.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() : null;
       const newStreak = lastStr === todayStr
         ? (userData?.streak || 1)
         : lastStr === yesterdayStr ? (userData?.streak || 0) + 1 : 1;
+      const rating = aggRating || 'just_right';
       const sessionMins = sessions.reduce((s, x) => s + x.duration, 0);
       const categories = {};
       sessions.forEach(s => { categories[s.category] = (categories[s.category] || 0) + s.duration; });
       const dateKey = new Date().toISOString().split('T')[0];
-      // Per-task points are already banked on completion; here we add the
-      // end-of-day bonus (finish reward + streak + quality rating).
       const earnedPoints = completionBonus(newStreak, rating);
       const prevScore = displayScore(userData);
       const newScore = prevScore + earnedPoints;
       const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
+      const nowIso = new Date().toISOString();
       await Promise.all([
         updateDoc(doc(db, 'users', uid), {
           lastSessionRating: rating,
-          lastSessionDate: new Date().toISOString(),
+          lastSessionDate: nowIso,
           totalMinutes: increment(sessionMins),
           totalSessions: increment(1),
           streak: newStreak,
@@ -738,21 +828,83 @@ export default function TodayScreen({ navigation }) {
           rating,
         }, { merge: true }),
       ]);
+      setUserData(p => ({ ...p, provaScore: newScore, streak: newStreak, lastSessionDate: nowIso }));
       const newRank = scoreRank(newScore);
       Alert.alert(
         rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : `+${formatScore(earnedPoints)} finish bonus! 🎸`,
         rankedUp
-          ? `Session complete — you leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
-          : `Session complete — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+          ? `All done for today — you leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
+          : `All done for today — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
       );
-      adjustSessionFromRating(sessions, rating, null)
-        .then(adjusted => updateDoc(doc(db, 'users', uid), {
-          [`practicePlan.weeklyPlan.${TODAY_NAME}.sessions`]: adjusted,
-        }))
-        .catch(console.error);
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // Week in review: ask Prova to re-plan next week from the collected feedback,
+  // then open the preview so the user can approve or keep their current plan.
+  const openReview = async () => {
+    if (reviewLoading) return;
+    setReviewOpen(true);
+    setReviewLoading(true);
+    setReviewData(null);
+    try {
+      const profile = {
+        instrument: userData?.instrument,
+        level: userData?.level,
+        goals: userData?.goals || [],
+        skills: userData?.skills || [],
+        availableDays: userData?.availableDays || [],
+        dailyDuration: userData?.dailyDuration,
+      };
+      const feedback = Array.isArray(userData?.weekFeedback) ? userData.weekFeedback : [];
+      const res = await refreshWeeklyPlan(profile, feedback);
+      setReviewData(res);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Could not build your new plan', e?.message?.includes('limit')
+        ? "You've refreshed your plan already this week. Try again next week."
+        : 'Something went wrong. Please try again.');
+      setReviewOpen(false);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  // Approve the adapted plan: swap it in, stamp the review, and clear the feedback
+  // log so the card doesn't fire again until a fresh week accumulates.
+  const applyNewPlan = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !reviewData?.weeklyPlan) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        'practicePlan.weeklyPlan': reviewData.weeklyPlan,
+        planGeneratedAt: nowIso,
+        lastWeekReviewAt: nowIso,
+        weekFeedback: [],
+      });
+      setPlan(reviewData.weeklyPlan);
+      setSessions(reviewData.weeklyPlan[TODAY_NAME]?.sessions || []);
+      setUserData(p => ({ ...p, practicePlan: { ...(p?.practicePlan || {}), weeklyPlan: reviewData.weeklyPlan }, lastWeekReviewAt: nowIso, weekFeedback: [] }));
+      setReviewOpen(false);
+      Alert.alert('Plan updated 🎸', 'Your new week is ready — tuned to your feedback.');
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', "Couldn't save your new plan. Please try again.");
+    }
+  };
+
+  // Keep the current plan but stamp the review so the card stops nagging this week.
+  const keepPlan = async () => {
+    const uid = auth.currentUser?.uid;
+    setReviewOpen(false);
+    if (!uid) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await updateDoc(doc(db, 'users', uid), { lastWeekReviewAt: nowIso });
+      setUserData(p => ({ ...p, lastWeekReviewAt: nowIso }));
+    } catch { /* non-critical */ }
   };
 
   // Daily challenge — banks bonus points and counts as activity for the day, so
@@ -937,6 +1089,11 @@ export default function TodayScreen({ navigation }) {
   const hasPlan = !!plan && Object.keys(plan).length > 0;
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
+  // Show the "review today" entry point once every session is done but the day
+  // hasn't been closed out yet (covers re-opening + finishing in the Practice tab).
+  const allSessionsDone = sessions.length > 0 && sessions.every(s => completedIds.includes(s.id));
+  const finalizedToday = userData?.lastSessionDate ? new Date(userData.lastSessionDate).toDateString() === new Date().toDateString() : false;
+  const showRateToday = isToday && allSessionsDone && !finalizedToday;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
 
@@ -993,6 +1150,19 @@ export default function TodayScreen({ navigation }) {
           <View style={styles.streakChip}>
             <Text style={styles.streakChipText}>🔥 {userData.streak} day{userData.streak === 1 ? '' : 's'} streak</Text>
           </View>
+        )}
+
+        {weekReviewDue(userData) && (
+          <TouchableOpacity style={styles.reviewCard} onPress={openReview} activeOpacity={0.85}>
+            <View style={styles.reviewIcon}>
+              <Ionicons name="sparkles" size={18} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.reviewTitle}>Your week in review</Text>
+              <Text style={styles.reviewSub} numberOfLines={2}>Prova can adapt next week's plan to your feedback.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
         )}
 
         {/* Day picker */}
@@ -1082,6 +1252,13 @@ export default function TodayScreen({ navigation }) {
         {/* Sessions — the actual practice for the day */}
         {selectedSessions.length > 0 && (
           <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
+        )}
+        {showRateToday && (
+          <TouchableOpacity style={styles.rateTodayCard} onPress={openDayReview} activeOpacity={0.85}>
+            <Ionicons name="clipboard-outline" size={18} color={COLORS.accent} />
+            <Text style={styles.rateTodayText}>All done — tell Prova how today went</Text>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
         )}
         {selectedSessions.length === 0 ? (
           isToday && !hasPlan ? (
@@ -1281,29 +1458,6 @@ export default function TodayScreen({ navigation }) {
 
       </ScrollView>
 
-      <Modal visible={showRating} transparent animationType="none">
-        <View style={styles.ratingBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowRating(false)} />
-          <Animated.View style={[styles.ratingSheet, { transform: [{ translateY: slideAnim }] }]}>
-            <View style={styles.ratingHandle} />
-            <Text style={styles.ratingTitle}>How was that session?</Text>
-            <Text style={styles.ratingSubtitle}>Prova will adjust your next session based on this</Text>
-            {RATING_OPTIONS.map(({ key, label, sub, icon }) => (
-              <TouchableOpacity key={key} style={styles.ratingBtn} onPress={() => handleRating(key)} activeOpacity={0.8}>
-                <View style={styles.ratingBtnIcon}>
-                  <Ionicons name={icon} size={20} color={COLORS.primary} />
-                </View>
-                <View>
-                  <Text style={styles.ratingBtnLabel}>{label}</Text>
-                  <Text style={styles.ratingBtnSub}>{sub}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} style={{ flex: 1, textAlign: 'right' }} />
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
-        </View>
-      </Modal>
-
       {/* Streak-lost pop-up — shown once on open when a day was missed */}
       <Modal visible={showRestoreModal} transparent animationType="fade" onRequestClose={() => setShowRestoreModal(false)}>
         <View style={styles.restoreModalBackdrop}>
@@ -1345,6 +1499,112 @@ export default function TodayScreen({ navigation }) {
               <Ionicons name="close" size={20} color="#fff" />
               <Text style={styles.proofCloseText}>Close</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* End-of-day review — rate every task in one place, then Submit */}
+      <Modal visible={dayReviewOpen} transparent animationType="slide" onRequestClose={skipDayReview}>
+        <View style={styles.drBackdrop}>
+          <View style={styles.drSheet}>
+            <View style={styles.drHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.drTitle}>How did today go?</Text>
+                <Text style={styles.drSubtitle}>Rate each task so Prova can shape next week. Optional — skip any.</Text>
+              </View>
+              <TouchableOpacity onPress={skipDayReview} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: SPACING.sm }} keyboardShouldPersistTaps="handled">
+              {sessions.map((s) => (
+                <View key={s.id} style={styles.drRow}>
+                  <Text style={styles.drRowTitle} numberOfLines={1}>{s.title}</Text>
+                  <View style={styles.drOptRow}>
+                    {DIFF_OPTS.map((opt) => {
+                      const on = dayRatings[s.id] === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={opt.key}
+                          style={[styles.drOpt, on && styles.drOptOn]}
+                          onPress={() => setDayRatings((prev) => ({ ...prev, [s.id]: prev[s.id] === opt.key ? undefined : opt.key }))}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.drOptText, on && styles.drOptTextOn]}>{opt.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+
+              <Text style={styles.drNoteLabel}>Anything to add? (optional)</Text>
+              <TextInput
+                style={styles.drNote}
+                placeholder="e.g. want more improv, the warmups feel repetitive…"
+                placeholderTextColor={COLORS.textMuted}
+                value={dayNote}
+                onChangeText={setDayNote}
+                multiline
+              />
+            </ScrollView>
+
+            <TouchableOpacity style={styles.drSubmit} onPress={submitDayReview} activeOpacity={0.85}>
+              <Text style={styles.drSubmitText}>Submit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.drSkip} onPress={skipDayReview} activeOpacity={0.7}>
+              <Text style={styles.drSkipText}>Skip for today</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Week in review — preview the adapted plan and approve or keep current */}
+      <Modal visible={reviewOpen} transparent animationType="slide" onRequestClose={() => setReviewOpen(false)}>
+        <View style={styles.reviewBackdrop}>
+          <View style={styles.reviewSheet}>
+            <View style={styles.reviewHeader}>
+              <Text style={styles.reviewSheetTitle}>Your week in review</Text>
+              <TouchableOpacity onPress={() => setReviewOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {reviewLoading ? (
+              <View style={styles.reviewLoading}>
+                <ActivityIndicator color={COLORS.primary} />
+                <Text style={styles.reviewLoadingText}>Reading your week and adapting your plan…</Text>
+              </View>
+            ) : reviewData ? (
+              <>
+                <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: SPACING.md }}>
+                  <View style={styles.reviewSummaryBox}>
+                    <Ionicons name="sparkles" size={16} color={COLORS.primary} />
+                    <Text style={styles.reviewSummaryText}>{reviewData.changeSummary}</Text>
+                  </View>
+                  <Text style={styles.reviewPreviewLabel}>NEXT WEEK'S PLAN</Text>
+                  {DAY_ORDER.map((day) => {
+                    const ses = reviewData.weeklyPlan?.[day]?.sessions;
+                    if (!Array.isArray(ses) || ses.length === 0) return null;
+                    return (
+                      <View key={day} style={styles.reviewDay}>
+                        <Text style={styles.reviewDayName}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text>
+                        {ses.map((s, i) => (
+                          <Text key={i} style={styles.reviewSession} numberOfLines={1}>• {s.title} <Text style={styles.reviewSessionMin}>{s.duration}m</Text></Text>
+                        ))}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity style={styles.reviewApplyBtn} onPress={applyNewPlan} activeOpacity={0.85}>
+                  <Text style={styles.reviewApplyText}>Use this plan</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.reviewKeepBtn} onPress={keepPlan} activeOpacity={0.7}>
+                  <Text style={styles.reviewKeepText}>Keep my current plan</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1498,6 +1758,51 @@ const styles = StyleSheet.create({
   completeBtnTextLocked: { color: COLORS.textMuted },
   completedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   completedBadge: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+
+  rateTodayCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.accent + '55', padding: SPACING.md, marginBottom: SPACING.md },
+  rateTodayText: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: '700' },
+
+  drBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  drSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl, maxHeight: '88%' },
+  drHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.lg },
+  drTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
+  drSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  drRow: { marginBottom: SPACING.md },
+  drRowTitle: { color: COLORS.text, fontSize: 14, fontWeight: '600', marginBottom: SPACING.sm },
+  drOptRow: { flexDirection: 'row', gap: SPACING.sm },
+  drOpt: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  drOptOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  drOptText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  drOptTextOn: { color: '#FFFFFF' },
+  drNoteLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  drNote: { backgroundColor: COLORS.surface, borderRadius: 10, color: COLORS.text, fontSize: 14, paddingHorizontal: SPACING.md, paddingVertical: 12, minHeight: 60, textAlignVertical: 'top' },
+  drSubmit: { backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: SPACING.md },
+  drSubmitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  drSkip: { paddingVertical: SPACING.md, alignItems: 'center' },
+  drSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+
+  reviewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.primary + '55', padding: SPACING.md, marginBottom: SPACING.md },
+  reviewIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' },
+  reviewTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  reviewSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 17 },
+
+  reviewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  reviewSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xl, maxHeight: '86%' },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  reviewSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  reviewLoading: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.md },
+  reviewLoadingText: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center' },
+  reviewSummaryBox: { flexDirection: 'row', gap: SPACING.sm, backgroundColor: COLORS.primary + '18', borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.lg },
+  reviewSummaryText: { flex: 1, color: COLORS.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  reviewPreviewLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm },
+  reviewDay: { marginBottom: SPACING.md },
+  reviewDayName: { color: COLORS.primary, fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  reviewSession: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
+  reviewSessionMin: { color: COLORS.textMuted, fontSize: 12 },
+  reviewApplyBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: SPACING.sm },
+  reviewApplyText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  reviewKeepBtn: { paddingVertical: SPACING.md, alignItems: 'center' },
+  reviewKeepText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 
   planCard: { flexDirection: 'row', marginBottom: SPACING.lg },
   planLeft: { width: 24, alignItems: 'center', marginRight: SPACING.md },

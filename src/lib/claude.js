@@ -68,3 +68,9 @@ export async function generateSetlist(gig) {
 export async function generateSongPlan(song) {
   return callFunction('generateSongPlan', song, 120000);
 }
+
+// Weekly "week in review" re-plan. `profile` = the usual plan inputs, `feedback`
+// = this week's per-session ratings/notes. Returns { changeSummary, weeklyPlan }.
+export async function refreshWeeklyPlan(profile, feedback) {
+  return callFunction('refreshWeeklyPlan', { profile, feedback }, 240000);
+}

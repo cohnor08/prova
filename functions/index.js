@@ -20,6 +20,9 @@ const MODEL_SMART = 'claude-sonnet-4-6';
 const RATE_LIMITS = {
   generatePracticePlan:   { requests: 15, tokens: 250000 },
   adjustSessionFromRating: { requests: 10, tokens: 15000 },
+  // The weekly "week in review" re-plan. Capped per week (like song plans) since
+  // it's meant to run roughly once every 7 days per user.
+  refreshWeeklyPlan:      { requests: 3, tokens: 250000, period: 'week' },
   generateSetlist:        { requests: 15, tokens: 40000 },
   // Song-learning plans are capped PER WEEK (not per day) for both teacher and
   // personal accounts. A cache hit on songPlans/{key} never reaches the limiter,
@@ -766,5 +769,123 @@ exports.searchYouTube = onCall(
     await cacheRef.set({ query, key, results, createdAt: new Date().toISOString() });
 
     return { results, cached: false };
+  }
+);
+
+// ─── refreshWeeklyPlan ────────────────────────────────────────────────────────
+// The "week in review" re-plan: takes the user's profile + a week of per-session
+// feedback (difficulty taps + optional notes) and returns a NEW weekly plan that
+// visibly responds to it, plus a short human summary of what changed and why.
+exports.refreshWeeklyPlan = onCall(
+  { ...BASE_OPTIONS, timeoutSeconds: 300, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const uid = request.auth.uid;
+    const appCheckPresent = !!request.app;
+    const startTime = Date.now();
+
+    await checkRateLimit(uid, 'refreshWeeklyPlan');
+
+    const { profile, feedback } = request.data || {};
+    validateProfile(profile || {});
+    if (!Array.isArray(feedback) || feedback.length === 0)
+      throw new HttpsError('invalid-argument', 'No feedback to learn from');
+    if (feedback.length > 100)
+      throw new HttpsError('invalid-argument', 'Too much feedback');
+
+    const { instrument, level, goals, skills, availableDays, dailyDuration } = profile;
+
+    // Condense the week's feedback into readable lines for the prompt.
+    const fbLines = feedback.slice(0, 60).map((f) => {
+      const diff = f?.difficulty ? String(f.difficulty).replace('_', ' ') : 'no rating';
+      const note = f?.note ? ` — note: "${String(f.note).slice(0, 200)}"` : '';
+      return `- "${String(f?.title || 'session').slice(0, 80)}" (${String(f?.category || 'general')}): ${diff}${note}`;
+    }).join('\n');
+
+    const prompt = `You are Prova, a world-class ${instrument} practice coach. You are revising this player's weekly practice plan for NEXT week based on how THIS week actually went.
+
+Player profile:
+- Instrument: ${instrument}
+- Level: ${level}
+- Goals: ${goals.join(', ')}
+- Skills to focus on: ${skills.join(', ')}
+- Available days: ${availableDays.join(', ')}
+- Daily practice time: ${dailyDuration} minutes
+
+What they told you about this week's sessions (their difficulty rating + any notes):
+${fbLines}
+
+Use this feedback to ADAPT next week:
+- Sessions rated "too easy" → make that skill harder / faster / more advanced next week.
+- Sessions rated "too hard" → ease off: slower tempo, smaller chunks, more foundational.
+- Notes asking for more/less of something, or expressing boredom/enjoyment → shift the mix toward what they want and their goals.
+- Where feedback is sparse, progress gently rather than guessing.
+- Keep foundational technique even if they under-rate its relevance — you are the expert.
+
+Return a JSON object with EXACTLY this structure:
+{
+  "changeSummary": "1-2 short sentences, written TO the player, plainly stating what you changed and why, referencing their feedback (max 240 chars). e.g. 'You breezed through your scale work and asked for more improv, so I bumped tempos and added two improv sessions.'",
+  "weeklyPlan": {
+    "monday": { "sessions": [...] }, "tuesday": { "sessions": [...] }, "wednesday": { "sessions": [...] },
+    "thursday": { "sessions": [...] }, "friday": { "sessions": [...] }, "saturday": { "sessions": [...] }, "sunday": { "sessions": [...] }
+  }
+}
+For days the player is NOT available, set that day to null.
+Each session object:
+{
+  "id": "unique_string",
+  "title": "Exercise name",
+  "description": "ONE terse sentence, max ~160 chars, with exact strings/frets/fingerings/BPM/reps so a ${level} player can do it from the description alone.",
+  "duration": number_in_minutes,
+  "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation",
+  "reference": "a YouTube SEARCH PHRASE (never a URL) for a tutorial of this exercise"
+}
+Rules: total durations per available day must equal ${dailyDuration}; always start each day with a warmup; only include sessions for available days; match difficulty to the adaptation above.
+Return only valid JSON, no markdown fences, no explanation.`;
+
+    let result;
+    try {
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL_SMART, 220000);
+    } catch (err) {
+      await writeUsageLog(uid, 'refreshWeeklyPlan', {
+        tokensIn: 0, tokensOut: 0, durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error', appCheckPresent,
+      });
+      throw err;
+    }
+
+    let out;
+    try {
+      let s = (result.text || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const first = s.indexOf('{');
+      const last = s.lastIndexOf('}');
+      if (first !== -1 && last > first) s = s.slice(first, last + 1);
+      out = JSON.parse(s);
+    } catch (parseErr) {
+      console.error('Weekly re-plan parse failed', { stopReason: result.stopReason, len: (result.text || '').length });
+      await writeUsageLog(uid, 'refreshWeeklyPlan', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut, durationMs: Date.now() - startTime,
+        success: false, errorType: 'parse_error', appCheckPresent,
+      });
+      throw new HttpsError('internal', 'Could not build your new plan. Try again.');
+    }
+
+    if (!out || !out.weeklyPlan || typeof out.weeklyPlan !== 'object')
+      throw new HttpsError('internal', 'Could not build your new plan. Try again.');
+
+    Promise.all([
+      recordTokenUsage(uid, 'refreshWeeklyPlan', result.tokensIn + result.tokensOut),
+      writeUsageLog(uid, 'refreshWeeklyPlan', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut, durationMs: Date.now() - startTime,
+        success: true, appCheckPresent,
+      }),
+      flagAbuseIfNeeded(uid, 'refreshWeeklyPlan', result.tokensIn + result.tokensOut),
+    ]).catch(() => {});
+
+    return {
+      changeSummary: String(out.changeSummary || 'Your plan has been refreshed based on this week.').slice(0, 300),
+      weeklyPlan: out.weeklyPlan,
+    };
   }
 );
