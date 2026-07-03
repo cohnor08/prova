@@ -8,9 +8,17 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, SPACING } from '../constants/theme';
 import { searchYouTube } from '../lib/youtube';
 
-// A reusable bottom-sheet that turns a search PHRASE into real YouTube videos and
-// plays the chosen one inline, without leaving Prova. Open it with a `query`
-// (e.g. "G to C chord change beginner guitar") and an optional `title` label.
+// Pull an 11-char video id out of any YouTube URL (watch, youtu.be, embed,
+// shorts). Returns null for a plain search phrase.
+function extractYouTubeId(s) {
+  const m = String(s || '').match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+// A reusable bottom-sheet that plays YouTube inline without leaving Prova. Open
+// it with a `query` that's EITHER a search phrase ("G to C chord change beginner
+// guitar") — it searches and shows results — OR a direct YouTube URL, in which
+// case it plays that exact video. `title` is an optional header label.
 export default function YouTubePlayerModal({ visible, query, title, onClose }) {
   const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
@@ -23,6 +31,13 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
     setError(null);
     setResults([]);
     setPlayingId(null);
+    // A direct YouTube link → just play that video, no search needed.
+    const directId = extractYouTubeId(q);
+    if (directId) {
+      setPlayingId(directId);
+      setLoading(false);
+      return;
+    }
     try {
       const { results } = await searchYouTube(q, 6);
       setResults(results);

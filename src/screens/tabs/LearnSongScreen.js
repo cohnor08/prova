@@ -10,6 +10,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { generateSongPlan } from '../../lib/claude';
 import { POINTS_PER_MIN } from '../../lib/score';
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 
 const ytUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 const stepPoints = (seconds) => Math.round((seconds / 60) * POINTS_PER_MIN);
@@ -48,6 +49,7 @@ export default function LearnSongScreen({ navigation }) {
   // One active practice timer across the whole screen.
   const [active, setActive] = useState(null); // { songKey, stepId, seconds }
   const tickRef = useRef(null);
+  const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
 
   const load = useCallback(async () => {
     const uid = auth.currentUser?.uid;
@@ -296,7 +298,7 @@ export default function LearnSongScreen({ navigation }) {
                                     </View>
                                   ))}
                                   {!!st.yt && (
-                                    <TouchableOpacity style={styles.watchRow} onPress={() => Linking.openURL(ytUrl(st.yt))}>
+                                    <TouchableOpacity style={styles.watchRow} onPress={() => setWatch({ query: st.yt, title: st.title })}>
                                       <Ionicons name="logo-youtube" size={16} color={COLORS.error} />
                                       <Text style={styles.watchText}>Watch a tutorial</Text>
                                     </TouchableOpacity>
@@ -412,6 +414,13 @@ export default function LearnSongScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <YouTubePlayerModal
+        visible={!!watch}
+        query={watch?.query}
+        title={watch?.title || 'Watch a tutorial'}
+        onClose={() => setWatch(null)}
+      />
     </SafeAreaView>
   );
 }

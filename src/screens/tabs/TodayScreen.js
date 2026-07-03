@@ -519,6 +519,7 @@ export default function TodayScreen({ navigation }) {
   const [dayReviewOpen, setDayReviewOpen] = useState(false); // end-of-day "how did today go?" pop-up
   const [dayRatings, setDayRatings] = useState({});      // { sessionId: difficulty } — uncommitted until Submit
   const [dayNote, setDayNote] = useState('');
+  const [taskWatch, setTaskWatch] = useState(null);      // teacher-task "Watch" → in-app player (phrase or URL)
   const [userData, setUserData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(TODAY_NAME);
   const [expandedTask, setExpandedTask] = useState(null);
@@ -1031,10 +1032,7 @@ export default function TodayScreen({ navigation }) {
   const openTaskLink = (value) => {
     const s = (value || '').trim();
     if (!s) return;
-    const url = /^https?:\/\//i.test(s)
-      ? s
-      : `https://www.youtube.com/results?search_query=${encodeURIComponent(s)}`;
-    Linking.openURL(url).catch(() => {});
+    setTaskWatch(s); // in-app player handles both a YouTube URL and a search phrase
   };
 
   // Open a teacher-assigned song in the Songs library, pinned to the top there.
@@ -1506,6 +1504,13 @@ export default function TodayScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <YouTubePlayerModal
+        visible={!!taskWatch}
+        query={taskWatch}
+        title="Watch"
+        onClose={() => setTaskWatch(null)}
+      />
 
       {/* End-of-day review — rate every task in one place, then Submit */}
       <Modal visible={dayReviewOpen} transparent animationType="slide" onRequestClose={skipDayReview}>

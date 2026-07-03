@@ -12,6 +12,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING } from '../../constants/theme';
 
 // Friendly label for a stored ISO due date.
@@ -59,6 +60,7 @@ export default function ResourceLibraryScreen() {
   const [newUrl, setNewUrl] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newInstrument, setNewInstrument] = useState('Guitar'); // where this resource is filed
+  const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
   const [newLevel, setNewLevel] = useState('Beginner');
   const [resSearch, setResSearch] = useState('');       // search across the teacher's own resources
   const [expandedRes, setExpandedRes] = useState(null);
@@ -269,7 +271,7 @@ export default function ResourceLibraryScreen() {
                   {open && (
                     <>
                       {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
-                      <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
+                      <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.7}>
                         <Ionicons name="logo-youtube" size={15} color="#FF0000" />
                         <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
                       </TouchableOpacity>
@@ -351,7 +353,7 @@ export default function ResourceLibraryScreen() {
                         <View key={i} style={styles.libTask}>
                           <Text style={styles.itemDetail}>{task.text}</Text>
                           {!!task.yt && (
-                            <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(task.yt)} activeOpacity={0.7}>
+                            <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.7}>
                               <Ionicons name="logo-youtube" size={15} color="#FF0000" />
                               <Text style={styles.ytText} numberOfLines={1}>Watch: {task.yt}</Text>
                             </TouchableOpacity>
@@ -503,6 +505,13 @@ export default function ResourceLibraryScreen() {
           )}
         </View>
       </Modal>
+
+      <YouTubePlayerModal
+        visible={!!watch}
+        query={watch?.query}
+        title={watch?.title || 'Watch'}
+        onClose={() => setWatch(null)}
+      />
     </SafeAreaView>
   );
 }
