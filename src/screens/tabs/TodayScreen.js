@@ -1088,6 +1088,8 @@ export default function TodayScreen({ navigation }) {
   // "no plan at all" from a genuine rest day inside an existing plan.
   const hasPlan = !!plan && Object.keys(plan).length > 0;
   const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
+  // Minutes practised today = summed duration of the sessions completed so far.
+  const practisedMins = sessions.reduce((s, x) => s + (completedIds.includes(x.id) ? x.duration : 0), 0);
   const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
   // Show the "review today" entry point once every session is done but the day
   // hasn't been closed out yet (covers re-opening + finishing in the Practice tab).
@@ -1191,14 +1193,16 @@ export default function TodayScreen({ navigation }) {
           <View style={styles.summaryCard}>
             <View style={styles.summaryStats}>
               {[
-                { value: totalMins, label: 'MINUTES' },
+                { value: practisedMins, suffix: ` /${totalMins}`, label: 'MINUTES' },
                 { value: sessions.length, label: 'EXERCISES' },
                 { value: completedIds.length, label: 'DONE' },
               ].map((stat, i) => (
                 <React.Fragment key={stat.label}>
                   {i > 0 && <View style={styles.summaryDivider} />}
                   <View style={styles.summaryStat}>
-                    <Text style={styles.summaryStatValue}>{stat.value}</Text>
+                    <Text style={styles.summaryStatValue}>
+                      {stat.value}{stat.suffix ? <Text style={styles.summaryStatSuffix}>{stat.suffix}</Text> : null}
+                    </Text>
                     <Text style={styles.summaryStatLabel}>{stat.label}</Text>
                   </View>
                 </React.Fragment>
@@ -1222,7 +1226,7 @@ export default function TodayScreen({ navigation }) {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.challengeKicker}>DAILY CHALLENGE</Text>
-                <Text style={styles.challengeTitle} numberOfLines={challengeOpen ? undefined : 1}>{dailyChallenge.title}</Text>
+                <Text style={styles.challengeTitle} numberOfLines={challengeOpen ? undefined : 2}>{dailyChallenge.title}</Text>
               </View>
               {challengeDoneToday
                 ? <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
@@ -1639,6 +1643,7 @@ const styles = StyleSheet.create({
   summaryStat: { flex: 1, alignItems: 'center' },
   summaryDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
   summaryStatValue: { color: COLORS.text, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  summaryStatSuffix: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   summaryStatLabel: { color: COLORS.textMuted, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginTop: 3 },
   progressBar: { height: 8, backgroundColor: COLORS.border, borderRadius: 4, marginBottom: SPACING.sm, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },

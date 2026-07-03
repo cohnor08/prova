@@ -172,6 +172,19 @@ export default function LearnSongScreen({ navigation }) {
     if (gained > 0) Alert.alert('Step complete', `+${gained} Prova points 🎸`);
   };
 
+  // Pause / resume the running step timer (count-up keeps its banked seconds).
+  const toggleStepTimer = () => {
+    if (!active) return;
+    if (active.paused) {
+      clearInterval(tickRef.current);
+      tickRef.current = setInterval(() => setActive((x) => (x ? { ...x, seconds: x.seconds + 1 } : x)), 1000);
+      setActive((a) => (a ? { ...a, paused: false } : a));
+    } else {
+      clearInterval(tickRef.current);
+      setActive((a) => (a ? { ...a, paused: true } : a));
+    }
+  };
+
   const toggleStepOpen = (stepKey) => {
     setOpenSteps((prev) => {
       const next = new Set(prev);
@@ -289,25 +302,28 @@ export default function LearnSongScreen({ navigation }) {
                                     </TouchableOpacity>
                                   )}
 
-                                  {isActive ? (
-                                    <View style={styles.timerRow}>
-                                      <Text style={styles.timerClock}>{fmtClock(active.seconds)}</Text>
-                                      <Text style={styles.timerPts}>+{stepPoints(active.seconds)} pts</Text>
-                                      <TouchableOpacity style={styles.timerGhost} onPress={stopStep}>
-                                        <Text style={styles.timerGhostText}>Cancel</Text>
+                                  <View style={styles.stepTimerRow}>
+                                    <Text style={styles.stepTimerText}>{fmtClock(isActive ? active.seconds : 0)}</Text>
+                                    {isActive ? (
+                                      <TouchableOpacity style={[styles.stepStartBtn, styles.stepStartBtnActive]} onPress={toggleStepTimer} activeOpacity={0.85}>
+                                        <Ionicons name={active.paused ? 'play' : 'pause'} size={14} color={COLORS.text} />
+                                        <Text style={styles.stepStartText}>{active.paused ? 'Resume' : 'Pause'}</Text>
                                       </TouchableOpacity>
-                                      <TouchableOpacity style={styles.timerDone} onPress={finishStep}>
-                                        <Text style={styles.timerDoneText}>Done</Text>
+                                    ) : (
+                                      <TouchableOpacity style={styles.stepStartBtn} onPress={() => startStep(s.songKey, st.id)} activeOpacity={0.85}>
+                                        <Ionicons name="play" size={14} color={COLORS.text} />
+                                        <Text style={styles.stepStartText}>{st.done ? 'Again' : 'Start'}</Text>
                                       </TouchableOpacity>
-                                    </View>
-                                  ) : (
-                                    <TouchableOpacity style={styles.practiceBtn} onPress={() => startStep(s.songKey, st.id)} activeOpacity={0.85}>
-                                      <View style={styles.practicePlayBox}>
-                                        <Ionicons name="play" size={13} color={COLORS.background} />
-                                      </View>
-                                      <Text style={styles.practiceBtnText}>{st.done ? 'Practice again' : 'Practice'}</Text>
+                                    )}
+                                    <TouchableOpacity
+                                      style={[styles.stepDoneBtn, !isActive && styles.stepDoneBtnLocked]}
+                                      onPress={() => isActive && finishStep()}
+                                      activeOpacity={isActive ? 0.85 : 1}
+                                    >
+                                      <Ionicons name={isActive ? 'checkmark' : 'lock-closed'} size={14} color={isActive ? COLORS.success : COLORS.textMuted} />
+                                      <Text style={[styles.stepDoneText, !isActive && styles.stepDoneTextLocked]}>Done</Text>
                                     </TouchableOpacity>
-                                  )}
+                                  </View>
                                 </>
                               )}
                             </View>
@@ -445,24 +461,16 @@ const styles = StyleSheet.create({
   watchRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   watchText: { color: COLORS.error, fontSize: 13, fontWeight: '600' },
 
-  practiceBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, alignSelf: 'flex-start',
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.primary + '55',
-    borderRadius: 10, paddingVertical: 7, paddingLeft: 7, paddingRight: 14,
-  },
-  practicePlayBox: {
-    width: 26, height: 26, borderRadius: 7, backgroundColor: COLORS.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  practiceBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-
-  timerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 10 },
-  timerClock: { color: COLORS.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  timerPts: { color: COLORS.accent, fontSize: 13, fontWeight: '700', flex: 1 },
-  timerGhost: { paddingVertical: 6, paddingHorizontal: 12 },
-  timerGhostText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  timerDone: { backgroundColor: COLORS.success, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16 },
-  timerDoneText: { color: COLORS.background, fontSize: 13, fontWeight: '700' },
+  // Step practice control — matches the Today session timer (time · Start/Pause · Done).
+  stepTimerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 10 },
+  stepTimerText: { color: COLORS.text, fontSize: 18, fontWeight: '700', minWidth: 56, fontVariant: ['tabular-nums'] },
+  stepStartBtn: { backgroundColor: COLORS.border, borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  stepStartBtnActive: { backgroundColor: COLORS.primaryDark },
+  stepStartText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  stepDoneBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  stepDoneBtnLocked: { backgroundColor: COLORS.border + '80' },
+  stepDoneText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+  stepDoneTextLocked: { color: COLORS.textMuted },
 
   removeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' },
   removeText: { color: COLORS.textSecondary, fontSize: 13 },

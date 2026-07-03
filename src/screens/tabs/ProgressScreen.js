@@ -297,6 +297,8 @@ function LineGraph({ data }) {
   }
 
   const maxMins = Math.max(...data.map(d => d.mins), 1);
+  const totalMinsSum = data.reduce((s, d) => s + d.mins, 0);
+  const fmtDur = (m) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`);
   const spacing = (CHART_W - GRAPH_PAD * 2) / (data.length - 1);
   const getX = i => GRAPH_PAD + i * spacing;
   const getY = mins => GRAPH_H - GRAPH_PAD - (mins / maxMins) * (GRAPH_H - GRAPH_PAD * 2);
@@ -348,7 +350,7 @@ function LineGraph({ data }) {
           <View style={[styles.graphLegendDot, { backgroundColor: COLORS.primary }]} />
           <Text style={styles.graphLegendText}>Practice day</Text>
         </View>
-        <Text style={styles.graphPeak}>Peak: {Math.max(...data.map(d => d.mins))} min</Text>
+        <Text style={styles.graphPeak}>{fmtDur(totalMinsSum)} total · peak {maxMins} min</Text>
       </View>
     </View>
   );
@@ -478,28 +480,14 @@ function CategoryBreakdown({ data }) {
   );
 }
 
-function LevelProgress({ level, xp }) {
-  const idx = LEVELS.indexOf(level);
-  const nextLevel = LEVELS[Math.min(idx + 1, LEVELS.length - 1)];
+function LevelProgress({ totalMins }) {
+  const mins = Math.max(0, Math.round(totalMins || 0));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
   return (
     <View style={styles.levelCard}>
-      <View style={styles.levelTop}>
-        <View>
-          <Text style={styles.levelSub}>CURRENT LEVEL</Text>
-          <Text style={styles.levelValue}>{level}</Text>
-        </View>
-        {idx < LEVELS.length - 1 && (
-          <View style={styles.nextLevelBadge}>
-            <Text style={styles.nextLevelText}>Next: {nextLevel}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.xpTrack}>
-        <View style={[styles.xpBar, { width: `${Math.min(xp * 100, 100)}%` }]} />
-      </View>
-      <Text style={styles.xpLabel}>
-        {level === 'Elite' ? 'Maximum level reached' : `${Math.round(xp * 100)}% to ${nextLevel}`}
-      </Text>
+      <Text style={styles.levelSub}>TOTAL PRACTICE</Text>
+      <Text style={styles.levelValue}>{h}h {m}m</Text>
     </View>
   );
 }
@@ -694,7 +682,6 @@ const DEFAULT_WIDGETS = [
   { id: 'leaderboard', enabled: true },
   { id: 'level', enabled: true },
   { id: 'daily', enabled: true },
-  { id: 'weekly', enabled: true },
   { id: 'heatmap', enabled: true },
   { id: 'categories', enabled: true },
   { id: 'milestones', enabled: true },
@@ -702,7 +689,7 @@ const DEFAULT_WIDGETS = [
 ];
 const WIDGET_LABELS = {
   stats: 'Stats', score: 'Prova Score', leaderboard: 'Leaderboard', level: 'Level',
-  daily: 'Daily graph', weekly: 'Weekly hours', heatmap: 'Activity graph',
+  daily: 'Daily graph', heatmap: 'Activity graph',
   categories: 'Categories', milestones: 'Milestones', goals: 'Goals',
 };
 function mergeLayout(saved) {
@@ -952,11 +939,11 @@ export default function ProgressScreen() {
             onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
           />
         );
-      case 'level': return <LevelProgress level={level} xp={xp} />;
-      case 'daily': return <LineGraph data={dailyData} />;
-      case 'weekly': return <WeeklyBarChart data={weeklyData} />;
-      case 'heatmap': return <ActivityGraph data={weeklyTrend} streak={streak} />;
-      case 'categories': return <CategoryBreakdown data={categoryData} />;
+      case 'level': return <LevelProgress totalMins={totalMins} />;
+      // Charts hide themselves until there's data, so new users don't see empty boxes.
+      case 'daily': return dailyData.some(d => d.mins > 0) ? <LineGraph data={dailyData} /> : null;
+      case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
+      case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
       case 'milestones': return <Milestones data={milestones} />;
       case 'goals':
         return userData?.goals?.length > 0 ? (
@@ -1029,6 +1016,16 @@ export default function ProgressScreen() {
           }
           return w.enabled ? <View key={w.id}>{content}</View> : null;
         })}
+
+        {!editMode && !dailyData.some(d => d.mins > 0) && (
+          <View style={styles.section}>
+            <ChartEmpty
+              icon="bar-chart-outline"
+              title="Your practice charts will appear here"
+              hint="Finish your first session and your daily activity, trend and category breakdown all fill in automatically."
+            />
+          </View>
+        )}
       </ScrollView>
 
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
@@ -1139,10 +1136,9 @@ const styles = StyleSheet.create({
   scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
 
-  levelCard: { backgroundColor: COLORS.primary + '22', borderRadius: 16, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg },
-  levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.md },
-  levelSub: { color: COLORS.primary, fontSize: 10, fontWeight: '700', letterSpacing: 2 },
-  levelValue: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
+  levelCard: { backgroundColor: COLORS.primary + '22', borderRadius: 14, paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg, borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg },
+  levelSub: { color: COLORS.primary, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
+  levelValue: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   nextLevelBadge: { backgroundColor: COLORS.primary + '33', borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
   nextLevelText: { color: COLORS.primary, fontSize: 12, fontWeight: '600' },
   xpTrack: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginBottom: SPACING.xs },

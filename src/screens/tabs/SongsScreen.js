@@ -1437,7 +1437,7 @@ export default function SongsScreen({ route, navigation }) {
             <Text style={styles.recLevelTag}>{level} · {instrument}</Text>
           </View>
           <Text style={styles.songsSub}>
-            Songs that fit a {level.toLowerCase()} {instrument.toLowerCase()} player. Tap a cover to preview, or add it to your library.
+            Songs that fit {/^[aeiou]/i.test(level || '') ? 'an' : 'a'} {level.toLowerCase()} {instrument.toLowerCase()} player. Tap a cover to preview, or add it to your library.
           </Text>
           <ScrollView
             horizontal
