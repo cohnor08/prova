@@ -222,7 +222,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
           <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
             <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
             <Text style={styles.ttTimerBtnText} numberOfLines={1}>
-              {running ? 'Pause' : elapsed > 0 ? 'Resume' : task.completed ? `Lap ×${laps + 1}` : 'Start'}
+              {running ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1847,7 +1847,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  proofAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
   proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
