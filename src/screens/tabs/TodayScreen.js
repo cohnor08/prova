@@ -268,9 +268,11 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
           </View>
         ) : (
           <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
-            {proofBusy
-              ? <ActivityIndicator size="small" color={COLORS.primary} />
-              : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
+            <View style={styles.proofAddIcon}>
+              {proofBusy
+                ? <ActivityIndicator size="small" color={COLORS.primary} />
+                : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
+            </View>
             <Text style={styles.proofAddText}>{proofBusy ? 'Uploading…' : 'Add proof of practice'}</Text>
           </TouchableOpacity>
         )
@@ -1842,7 +1844,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddIcon: { position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' },
   proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
   proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
