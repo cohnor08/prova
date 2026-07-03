@@ -1844,7 +1844,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, marginLeft: 22, marginRight: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   proofAddIcon: { position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' },
   proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
