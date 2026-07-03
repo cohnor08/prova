@@ -271,9 +271,10 @@ export default function ResourceLibraryScreen() {
                   {open && (
                     <>
                       {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
-                      <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.7}>
-                        <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                        <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
+                      <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.8}>
+                        <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                        <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
+                        <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                       </TouchableOpacity>
                       <View style={styles.resActions}>
                         <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
@@ -353,9 +354,10 @@ export default function ResourceLibraryScreen() {
                         <View key={i} style={styles.libTask}>
                           <Text style={styles.itemDetail}>{task.text}</Text>
                           {!!task.yt && (
-                            <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.7}>
-                              <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                              <Text style={styles.ytText} numberOfLines={1}>Watch: {task.yt}</Text>
+                            <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.8}>
+                              <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                              <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
+                              <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                             </TouchableOpacity>
                           )}
                           <TouchableOpacity
@@ -533,8 +535,8 @@ const styles = StyleSheet.create({
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   itemDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
-  ytRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
-  ytText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
+  ytRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm },
+  ytText: { flex: 1, color: COLORS.error, fontSize: 13, fontWeight: '600' },
   addResBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
   addResBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   emptyRes: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },

@@ -298,9 +298,10 @@ export default function LearnSongScreen({ navigation }) {
                                     </View>
                                   ))}
                                   {!!st.yt && (
-                                    <TouchableOpacity style={styles.watchRow} onPress={() => setWatch({ query: st.yt, title: st.title })}>
-                                      <Ionicons name="logo-youtube" size={16} color={COLORS.error} />
+                                    <TouchableOpacity style={styles.watchRow} onPress={() => setWatch({ query: st.yt, title: st.title })} activeOpacity={0.8}>
+                                      <Ionicons name="play-circle" size={18} color={COLORS.primary} />
                                       <Text style={styles.watchText}>Watch a tutorial</Text>
+                                      <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                                     </TouchableOpacity>
                                   )}
 
@@ -467,8 +468,8 @@ const styles = StyleSheet.create({
   taskRow: { flexDirection: 'row', marginTop: 4, paddingLeft: 4 },
   taskDot: { color: COLORS.primary, fontSize: 13, marginRight: 6 },
   taskText: { color: COLORS.text, fontSize: 13, lineHeight: 18, flex: 1 },
-  watchRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  watchText: { color: COLORS.error, fontSize: 13, fontWeight: '600' },
+  watchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 2 },
+  watchText: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: '600' },
 
   // Step practice control — matches the Today session timer (time · Start/Pause · Done).
   stepTimerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 10 },
