@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -704,6 +704,13 @@ function mergeLayout(saved) {
 // Customize-mode list: hold the grip (≡) and drag a row to reorder, tap a row to
 // preview the widget, and use the eye to show/hide it. PanResponder-based (no
 // extra deps); rows measure their own height so previews of any size reorder ok.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+// A short slide used when rows swap order mid-drag, so neighbours glide into
+// place instead of snapping.
+const REORDER_ANIM = { duration: 170, update: { type: LayoutAnimation.Types.easeInEaseOut } };
+
 const ROW_H = 56;
 function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStateChange }) {
   const [dragId, setDragId] = useState(null);
@@ -747,6 +754,7 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
           const arr = [...order];
           const [it] = arr.splice(curIndex, 1);
           arr.splice(target, 0, it);
+          LayoutAnimation.configureNext(REORDER_ANIM); // slide neighbours smoothly
           onReorder(arr);
           pan.setValue(desiredTop - (offsetsOf(arr)[id] || 0));
         } else {
