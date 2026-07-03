@@ -202,7 +202,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             )}
             {earnedSoFar > 0 && (
               <Text style={styles.teacherEarned}>
-                {formatScore(earnedSoFar)} pts earned{laps > 1 ? ` (${laps} laps)` : ''}
+                {formatScore(earnedSoFar)} pts earned
               </Text>
             )}
           </View>
@@ -212,13 +212,8 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
 
       {expanded && (
       <View style={styles.ttTimer}>
-        {target > 0 && (
-          <View style={styles.ttTimerBarBg}>
-            <View style={[styles.ttTimerBarFill, { width: `${Math.min(1, elapsed / target) * 100}%` }]} />
-          </View>
-        )}
         <View style={styles.ttRow}>
-          <Text style={styles.ttTimerText}>{fmt(elapsed)}{target > 0 ? ` / ${fmt(target)}` : ''}</Text>
+          <Text style={styles.ttTimerText}>{fmt(elapsed)}</Text>
           <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
             <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
             <Text style={styles.ttTimerBtnText} numberOfLines={1}>
