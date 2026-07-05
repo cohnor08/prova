@@ -89,7 +89,7 @@ export default function LibraryScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets>
         {/* Title */}
         <Text style={styles.pageTitle}>Lesson Library</Text>
         <Text style={styles.pageSub}>

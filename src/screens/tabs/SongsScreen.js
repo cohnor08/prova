@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -1182,7 +1183,7 @@ export default function SongsScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* ── Learn a song (paid: personal / legacy; free students upgrade) ── */}
         {role !== 'student' && (
           <TouchableOpacity
@@ -1514,7 +1515,7 @@ export default function SongsScreen({ route, navigation }) {
         animationType="slide"
         onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
       >
-        <View style={styles.playerBackdrop}>
+        <KeyboardAvoidingView style={styles.playerBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             onPress={() => !generatingSetlist && setShowGigForm(false)}
@@ -1608,7 +1609,7 @@ export default function SongsScreen({ route, navigation }) {
               </TouchableOpacity>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Setlist detail — the ordered songs, each previewable + openable */}

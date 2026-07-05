@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, Alert, ActivityIndicator, Linking, Keyboard,
+  TextInput, Modal, Alert, ActivityIndicator, Linking, Keyboard, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -349,7 +349,7 @@ export default function LearnSongScreen({ navigation }) {
 
       {/* Add / generate modal */}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => !generating && setAddOpen(false)}>
-        <View style={styles.modalWrap}>
+        <KeyboardAvoidingView style={styles.modalWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>Learn a song</Text>
@@ -365,7 +365,7 @@ export default function LearnSongScreen({ navigation }) {
                 <Text style={styles.genHint}>This can take a few seconds.</Text>
               </View>
             ) : (
-              <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+              <ScrollView keyboardShouldPersistTaps="handled">
                 <Text style={styles.fieldLabel}>Search your songs & setlists</Text>
                 <TextInput
                   style={styles.input}
@@ -413,7 +413,7 @@ export default function LearnSongScreen({ navigation }) {
               </ScrollView>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <YouTubePlayerModal
