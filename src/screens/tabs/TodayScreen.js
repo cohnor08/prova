@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput,
+  ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -949,18 +949,25 @@ export default function TodayScreen({ navigation }) {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     const pts = teacherTaskPoints(lapSeconds);
-    const next = (userData?.assignedTasks || []).map((t) =>
-      t.id === taskId
-        ? {
-            ...t,
-            completed: true,
-            completedAt: new Date().toISOString(),
-            practicedSec: (t.practicedSec || 0) + Math.round(lapSeconds),
-            pointsEarned: (t.pointsEarned || 0) + pts,
-            timesCompleted: (t.timesCompleted || 0) + 1,
-          }
-        : t
-    );
+    let finished = false;
+    const next = (userData?.assignedTasks || []).map((t) => {
+      if (t.id !== taskId) return t;
+      const target = (t.durationMin || 0) * 60;
+      const practicedSec = (t.practicedSec || 0) + Math.round(lapSeconds);
+      // A timed task is "done" once its set time has been practised — it then
+      // drops off Today (kept in the doc as completed so the teacher still sees
+      // it). A task with no timer never auto-completes: it stays as open-ended
+      // practice the student can repeat.
+      finished = target > 0 && practicedSec >= target;
+      return {
+        ...t,
+        completed: finished,
+        completedAt: finished ? new Date().toISOString() : (t.completedAt || null),
+        practicedSec,
+        pointsEarned: (t.pointsEarned || 0) + pts,
+        timesCompleted: (t.timesCompleted || 0) + 1,
+      };
+    });
     const newScore = displayScore(userData) + pts;
     setUserData((p) => ({ ...p, assignedTasks: next, provaScore: newScore }));
     try {
@@ -968,7 +975,11 @@ export default function TodayScreen({ navigation }) {
     } catch (e) {
       Alert.alert('Error', "Couldn't save. Please try again.");
     }
-    if (pts > 0) Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+    if (finished) {
+      Alert.alert('Task complete! ✅', `${pts > 0 ? `+${formatScore(pts)} Prova points 🎸\n` : ''}Nice work — that one's off your list.`);
+    } else if (pts > 0) {
+      Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+    }
   };
 
   // Record/pick a short clip as proof a teacher task was practiced, upload it,
@@ -1068,9 +1079,11 @@ export default function TodayScreen({ navigation }) {
   const assignedTasks = userData?.assignedTasks || [];
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
-  const soloTasks = assignedTasks.filter((t) => !t.classId);
+  // Completed tasks disappear from the student's list to keep it from piling up
+  // (they stay in the doc as `completed` for the teacher's dashboard/proof).
+  const soloTasks = assignedTasks.filter((t) => !t.classId && !t.completed);
   const classGroups = [];
-  assignedTasks.filter((t) => t.classId).forEach((t) => {
+  assignedTasks.filter((t) => t.classId && !t.completed).forEach((t) => {
     const key = t.className || 'Class';
     let g = classGroups.find((x) => x.key === key);
     if (!g) { g = { key, name: key, tasks: [] }; classGroups.push(g); }
@@ -1308,7 +1321,7 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
                 {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-                <Text style={styles.classGroupSub}>{soloTasks.filter((t) => t.completed).length}/{soloTasks.length} done</Text>
+                <Text style={styles.classGroupSub}>{soloTasks.length} to do</Text>
                 <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             ) : (
@@ -1373,14 +1386,13 @@ export default function TodayScreen({ navigation }) {
         {/* Class-assigned tasks, grouped per class with a collapsible header */}
         {isToday && classGroups.map((g) => {
           const collapsed = collapsedGroups.has(g.key);
-          const doneCount = g.tasks.filter((t) => t.completed).length;
           return (
             <View key={g.key} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
                 <Ionicons name="people" size={16} color={COLORS.accent || COLORS.primary} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.classGroupKicker} numberOfLines={1}>{g.name.toUpperCase()}</Text>
-                  <Text style={styles.classGroupSub}>{doneCount}/{g.tasks.length} done</Text>
+                  <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
                 </View>
                 <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
@@ -1510,7 +1522,7 @@ export default function TodayScreen({ navigation }) {
 
       {/* End-of-day review — rate every task in one place, then Submit */}
       <Modal visible={dayReviewOpen} transparent animationType="slide" onRequestClose={skipDayReview}>
-        <View style={styles.drBackdrop}>
+        <KeyboardAvoidingView style={styles.drBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.drSheet}>
             <View style={styles.drHeader}>
               <View style={{ flex: 1 }}>
@@ -1562,7 +1574,7 @@ export default function TodayScreen({ navigation }) {
               <Text style={styles.drSkipText}>Skip for today</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Week in review — preview the adapted plan and approve or keep current */}
