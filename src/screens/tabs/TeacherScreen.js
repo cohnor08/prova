@@ -245,7 +245,7 @@ function PaywallScreen({ onUnlock }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.title}>Teacher Mode</Text>
         <Text style={styles.subtitle}>See what your dashboard looks like</Text>
 
@@ -734,6 +734,38 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
     });
   };
 
+  // Assign the song directly as a single task, skipping the AI step-by-step plan
+  // (no generation, no weekly-limit hit) — just "learn this song".
+  const assignSongOnly = async () => {
+    if (!student || !title.trim()) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
+    Keyboard.dismiss();
+    setAssigning(true);
+    try {
+      const t = title.trim();
+      const a = artist.trim();
+      const task = {
+        id: `${Date.now()}_song`,
+        title: `Learn: ${t}${a ? ` — ${a}` : ''}`,
+        description: '',
+        youtube: `${t}${a ? ` ${a}` : ''} ${instrument} tutorial`,
+        song: t,
+        dueDate: null,
+        durationMin: 0, // open-ended — a song to learn isn't a one-sitting task
+        completed: false,
+        assignedAt: new Date().toISOString(),
+        teacherUid: auth.currentUser.uid,
+      };
+      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
+      onAssigned && onAssigned();
+      Alert.alert('Assigned', `"${t}" assigned to learn.`);
+      close();
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const assign = async () => {
     if (!student || !plan) return;
     const steps = (plan.steps || []).filter((s) => picked.has(s.id));
@@ -768,7 +800,7 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => !assigning && !generating && close()}>
-      <View style={styles.songModalWrap}>
+      <KeyboardAvoidingView style={styles.songModalWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.songModalCard}>
           <View style={styles.songModalHead}>
             <Text style={styles.songModalTitle}>Assign a song to learn</Text>
@@ -783,7 +815,7 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
               <Text style={styles.songGenText}>Building the step-by-step plan…</Text>
             </View>
           ) : !plan ? (
-            <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.songFieldLabel}>Song title</Text>
               <TextInput style={styles.songInput} placeholder="e.g. Wonderwall" placeholderTextColor={COLORS.textMuted} value={title} onChangeText={setTitle} />
               <Text style={styles.songFieldLabel}>Artist (optional)</Text>
@@ -791,6 +823,9 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
               <Text style={styles.songCapHint}>Plan is built for {instrument.toLowerCase()} (this student's instrument). 5 new song plans per week — reused songs are free.</Text>
               <TouchableOpacity style={[styles.songGenBtn, !title.trim() && styles.songGenBtnOff]} disabled={!title.trim()} onPress={generate}>
                 <Text style={styles.songGenBtnText}>Build the plan</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.songPlainBtn, !title.trim() && { opacity: 0.5 }]} disabled={!title.trim()} onPress={assignSongOnly}>
+                <Text style={styles.songPlainBtnText}>Just assign the song (no plan)</Text>
               </TouchableOpacity>
             </ScrollView>
           ) : (
@@ -823,7 +858,7 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -840,7 +875,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   const [song, setSong] = useState('');
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
-  const [durationMin, setDurationMin] = useState(0); // 0 = no timer
+  const [durationMin, setDurationMin] = useState(10); // default 10-min timer; clear it for an open-ended (no-limit) task
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
@@ -849,7 +884,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong('');
-    setDueDate(null); setDurationMin(0); setJustAdded(0); setShowTemplates(false);
+    setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false);
     onClose();
   };
 
@@ -957,7 +992,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
         )
       );
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(0);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(10);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -1435,6 +1470,8 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null); // class being renamed
+  const [renameText, setRenameText] = useState('');
   const [addToClass, setAddToClass] = useState(null); // class we're adding students to
   const [studentSearch, setStudentSearch] = useState('');
   const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
@@ -1551,6 +1588,25 @@ function TeacherDashboard() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => saveClasses(classes.filter((c) => c.id !== id)) },
     ]);
+  };
+
+  // Rename a class after it's been made. Also relabels the `className` stored on
+  // every member's existing class tasks so the student's Today groups update too.
+  const renameClass = async (klass, rawName) => {
+    const name = (rawName || '').trim();
+    if (!klass || !name || name === klass.name) { setRenameTarget(null); return; }
+    saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, name } : c)));
+    try {
+      await Promise.all((klass.studentUids || []).map((uid) => {
+        const s = students.find((x) => x.uid === uid);
+        const tasks = s?.assignedTasks || [];
+        if (!tasks.some((t) => t.classId === klass.id)) return null;
+        const next = tasks.map((t) => (t.classId === klass.id ? { ...t, className: name } : t));
+        setStudents((prev) => prev.map((x) => (x.uid === uid ? { ...x, assignedTasks: next } : x)));
+        return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+      }));
+    } catch (e) { /* class renamed locally; relabeling old tasks is best-effort */ }
+    setRenameTarget(null);
   };
 
   // Add students to an existing class. If `assignExisting`, back-assign every
@@ -2142,6 +2198,9 @@ Sent from Prova`;
                           <Text style={styles.classCardMeta}>{members.length} student{members.length === 1 ? '' : 's'}</Text>
                         </View>
                       </TouchableOpacity>
+                      <TouchableOpacity onPress={() => { setRenameTarget(c); setRenameText(c.name); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: 14 }}>
+                        <Ionicons name="pencil" size={17} color={COLORS.textMuted} />
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => deleteClass(c.id, c.name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Ionicons name="trash-outline" size={18} color={COLORS.error} />
                       </TouchableOpacity>
@@ -2444,6 +2503,32 @@ Sent from Prova`;
         onClose={() => setShowCreateClass(false)}
         onCreate={createClass}
       />
+
+      <Modal visible={!!renameTarget} transparent animationType="slide" onRequestClose={() => setRenameTarget(null)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Rename class</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Class name"
+                placeholderTextColor={COLORS.textMuted}
+                value={renameText}
+                onChangeText={setRenameText}
+                autoFocus
+              />
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setRenameTarget(null)}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalAssignBtn, !renameText.trim() && { opacity: 0.5 }]} onPress={() => renameClass(renameTarget, renameText)}>
+                  <Text style={styles.modalAssignText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <CreateGroupChatModal
         visible={showCreateGroup}
@@ -2838,6 +2923,8 @@ const styles = StyleSheet.create({
   songGenBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm },
   songGenBtnOff: { opacity: 0.4 },
   songGenBtnText: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
+  songPlainBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm },
+  songPlainBtnText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   songGenBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
   songGenText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
   songPlanHeading: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
