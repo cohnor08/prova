@@ -343,12 +343,27 @@ export default function PracticeScreen({ route, navigation }) {
     }
   };
 
+  // Soft glow pulse on the task card when the student arrives from Today, so
+  // they know this is the one to do.
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const pulseGlow = () => {
+    glowAnim.setValue(0);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
+      ]),
+      { iterations: 1 },
+    ).start();
+  };
+
   // When navigated from Today with a specific session, snap to it. Clear the
   // param afterwards so the silent refresh-on-focus loader doesn't lose it.
   useEffect(() => {
     if (route?.params?.activeSession) {
       setActiveSession(route.params.activeSession);
       navigation.setParams({ activeSession: undefined });
+      pulseGlow();
     }
   }, [route?.params?.activeSession]);
 
@@ -714,7 +729,19 @@ export default function PracticeScreen({ route, navigation }) {
             )}
 
             {activeSession && (
-              <View style={[styles.taskCard, { borderLeftColor: categoryColor }]}>
+              <Animated.View
+                style={[
+                  styles.taskCard,
+                  { borderLeftColor: categoryColor },
+                  {
+                    borderColor: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [COLORS.border, categoryColor] }),
+                    shadowColor: categoryColor,
+                    shadowOpacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] }),
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 0 },
+                  },
+                ]}
+              >
                 <View style={styles.taskCardTop}>
                   <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
                     <Text style={[styles.categoryText, { color: categoryColor }]}>
@@ -775,7 +802,7 @@ export default function PracticeScreen({ route, navigation }) {
                     />
                   </View>
                 </View>
-              </View>
+              </Animated.View>
             )}
           </>
         )}

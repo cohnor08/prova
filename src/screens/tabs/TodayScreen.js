@@ -171,15 +171,18 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
+  // Minutes already banked on earlier laps count toward the target too.
+  const prior = task.practicedSec || 0;
+
   // Pause at the target as a natural stopping point — they can bank or keep going.
   useEffect(() => {
-    if (target > 0 && elapsed >= target && running) setRunning(false);
-  }, [elapsed, target, running]);
+    if (target > 0 && prior + elapsed >= target && running) setRunning(false);
+  }, [elapsed, target, running, prior]);
 
   const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   const due = assignedDueLabel(task.dueDate);
   const lapPts = teacherTaskPoints(elapsed);
-  const reachedTarget = target > 0 && elapsed >= target;
+  const reachedTarget = target > 0 && prior + elapsed >= target;
   const earnedSoFar = task.pointsEarned || 0;
   const laps = task.timesCompleted || 0;
 
@@ -207,33 +210,13 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             )}
           </View>
         </TouchableOpacity>
+        {!task.completed && target > 0 && (
+          <Text style={styles.ttDurationLabel}>{task.durationMin} min</Text>
+        )}
         {task.completed && <Ionicons name="checkmark-circle" size={22} color={COLORS.success} style={{ marginLeft: 6 }} />}
       </View>
 
-      {expanded && (
-      <View style={styles.ttTimer}>
-        <View style={styles.ttRow}>
-          <Text style={styles.ttTimerText}>{fmt(elapsed)}</Text>
-          <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
-            <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
-            <Text style={styles.ttTimerBtnText} numberOfLines={1}>
-              {running ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
-            onPress={bank}
-            activeOpacity={elapsed > 0 ? 0.85 : 1}
-          >
-            <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]} numberOfLines={1}>
-              {reachedTarget ? 'Done' : 'Bank'}
-            </Text>
-          </TouchableOpacity>
-          {elapsed > 0 && <Text style={styles.ttLapPts}>+{lapPts}</Text>}
-        </View>
-      </View>
-      )}
-
+      {/* Content first — the student reads what to do, then the timer sits at the bottom. */}
       {expanded && !!task.description && <Text style={styles.teacherTaskDesc}>{task.description}</Text>}
       {expanded && !!task.youtube && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.8}>
@@ -245,7 +228,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
       {expanded && !!task.song && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
           <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
-          <Text style={styles.teacherTaskLinkText} numberOfLines={1}>Song: {task.song}</Text>
+          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskSongText]} numberOfLines={1}>{task.song}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -276,6 +259,43 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             <Text style={styles.proofAddText}>{proofBusy ? 'Uploading…' : 'Add proof of practice'}</Text>
           </TouchableOpacity>
         )
+      )}
+
+      {/* Timer footer — pinned to the bottom of the expanded card. */}
+      {expanded && (
+        <View style={styles.ttTimer}>
+          <View style={styles.ttRow}>
+            {/* Left column absorbs the changing text so the buttons never move.
+                Timed tasks count DOWN the remaining time; open-ended ones are a
+                count-up stopwatch. */}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.ttTimerText}>
+                {target > 0 ? fmt(Math.max(0, target - prior - elapsed)) : fmt(elapsed)}
+              </Text>
+              {elapsed > 0 && (
+                <Text style={styles.ttTimerTarget} numberOfLines={1}>
+                  <Text style={styles.ttLapPts}>+{lapPts} pts</Text>
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
+              <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
+              <Text style={styles.ttTimerBtnText} numberOfLines={1}>
+                {running ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
+              onPress={bank}
+              activeOpacity={elapsed > 0 ? 0.85 : 1}
+            >
+              <Ionicons name="checkmark" size={14} color={elapsed > 0 ? COLORS.success : COLORS.textMuted} />
+              <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]} numberOfLines={1}>
+                {reachedTarget ? 'Done' : 'Bank'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -1313,25 +1333,17 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
-        {/* One-to-one tasks from the teacher (collapsible when there are 3+) */}
+        {/* One-to-one tasks from the teacher (collapsible, like the class cards) */}
         {isToday && (soloTasks.length > 0 || nextLesson || lastAttended || userData?.teacherUid) && (
           <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
-            {soloTasks.length >= 3 ? (
-              <TouchableOpacity style={styles.teacherHeader} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
-                <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
-                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-                <Text style={styles.classGroupSub}>{soloTasks.length} to do</Text>
-                <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.teacherHeader}>
-                <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
-                {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-              </View>
-            )}
-            {nextLesson && (
+            <TouchableOpacity style={[styles.teacherHeader, !soloOpen && { marginBottom: 0 }]} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
+              <Ionicons name="school" size={16} color={COLORS.primary} />
+              <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
+              {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
+              {soloTasks.length > 0 && <Text style={styles.classGroupSub}>{soloTasks.length} to do</Text>}
+              <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+            {soloOpen && nextLesson && (
               <TouchableOpacity
                 style={styles.lessonRow}
                 activeOpacity={0.7}
@@ -1348,7 +1360,7 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
-            {lastAttended && (
+            {soloOpen && lastAttended && (
               <TouchableOpacity
                 style={styles.lessonRow}
                 activeOpacity={0.7}
@@ -1366,7 +1378,7 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
-            {(soloTasks.length < 3 || soloOpen) && soloTasks.map((t) => (
+            {soloOpen && soloTasks.map((t) => (
               <TeacherTaskCard
                 key={t.id}
                 task={t}
@@ -1693,7 +1705,7 @@ const styles = StyleSheet.create({
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
-  teacherTask: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  teacherTask: { paddingVertical: SPACING.sm },
   teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
@@ -1702,23 +1714,24 @@ const styles = StyleSheet.create({
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
   teacherTaskWatchText: { flex: 1, color: COLORS.primary, fontWeight: '600', textDecorationLine: 'none' },
+  teacherTaskSongText: { flex: 1, color: COLORS.text, fontWeight: '600', textDecorationLine: 'none' },
   teacherDue: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 },
   teacherDueOverdue: { color: COLORS.error },
   teacherDoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   teacherDoneTextLocked: { color: COLORS.textMuted },
-  ttTimer: { marginLeft: 22, marginTop: SPACING.sm },
-  ttTimerBarBg: { height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' },
-  ttTimerBarFill: { height: 4, borderRadius: 2, backgroundColor: COLORS.primary },
-  ttRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 6 },
-  ttTimerText: { color: COLORS.text, fontSize: 18, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  ttLapPts: { flex: 1, textAlign: 'right', color: COLORS.accent, fontSize: 13, fontWeight: '700' },
-  ttTimerBtn: { backgroundColor: COLORS.border, borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  ttTimerBtnActive: { backgroundColor: COLORS.primaryDark },
-  ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
-  ttBankBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  ttBankBtnDim: { backgroundColor: COLORS.border + '80' },
+  ttTimer: { marginLeft: 22, marginTop: SPACING.md },
+  ttRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  ttTimerText: { color: COLORS.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  ttTimerTarget: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
+  ttDurationLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 6 },
+  ttLapPts: { color: COLORS.accent, fontSize: 13, fontWeight: '800' },
+  ttTimerBtn: { backgroundColor: COLORS.primaryDark, borderRadius: 999, width: 104, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ttTimerBtnActive: { backgroundColor: COLORS.border },
+  ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  ttBankBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 999, width: 76, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ttBankBtnDim: { backgroundColor: COLORS.card },
   ttBankBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   ttBankBtnTextDim: { color: COLORS.textMuted },
   teacherEarned: { color: COLORS.success, fontSize: 11, fontWeight: '700', marginTop: 2 },

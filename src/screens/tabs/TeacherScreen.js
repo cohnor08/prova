@@ -151,6 +151,16 @@ function taskDueLabel(due) {
   return { text: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
 }
 
+// "45s" / "12m" / "1h 05m" — how long a student has practiced a task.
+function fmtPractised(sec) {
+  const s = Math.round(sec || 0);
+  if (s <= 0) return null;
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
 function getStudentStatus(student) {
   if (!student.lastSessionDate) {
     return { text: 'No sessions yet', color: COLORS.textMuted };
@@ -2091,6 +2101,9 @@ Sent from Prova`;
                                   {t.title}
                                 </Text>
                               </TouchableOpacity>
+                              {fmtPractised(t.practicedSec) && (
+                                <Text style={styles.miniPractised}>{fmtPractised(t.practicedSec)}</Text>
+                              )}
                               {!t.completed && (() => {
                                 const d = taskDueLabel(t.dueDate);
                                 return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
@@ -2178,9 +2191,9 @@ Sent from Prova`;
                 const groupMap = {};
                 members.forEach((m) => (m.assignedTasks || []).filter((t) => t.classId === c.id).forEach((t) => {
                   const key = `${t.assignedAt}__${t.title}`;
-                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0, points: 0 };
+                  if (!groupMap[key]) groupMap[key] = { key, title: t.title, assignedAt: t.assignedAt, count: 0, done: 0, sec: 0 };
                   groupMap[key].count += 1;
-                  groupMap[key].points += (t.pointsEarned || 0);
+                  groupMap[key].sec += (t.practicedSec || 0);
                   if (t.completed) groupMap[key].done += 1;
                 }));
                 const classGroups = Object.values(groupMap).sort((a, b) => (b.assignedAt || '').localeCompare(a.assignedAt || ''));
@@ -2231,7 +2244,7 @@ Sent from Prova`;
                                 onPress={() => setClassView('effort')}
                                 activeOpacity={0.8}
                               >
-                                <Text style={[styles.classViewPillText, classView === 'effort' && styles.classViewPillTextActive]}>Class pts</Text>
+                                <Text style={[styles.classViewPillText, classView === 'effort' && styles.classViewPillTextActive]}>Practice time</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={[styles.classViewPill, classView === 'leaderboard' && styles.classViewPillActive]}
@@ -2250,7 +2263,6 @@ Sent from Prova`;
                                     {classGroups.map((g) => (
                                       <View key={g.key} style={styles.classGroupRow}>
                                         <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
-                                        {g.points > 0 && <Text style={styles.classGroupPts}>{g.points.toLocaleString()} pts</Text>}
                                         <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
                                         <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                           <Ionicons name="trash-outline" size={16} color={COLORS.error} />
@@ -2262,7 +2274,7 @@ Sent from Prova`;
                                 {members.map((m) => {
                                   const mt = (m.assignedTasks || []).filter((t) => t.classId === c.id);
                                   const done = mt.filter((t) => t.completed).length;
-                                  const mPts = mt.reduce((sum, t) => sum + (t.pointsEarned || 0), 0);
+                                  const mSec = mt.reduce((sum, t) => sum + (t.practicedSec || 0), 0);
                                   const sKey = `${c.id}_${m.uid}`;
                                   const sOpen = openStudents.has(sKey);
                                   return (
@@ -2270,7 +2282,7 @@ Sent from Prova`;
                                       <TouchableOpacity style={styles.classMemberRow} onPress={() => toggleStudent(sKey)} activeOpacity={0.7}>
                                         <Ionicons name={sOpen ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
                                         <Text style={styles.classMemberName} numberOfLines={1}>{displayName(m)}</Text>
-                                        {mPts > 0 && <Text style={styles.classMemberPts}>{mPts.toLocaleString()} pts</Text>}
+                                        {fmtPractised(mSec) && <Text style={styles.classMemberPts}>{fmtPractised(mSec)}</Text>}
                                         <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
                                           {mt.length ? `${done}/${mt.length}` : '—'}
                                         </Text>
@@ -2294,6 +2306,9 @@ Sent from Prova`;
                                             >
                                               {t.title}
                                             </Text>
+                                            {fmtPractised(t.practicedSec) && (
+                                              <Text style={styles.miniPractised}>{fmtPractised(t.practicedSec)}</Text>
+                                            )}
                                             <TouchableOpacity onPress={() => removeAssignedTask(m.uid, t.id, t.title)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                                               <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
                                             </TouchableOpacity>
@@ -2305,28 +2320,27 @@ Sent from Prova`;
                                 })}
                               </>
                             ) : classView === 'effort' ? (
-                              // Points each student has banked on THIS class's
-                              // assignments (partial credit + repeats) — the
-                              // assignment scoreboard, mirroring the student view.
+                              // Time each student has spent practicing THIS
+                              // class's assignments — the effort board.
                               (() => {
                                 const ranked = [...members]
                                   .map((m) => ({
                                     m,
-                                    pts: (m.assignedTasks || [])
+                                    sec: (m.assignedTasks || [])
                                       .filter((t) => t.classId === c.id)
-                                      .reduce((sum, t) => sum + (t.pointsEarned || 0), 0),
+                                      .reduce((sum, t) => sum + (t.practicedSec || 0), 0),
                                   }))
-                                  .sort((a, b) => b.pts - a.pts);
-                                if (ranked.every((r) => r.pts === 0)) {
-                                  return <Text style={styles.classMemberEmpty}>No points yet — students earn them by practicing the class tasks.</Text>;
+                                  .sort((a, b) => b.sec - a.sec);
+                                if (ranked.every((r) => r.sec === 0)) {
+                                  return <Text style={styles.classMemberEmpty}>No practice yet — time shows up as students work on the class tasks.</Text>;
                                 }
-                                return ranked.map(({ m, pts }, i) => {
+                                return ranked.map(({ m, sec }, i) => {
                                   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
                                   return (
                                     <View key={m.uid} style={styles.lbRow}>
                                       <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
                                       <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
-                                      <Text style={styles.lbScore}>{pts.toLocaleString()}</Text>
+                                      <Text style={styles.lbScore}>{fmtPractised(sec) || '0m'}</Text>
                                     </View>
                                   );
                                 });
@@ -2966,6 +2980,7 @@ const styles = StyleSheet.create({
   proofCloseBtn: { paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
+  miniPractised: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '700', marginLeft: 6, fontVariant: ['tabular-nums'] },
   miniDueOverdue: { color: COLORS.error },
 
   // Action row
