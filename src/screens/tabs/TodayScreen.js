@@ -243,11 +243,11 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             <TouchableOpacity onPress={() => onViewProof(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Text style={styles.proofViewLink}>View</Text>
             </TouchableOpacity>
-            {!task.proofVerified && (
-              <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Replace'}</Text>
-              </TouchableOpacity>
-            )}
+            {/* Re-recording is always allowed — a new clip resets verification
+                so the teacher checks the fresh one. */}
+            <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Replace'}</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
