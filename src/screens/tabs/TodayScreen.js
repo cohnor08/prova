@@ -19,6 +19,7 @@ import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import ProofMedia from '../../components/ProofMedia';
 import { LinearGradient } from 'expo-linear-gradient';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
+import PracticePlayer from '../../components/PracticePlayer';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -151,47 +152,16 @@ function NotesChip({ onPress }) {
   );
 }
 
-// One teacher-assigned task on the student's Today screen. The timer counts the
-// time actually practiced; tapping "Done" banks points for THIS lap (partial
-// credit — 3 of 20 min still pays), then "Practice again" lets them run another
-// lap for more. Points are time-proportional, so the only way to score is to
-// put in the real minutes.
-function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, topDivider }) {
-  const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
-  const [elapsed, setElapsed] = useState(0);   // seconds practiced THIS lap
-  const [running, setRunning] = useState(false);
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [running]);
-
-  // Minutes already banked on earlier laps count toward the target too.
-  const prior = task.practicedSec || 0;
-
-  // Pause at the target as a natural stopping point — they can bank or keep going.
-  useEffect(() => {
-    if (target > 0 && prior + elapsed >= target && running) setRunning(false);
-  }, [elapsed, target, running, prior]);
-
-  const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+// One teacher-assigned task on the student's Today screen. The card is a
+// readable preview — practicing (and its timer) happens in the practice player,
+// which "Practice this" opens at this task.
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, topDivider }) {
+  const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
   const due = assignedDueLabel(task.dueDate);
-  const lapPts = teacherTaskPoints(elapsed);
-  const reachedTarget = target > 0 && prior + elapsed >= target;
   const earnedSoFar = task.pointsEarned || 0;
-  const laps = task.timesCompleted || 0;
-
-  const bank = () => {
-    if (elapsed <= 0) return;
-    onBank(task.id, elapsed);
-    setRunning(false);
-    setElapsed(0);
-  };
+  // Long feedback clamps to 2 lines with a "Show more" toggle.
+  const [fbOpen, setFbOpen] = useState(false);
+  const fbLong = (task.feedback || '').length > 100 || (task.feedback || '').includes('\n');
 
   return (
     <View style={[styles.teacherTask, topDivider && styles.teacherTaskDivider]}>
@@ -218,6 +188,19 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
 
       {/* Content first — the student reads what to do, then the timer sits at the bottom. */}
       {expanded && !!task.description && <Text style={styles.teacherTaskDesc}>{task.description}</Text>}
+      {expanded && !!task.feedback && (
+        <View style={styles.taskFeedback}>
+          <Ionicons name="chatbubble-ellipses" size={13} color={COLORS.accent} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.taskFeedbackText} numberOfLines={fbOpen ? undefined : 2}>“{task.feedback}”</Text>
+            {fbLong && (
+              <TouchableOpacity onPress={() => setFbOpen((o) => !o)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={styles.taskFeedbackMore}>{fbOpen ? 'Show less' : 'Show more'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
       {expanded && !!task.youtube && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.8}>
           <Ionicons name="play-circle" size={18} color={COLORS.primary} />
@@ -239,14 +222,14 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
             <Ionicons name={task.proofVerified ? 'checkmark-circle' : 'videocam'} size={15} color={task.proofVerified ? COLORS.success : COLORS.primary} />
             <Text style={styles.proofRowText} numberOfLines={1}>
               {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
+              {(task.proofs?.length || 0) > 1 ? ` (${task.proofs.length})` : ''}
             </Text>
             <TouchableOpacity onPress={() => onViewProof(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Text style={styles.proofViewLink}>View</Text>
             </TouchableOpacity>
-            {/* Re-recording is always allowed — a new clip resets verification
-                so the teacher checks the fresh one. */}
+            {/* Opens the add-another / replace-latest chooser. */}
             <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Replace'}</Text>
+              <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Add / Replace'}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -261,41 +244,12 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
         )
       )}
 
-      {/* Timer footer — pinned to the bottom of the expanded card. */}
-      {expanded && (
-        <View style={styles.ttTimer}>
-          <View style={styles.ttRow}>
-            {/* The clock never shrinks or wraps; the spacer absorbs the slack so
-                the buttons stay put. Timed tasks count DOWN; open-ended count up. */}
-            <View style={{ flexShrink: 0 }}>
-              <Text style={styles.ttTimerText} numberOfLines={1}>
-                {target > 0 ? fmt(Math.max(0, target - prior - elapsed)) : fmt(elapsed)}
-              </Text>
-              {elapsed > 0 && (
-                <Text style={styles.ttTimerTarget} numberOfLines={1}>
-                  <Text style={styles.ttLapPts}>+{lapPts} pts</Text>
-                </Text>
-              )}
-            </View>
-            <View style={{ flex: 1 }} />
-            <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
-              <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
-              <Text style={styles.ttTimerBtnText} numberOfLines={1}>
-                {running ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ttBankBtn, elapsed <= 0 && styles.ttBankBtnDim]}
-              onPress={bank}
-              activeOpacity={elapsed > 0 ? 0.85 : 1}
-            >
-              <Ionicons name="checkmark" size={14} color={elapsed > 0 ? COLORS.success : COLORS.textMuted} />
-              <Text style={[styles.ttBankBtnText, elapsed <= 0 && styles.ttBankBtnTextDim]} numberOfLines={1}>
-                {reachedTarget ? 'Done' : 'Bank'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Practicing happens in the player — this just opens it at this task. */}
+      {expanded && !task.completed && (
+        <TouchableOpacity style={styles.practiceThisBtn} onPress={() => onPractice(task)} activeOpacity={0.85}>
+          <Ionicons name="play" size={15} color={COLORS.text} />
+          <Text style={styles.practiceThisText}>Practice this{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -405,25 +359,11 @@ function ReferenceLink({ reference, label }) {
   );
 }
 
-function SessionCard({ session, onComplete, completed, onStart }) {
-  const [timerActive, setTimerActive] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(session.duration * 60);
+// A plan session on Today. The timer lives ONLY in the practice player now —
+// this card is a readable preview; "Practice" opens the player at this task.
+function SessionCard({ session, completed, onPractice }) {
   const [expanded, setExpanded] = useState(false);
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    if (timerActive && secondsLeft > 0) {
-      intervalRef.current = setInterval(() => setSecondsLeft(s => s - 1), 1000);
-    } else if (secondsLeft === 0) {
-      clearInterval(intervalRef.current);
-      setTimerActive(false);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [timerActive, secondsLeft]);
-
-  const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   const categoryColor = CATEGORY_COLORS[session.category] || COLORS.primary;
-  const timerDone = secondsLeft === 0;
 
   return (
     <View style={[styles.card, completed && styles.cardCompleted]}>
@@ -452,39 +392,10 @@ function SessionCard({ session, onComplete, completed, onStart }) {
           <Text style={styles.sessionPts}>Worth +{Math.round(taskPoints(session) / 5) * 5} Prova points</Text>
         </View>
         {!completed && (
-          <View>
-            {timerActive && (
-              <View style={styles.timerProgress}>
-                <View style={[styles.timerProgressFill, {
-                  width: `${(1 - secondsLeft / (session.duration * 60)) * 100}%`,
-                  backgroundColor: categoryColor,
-                }]} />
-              </View>
-            )}
-            <View style={styles.timerRow}>
-              <Text style={styles.timerText}>{fmt(secondsLeft)}</Text>
-              <TouchableOpacity
-                style={[styles.timerBtn, timerActive && { backgroundColor: categoryColor }]}
-                onPress={() => {
-                  if (timerDone) return;
-                  if (!timerActive && onStart) { onStart(session); } else { setTimerActive(!timerActive); }
-                }}
-                activeOpacity={timerDone ? 1 : 0.8}
-              >
-                <Ionicons name={timerActive ? 'pause' : 'play'} size={14} color={COLORS.text} />
-                <Text style={styles.timerBtnText}>{timerActive ? 'Pause' : 'Start'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.completeBtn, !timerDone && styles.completeBtnLocked]}
-                onPress={() => timerDone && onComplete(session.id)}
-                activeOpacity={timerDone ? 0.8 : 1}
-              >
-                <Ionicons name={timerDone ? 'checkmark' : 'lock-closed'} size={14}
-                  color={timerDone ? COLORS.success : COLORS.textMuted} />
-                <Text style={[styles.completeBtnText, !timerDone && styles.completeBtnTextLocked]}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity style={[styles.practiceThisBtn, { backgroundColor: categoryColor }]} onPress={() => onPractice(session)} activeOpacity={0.85}>
+            <Ionicons name="play" size={15} color={COLORS.text} />
+            <Text style={styles.practiceThisText}>Practice this</Text>
+          </TouchableOpacity>
         )}
         {completed && (
           <View style={styles.completedRow}>
@@ -529,6 +440,8 @@ export default function TodayScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [feedbackMap, setFeedbackMap] = useState({}); // today's per-session { difficulty, note }
   const finalizedRef = useRef(null); // guards the once-a-day finish bonus
+  const [playerVisible, setPlayerVisible] = useState(false); // guided practice player
+  const [playerStartId, setPlayerStartId] = useState(null);  // queue item to start on
   const [reviewOpen, setReviewOpen] = useState(false);   // week-in-review modal
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewData, setReviewData] = useState(null);    // { changeSummary, weeklyPlan }
@@ -541,7 +454,9 @@ export default function TodayScreen({ navigation }) {
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [proofBusyId, setProofBusyId] = useState(null); // task id currently uploading a proof clip
-  const [proofView, setProofView] = useState(null);     // { url, type } currently being watched
+  const [proofView, setProofView] = useState(null);     // { url, type, proofs, taskId } currently being watched
+  const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
+  useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
   const [soloOpen, setSoloOpen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -710,15 +625,18 @@ export default function TodayScreen({ navigation }) {
 
   // Plan regeneration now lives only on the Profile tab.
 
-  const handleComplete = async (sessionId) => {
-    if (completedIds.includes(sessionId)) return;
+  // Completes one plan session. `silent` (used by the practice player) skips
+  // the alert + auto day-review so the player can own those moments; returns
+  // the points awarded so the player's summary can add them up.
+  const handleComplete = async (sessionId, { silent = false } = {}) => {
+    if (completedIds.includes(sessionId)) return 0;
     const optimistic = [...completedIds, sessionId]; // instant checkmark
     setCompletedIds(optimistic);
-    const maybeRate = (ids) => { if (sessions.length > 0 && sessions.every(s => ids.includes(s.id))) openDayReview(); };
+    const maybeRate = (ids) => { if (!silent && sessions.length > 0 && sessions.every(s => ids.includes(s.id))) openDayReview(); };
 
     const session = sessions.find(s => s.id === sessionId);
     const uid = auth.currentUser?.uid;
-    if (!session || !uid) { maybeRate(optimistic); return; }
+    if (!session || !uid) { maybeRate(optimistic); return 0; }
 
     const todayKey = new Date().toDateString();
     try {
@@ -732,7 +650,7 @@ export default function TodayScreen({ navigation }) {
         const merged = Array.from(new Set([...optimistic, ...prior]));
         setCompletedIds(merged);
         maybeRate(merged);
-        return;
+        return 0;
       }
       const pts = taskPoints(session);
       const newScore = displayScore(d) + pts;
@@ -745,10 +663,12 @@ export default function TodayScreen({ navigation }) {
       });
       setUserData(p => ({ ...p, provaScore: newScore }));
       setCompletedIds(ids);
-      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+      if (!silent) Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
       maybeRate(ids);
+      return pts;
     } catch (e) {
       maybeRate(optimistic); // keep the optimistic checkmark on failure
+      return 0;
     }
   };
 
@@ -967,9 +887,9 @@ export default function TodayScreen({ navigation }) {
   // Bank a lap of practice on a teacher-assigned task: award time-proportional
   // points for the minutes just practiced, accumulate the task's totals, and
   // write back so the teacher + class scoreboard see the progress.
-  const bankTeacherTask = async (taskId, lapSeconds) => {
+  const bankTeacherTask = async (taskId, lapSeconds, { silent = false } = {}) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) return 0;
     const pts = teacherTaskPoints(lapSeconds);
     let finished = false;
     const next = (userData?.assignedTasks || []).map((t) => {
@@ -1000,17 +920,22 @@ export default function TodayScreen({ navigation }) {
     } catch (e) {
       Alert.alert('Error', "Couldn't save. Please try again.");
     }
-    if (finished) {
-      Alert.alert('Task complete! ✅', `${pts > 0 ? `+${formatScore(pts)} Prova points 🎸\n` : ''}Nice work — that one's off your list.`);
-    } else if (pts > 0) {
-      Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+    if (!silent) {
+      if (finished) {
+        Alert.alert('Task complete! ✅', `${pts > 0 ? `+${formatScore(pts)} Prova points 🎸\n` : ''}Nice work — that one's off your list.`);
+      } else if (pts > 0) {
+        Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+      }
     }
+    return pts;
   };
 
-  // Record/pick a short clip as proof a teacher task was practiced, upload it,
-  // and store the URL on that task. Clears any prior teacher verification when
-  // re-submitting so the teacher re-checks the new clip.
-  const runProofUpload = async (taskId, getMedia) => {
+  // Record/pick a short clip as proof a teacher task was practiced. A task can
+  // hold SEVERAL clips (`proofs` array): mode 'add' appends, 'replace' swaps
+  // the latest. proofUrl/proofType always mirror the newest clip so everything
+  // reading the single-clip fields keeps working; a new upload clears teacher
+  // verification so the fresh clip gets re-checked.
+  const runProofUpload = async (taskId, getMedia, mode = 'add') => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     setProofBusyId(taskId);
@@ -1019,11 +944,17 @@ export default function TodayScreen({ navigation }) {
       if (!picked) { setProofBusyId(null); return; }
       if (picked.error) { Alert.alert('Proof', picked.error); setProofBusyId(null); return; }
       const url = await uploadProofMedia(picked.uri, uid, picked.type);
-      const next = (userData?.assignedTasks || []).map((t) =>
-        t.id === taskId
-          ? { ...t, proofUrl: url, proofType: picked.type, proofAt: new Date().toISOString(), proofVerified: false }
-          : t
-      );
+      const next = (userData?.assignedTasks || []).map((t) => {
+        if (t.id !== taskId) return t;
+        const existing = Array.isArray(t.proofs) && t.proofs.length > 0
+          ? t.proofs
+          : (t.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : []);
+        const clip = { url, type: picked.type, at: new Date().toISOString() };
+        const proofs = mode === 'replace' && existing.length > 0
+          ? [...existing.slice(0, -1), clip]
+          : [...existing, clip];
+        return { ...t, proofs, proofUrl: clip.url, proofType: clip.type, proofAt: clip.at, proofVerified: false };
+      });
       setUserData((p) => ({ ...p, assignedTasks: next }));
       await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
       Alert.alert('Proof submitted 🎥', 'Your teacher can now review it.');
@@ -1035,15 +966,26 @@ export default function TodayScreen({ navigation }) {
   };
 
   const attachProof = (taskId) => {
-    Alert.alert('Add proof of practice', 'Show your teacher you practiced this.', [
-      { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia) },
-      { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia) },
+    const task = (userData?.assignedTasks || []).find((x) => x.id === taskId);
+    const pickSource = (mode) => Alert.alert(
+      mode === 'replace' ? 'Replace your latest video' : 'Add proof of practice',
+      'Show your teacher you practiced this.',
+      [
+        { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode) },
+        { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, mode) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+    if (!task?.proofUrl) { pickSource('add'); return; }
+    Alert.alert('Proof of practice', 'Add another video, or replace your latest one?', [
+      { text: 'Add another', onPress: () => pickSource('add') },
+      { text: 'Replace latest', onPress: () => pickSource('replace') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
   const viewProof = (task) => {
-    if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video' });
+    if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video', proofs: task.proofs, taskId: task.id });
   };
 
   // Free student accounts don't get the AI personalised plan — it's part of a
@@ -1130,6 +1072,43 @@ export default function TodayScreen({ navigation }) {
   const showRateToday = isToday && allSessionsDone && !finalizedToday;
   const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
+
+  // ── Guided practice player ──────────────────────────────────────────────────
+  // Everything still to do today, normalized into one queue: plan sessions
+  // first, then teacher tasks (solo + class). The player is the ONLY place with
+  // a practice timer; cards/rows just open it.
+  const playerQueue = [
+    ...sessions
+      .filter((s) => !completedIds.includes(s.id))
+      .map((s) => ({
+        id: `s_${s.id}`,
+        kind: 'session',
+        sessionId: s.id,
+        title: s.title,
+        description: s.description,
+        category: s.category,
+        targetSec: (s.duration || 0) * 60,
+        priorSec: 0,
+        watch: s.reference || `${s.title} ${userData?.instrument || 'guitar'} lesson`,
+      })),
+    ...assignedTasks
+      .filter((t) => !t.completed)
+      .map((t) => ({
+        id: `t_${t.id}`,
+        kind: 'teacher',
+        taskId: t.id,
+        title: t.title,
+        description: t.description,
+        targetSec: (t.durationMin || 0) * 60,
+        priorSec: t.practicedSec || 0,
+        watch: t.youtube || '',
+        song: t.song || '',
+        proofUrl: t.proofUrl,
+        proofVerified: t.proofVerified,
+      })),
+  ];
+  const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); };
+  const anyDoneToday = completedIds.length > 0;
 
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
   const nowDate = new Date();
@@ -1246,7 +1225,24 @@ export default function TodayScreen({ navigation }) {
             <Text style={styles.progressLabel}>
               {completedIds.length} of {sessions.length} completed · {Math.round(progress * 100)}%
             </Text>
+            {playerQueue.length > 0 && (
+              <TouchableOpacity style={styles.startPracticeBtn} onPress={() => openPlayerAt(null)} activeOpacity={0.85}>
+                <Ionicons name="play" size={18} color={COLORS.text} />
+                <Text style={styles.startPracticeText}>
+                  {anyDoneToday ? 'Continue practice' : 'Start practice'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
+        )}
+
+        {/* Students with no plan still get the one big practice button when the
+            teacher has given them something to do. */}
+        {isToday && sessions.length === 0 && playerQueue.length > 0 && (
+          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={() => openPlayerAt(null)} activeOpacity={0.85}>
+            <Ionicons name="play" size={18} color={COLORS.text} />
+            <Text style={styles.startPracticeText}>Start practice</Text>
+          </TouchableOpacity>
         )}
 
         {/* Daily challenge — bonus task that keeps the streak alive */}
@@ -1327,9 +1323,8 @@ export default function TodayScreen({ navigation }) {
             <SessionCard
               key={session.id}
               session={session}
-              onComplete={handleComplete}
               completed={completedIds.includes(session.id)}
-              onStart={(s) => navigation.navigate('Practice', { screen: 'PracticeHome', params: { activeSession: s } })}
+              onPractice={(s) => openPlayerAt(`s_${s.id}`)}
             />
           ))
         ) : (
@@ -1392,7 +1387,7 @@ export default function TodayScreen({ navigation }) {
                     topDivider={i > 0}
                     expanded={expandedTask === t.id}
                     onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                    onBank={bankTeacherTask}
+                    onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                     openTaskLink={openTaskLink}
                     onOpenSong={openSongInLibrary}
                     onAttachProof={attachProof}
@@ -1427,7 +1422,7 @@ export default function TodayScreen({ navigation }) {
                       topDivider={i > 0}
                       expanded={expandedTask === t.id}
                       onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                      onBank={bankTeacherTask}
+                      onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
                       onAttachProof={attachProof}
@@ -1527,9 +1522,29 @@ export default function TodayScreen({ navigation }) {
       <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
-            {proofView ? (
-              <ProofMedia key={proofView.url} url={proofView.url} type={proofView.type} style={styles.proofMedia} />
-            ) : null}
+            {proofView ? (() => {
+              // Page through every clip attached to this task.
+              const clips = Array.isArray(proofView.proofs) && proofView.proofs.length > 0
+                ? proofView.proofs
+                : [{ url: proofView.url, type: proofView.type }];
+              const cur = clips[Math.min(proofIdx, clips.length - 1)];
+              return (
+                <>
+                  <ProofMedia key={cur.url} url={cur.url} type={cur.type || 'video'} style={styles.proofMedia} />
+                  {clips.length > 1 && (
+                    <View style={styles.proofPager}>
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.max(0, i - 1))} disabled={proofIdx === 0} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-back-circle" size={26} color={proofIdx === 0 ? COLORS.border : COLORS.text} />
+                      </TouchableOpacity>
+                      <Text style={styles.proofPagerText}>{Math.min(proofIdx, clips.length - 1) + 1} of {clips.length}</Text>
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.min(clips.length - 1, i + 1))} disabled={proofIdx >= clips.length - 1} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-forward-circle" size={26} color={proofIdx >= clips.length - 1 ? COLORS.border : COLORS.text} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              );
+            })() : null}
             <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
               <Ionicons name="close" size={20} color="#fff" />
               <Text style={styles.proofCloseText}>Close</Text>
@@ -1543,6 +1558,24 @@ export default function TodayScreen({ navigation }) {
         query={taskWatch}
         title="Watch"
         onClose={() => setTaskWatch(null)}
+      />
+
+      {/* Guided practice player — the one place practicing happens */}
+      <PracticePlayer
+        visible={playerVisible}
+        queue={playerQueue}
+        startId={playerStartId}
+        streak={userData?.streak || 0}
+        allSessionsDone={sessions.length > 0 && sessions.every((s) => completedIds.includes(s.id))}
+        onCompleteSession={(sessionId) => handleComplete(sessionId, { silent: true })}
+        onBankTeacher={(taskId, sec) => bankTeacherTask(taskId, sec, { silent: true })}
+        onAttachProof={attachProof}
+        proofBusyId={proofBusyId}
+        onClose={() => setPlayerVisible(false)}
+        onFinishReview={() => {
+          setPlayerVisible(false);
+          setTimeout(openDayReview, 400); // let the player dismiss before the sheet slides up
+        }}
       />
 
       {/* End-of-day review — rate every task in one place, then Submit */}
@@ -1677,6 +1710,16 @@ const styles = StyleSheet.create({
   },
   streakChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
   summaryCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, marginBottom: SPACING.lg },
+  startPracticeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, marginTop: SPACING.md,
+  },
+  startPracticeText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  practiceThisBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: COLORS.primaryDark, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
+  },
+  practiceThisText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },
   summaryDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
@@ -1733,6 +1776,9 @@ const styles = StyleSheet.create({
   teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   teacherTaskDone: { color: COLORS.textMuted },
   teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm },
+  taskFeedback: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm, backgroundColor: COLORS.accent + '12', borderRadius: 10, padding: 10 },
+  taskFeedbackText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
+  taskFeedbackMore: { color: COLORS.primary, fontSize: 12, fontWeight: '700', marginTop: 4 },
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
   teacherTaskWatchText: { flex: 1, color: COLORS.primary, fontWeight: '600', textDecorationLine: 'none' },
@@ -1901,6 +1947,8 @@ const styles = StyleSheet.create({
   proofReplaceLink: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
   proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
   proofViewer: { width: '100%', alignItems: 'center' },
+  proofPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.sm },
+  proofPagerText: { color: '#fff', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
   proofCloseBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 10, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },

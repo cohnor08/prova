@@ -908,9 +908,11 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [durationMin, setDurationMin] = useState(10); // default 10-min timer; clear it for an open-ended (no-limit) task
+  const [feedback, setFeedback] = useState(''); // teacher's feedback on this task (edit mode) — shows in the student's Notes
   const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
+  const formScrollRef = useRef(null); // scrolls bottom fields (feedback) above the keyboard
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState([]); // teacher's saved resources, assignable from here
@@ -918,7 +920,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong('');
-    setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false);
+    setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false); setFeedback('');
     onClose();
   };
 
@@ -950,6 +952,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
       setSong(editTask.song || '');
       setDueDate(editTask.dueDate || null);
       setDurationMin(editTask.durationMin || 0);
+      setFeedback(editTask.feedback || '');
     }
   }, [visible, editTask]);
 
@@ -995,7 +998,15 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
       try {
         const next = (student.assignedTasks || []).map((t) =>
           t.id === editTask.id
-            ? { ...t, title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(), dueDate, durationMin: durationMin || 0 }
+            ? {
+                ...t,
+                title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(),
+                dueDate, durationMin: durationMin || 0,
+                feedback: feedback.trim(),
+                // Stamp when the feedback text actually changes, so the student's
+                // Notes screen can sort by freshness.
+                feedbackAt: feedback.trim() !== (editTask.feedback || '') ? new Date().toISOString() : (editTask.feedbackAt || null),
+              }
             : t
         );
         await updateDoc(doc(db, 'users', student.uid), { assignedTasks: next });
@@ -1054,8 +1065,9 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
               <ScrollView
+                ref={formScrollRef}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 showsVerticalScrollIndicator={false}
                 automaticallyAdjustKeyboardInsets
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
@@ -1164,6 +1176,26 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                     </TouchableOpacity>
                   </View>
                 </InputAccessoryView>
+              )}
+
+              {/* Feedback on THIS task — lands in the student's Notes window
+                  (great for reacting to their proof videos). */}
+              {isEdit && (
+                <>
+                  <Text style={styles.dueLabel}>FEEDBACK TO STUDENT</Text>
+                  <Text style={styles.timerHint}>They'll see this in their Notes — use it to comment on their practice or proof video.</Text>
+                  <TextInput
+                    style={[styles.input, styles.inputMulti]}
+                    placeholder="e.g. Great tone on the video! Watch the timing in bar 3…"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={feedback}
+                    onChangeText={setFeedback}
+                    multiline
+                    numberOfLines={3}
+                    // Bottom-most field: shove it above the keyboard on focus.
+                    onFocus={() => setTimeout(() => formScrollRef.current?.scrollToEnd({ animated: true }), 250)}
+                  />
+                </>
               )}
 
               <View style={styles.modalBtns}>
@@ -1316,10 +1348,6 @@ function InlineChatView({ student, myUid, isDemo }) {
     markChatRead(chatId, myUid).catch(() => {});
   }, [isDemo, chatId, myUid, messages.length]);
 
-  useEffect(() => {
-    if (messages.length > 0) flatRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
-
   const sendMessage = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -1387,15 +1415,19 @@ function InlineChatView({ student, myUid, isDemo }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={tabBarHeight}
     >
+      {/* Inverted = bottom-anchored: the newest message stays above the input
+          whatever the keyboard does; dragging dismisses the keyboard. */}
       <FlatList
         ref={flatRef}
-        data={messages}
+        data={[...messages].reverse()}
+        inverted={messages.length > 0}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatMessages}
-        onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
         renderItem={({ item, index }) => {
           const isMe = item.senderUid === myUid;
-          const showReceipt = isMe && index === messages.length - 1;
+          const showReceipt = isMe && index === 0; // inverted: index 0 = newest
           const body = item.mediaUrl
             ? <MediaMessageBubble item={item} isMe={isMe} />
             : (
@@ -1540,7 +1572,9 @@ function TeacherDashboard() {
   const [songStudent, setSongStudent] = useState(null);
   const [songClass, setSongClass] = useState(null); // class getting a song-to-learn
   const [expanded, setExpanded] = useState(null);
-  const [proofView, setProofView] = useState(null); // { url, type, studentUid, taskId, verified, title }
+  const [proofView, setProofView] = useState(null); // { url, type, proofs, studentUid, taskId, verified, title }
+  const [proofIdx, setProofIdx] = useState(0);      // which clip is showing when a task has several
+  useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
   const [completedView, setCompletedView] = useState(null); // student whose completed tasks are open
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
@@ -2222,7 +2256,7 @@ Sent from Prova`;
                               })()}
                               {t.proofUrl && (
                                 <TouchableOpacity
-                                  onPress={() => setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: student.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title })}
+                                  onPress={() => setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: student.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title })}
                                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                   style={{ marginLeft: 8 }}
                                 >
@@ -2734,20 +2768,26 @@ Sent from Prova`;
                       {done.map((t) => (
                         <View key={t.id} style={styles.completedRow}>
                           <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                          <View style={{ flex: 1, minWidth: 0 }}>
+                          {/* Tap to open the task (e.g. to leave feedback on it). */}
+                          <TouchableOpacity
+                            style={{ flex: 1, minWidth: 0 }}
+                            onPress={() => { setCompletedView(null); setEditTaskCtx({ student: live, task: t }); }}
+                            activeOpacity={0.7}
+                          >
                             <Text style={styles.completedTitle} numberOfLines={1}>{t.title}</Text>
                             <Text style={styles.completedMeta}>
                               {[
                                 t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
                                 fmtPractised(t.practicedSec) ? `${fmtPractised(t.practicedSec)} practiced` : null,
+                                t.feedback ? '💬' : null,
                                 t.className || null,
                               ].filter(Boolean).join(' · ')}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                           {t.proofUrl && (
                             <TouchableOpacity
                               // Close this window first — iOS won't stack two Modals.
-                              onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                              onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
                               <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
@@ -2771,9 +2811,29 @@ Sent from Prova`;
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
             {!!proofView && <Text style={styles.proofTitle} numberOfLines={1}>{proofView.title}</Text>}
-            {proofView ? (
-              <ProofMedia key={proofView.url} url={proofView.url} type={proofView.type} style={styles.proofMedia} />
-            ) : null}
+            {proofView ? (() => {
+              // A task can carry several clips — page through them.
+              const clips = Array.isArray(proofView.proofs) && proofView.proofs.length > 0
+                ? proofView.proofs
+                : [{ url: proofView.url, type: proofView.type }];
+              const cur = clips[Math.min(proofIdx, clips.length - 1)];
+              return (
+                <>
+                  <ProofMedia key={cur.url} url={cur.url} type={cur.type || 'video'} style={styles.proofMedia} />
+                  {clips.length > 1 && (
+                    <View style={styles.proofPager}>
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.max(0, i - 1))} disabled={proofIdx === 0} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-back-circle" size={26} color={proofIdx === 0 ? COLORS.border : COLORS.text} />
+                      </TouchableOpacity>
+                      <Text style={styles.proofPagerText}>{Math.min(proofIdx, clips.length - 1) + 1} of {clips.length}</Text>
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.min(clips.length - 1, i + 1))} disabled={proofIdx >= clips.length - 1} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-forward-circle" size={26} color={proofIdx >= clips.length - 1 ? COLORS.border : COLORS.text} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              );
+            })() : null}
             <View style={styles.proofActions}>
               {proofView?.verified ? (
                 <View style={styles.proofVerifiedTag}>
@@ -3171,6 +3231,8 @@ const styles = StyleSheet.create({
   proofTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: SPACING.sm, maxWidth: '100%' },
   proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
   proofActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginTop: SPACING.lg },
+  proofPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.sm },
+  proofPagerText: { color: '#fff', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   proofVerifyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.success },
   proofVerifyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   proofVerifiedTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },

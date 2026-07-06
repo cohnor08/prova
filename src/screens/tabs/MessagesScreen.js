@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Modal,
+  Platform, Modal, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -87,9 +87,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
     }, ignorePermissionDenied);
   }, [chatId]);
 
-  useEffect(() => {
-    if (messages.length > 0) flatRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
+  // (No scroll bookkeeping needed — the inverted list is bottom-anchored.)
 
   const send = async () => {
     const trimmed = text.trim();
@@ -185,12 +183,17 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={tabBarHeight}
       >
+        {/* Inverted list = bottom-anchored, the real chat-app pattern: the
+            newest message stays glued above the input no matter what the
+            keyboard does. Dragging the list tucks the keyboard away. */}
         <FlatList
           ref={flatRef}
-          data={messages}
+          data={[...messages].reverse()}
+          inverted={messages.length > 0}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={item => item.id}
           contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Ionicons name="chatbubble-ellipses-outline" size={40} color={COLORS.textMuted} style={{ marginBottom: SPACING.sm }} />
@@ -199,7 +202,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           }
           renderItem={({ item, index }) => {
             const isMe = item.senderUid === myUid;
-            const showReceipt = isMe && index === messages.length - 1;
+            const showReceipt = isMe && index === 0; // inverted: index 0 = newest
             const body = item.mediaUrl
               ? <MediaMessageBubble item={item} isMe={isMe} />
               : (
