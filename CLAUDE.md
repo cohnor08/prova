@@ -39,9 +39,11 @@ prova/
 │           └── ProfileScreen.js    # Account info + logout
 ```
 
-## Git Workflow — IMPORTANT
+## Git Workflow
 Two developers (Cohnor and Ethan) work on this repo simultaneously, both using Claude Code.
-**Never commit directly to `master`.** Always follow this flow:
+`master` is **not** protected by required reviews — no approval is needed to merge. Each developer's work stands on its own; you do not need to wait on or request review from the other developer.
+
+Recommended flow (still use branches to keep history clean, but merging is self-service):
 
 1. Before starting any work, create a branch:
    ```bash
@@ -50,12 +52,12 @@ Two developers (Cohnor and Ethan) work on this repo simultaneously, both using C
    # e.g. cohnor/timer-lock  or  ethan/practice-screen
    ```
 2. Make all commits on that branch.
-3. When done, push and open a PR:
+3. When done, push and merge it yourself — open a PR and merge it, or fast-forward `master` directly:
    ```bash
    git push -u origin <branch-name>
-   gh pr create --fill
+   gh pr create --fill && gh pr merge --merge --delete-branch
    ```
-4. The other developer reviews and merges via GitHub — never merge your own PR.
+   You may merge your own PR. Do **not** block on the other developer reviewing it.
 
 Branch naming: `cohnor/<feature>` or `ethan/<feature>`. Keep branches short-lived (one feature per branch).
 
