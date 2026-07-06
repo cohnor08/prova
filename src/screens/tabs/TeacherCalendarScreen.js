@@ -83,10 +83,19 @@ function Wheel({ values, value, onChange, format }) {
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 00,05,…,55
 
+// Attendance statuses a teacher can mark per lesson occurrence.
+const STATUSES = [
+  { key: 'present', label: 'Present', color: '#22C55E' },
+  { key: 'late',    label: 'Late',    color: '#E0A800' },
+  { key: 'absent',  label: 'Absent',  color: '#EF4444' },
+  { key: 'excused', label: 'Excused', color: '#94A3B8' },
+];
+
 export default function TeacherCalendarScreen({ navigation }) {
   const todayStr = ymd(new Date());
   const [lessons, setLessons] = useState([]);
   const [students, setStudents] = useState([]);
+  const [attendance, setAttendance] = useState({}); // `${lessonId}__${ymd}` -> { status, mark, studentUid, ... }
   const [cursor, setCursor] = useState(new Date());     // month being viewed
   const [selected, setSelected] = useState(todayStr);
   const [showAdd, setShowAdd] = useState(false);
@@ -118,6 +127,7 @@ export default function TeacherCalendarScreen({ navigation }) {
           ]);
           if (cancelled) return;
           setLessons(Array.isArray(meSnap.data()?.lessons) ? meSnap.data().lessons : []);
+          setAttendance(meSnap.data()?.attendance || {});
           setStudents(stuSnap.docs.map((d) => ({ uid: d.id, ...d.data() })));
         } catch (e) { /* ignore */ }
       })();
@@ -129,6 +139,32 @@ export default function TeacherCalendarScreen({ navigation }) {
     setLessons(next);
     const uid = auth.currentUser?.uid;
     if (uid) updateDoc(doc(db, 'users', uid), { lessons: next }).catch(() => {});
+  };
+
+  // Attendance is keyed by lesson + the specific date (so weekly recurrences are
+  // marked per-occurrence). Tapping the active status/mark again clears it.
+  const attKey = (lessonId, dateStr) => `${lessonId}__${dateStr}`;
+  const saveAttendance = (next) => {
+    setAttendance(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { attendance: next }).catch(() => {});
+  };
+  const updateRecord = (lesson, dateStr, patch) => {
+    const key = attKey(lesson.id, dateStr);
+    const cur = attendance[key] || {};
+    const rec = { ...cur, ...patch, studentUid: lesson.studentUid, studentName: lesson.studentName, date: dateStr };
+    const next = { ...attendance };
+    if (!rec.status && !rec.mark && !rec.note) delete next[key];
+    else next[key] = rec;
+    saveAttendance(next);
+  };
+  const markStatus = (lesson, dateStr, status) => {
+    const cur = attendance[attKey(lesson.id, dateStr)] || {};
+    updateRecord(lesson, dateStr, { status: cur.status === status ? null : status });
+  };
+  const setMark = (lesson, dateStr, mark) => {
+    const cur = attendance[attKey(lesson.id, dateStr)] || {};
+    updateRecord(lesson, dateStr, { mark: cur.mark === mark ? null : mark });
   };
 
   const addLesson = () => {
@@ -188,7 +224,10 @@ export default function TeacherCalendarScreen({ navigation }) {
           <Text style={styles.backText}>Home</Text>
         </TouchableOpacity>
         <Text style={styles.navTitle}>Lessons</Text>
-        <View style={{ width: 64 }} />
+        <TouchableOpacity onPress={() => navigation.navigate('TeacherOverview')} style={styles.overviewBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="stats-chart-outline" size={15} color={COLORS.primary} />
+          <Text style={styles.overviewText}>Overview</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -238,26 +277,72 @@ export default function TeacherCalendarScreen({ navigation }) {
 
         {dayLessons.length === 0 ? (
           <Text style={styles.empty}>No lessons this day.</Text>
-        ) : dayLessons.map((l) => (
+        ) : dayLessons.map((l) => {
+          const rec = attendance[attKey(l.id, selected)] || {};
+          return (
           <View key={l.id} style={styles.lessonCard}>
-            <View style={styles.lessonTime}><Text style={styles.lessonTimeText}>{timeLabel(l.time)}</Text></View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={styles.lessonNameRow}>
-                <Text style={styles.lessonName} numberOfLines={1}>{l.studentName}</Text>
-                {l.repeat === 'weekly' && (
-                  <View style={styles.weeklyBadge}>
-                    <Ionicons name="repeat" size={11} color={COLORS.primary} />
-                    <Text style={styles.weeklyBadgeText}>Weekly</Text>
-                  </View>
-                )}
+            <View style={styles.lessonTopRow}>
+              <View style={styles.lessonTime}><Text style={styles.lessonTimeText}>{timeLabel(l.time)}</Text></View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={styles.lessonNameRow}>
+                  <Text style={styles.lessonName} numberOfLines={1}>{l.studentName}</Text>
+                  {l.repeat === 'weekly' && (
+                    <View style={styles.weeklyBadge}>
+                      <Ionicons name="repeat" size={11} color={COLORS.primary} />
+                      <Text style={styles.weeklyBadgeText}>Weekly</Text>
+                    </View>
+                  )}
+                </View>
+                {!!l.note && <Text style={styles.lessonNote} numberOfLines={2}>{l.note}</Text>}
               </View>
-              {!!l.note && <Text style={styles.lessonNote} numberOfLines={2}>{l.note}</Text>}
+              <TouchableOpacity onPress={() => removeLesson(l)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => removeLesson(l)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+
+            {/* Attendance — tap to mark; tap the active one again to clear */}
+            <View style={styles.markRow}>
+              {STATUSES.map((s) => {
+                const active = rec.status === s.key;
+                return (
+                  <TouchableOpacity
+                    key={s.key}
+                    style={[styles.markBtn, active && { backgroundColor: s.color + '22', borderColor: s.color }]}
+                    onPress={() => markStatus(l, selected, s.key)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.markBtnText, active && { color: s.color, fontWeight: '800' }]}>{s.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {(rec.status === 'present' || rec.status === 'late') && (
+              <View style={styles.markScoreRow}>
+                <Text style={styles.markScoreLabel}>MARK</Text>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setMark(l, selected, n)} hitSlop={{ top: 6, bottom: 6, left: 3, right: 3 }}>
+                    <Ionicons name={(rec.mark || 0) >= n ? 'star' : 'star-outline'} size={20} color={COLORS.accent || COLORS.primary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Lesson note — opens its own page (a running per-student journal) */}
+            <TouchableOpacity
+              style={styles.noteRow}
+              onPress={() => navigation.navigate('LessonNote', { lessonId: l.id, dateStr: selected, studentName: l.studentName, studentUid: l.studentUid, time: l.time, note: rec.note || '' })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="document-text-outline" size={14} color={rec.note ? COLORS.primary : COLORS.textMuted} />
+              {rec.note
+                ? <Text style={styles.noteText} numberOfLines={3}>{rec.note}</Text>
+                : <Text style={styles.noteAdd}>Add a lesson note</Text>}
+              <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
-        ))}
+          );
+        })}
       </ScrollView>
 
       {/* Add lesson modal */}
@@ -382,7 +467,18 @@ const styles = StyleSheet.create({
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   empty: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
 
-  lessonCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
+  lessonCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
+  lessonTopRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  markRow: { flexDirection: 'row', gap: 6, marginTop: SPACING.md },
+  markBtn: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  markBtnText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  markScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: SPACING.sm },
+  markScoreLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginRight: 2 },
+  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  noteText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  noteAdd: { flex: 1, color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  overviewBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  overviewText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   lessonTime: { minWidth: 62 },
   lessonTimeText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   lessonNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },

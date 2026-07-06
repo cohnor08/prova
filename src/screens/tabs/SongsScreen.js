@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl } from '../../constants/songs';
+import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
 import PerformanceMode from '../../components/PerformanceMode';
 import * as AuthSession from 'expo-auth-session';
@@ -309,6 +309,8 @@ export default function SongsScreen({ route, navigation }) {
   const [songsExpanded, setSongsExpanded] = useState(false); // collapse long libraries
   const [expandedSongId, setExpandedSongId] = useState(null); // song expanded into the big player card
   const [songSearch, setSongSearch] = useState('');          // filter the library
+  const [trackResult, setTrackResult] = useState(null);      // canonical match from iTunes for the current search
+  const [searchingTrack, setSearchingTrack] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
 
@@ -317,7 +319,8 @@ export default function SongsScreen({ route, navigation }) {
   const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
   const [gigSetting, setGigSetting] = useState('');
   const [gigAudience, setGigAudience] = useState('');
-  const [gigVibe, setGigVibe] = useState('');
+  const [gigVibe, setGigVibe] = useState('');       // genres
+  const [gigArtists, setGigArtists] = useState(''); // inspiration artists (optional)
   const [gigSongCount, setGigSongCount] = useState(10);
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
@@ -351,6 +354,7 @@ export default function SongsScreen({ route, navigation }) {
   // Player profile — drives level-matched song recommendations
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
+  const [role, setRole] = useState(null); // 'student' (free) | 'personal' | undefined (legacy = personal)
 
   // Song playback — 30s in-app preview (iTunes) + "open in" deep links
   const [playingSongId, setPlayingSongId] = useState(null);
@@ -533,6 +537,7 @@ export default function SongsScreen({ route, navigation }) {
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       setTipLink(data?.tipLink || '');
+      setRole(data?.role || null);
       if (data?.instrument) setInstrument(data.instrument);
       if (data?.level) setLevel(data.level);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
@@ -569,7 +574,7 @@ export default function SongsScreen({ route, navigation }) {
 
   // Ask Claude for a gig setlist, then save it as a playlist. Any suggested song
   // not already in the library is also copied in, so previews/covers light up and
-  // the user can practise it.
+  // the user can practice it.
   const handleGenerateSetlist = async () => {
     const setting = gigSetting.trim();
     const audience = gigAudience.trim();
@@ -584,6 +589,7 @@ export default function SongsScreen({ route, navigation }) {
         instrument, level,
         setting, audience,
         vibe: gigVibe.trim() || null,
+        artists: gigArtists.trim() || null,
         songCount: gigSongCount,
         library: songs.map((s) => ({ title: s.title, artist: s.artist || '' })),
       });
@@ -611,6 +617,7 @@ export default function SongsScreen({ route, navigation }) {
         name: String(result?.name || 'Gig setlist').slice(0, 50),
         setting, audience,
         vibe: gigVibe.trim(),
+        artists: gigArtists.trim(),
         songs: picks,
         createdAt: new Date().toISOString(),
       };
@@ -624,7 +631,7 @@ export default function SongsScreen({ route, navigation }) {
       if (additions.length > 0) await saveSongs([...additions, ...songs]);
 
       // Reset the form and jump straight into the new setlist.
-      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigSongCount(10);
+      setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigArtists(''); setGigSongCount(10);
       setShowGigForm(false);
       setViewingSetlist(setlist);
     } catch (err) {
@@ -742,6 +749,48 @@ export default function SongsScreen({ route, navigation }) {
   };
 
   const removeSong = (id) => saveSongs(songs.filter((s) => s.id !== id));
+
+  // Resolve the typed query to a real track (canonical title + full artist name)
+  // via the iTunes Search API. Triggered when the user submits the search.
+  const runTrackSearch = async () => {
+    const q = songSearch.trim();
+    if (!q) { setTrackResult(null); return; }
+    setSearchingTrack(true);
+    try {
+      const r = await searchTrack(q);
+      setTrackResult(r);
+      // Prime the artwork map (keyed exactly like artKey) so the result card and
+      // the song, once added, show the real cover immediately.
+      if (r) setArtwork((m) => ({ ...m, [`${(r.title || '').toLowerCase()}|${(r.artist || '').toLowerCase()}`]: r.artwork || null }));
+    } catch (e) {
+      setTrackResult(null);
+    } finally {
+      setSearchingTrack(false);
+    }
+  };
+
+  // Add the resolved song to the library (with its proper title/artist) if it's
+  // not there yet, then open it — "taking the user to the song in the library".
+  const addAndOpenResult = (r) => {
+    if (!r) return;
+    const existing = songs.find(
+      (s) => (s.title || '').toLowerCase() === r.title.toLowerCase()
+        && (s.artist || '').toLowerCase() === (r.artist || '').toLowerCase()
+    );
+    let id;
+    if (existing) {
+      id = existing.id;
+    } else {
+      const song = { id: `song_${Date.now()}`, title: r.title, artist: r.artist || '', addedAt: new Date().toISOString() };
+      saveSongs([song, ...songs]);
+      id = song.id;
+    }
+    setTrackResult(null);
+    setSongSearch(r.title);   // filter the library to the resolved song so it's front and centre
+    setSongsExpanded(true);
+    setExpandedSongId(id);    // open it
+    Keyboard.dismiss();
+  };
 
   // Copy a level-matched recommendation into the user's own library
   const addRecommendedSong = (rec) => {
@@ -945,7 +994,7 @@ export default function SongsScreen({ route, navigation }) {
   const songKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
 
   // Songs the teacher attached to assignments — surfaced here so the student can
-  // practise them, tagged "From your teacher". Not written into songLibrary, and
+  // practice them, tagged "From your teacher". Not written into songLibrary, and
   // deduped against songs already in the library.
   const parseSong = (str) => {
     const s = String(str).trim();
@@ -1134,6 +1183,24 @@ export default function SongsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* ── Learn a song (paid: personal / legacy; free students upgrade) ── */}
+        {role !== 'student' && (
+          <TouchableOpacity
+            style={styles.learnCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('LearnSong')}
+          >
+            <View style={styles.learnIcon}>
+              <Ionicons name="school" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.learnTitle}>Learn a song</Text>
+              <Text style={styles.learnSub}>Pick any song → get the step-by-step plan to play it</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+
         {/* ── Gig Setlists ── */}
         {(
         <View style={styles.card}>
@@ -1214,25 +1281,42 @@ export default function SongsScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Search box — appears once the library is big enough to need it */}
-          {songs.length > SONGS_COLLAPSED && (
-            <View style={styles.songSearchRow}>
-              <Ionicons name="search" size={16} color={COLORS.textMuted} />
-              <TextInput
-                style={styles.songSearchInput}
-                placeholder="Search your library"
-                placeholderTextColor={COLORS.textMuted}
-                value={songSearch}
-                onChangeText={setSongSearch}
-                returnKeyType="search"
-                autoCorrect={false}
-              />
-              {songSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setSongSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          {/* Search box — filters your library, and (on enter) finds any song
+              on iTunes so you can add it with its proper title + artist. */}
+          <View style={styles.songSearchRow}>
+            <Ionicons name="search" size={16} color={COLORS.textMuted} />
+            <TextInput
+              style={styles.songSearchInput}
+              placeholder="Search a song (e.g. Good Times Bad Times)"
+              placeholderTextColor={COLORS.textMuted}
+              value={songSearch}
+              onChangeText={(t) => { setSongSearch(t); setTrackResult(null); }}
+              onSubmitEditing={runTrackSearch}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {searchingTrack
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : songSearch.length > 0 && (
+                <TouchableOpacity onPress={() => { setSongSearch(''); setTrackResult(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
                 </TouchableOpacity>
               )}
-            </View>
+          </View>
+
+          {/* Canonical match from iTunes — tap to add it to the library + open it. */}
+          {!!trackResult && (
+            <TouchableOpacity style={styles.trackResult} onPress={() => addAndOpenResult(trackResult)} activeOpacity={0.85}>
+              {renderArtwork(trackResult, 44, 8, false)}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.trackResultTitle} numberOfLines={1}>{trackResult.title}</Text>
+                {!!trackResult.artist && <Text style={styles.trackResultArtist} numberOfLines={1}>{trackResult.artist}</Text>}
+              </View>
+              <View style={styles.trackResultAdd}>
+                <Ionicons name="add" size={15} color={COLORS.primary} />
+                <Text style={styles.trackResultAddText}>Add</Text>
+              </View>
+            </TouchableOpacity>
           )}
 
           {/* List */}
@@ -1241,10 +1325,16 @@ export default function SongsScreen({ route, navigation }) {
               <Ionicons name="musical-notes-outline" size={26} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyTaskText}>No songs yet — add your first above</Text>
             </View>
-          ) : songQuery && filteredSongs.length === 0 ? (
+          ) : songQuery && filteredSongs.length === 0 && !trackResult ? (
             <View style={styles.songsEmpty}>
               <Ionicons name="search-outline" size={24} color={COLORS.textMuted} style={{ marginBottom: 6 }} />
-              <Text style={styles.emptyTaskText}>No songs match “{songSearch.trim()}”</Text>
+              <Text style={styles.emptyTaskText}>Not in your library yet</Text>
+              <TouchableOpacity style={styles.searchWebBtn} onPress={runTrackSearch} disabled={searchingTrack} activeOpacity={0.85}>
+                {searchingTrack
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <Ionicons name="cloud-outline" size={15} color={COLORS.primary} />}
+                <Text style={styles.searchWebText}>Find “{songSearch.trim()}” online</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.songList}>
@@ -1454,13 +1544,23 @@ export default function SongsScreen({ route, navigation }) {
               editable={!generatingSetlist}
             />
 
-            <Text style={styles.gigLabel}>Vibe (optional)</Text>
+            <Text style={styles.gigLabel}>Genres (optional)</Text>
             <TextInput
               style={styles.songInput}
-              placeholder="e.g. laid-back acoustic, high-energy rock"
+              placeholder="e.g. house & UK garage; laid-back acoustic; high-energy rock"
               placeholderTextColor={COLORS.textMuted}
               value={gigVibe}
               onChangeText={setGigVibe}
+              editable={!generatingSetlist}
+            />
+
+            <Text style={styles.gigLabel}>Inspiration artists (optional)</Text>
+            <TextInput
+              style={styles.songInput}
+              placeholder="e.g. KETTAMA, Fred again.., Disclosure"
+              placeholderTextColor={COLORS.textMuted}
+              value={gigArtists}
+              onChangeText={setGigArtists}
               editable={!generatingSetlist}
             />
 
@@ -1634,6 +1734,17 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: SPACING.sm },
   card: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  learnCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary,
+    padding: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  learnIcon: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  learnTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  learnSub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
 
   // Tool selector
   toolSelector: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, marginBottom: SPACING.lg },
@@ -1921,6 +2032,17 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md,
   },
   songSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
+  trackResult: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: SPACING.sm,
+    borderWidth: 1, borderColor: COLORS.primary + '40', marginBottom: SPACING.md,
+  },
+  trackResultTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  trackResultArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
+  trackResultAdd: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: COLORS.primary + '1A' },
+  trackResultAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  searchWebBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingVertical: 9, paddingHorizontal: SPACING.md, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary + '40' },
+  searchWebText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   songsToggle: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: 10, marginTop: 2,

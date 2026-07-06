@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, INSTRUMENTS } from '../../constants/theme';
 
-export default function OnboardingInstrument({ onNext, onBack, data }) {
+export default function OnboardingInstrument({ onNext, onBack, data, steps = 4 }) {
   const [selected, setSelected] = useState(data?.instrument || null);
 
   return (
@@ -16,7 +16,7 @@ export default function OnboardingInstrument({ onNext, onBack, data }) {
           : <View style={{ width: 24 }} />
         }
         <View style={styles.stepPills}>
-          {[0, 1, 2, 3].map(i => (
+          {Array.from({ length: steps }).map((_, i) => (
             <View key={i} style={[styles.pill, i === 0 && styles.pillActive]} />
           ))}
         </View>

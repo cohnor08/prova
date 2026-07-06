@@ -1,7 +1,7 @@
 // Local practice notifications — all scheduled on-device, no server / push
 // tokens needed. Three kinds:
 //   1. Daily reminder (repeating, at a time the student picks)
-//   2. Streak-saver (one-off this evening, only if they haven't practised)
+//   2. Streak-saver (one-off this evening, only if they haven't practiced)
 //   3. New-task ping (immediate, when their app sees a new teacher task)
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -58,7 +58,7 @@ export async function scheduleDailyReminder(timeStr) {
   try {
     await Notifications.scheduleNotificationAsync({
       identifier: DAILY_ID,
-      content: { title: 'Time to practise 🎸', body: "Your plan's ready — keep your streak going." },
+      content: { title: 'Time to practice 🎸', body: "Your plan's ready — keep your streak going." },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute },
     });
   } catch (e) { /* ignore */ }
@@ -96,7 +96,7 @@ export async function notifyNewTasks(count) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'New task from your teacher 📌',
-        body: count > 1 ? `${count} new tasks on your Today screen.` : 'Tap to see what to practise.',
+        body: count > 1 ? `${count} new tasks on your Today screen.` : 'Tap to see what to practice.',
       },
       trigger: null,
     });

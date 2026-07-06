@@ -9,14 +9,16 @@ import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
-  onSnapshot, orderBy, doc, getDoc,
+  onSnapshot, orderBy, doc, getDoc, deleteDoc, setDoc,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
+import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
+import GroupChatView from '../../components/GroupChatView';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -40,6 +42,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sendingProgress, setSendingProgress] = useState(false);
   const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
   const otherUid = otherUidFromChatId(chatId, myUid);
@@ -110,6 +113,52 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
     }
   };
 
+  // Delete a message for everyone in the chat. Both participants read the same
+  // messages collection, so deleting the doc removes it on both sides. You can
+  // only delete your own messages. If it was the latest message, the thread
+  // preview in each person's conversation list is refreshed too.
+  // Share my latest weekly progress straight into this chat.
+  const sendProgress = async () => {
+    if (sendingProgress) return;
+    setSendingProgress(true);
+    try {
+      const report = await fetchProgressReport(myUid);
+      await sendChatMessage({ chatId, senderUid: myUid, senderEmail: myEmail, otherUid, otherEmail, text: report });
+    } catch (e) {
+      Alert.alert('Error', "Couldn't send your progress. Please try again.");
+    } finally {
+      setSendingProgress(false);
+    }
+  };
+
+  const deleteMessage = (item) => {
+    if (item.senderUid !== myUid) return;
+    Alert.alert('Delete message', 'This removes it for everyone in this chat.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          const wasLast = messages.length > 0 && messages[messages.length - 1].id === item.id;
+          try {
+            await deleteDoc(doc(db, 'chats', chatId, 'messages', item.id));
+            if (wasLast) {
+              const prev = messages[messages.length - 2] || null;
+              const preview = prev
+                ? (prev.mediaUrl ? (prev.mediaType === 'video' ? '🎥 Video' : '📷 Photo') : prev.text)
+                : '';
+              const meta = { lastMessage: preview, lastSenderUid: prev?.senderUid || '' };
+              await Promise.all([
+                setDoc(doc(db, 'userChats', myUid, 'conversations', chatId), meta, { merge: true }),
+                otherUid ? setDoc(doc(db, 'userChats', otherUid, 'conversations', chatId), meta, { merge: true }) : Promise.resolve(),
+              ]);
+            }
+          } catch (e) {
+            Alert.alert('Error', "Couldn't delete the message. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.chatNavHeader}>
@@ -123,7 +172,12 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           </View>
           <Text style={styles.chatNavEmail} numberOfLines={1}>{headerName}</Text>
         </View>
-        <View style={{ width: 90 }} />
+        <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          {sendingProgress
+            ? <ActivityIndicator size="small" color={COLORS.primary} />
+            : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
+          <Text style={styles.progressBtnText}>Progress</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -155,10 +209,19 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
                   </Text>
                 </View>
               );
-            if (!showReceipt) return body;
+            const wrapped = (
+              <TouchableOpacity
+                activeOpacity={isMe ? 0.7 : 1}
+                onLongPress={isMe ? () => deleteMessage(item) : undefined}
+                delayLongPress={300}
+              >
+                {body}
+              </TouchableOpacity>
+            );
+            if (!showReceipt) return wrapped;
             return (
               <View>
-                {body}
+                {wrapped}
                 <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>
               </View>
             );
@@ -209,6 +272,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
 
 export default function MessagesScreen() {
   const [conversations, setConversations] = useState([]);
+  const [groupChats, setGroupChats] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
   const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
   const [loading, setLoading] = useState(true);
@@ -230,6 +295,17 @@ export default function MessagesScreen() {
       setConversations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     }, () => setLoading(false));
+  }, [myUid]);
+
+  // Class group chats I'm a member of (teacher-run announcements channels).
+  useEffect(() => {
+    if (!myUid) return;
+    const q = query(collection(db, 'groupChats'), where('memberUids', 'array-contains', myUid));
+    return onSnapshot(q, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.lastMessageAt?.toMillis?.() || 0) - (a.lastMessageAt?.toMillis?.() || 0));
+      setGroupChats(rows);
+    }, ignorePermissionDenied);
   }, [myUid]);
 
   // Resolve each conversation partner's username (chats only store email).
@@ -298,9 +374,23 @@ export default function MessagesScreen() {
     }
   };
 
+  if (activeGroup) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <GroupChatView
+          group={activeGroup}
+          myUid={myUid}
+          myName=""
+          isTeacher={activeGroup.teacherUid === myUid}
+          onBack={() => setActiveGroup(null)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (activeChat) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <ChatView
           chatId={activeChat.chatId}
           myUid={myUid}
@@ -333,13 +423,17 @@ export default function MessagesScreen() {
     listData.push({ type: 'header', id: 'h-teacher', label: 'YOUR TEACHER' });
     teacherRows.forEach((c) => listData.push(c));
   }
+  if (groupChats.length) {
+    listData.push({ type: 'header', id: 'h-groups', label: 'CLASS CHATS' });
+    groupChats.forEach((g) => listData.push({ ...g, type: 'group' }));
+  }
   if (otherRows.length) {
-    if (teacherRows.length) listData.push({ type: 'header', id: 'h-other', label: 'MESSAGES' });
+    if (teacherRows.length || groupChats.length) listData.push({ type: 'header', id: 'h-other', label: 'MESSAGES' });
     otherRows.forEach((c) => listData.push(c));
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
         <TouchableOpacity onPress={() => setShowNewChat(true)} style={styles.newBtn} activeOpacity={0.7}>
@@ -368,6 +462,32 @@ export default function MessagesScreen() {
           renderItem={({ item }) => {
             if (item.type === 'header') {
               return <Text style={styles.sectionHeader}>{item.label}</Text>;
+            }
+            if (item.type === 'group') {
+              const members = (item.memberUids || []).length;
+              return (
+                <TouchableOpacity
+                  style={styles.convoItem}
+                  onPress={() => setActiveGroup(item)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.convoAvatar, styles.convoAvatarTeacher]}>
+                    <Ionicons name="people" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.convoInfo}>
+                    <Text style={styles.convoEmail} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.convoLast} numberOfLines={1}>
+                      {item.lastMessage
+                        ? `${item.lastSenderUid === myUid ? 'You: ' : ''}${item.lastMessage}`
+                        : `${members} member${members === 1 ? '' : 's'} · announcements`}
+                    </Text>
+                  </View>
+                  <View style={styles.convoRight}>
+                    {!!item.lastMessageAt && <Text style={styles.convoTime}>{formatTime(item.lastMessageAt)}</Text>}
+                    <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} style={{ marginTop: 4 }} />
+                  </View>
+                </TouchableOpacity>
+              );
             }
             const isTeacher = item.otherUid === teacherUid;
             const name = nameMap[item.otherUid] || (item.otherEmail ? item.otherEmail.split('@')[0] : item.otherUid);
@@ -472,6 +592,8 @@ const styles = StyleSheet.create({
   chatNavHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 90 },
   backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
+  progressBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, width: 90 },
+  progressBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   chatNavCenter: { flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm },
   chatAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   chatAvatarText: { color: COLORS.text, fontSize: 12, fontWeight: '800' },

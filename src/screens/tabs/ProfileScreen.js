@@ -12,20 +12,12 @@ import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode } from '../../lib/teacher';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver } from '../../lib/notifications';
+import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
-const REMINDER_TIMES = [
-  { label: '7:00 AM', value: '07:00' },
-  { label: '12:00 PM', value: '12:00' },
-  { label: '3:30 PM', value: '15:30' },
-  { label: '5:00 PM', value: '17:00' },
-  { label: '7:00 PM', value: '19:00' },
-  { label: '8:30 PM', value: '20:30' },
-];
 function reminderTimeLabel(value) {
-  const f = REMINDER_TIMES.find((t) => t.value === value);
-  return f ? f.label : '7:00 PM';
+  return formatTime12(value || '19:00');
 }
 
 // ─── Picker Modal ─────────────────────────────────────────────────────────────
@@ -106,7 +98,7 @@ Practice Profile
 During onboarding and through Profile settings, you provide your instrument, skill level, practice goals, focus skills, available practice days, and daily practice duration. This information is used solely to generate and personalise your practice plans.
 
 Practice Activity
-When you complete a session, we record the date, duration, categories practised (e.g. warmup, technique), and your session rating (too easy / just right / too hard). We do not record audio, video, or the specific notes or exercises you play.
+When you complete a session, we record the date, duration, categories practiced (e.g. warmup, technique), and your session rating (too easy / just right / too hard). We do not record audio, video, or the specific notes or exercises you play.
 
 Usage Metadata
 For security and service improvement, our backend logs each AI request with metadata including: your user ID, request timestamp, model used, and token count. We do not log the content of prompts sent to our AI provider.
@@ -253,13 +245,18 @@ function Row({ icon, label, value, valueColor }) {
   );
 }
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { setOnboardingComplete } = useContext(AuthContext);
   const [userData, setUserData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [legalVisible, setLegalVisible] = useState(null); // 'privacy' | 'terms' | null
   const [modal, setModal] = useState(null); // { key, title, options, multi }
+  // Keep the wheel's open/closed state separate from its value: the scroll wheel
+  // can fire a late onChange while the modal slides shut, and tying visibility to
+  // the value would re-open it. Visibility is its own boolean instead.
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [pendingTime, setPendingTime] = useState('19:00');
   const [usernameModal, setUsernameModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
@@ -325,27 +322,42 @@ export default function ProfileScreen() {
   const toggleReminders = async (on) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-    if (on) {
-      const ok = await ensureNotificationPermission();
-      if (!ok) {
-        Alert.alert('Notifications are off', 'Turn on notifications for Prova in your phone’s Settings to get practice reminders.');
-        return;
+    const time = userData?.reminderTime || '19:00';
+    // Flip the switch instantly; do the permission/schedule/save work in the
+    // background and revert only if it fails or permission is denied.
+    setUserData((p) => ({ ...p, reminderEnabled: on, reminderTime: p?.reminderTime || time }));
+    try {
+      if (on) {
+        const ok = await ensureNotificationPermission();
+        if (!ok) {
+          setUserData((p) => ({ ...p, reminderEnabled: false }));
+          Alert.alert('Notifications are off', 'Turn on notifications for Prova in your phone’s Settings to get practice reminders.');
+          return;
+        }
+        await scheduleDailyReminder(time);
+        await updateDoc(doc(db, 'users', uid), { reminderEnabled: true, reminderTime: time });
+      } else {
+        await cancelDailyReminder();
+        await cancelStreakSaver();
+        await updateDoc(doc(db, 'users', uid), { reminderEnabled: false });
       }
-      const time = userData?.reminderTime || '19:00';
-      await scheduleDailyReminder(time);
-      await updateDoc(doc(db, 'users', uid), { reminderEnabled: true, reminderTime: time });
-      setUserData((p) => ({ ...p, reminderEnabled: true, reminderTime: time }));
-    } else {
-      await cancelDailyReminder();
-      await cancelStreakSaver();
-      await updateDoc(doc(db, 'users', uid), { reminderEnabled: false });
-      setUserData((p) => ({ ...p, reminderEnabled: false }));
+    } catch (e) {
+      setUserData((p) => ({ ...p, reminderEnabled: !on }));
     }
   };
 
   const handleSave = async (value) => {
     const key = modal.key;
     setModal(null);
+
+    // Students can't change plan settings (they have no plan). Don't write
+    // anything — just nudge them to upgrade.
+    const planKeys = ['instrument', 'level', 'goals', 'skills', 'availableDays', 'dailyDuration'];
+    if (planKeys.includes(key) && isStudentAcct) {
+      promptUpgrade();
+      return;
+    }
+
     setSaving(true);
     try {
       const uid = auth.currentUser.uid;
@@ -357,7 +369,6 @@ export default function ProfileScreen() {
         await scheduleDailyReminder(value);
       }
 
-      const planKeys = ['instrument', 'level', 'goals', 'skills', 'availableDays', 'dailyDuration'];
       if (planKeys.includes(key)) {
         Alert.alert(
           'Regenerate Plan?',
@@ -372,6 +383,35 @@ export default function ProfileScreen() {
       Alert.alert('Error', err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Students don't get the AI plan — changing plan settings nudges them to
+  // upgrade (which is where the plan lives), mirroring the Today upgrade card.
+  const isStudentAcct = userData?.role === 'student';
+  const promptUpgrade = () => {
+    Alert.alert(
+      'Upgrade to Personal',
+      'A personalised AI plan that adapts to these settings is part of a Personal account.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'See plans', onPress: () => navigation.navigate('Today', { screen: 'Paywall' }) },
+      ]
+    );
+  };
+
+  // Save the chosen reminder time and re-arm the daily notification if it's on.
+  const saveReminderTime = async () => {
+    const value = pendingTime;
+    setTimePickerOpen(false);
+    if (!value) return;
+    try {
+      const uid = auth.currentUser.uid;
+      await updateDoc(doc(db, 'users', uid), { reminderTime: value });
+      setUserData((prev) => ({ ...prev, reminderTime: value }));
+      if (userData?.reminderEnabled) await scheduleDailyReminder(value);
+    } catch (err) {
+      Alert.alert('Error', "Couldn't save your reminder time. Please try again.");
     }
   };
 
@@ -523,7 +563,8 @@ export default function ProfileScreen() {
 
         {/* Practice settings + goals are student-only — teachers don't have a practice plan */}
         {userData?.role !== 'teacher' && (<>
-        {/* My Teacher */}
+        {/* My Teacher — students AND personal accounts can connect a teacher,
+            which adds the teacher's tasks/lessons on top of their account. */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>MY TEACHER</Text>
           {userData?.teacherUid ? (
@@ -576,7 +617,7 @@ export default function ProfileScreen() {
           </View>
 
           {!!userData?.reminderEnabled && (
-            <TouchableOpacity style={styles.row} onPress={() => openModal('reminderTime', 'Reminder Time', REMINDER_TIMES)}>
+            <TouchableOpacity style={styles.row} onPress={() => { setPendingTime(userData?.reminderTime || '19:00'); setTimePickerOpen(true); }}>
               <Text style={styles.rowLabel}>Reminder time</Text>
               <View style={styles.rowRight}>
                 <Text style={styles.rowValue}>{reminderTimeLabel(userData?.reminderTime)}</Text>
@@ -585,7 +626,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           )}
 
-          <Text style={styles.reminderHint}>A daily nudge to practise, plus a heads-up if your streak is about to break.</Text>
+          <Text style={styles.reminderHint}>A daily nudge to practice, plus a heads-up if your streak is about to break.</Text>
         </View>
 
         {/* Practice Settings */}
@@ -654,18 +695,20 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.row}
             disabled={regenerating}
-            onPress={() => Alert.alert(
-              'Regenerate Plan?',
-              'Build a fresh practice plan from your current settings. Your existing plan will be replaced.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Regenerate', onPress: () => handleRegenerate(userData) },
-              ]
-            )}
+            onPress={() => isStudentAcct
+              ? promptUpgrade()
+              : Alert.alert(
+                'Regenerate Plan?',
+                'Build a fresh practice plan from your current settings. Your existing plan will be replaced.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Regenerate', onPress: () => handleRegenerate(userData) },
+                ]
+              )}
           >
-            <Text style={styles.rowLabel}>Regenerate Plan</Text>
+            <Text style={styles.rowLabel}>{isStudentAcct ? 'Get a personalised plan' : 'Regenerate Plan'}</Text>
             <View style={styles.rowRight}>
-              <Text style={styles.rowValue}>{regenerating ? 'Building…' : 'Rebuild now'}</Text>
+              <Text style={styles.rowValue}>{isStudentAcct ? 'Personal' : (regenerating ? 'Building…' : 'Rebuild now')}</Text>
               <Text style={styles.rowArrow}>›</Text>
             </View>
           </TouchableOpacity>
@@ -813,6 +856,26 @@ export default function ProfileScreen() {
                 {savingTip
                   ? <ActivityIndicator color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={timePickerOpen} transparent animationType="slide" onRequestClose={() => setTimePickerOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reminder time</Text>
+            <Text style={styles.usernameHint}>When should we nudge you to practice each day?</Text>
+            <View style={{ marginVertical: SPACING.lg }}>
+              <TimeWheel value={pendingTime} onChange={setPendingTime} />
+            </View>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setTimePickerOpen(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveReminderTime}>
+                <Text style={styles.modalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -149,7 +149,7 @@ export default function OnboardingFirstWin({ profile, plan, onFinish }) {
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
           <Text style={styles.statValue}>{FIRST_WIN_MINUTES}m</Text>
-          <Text style={styles.statLabel}>practised</Text>
+          <Text style={styles.statLabel}>practiced</Text>
         </View>
       </View>
 
