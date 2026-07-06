@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -1182,7 +1183,7 @@ export default function SongsScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* ── Learn a song (paid: personal / legacy; free students upgrade) ── */}
         {role !== 'student' && (
           <TouchableOpacity
@@ -1437,7 +1438,7 @@ export default function SongsScreen({ route, navigation }) {
             <Text style={styles.recLevelTag}>{level} · {instrument}</Text>
           </View>
           <Text style={styles.songsSub}>
-            Songs that fit a {level.toLowerCase()} {instrument.toLowerCase()} player. Tap a cover to preview, or add it to your library.
+            Songs that fit {/^[aeiou]/i.test(level || '') ? 'an' : 'a'} {level.toLowerCase()} {instrument.toLowerCase()} player. Tap a cover to preview, or add it to your library.
           </Text>
           <ScrollView
             horizontal
@@ -1519,11 +1520,19 @@ export default function SongsScreen({ route, navigation }) {
             style={StyleSheet.absoluteFill}
             onPress={() => !generatingSetlist && setShowGigForm(false)}
           />
-          <View style={styles.gigSheet}>
+          <View style={[styles.gigSheet, { maxHeight: '85%' }]}>
             <View style={styles.playerHandle} />
             <Text style={styles.gigSheetTitle}>Plan a gig</Text>
             <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
 
+            {/* The form scrolls: focusing a field slides it up just above the
+                keyboard instead of lifting (and overflowing) the whole sheet. */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: SPACING.xs, paddingBottom: SPACING.md }}
+            >
             <Text style={styles.gigLabel}>Setting</Text>
             <TextInput
               style={styles.songInput}
@@ -1607,6 +1616,7 @@ export default function SongsScreen({ route, navigation }) {
                 <Text style={styles.openInCancelText}>Cancel</Text>
               </TouchableOpacity>
             )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
