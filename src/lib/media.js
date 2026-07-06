@@ -13,6 +13,10 @@ export async function pickMedia() {
     mediaTypes: ['images', 'videos'],
     quality: 0.7,
     videoMaxDuration: 120,
+    // Re-encode picked videos to 540p — `quality` only compresses PHOTOS, so
+    // without this a library video uploads at full size (easily 100MB+),
+    // making uploads and the teacher's playback crawl.
+    videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
   });
   if (result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];
@@ -31,6 +35,9 @@ export async function captureMedia() {
     mediaTypes: ['images', 'videos'],
     quality: 0.7,
     videoMaxDuration: 120,
+    // Record at medium quality — full-res camera video is huge and slow to
+    // upload/stream (quality only affects photos).
+    videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
   });
   if (result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];

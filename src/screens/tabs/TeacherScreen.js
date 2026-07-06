@@ -4,7 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import ProofMedia from '../../components/ProofMedia';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -2772,10 +2772,8 @@ Sent from Prova`;
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
             {!!proofView && <Text style={styles.proofTitle} numberOfLines={1}>{proofView.title}</Text>}
-            {proofView?.type === 'video' ? (
-              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
-            ) : proofView ? (
-              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            {proofView ? (
+              <ProofMedia key={proofView.url} url={proofView.url} type={proofView.type} style={styles.proofMedia} />
             ) : null}
             <View style={styles.proofActions}>
               {proofView?.verified ? (
