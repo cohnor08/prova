@@ -2226,7 +2226,7 @@ Sent from Prova`;
                                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                   style={{ marginLeft: 8 }}
                                 >
-                                  <Ionicons name={t.proofVerified ? 'checkmark-done-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                                  <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
                                 </TouchableOpacity>
                               )}
                               <TouchableOpacity
@@ -2502,13 +2502,12 @@ Sent from Prova`;
                         <Text style={styles.classAssignBtnText}>Assign task</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.classAddBtn, members.length === 0 && { opacity: 0.5 }]}
+                        style={[styles.classSongBtn, members.length === 0 && { opacity: 0.5 }]}
                         onPress={() => setSongClass(c)}
                         disabled={members.length === 0}
                         activeOpacity={0.85}
                       >
-                        <Ionicons name="musical-notes-outline" size={15} color={COLORS.primary} />
-                        <Text style={styles.classAssignBtnText}>Song</Text>
+                        <Ionicons name="musical-notes-outline" size={17} color={COLORS.primary} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2751,7 +2750,7 @@ Sent from Prova`;
                               onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              <Ionicons name={t.proofVerified ? 'checkmark-done-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                              <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
                             </TouchableOpacity>
                           )}
                           <TouchableOpacity onPress={() => removeAssignedTask(live.uid, t.id, t.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2778,7 +2777,7 @@ Sent from Prova`;
             <View style={styles.proofActions}>
               {proofView?.verified ? (
                 <View style={styles.proofVerifiedTag}>
-                  <Ionicons name="checkmark-done-circle" size={18} color={COLORS.success} />
+                  <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
                   <Text style={styles.proofVerifiedText}>Verified</Text>
                 </View>
               ) : (
@@ -3031,9 +3030,11 @@ const styles = StyleSheet.create({
   classCardMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
   classCardMembers: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, lineHeight: 17 },
   classAssignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: SPACING.md, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
-  classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  classAssignBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   classBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   classAddBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
+  // Icon-only "assign a song" so all three class actions fit on one row.
+  classSongBtn: { width: 44, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   assignTasksRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.md, paddingVertical: 4 },
   assignTasksText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   classHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginBottom: SPACING.sm },
