@@ -568,6 +568,17 @@ exports.generateSongPlan = onCall(
 
     const cleanTitle  = title.trim();
     const cleanArtist = (artist || '').trim();
+    // Neutralise prompt-injection / JSON-breaking characters before user text is
+    // interpolated into the prompt (PR #21 review). The generated plan is cached
+    // world-readable in songPlans, so what we send must be inert: no control
+    // chars, backticks, quotes or backslashes survive into the prompt.
+    const promptSafe = (s) => s
+      .replace(/[\u0000-\u001f\u007f`]/g, ' ')
+      .replace(/["\\]/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+    const safeTitle  = promptSafe(cleanTitle);
+    const safeArtist = promptSafe(cleanArtist);
     const key = songPlanKey(instrument, cleanTitle, cleanArtist);
     const cacheRef = db.doc(`songPlans/${key}`);
 
@@ -583,8 +594,8 @@ exports.generateSongPlan = onCall(
     const prompt = `You are Prova, an expert ${instrument} teacher building a step-by-step plan for a student to learn ONE specific song from scratch.
 
 THE SONG:
-- Title: ${cleanTitle}
-- Artist: ${cleanArtist || 'unknown — infer the most likely well-known version'}
+- Title: ${safeTitle}
+- Artist: ${safeArtist || 'unknown — infer the most likely well-known version'}
 - Instrument: ${instrument}
 
 If you do not recognise this exact song, build the most sensible plan you can for a song of this title/artist on ${instrument}; never refuse.
@@ -595,8 +606,8 @@ Each step must be CONCRETE and specific to ${instrument}: name the actual chords
 
 Return a JSON object with this exact structure:
 {
-  "title": "${cleanTitle}",
-  "artist": "${cleanArtist}",
+  "title": "${safeTitle}",
+  "artist": "${safeArtist}",
   "instrument": "${instrument}",
   "overview": "one-sentence summary of what makes this song a good learning target and its overall difficulty (max 140 chars)",
   "steps": [
@@ -613,7 +624,7 @@ Return a JSON object with this exact structure:
 Rules:
 - 5 to 9 steps, ordered easiest → full performance.
 - "targetBpm" is optional — include it only where a tempo target makes sense (omit for pure chord-learning steps).
-- "yt" is a search phrase like "${cleanTitle} ${instrument} chords tutorial", never a link.
+- "yt" is a search phrase like "${safeTitle} ${instrument} chords tutorial", never a link.
 - Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;

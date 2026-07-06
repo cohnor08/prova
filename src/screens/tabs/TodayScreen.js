@@ -738,7 +738,9 @@ export default function TodayScreen({ navigation }) {
       const newScore = displayScore(d) + pts;
       const ids = Array.from(new Set([...prior, ...optimistic]));
       await updateDoc(doc(db, 'users', uid), {
-        provaScore: newScore,
+        // increment() so concurrent awards can't lose points; the absolute
+        // write happens only once, for legacy docs without the field.
+        provaScore: typeof d?.provaScore === 'number' ? increment(pts) : newScore,
         sessionProgress: { date: todayKey, ids },
       });
       setUserData(p => ({ ...p, provaScore: newScore }));
@@ -835,7 +837,7 @@ export default function TodayScreen({ navigation }) {
           totalMinutes: increment(sessionMins),
           totalSessions: increment(1),
           streak: newStreak,
-          provaScore: newScore,
+          provaScore: typeof userData?.provaScore === 'number' ? increment(earnedPoints) : newScore,
         }),
         setDoc(doc(db, 'sessionHistory', uid, 'logs', dateKey), {
           date: dateKey,
@@ -943,7 +945,7 @@ export default function TodayScreen({ navigation }) {
       const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
 
       const updates = {
-        provaScore: newScore,
+        provaScore: typeof userData?.provaScore === 'number' ? increment(CHALLENGE_POINTS) : newScore,
         lastChallengeDate: now.toISOString(),
         lastSessionDate: now.toISOString(), // counts as activity → preserves streak
         streak: newStreak,
@@ -991,7 +993,10 @@ export default function TodayScreen({ navigation }) {
     const newScore = displayScore(userData) + pts;
     setUserData((p) => ({ ...p, assignedTasks: next, provaScore: newScore }));
     try {
-      await updateDoc(doc(db, 'users', uid), { assignedTasks: next, provaScore: newScore });
+      await updateDoc(doc(db, 'users', uid), {
+        assignedTasks: next,
+        provaScore: typeof userData?.provaScore === 'number' ? increment(pts) : newScore,
+      });
     } catch (e) {
       Alert.alert('Error', "Couldn't save. Please try again.");
     }

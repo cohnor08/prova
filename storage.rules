@@ -4,9 +4,18 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Chat photo/video attachments. Any signed-in user may read and upload;
     // uploads are capped at 50 MB and must be an image or video.
+    //
+    // Proof-of-practice clips live at chatMedia/proof_{uid}/… and are LOCKED to
+    // their owner here: only the student may upload or list/read them through
+    // the rules. The teacher watches the clip via the tokened download URL that
+    // the app stores on the task (getDownloadURL), which doesn't go through
+    // these rules — so nothing breaks, but arbitrary signed-in users can no
+    // longer browse other students' practice videos.
     match /chatMedia/{chatId}/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+        && (!chatId.matches('proof_.*') || chatId == 'proof_' + request.auth.uid);
       allow write: if request.auth != null
+        && (!chatId.matches('proof_.*') || chatId == 'proof_' + request.auth.uid)
         && request.resource.size < 50 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*')
             || request.resource.contentType.matches('video/.*'));
