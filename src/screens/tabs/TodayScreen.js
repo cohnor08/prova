@@ -16,7 +16,7 @@ import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges'
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
-import { Video, ResizeMode } from 'expo-av';
+import ProofMedia from '../../components/ProofMedia';
 import { LinearGradient } from 'expo-linear-gradient';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 
@@ -1527,10 +1527,8 @@ export default function TodayScreen({ navigation }) {
       <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
-            {proofView?.type === 'video' ? (
-              <Video source={{ uri: proofView.url }} style={styles.proofMedia} useNativeControls resizeMode={ResizeMode.CONTAIN} shouldPlay />
-            ) : proofView ? (
-              <Image source={{ uri: proofView.url }} style={styles.proofMedia} resizeMode="contain" />
+            {proofView ? (
+              <ProofMedia key={proofView.url} url={proofView.url} type={proofView.type} style={styles.proofMedia} />
             ) : null}
             <TouchableOpacity style={styles.proofCloseBtn} onPress={() => setProofView(null)} activeOpacity={0.85}>
               <Ionicons name="close" size={20} color="#fff" />
