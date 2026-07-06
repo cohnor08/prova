@@ -1795,7 +1795,7 @@ const styles = StyleSheet.create({
   rateTodayText: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
   drBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  drSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl, maxHeight: '88%' },
+  drSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40, maxHeight: '88%' },
   drHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.lg },
   drTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
   drSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, lineHeight: 18 },

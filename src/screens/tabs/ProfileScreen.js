@@ -126,7 +126,7 @@ Your data is stored in Google Firebase (Firestore and Firebase Authentication), 
 
 5. DATA RETENTION
 
-We retain your account and practice data for as long as your account is active. You may request deletion of your account and all associated data by contacting us at privacy@prova.app. We will action deletion requests within 30 days.
+We retain your account and practice data for as long as your account is active. You may request deletion of your account and all associated data by contacting us at cehthoanprova@gmail.com. We will action deletion requests within 30 days.
 
 6. CHILDREN'S PRIVACY
 
@@ -134,7 +134,7 @@ Prova is not directed to children under 13. We do not knowingly collect personal
 
 7. YOUR RIGHTS
 
-Depending on your location, you may have the right to access, correct, or delete the personal data we hold about you. To exercise these rights, contact us at privacy@prova.app.
+Depending on your location, you may have the right to access, correct, or delete the personal data we hold about you. To exercise these rights, contact us at cehthoanprova@gmail.com.
 
 8. CHANGES TO THIS POLICY
 
@@ -142,7 +142,7 @@ We may update this Privacy Policy periodically. We will notify you of significan
 
 9. CONTACT
 
-For privacy-related questions, contact us at: privacy@prova.app`;
+For privacy-related questions, contact us at: cehthoanprova@gmail.com`;
 
 const TERMS_CONDITIONS = `Last updated: 28 May 2026
 
@@ -154,7 +154,7 @@ By accessing or using Prova, you confirm that you are at least 13 years old and 
 
 2. YOUR ACCOUNT
 
-You are responsible for maintaining the confidentiality of your account credentials. You must provide accurate information when registering and keep it up to date. You are responsible for all activity that occurs under your account. Notify us immediately at legal@prova.app if you suspect unauthorised access.
+You are responsible for maintaining the confidentiality of your account credentials. You must provide accurate information when registering and keep it up to date. You are responsible for all activity that occurs under your account. Notify us immediately at cehthoanprova@gmail.com if you suspect unauthorised access.
 
 We reserve the right to suspend or terminate accounts that violate these Terms, engage in abusive behaviour, or attempt to circumvent service limits.
 
@@ -200,7 +200,7 @@ We may update these Terms periodically. We will give at least 14 days' notice of
 
 10. CONTACT
 
-For questions about these Terms: legal@prova.app`;
+For questions about these Terms: cehthoanprova@gmail.com`;
 
 function LegalModal({ visible, title, content, onClose }) {
   return (
@@ -944,6 +944,8 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: SPACING.xl, maxHeight: '75%',
+    // Overshoot the bottom edge so no background gap shows above the keyboard.
+    paddingBottom: SPACING.xl + 40, marginBottom: -40,
   },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.lg },
   usernameInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm },

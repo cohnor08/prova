@@ -1347,7 +1347,7 @@ const styles = StyleSheet.create({
   addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 80, marginBottom: -40, borderTopWidth: 1, borderColor: COLORS.border },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   modalInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },

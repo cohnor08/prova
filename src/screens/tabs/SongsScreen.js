@@ -1515,16 +1515,24 @@ export default function SongsScreen({ route, navigation }) {
         animationType="slide"
         onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
       >
-        <KeyboardAvoidingView style={styles.playerBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.playerBackdrop}>
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             onPress={() => !generatingSetlist && setShowGigForm(false)}
           />
-          <View style={styles.gigSheet}>
+          <View style={[styles.gigSheet, { maxHeight: '85%' }]}>
             <View style={styles.playerHandle} />
             <Text style={styles.gigSheetTitle}>Plan a gig</Text>
             <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
 
+            {/* The form scrolls: focusing a field slides it up just above the
+                keyboard instead of lifting (and overflowing) the whole sheet. */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: SPACING.xs, paddingBottom: SPACING.md }}
+            >
             <Text style={styles.gigLabel}>Setting</Text>
             <TextInput
               style={styles.songInput}
@@ -1608,8 +1616,9 @@ export default function SongsScreen({ route, navigation }) {
                 <Text style={styles.openInCancelText}>Cancel</Text>
               </TouchableOpacity>
             )}
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Setlist detail — the ordered songs, each previewable + openable */}

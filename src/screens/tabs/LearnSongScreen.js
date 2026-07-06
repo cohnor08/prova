@@ -486,7 +486,8 @@ const styles = StyleSheet.create({
   removeText: { color: COLORS.textSecondary, fontSize: 13 },
 
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, maxHeight: '85%' },
+  // Overshoots the bottom edge so no background "crack" shows above the keyboard.
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, paddingBottom: SPACING.md + 40, marginBottom: -40, maxHeight: '85%' },
   modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
   fieldLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: SPACING.sm },
