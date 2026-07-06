@@ -57,6 +57,7 @@ export default function TeacherOverviewScreen({ navigation }) {
   const [students, setStudents] = useState([]);
   const [range, setRange] = useState('term');
   const [openUid, setOpenUid] = useState(null);
+  const [occShown, setOccShown] = useState({}); // uid -> lessons revealed (starts at 3, +7 per "Show more")
 
   useFocusEffect(
     useCallback(() => {
@@ -184,22 +185,49 @@ export default function TeacherOverviewScreen({ navigation }) {
                 ))}
               </View>
 
-              {open && r.occ.length > 0 && (
-                <View style={styles.occList}>
-                  {r.occ.map((o, i) => (
-                    <View key={i}>
-                      <View style={styles.occRow}>
-                        <Text style={styles.occDate}>{parseYmd(o.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                        <Text style={[styles.occStatus, { color: o.status ? STATUS_META[o.status].color : COLORS.textMuted }]}>
-                          {o.status ? STATUS_META[o.status].label : 'Not marked'}
-                        </Text>
-                        <Text style={styles.occMark}>{o.mark ? `${o.mark}★` : ''}</Text>
+              {open && r.occ.length > 0 && (() => {
+                // Newest lessons first; start at 3 and reveal older ones in
+                // batches so long histories stay compact.
+                const shown = occShown[r.stu.uid] || 3;
+                const visible = r.occ.slice(0, shown);
+                const remaining = r.occ.length - visible.length;
+                return (
+                  <View style={styles.occList}>
+                    {visible.map((o, i) => (
+                      <View key={i}>
+                        <View style={styles.occRow}>
+                          <Text style={styles.occDate}>{parseYmd(o.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+                          <Text style={[styles.occStatus, { color: o.status ? STATUS_META[o.status].color : COLORS.textMuted }]}>
+                            {o.status ? STATUS_META[o.status].label : 'Not marked'}
+                          </Text>
+                          <Text style={styles.occMark}>{o.mark ? `${o.mark}★` : ''}</Text>
+                        </View>
+                        {o.note ? <Text style={styles.occNote}>{o.note}</Text> : null}
                       </View>
-                      {o.note ? <Text style={styles.occNote}>{o.note}</Text> : null}
-                    </View>
-                  ))}
-                </View>
-              )}
+                    ))}
+                    {remaining > 0 && (
+                      <TouchableOpacity
+                        style={styles.showMoreBtn}
+                        onPress={() => setOccShown((p) => ({ ...p, [r.stu.uid]: shown + 7 }))}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.showMoreText}>Show {Math.min(remaining, 7)} more</Text>
+                        <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    )}
+                    {remaining === 0 && r.occ.length > 3 && (
+                      <TouchableOpacity
+                        style={styles.showMoreBtn}
+                        onPress={() => setOccShown((p) => ({ ...p, [r.stu.uid]: 3 }))}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.showMoreText}>Show less</Text>
+                        <Ionicons name="chevron-up" size={14} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })()}
             </View>
           );
         })}
@@ -246,4 +274,6 @@ const styles = StyleSheet.create({
   occStatus: { flex: 1, fontSize: 13, fontWeight: '700' },
   occMark: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800' },
   occNote: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, fontStyle: 'italic', marginLeft: 70, marginBottom: 6 },
+  showMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8 },
+  showMoreText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
 });
