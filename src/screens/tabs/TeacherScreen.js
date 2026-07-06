@@ -19,6 +19,8 @@ import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { displayName } from '../../lib/displayName';
+import { notifyOverdueTasks } from '../../lib/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -700,7 +702,8 @@ function DueDatePicker({ initial, onClose, onSet }) {
 // Teacher: pick a song → generate the step-by-step plan → tick which steps to
 // hand the student → each ticked step becomes an ordered assigned task. Uses the
 // student's instrument so the breakdown fits what they actually play.
-function AssignSongModal({ student, visible, onClose, onAssigned }) {
+function AssignSongModal({ student, klass, recipientStudents, visible, onClose, onAssigned }) {
+  // Works for one student OR a whole class (klass + its member student objects).
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -708,7 +711,13 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
   const [picked, setPicked] = useState(new Set()); // step ids the teacher will assign
   const [assigning, setAssigning] = useState(false);
 
-  const instrument = student?.instrument === 'Bass' ? 'Bass' : 'Guitar';
+  const isClass = !!klass;
+  const members = isClass ? (recipientStudents || []) : (student ? [student] : []);
+  // Class plans use the majority instrument of the members.
+  const bassCount = members.filter((m) => m?.instrument === 'Bass').length;
+  const instrument = isClass
+    ? (bassCount > members.length / 2 ? 'Bass' : 'Guitar')
+    : (student?.instrument === 'Bass' ? 'Bass' : 'Guitar');
 
   const reset = () => {
     setTitle(''); setArtist(''); setPlan(null); setPicked(new Set());
@@ -747,14 +756,13 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
   // Assign the song directly as a single task, skipping the AI step-by-step plan
   // (no generation, no weekly-limit hit) — just "learn this song".
   const assignSongOnly = async () => {
-    if (!student || !title.trim()) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
+    if (members.length === 0 || !title.trim()) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
     Keyboard.dismiss();
     setAssigning(true);
     try {
       const t = title.trim();
       const a = artist.trim();
-      const task = {
-        id: `${Date.now()}_song`,
+      const base = {
         title: `Learn: ${t}${a ? ` — ${a}` : ''}`,
         description: '',
         youtube: `${t}${a ? ` ${a}` : ''} ${instrument} tutorial`,
@@ -764,10 +772,15 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
+        ...(isClass ? { classId: klass.id, className: klass.name } : {}),
       };
-      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(task) });
+      await Promise.all(members.map((m, i) =>
+        updateDoc(doc(db, 'users', m.uid), { assignedTasks: arrayUnion({ ...base, id: `${Date.now()}_${i}_song` }) })
+      ));
       onAssigned && onAssigned();
-      Alert.alert('Assigned', `"${t}" assigned to learn.`);
+      Alert.alert('Assigned', isClass
+        ? `"${t}" assigned to ${members.length} student${members.length === 1 ? '' : 's'} in ${klass.name}.`
+        : `"${t}" assigned to learn.`);
       close();
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -777,14 +790,14 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
   };
 
   const assign = async () => {
-    if (!student || !plan) return;
+    if (members.length === 0 || !plan) return;
     const steps = (plan.steps || []).filter((s) => picked.has(s.id));
     if (steps.length === 0) { Alert.alert('No steps', 'Tick at least one step to assign.'); return; }
     setAssigning(true);
     try {
       const stamp = Date.now();
-      const tasks = steps.map((s, i) => ({
-        id: `${stamp}_${i}`,
+      const mkTasks = (mi) => steps.map((s, i) => ({
+        id: `${stamp}_${mi}_${i}`,
         title: `${plan.title} — ${s.title}`,
         description: [s.summary, ...(s.tasks || [])].filter(Boolean).join('\n• '),
         youtube: s.yt || `${plan.title} ${instrument} tutorial`,
@@ -796,10 +809,15 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
+        ...(isClass ? { classId: klass.id, className: klass.name } : {}),
       }));
-      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(...tasks) });
+      await Promise.all(members.map((m, mi) =>
+        updateDoc(doc(db, 'users', m.uid), { assignedTasks: arrayUnion(...mkTasks(mi)) })
+      ));
       onAssigned && onAssigned();
-      Alert.alert('Assigned', `${tasks.length} step${tasks.length === 1 ? '' : 's'} of "${plan.title}" assigned.`);
+      Alert.alert('Assigned', isClass
+        ? `${steps.length} step${steps.length === 1 ? '' : 's'} of "${plan.title}" sent to ${members.length} student${members.length === 1 ? '' : 's'} in ${klass.name}.`
+        : `${steps.length} step${steps.length === 1 ? '' : 's'} of "${plan.title}" assigned.`);
       close();
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -830,7 +848,11 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
               <TextInput style={styles.songInput} placeholder="e.g. Wonderwall" placeholderTextColor={COLORS.textMuted} value={title} onChangeText={setTitle} />
               <Text style={styles.songFieldLabel}>Artist (optional)</Text>
               <TextInput style={styles.songInput} placeholder="e.g. Oasis" placeholderTextColor={COLORS.textMuted} value={artist} onChangeText={setArtist} />
-              <Text style={styles.songCapHint}>Plan is built for {instrument.toLowerCase()} (this student's instrument). 5 new song plans per week — reused songs are free.</Text>
+              <Text style={styles.songCapHint}>
+                {isClass
+                  ? `For ${klass.name} (${members.length} student${members.length === 1 ? '' : 's'}) · built for ${instrument.toLowerCase()}. 5 new song plans per week — reused songs are free.`
+                  : `Plan is built for ${instrument.toLowerCase()} (this student's instrument). 5 new song plans per week — reused songs are free.`}
+              </Text>
               <TouchableOpacity style={[styles.songGenBtn, !title.trim() && styles.songGenBtnOff]} disabled={!title.trim()} onPress={generate}>
                 <Text style={styles.songGenBtnText}>Build the plan</Text>
               </TouchableOpacity>
@@ -842,7 +864,7 @@ function AssignSongModal({ student, visible, onClose, onAssigned }) {
             <>
               <Text style={styles.songPlanHeading}>{plan.title}{plan.artist ? ` — ${plan.artist}` : ''}</Text>
               {!!plan.overview && <Text style={styles.songPlanOverview}>{plan.overview}</Text>}
-              <Text style={styles.songCapHint}>Tick the steps to give this student. They'll appear as ordered tasks on their Today.</Text>
+              <Text style={styles.songCapHint}>{isClass ? `Tick the steps to give ${klass.name}. Every student gets them as ordered tasks on their Today.` : "Tick the steps to give this student. They'll appear as ordered tasks on their Today."}</Text>
               <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
                 {(plan.steps || []).map((s, i) => {
                   const on = picked.has(s.id);
@@ -891,6 +913,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [resources, setResources] = useState([]); // teacher's saved resources, assignable from here
+  const [showResources, setShowResources] = useState(false);
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong('');
@@ -898,14 +922,24 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
     onClose();
   };
 
-  // Reusable task templates live on the teacher's own user doc.
+  // Reusable task templates + the teacher's saved resources, both on their doc.
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     getDoc(doc(db, 'users', uid))
-      .then((s) => setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []))
+      .then((s) => {
+        setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []);
+        setResources(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
+      })
       .catch(() => {});
   }, []);
+
+  // Fill the task fields from one of the teacher's saved resources.
+  const applyResource = (r) => {
+    setTitle(r.title || '');
+    setDescription(r.description || '');
+    setYoutube(r.url || '');
+  };
 
   // Pre-fill the fields when opening to edit an existing task.
   useEffect(() => {
@@ -1034,10 +1068,14 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 {justAdded > 0 ? `  ·  ${justAdded} added` : ''}
               </Text>
 
-              <View style={styles.tplActions}>
+              <View style={[styles.tplActions, { flexWrap: 'wrap' }]}>
                 <TouchableOpacity style={styles.tplOpenBtn} onPress={() => { Keyboard.dismiss(); setShowTemplates(true); }} activeOpacity={0.85}>
                   <Ionicons name="albums-outline" size={15} color={COLORS.text} />
                   <Text style={styles.tplOpenText}>Templates ({templates.length})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.tplOpenBtn} onPress={() => { Keyboard.dismiss(); setShowResources(true); }} activeOpacity={0.85}>
+                  <Ionicons name="bookmark" size={14} color={COLORS.text} />
+                  <Text style={styles.tplOpenText}>My resources ({resources.length})</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.tplSaveBtn, !title.trim() && styles.tplSaveBtnDisabled]}
@@ -1177,6 +1215,39 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                           <TouchableOpacity onPress={() => deleteTemplate(t)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                             <Ionicons name="trash-outline" size={18} color={COLORS.error} />
                           </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
+            )}
+            {showResources && (
+              <View style={styles.dpBackdrop}>
+                <View style={styles.tplSheet}>
+                  <View style={styles.tplSheetHeader}>
+                    <Text style={styles.tplSheetTitle}>My resources</Text>
+                    <TouchableOpacity onPress={() => setShowResources(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  {resources.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>No saved resources yet — add them on the Resources page.</Text>
+                  ) : (
+                    <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+                      {resources.map((r) => (
+                        <View key={r.id} style={styles.tplSheetRow}>
+                          <TouchableOpacity
+                            style={{ flex: 1 }}
+                            onPress={() => { applyResource(r); setShowResources(false); }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.tplSheetRowTitle} numberOfLines={1}>{r.title}</Text>
+                            <Text style={styles.tplSheetRowSub} numberOfLines={1}>
+                              {[r.instrument, r.level, r.category].filter(Boolean).join(' · ') || r.description || ''}
+                            </Text>
+                          </TouchableOpacity>
+                          <Ionicons name="arrow-down-circle-outline" size={18} color={COLORS.primary} />
                         </View>
                       ))}
                     </ScrollView>
@@ -1467,8 +1538,10 @@ function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [songStudent, setSongStudent] = useState(null);
+  const [songClass, setSongClass] = useState(null); // class getting a song-to-learn
   const [expanded, setExpanded] = useState(null);
   const [proofView, setProofView] = useState(null); // { url, type, studentUid, taskId, verified, title }
+  const [completedView, setCompletedView] = useState(null); // student whose completed tasks are open
   const [activeTab, setActiveTab] = useState('students');
   const [activeChatStudent, setActiveChatStudent] = useState(null);
   const [convoMap, setConvoMap] = useState({});
@@ -1581,6 +1654,33 @@ function TeacherDashboard() {
     }
   };
 
+  // Ping the teacher (local notification) when a student's task passes its due
+  // date. A seen-set in AsyncStorage makes sure each overdue task only ever
+  // notifies once.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || DEMO_MODE || students.length === 0) return;
+    (async () => {
+      try {
+        const now = new Date();
+        const overdue = [];
+        students.forEach((s) => (s.assignedTasks || []).forEach((t) => {
+          if (t.completed || !t.dueDate) return;
+          const d = new Date(t.dueDate);
+          if (!isNaN(d) && d < now) overdue.push({ key: `${s.uid}_${t.id}`, title: t.title, student: displayName(s) });
+        }));
+        if (overdue.length === 0) return;
+        const storeKey = `prova_overdue_seen_${uid}`;
+        const seen = new Set(JSON.parse((await AsyncStorage.getItem(storeKey)) || '[]'));
+        const fresh = overdue.filter((o) => !seen.has(o.key));
+        if (fresh.length > 0) {
+          notifyOverdueTasks(fresh);
+          await AsyncStorage.setItem(storeKey, JSON.stringify(overdue.map((o) => o.key)));
+        }
+      } catch (e) { /* best-effort */ }
+    })();
+  }, [students]);
+
   const saveClasses = (next) => {
     setClasses(next);
     const uid = auth.currentUser?.uid;
@@ -1600,23 +1700,22 @@ function TeacherDashboard() {
     ]);
   };
 
-  // Rename a class after it's been made. Also relabels the `className` stored on
-  // every member's existing class tasks so the student's Today groups update too.
-  const renameClass = async (klass, rawName) => {
+  // Rename a class after it's been made. Closes instantly — the rename itself
+  // is optimistic, and relabeling `className` on every member's existing class
+  // tasks happens in the background (best-effort).
+  const renameClass = (klass, rawName) => {
     const name = (rawName || '').trim();
-    if (!klass || !name || name === klass.name) { setRenameTarget(null); return; }
-    saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, name } : c)));
-    try {
-      await Promise.all((klass.studentUids || []).map((uid) => {
-        const s = students.find((x) => x.uid === uid);
-        const tasks = s?.assignedTasks || [];
-        if (!tasks.some((t) => t.classId === klass.id)) return null;
-        const next = tasks.map((t) => (t.classId === klass.id ? { ...t, className: name } : t));
-        setStudents((prev) => prev.map((x) => (x.uid === uid ? { ...x, assignedTasks: next } : x)));
-        return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
-      }));
-    } catch (e) { /* class renamed locally; relabeling old tasks is best-effort */ }
     setRenameTarget(null);
+    if (!klass || !name || name === klass.name) return;
+    saveClasses(classes.map((c) => (c.id === klass.id ? { ...c, name } : c)));
+    (klass.studentUids || []).forEach((uid) => {
+      const s = students.find((x) => x.uid === uid);
+      const tasks = s?.assignedTasks || [];
+      if (!tasks.some((t) => t.classId === klass.id)) return;
+      const next = tasks.map((t) => (t.classId === klass.id ? { ...t, className: name } : t));
+      setStudents((prev) => prev.map((x) => (x.uid === uid ? { ...x, assignedTasks: next } : x)));
+      updateDoc(doc(db, 'users', uid), { assignedTasks: next }).catch(() => {});
+    });
   };
 
   // Add students to an existing class. If `assignExisting`, back-assign every
@@ -2081,11 +2180,24 @@ Sent from Prova`;
                         </View>
                       )}
 
-                      {/* Assigned tasks */}
+                      {/* Assigned tasks — active ones here; finished ones live in
+                          their own "Completed" window. */}
                       {student.assignedTasks?.length > 0 && (
                         <View style={styles.taskSection}>
-                          <Text style={styles.taskSectionLabel}>ASSIGNED TASKS</Text>
-                          {student.assignedTasks.map((t) => (
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={[styles.taskSectionLabel, { flex: 1 }]}>ASSIGNED TASKS</Text>
+                            {student.assignedTasks.some((t) => t.completed) && (
+                              <TouchableOpacity onPress={() => setCompletedView(student)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                <Text style={styles.completedLink}>
+                                  Completed ({student.assignedTasks.filter((t) => t.completed).length}) ›
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          {student.assignedTasks.filter((t) => !t.completed).length === 0 && (
+                            <Text style={styles.tplSheetEmpty}>All caught up — everything's completed.</Text>
+                          )}
+                          {student.assignedTasks.filter((t) => !t.completed).map((t) => (
                             <View key={t.id} style={styles.miniTask}>
                               <TouchableOpacity style={styles.miniTaskMain} onPress={() => setEditTaskCtx({ student, task: t })} activeOpacity={0.7}>
                                 <Ionicons
@@ -2295,17 +2407,24 @@ Sent from Prova`;
                                           <Text style={styles.classMemberEmpty}>No class tasks assigned to {displayName(m)} yet.</Text>
                                         ) : mt.map((t) => (
                                           <View key={t.id} style={styles.classTaskRow}>
-                                            <Ionicons
-                                              name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                              size={15}
-                                              color={t.completed ? COLORS.success : COLORS.textMuted}
-                                            />
-                                            <Text
-                                              style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
-                                              numberOfLines={1}
+                                            {/* Tap the task to see/edit its full details, same as individual students. */}
+                                            <TouchableOpacity
+                                              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}
+                                              onPress={() => setEditTaskCtx({ student: m, task: t })}
+                                              activeOpacity={0.7}
                                             >
-                                              {t.title}
-                                            </Text>
+                                              <Ionicons
+                                                name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                                                size={15}
+                                                color={t.completed ? COLORS.success : COLORS.textMuted}
+                                              />
+                                              <Text
+                                                style={[styles.classTaskTitle, t.completed && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]}
+                                                numberOfLines={1}
+                                              >
+                                                {t.title}
+                                              </Text>
+                                            </TouchableOpacity>
                                             {fmtPractised(t.practicedSec) && (
                                               <Text style={styles.miniPractised}>{fmtPractised(t.practicedSec)}</Text>
                                             )}
@@ -2381,6 +2500,15 @@ Sent from Prova`;
                       >
                         <Ionicons name="clipboard-outline" size={15} color={COLORS.primary} />
                         <Text style={styles.classAssignBtnText}>Assign task</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.classAddBtn, members.length === 0 && { opacity: 0.5 }]}
+                        onPress={() => setSongClass(c)}
+                        disabled={members.length === 0}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="musical-notes-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.classAssignBtnText}>Song</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2518,7 +2646,7 @@ Sent from Prova`;
         onCreate={createClass}
       />
 
-      <Modal visible={!!renameTarget} transparent animationType="slide" onRequestClose={() => setRenameTarget(null)}>
+      <Modal visible={!!renameTarget} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
@@ -2570,10 +2698,75 @@ Sent from Prova`;
 
       <AssignSongModal
         student={songStudent}
-        visible={!!songStudent}
-        onClose={() => setSongStudent(null)}
+        klass={songClass}
+        recipientStudents={
+          songClass
+            ? (songClass.studentUids || []).map((uid) => students.find((s) => s.uid === uid)).filter(Boolean)
+            : undefined
+        }
+        visible={!!songStudent || !!songClass}
+        onClose={() => { setSongStudent(null); setSongClass(null); }}
         onAssigned={loadStudents}
       />
+
+      {/* Everything this student has finished, in its own window. */}
+      <Modal visible={!!completedView} transparent animationType="slide" onRequestClose={() => setCompletedView(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {(() => {
+              const live = students.find((s) => s.uid === completedView?.uid) || completedView;
+              const done = (live?.assignedTasks || [])
+                .filter((t) => t.completed)
+                .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+              return (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm }}>
+                    <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>
+                      Completed · {live ? displayName(live) : ''}
+                    </Text>
+                    <TouchableOpacity onPress={() => setCompletedView(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  {done.length === 0 ? (
+                    <Text style={styles.tplSheetEmpty}>Nothing completed yet.</Text>
+                  ) : (
+                    <ScrollView style={{ maxHeight: 420 }}>
+                      {done.map((t) => (
+                        <View key={t.id} style={styles.completedRow}>
+                          <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.completedTitle} numberOfLines={1}>{t.title}</Text>
+                            <Text style={styles.completedMeta}>
+                              {[
+                                t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
+                                fmtPractised(t.practicedSec) ? `${fmtPractised(t.practicedSec)} practiced` : null,
+                                t.className || null,
+                              ].filter(Boolean).join(' · ')}
+                            </Text>
+                          </View>
+                          {t.proofUrl && (
+                            <TouchableOpacity
+                              // Close this window first — iOS won't stack two Modals.
+                              onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name={t.proofVerified ? 'checkmark-done-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity onPress={() => removeAssignedTask(live.uid, t.id, t.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
         <View style={styles.proofBackdrop}>
@@ -2912,6 +3105,10 @@ const styles = StyleSheet.create({
   // Assigned tasks mini list
   taskSection: { gap: 6 },
   taskSectionLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+  completedLink: { color: COLORS.primary, fontSize: 11, fontWeight: '700' },
+  completedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  completedTitle: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  completedMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
 
   parentReportBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -2928,7 +3125,9 @@ const styles = StyleSheet.create({
 
   // AssignSongModal
   songModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  songModalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, maxHeight: '88%' },
+  // The extra bottom padding + negative margin let the sheet overshoot the
+  // screen edge, so no background "crack" shows between it and the keyboard.
+  songModalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, paddingBottom: SPACING.md + 40, marginBottom: -40, maxHeight: '88%' },
   songModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   songModalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
   songFieldLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: SPACING.sm },
@@ -3031,7 +3230,7 @@ const styles = StyleSheet.create({
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl, maxHeight: '88%' },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.xl, paddingBottom: SPACING.xl + 40, marginBottom: -40, maxHeight: '88%' },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.xs },
   modalSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   input: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 10, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
