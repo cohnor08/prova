@@ -39,6 +39,7 @@ function tipOfTheDay() {
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
   { id: 'code', enabled: true },
+  { id: 'calendar', enabled: true },
   { id: 'lessons', enabled: true },
   { id: 'stats', enabled: true },
   { id: 'getstarted', enabled: true },
@@ -51,6 +52,7 @@ const DEFAULT_WIDGETS = [
 ];
 const WIDGET_LABELS = {
   code: 'Join code',
+  calendar: 'Calendar',
   lessons: 'Lessons',
   stats: 'Stats',
   getstarted: 'Get started',
@@ -77,7 +79,18 @@ function mergeLayout(saved) {
   const known = new Set(Object.keys(WIDGET_LABELS));
   const kept = saved.filter((w) => w && known.has(w.id)).map((w) => ({ id: w.id, enabled: w.enabled !== false }));
   const have = new Set(kept.map((w) => w.id));
-  DEFAULT_WIDGETS.forEach((d) => { if (!have.has(d.id)) kept.push({ ...d }); });
+  // Slot any NEW widget into its default position (before the first default
+  // that follows it and that the teacher already has), not just at the end.
+  DEFAULT_WIDGETS.forEach((d, di) => {
+    if (have.has(d.id)) return;
+    let insertAt = kept.length;
+    for (let j = di + 1; j < DEFAULT_WIDGETS.length; j++) {
+      const idx = kept.findIndex((w) => w.id === DEFAULT_WIDGETS[j].id);
+      if (idx !== -1) { insertAt = idx; break; }
+    }
+    kept.splice(insertAt, 0, { ...d });
+    have.add(d.id);
+  });
   return kept;
 }
 
@@ -354,6 +367,25 @@ export default function TeacherHomeScreen({ navigation }) {
             <Text style={styles.tipText}>{tipOfTheDay()}</Text>
           </View>
         );
+      case 'calendar':
+        // The calendar gets its own tappable card, sitting above Lessons.
+        return (
+          <TouchableOpacity
+            style={[styles.card, styles.calendarCard]}
+            onPress={() => navigation.navigate('TeacherCalendar')}
+            activeOpacity={0.85}
+            disabled={editMode}
+          >
+            <View style={styles.calendarCardIcon}>
+              <Ionicons name="calendar" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.cardTitle}>Calendar</Text>
+              <Text style={styles.calendarCardSub}>Plan lessons & mark attendance</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        );
       case 'lessons': {
         // Expand the next 28 days so weekly lessons show their next occurrences.
         const base = new Date();
@@ -374,13 +406,9 @@ export default function TeacherHomeScreen({ navigation }) {
           <View style={styles.card}>
             <View style={styles.lessonsHead}>
               <Text style={styles.cardTitle}>Lessons</Text>
-              <TouchableOpacity style={styles.calBtn} onPress={() => navigation.navigate('TeacherCalendar')} activeOpacity={0.85} disabled={editMode}>
-                <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
-                <Text style={styles.calBtnText}>Calendar</Text>
-              </TouchableOpacity>
             </View>
             {upcoming.length === 0 ? (
-              <Text style={styles.emptyMini}>No lessons scheduled. Tap Calendar to add one.</Text>
+              <Text style={styles.emptyMini}>No lessons scheduled. Add one from the Calendar.</Text>
             ) : upcoming.map((l) => (
               <View key={`${l.id}_${l.date}`} style={styles.miniRow}>
                 <Ionicons name="time-outline" size={15} color={COLORS.primary} />
@@ -535,6 +563,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg,
   },
   cardTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: SPACING.sm },
+  calendarCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.md },
+  calendarCardIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' },
+  calendarCardSub: { color: COLORS.textMuted, fontSize: 12, marginTop: -6 },
   emptyMini: { color: COLORS.textMuted, fontSize: 13 },
   miniRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 7, borderTopWidth: 1, borderTopColor: COLORS.border },
   miniRank: { width: 22, textAlign: 'center', fontSize: 15 },

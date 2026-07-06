@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -297,6 +297,8 @@ function LineGraph({ data }) {
   }
 
   const maxMins = Math.max(...data.map(d => d.mins), 1);
+  const totalMinsSum = data.reduce((s, d) => s + d.mins, 0);
+  const fmtDur = (m) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`);
   const spacing = (CHART_W - GRAPH_PAD * 2) / (data.length - 1);
   const getX = i => GRAPH_PAD + i * spacing;
   const getY = mins => GRAPH_H - GRAPH_PAD - (mins / maxMins) * (GRAPH_H - GRAPH_PAD * 2);
@@ -348,7 +350,7 @@ function LineGraph({ data }) {
           <View style={[styles.graphLegendDot, { backgroundColor: COLORS.primary }]} />
           <Text style={styles.graphLegendText}>Practice day</Text>
         </View>
-        <Text style={styles.graphPeak}>Peak: {Math.max(...data.map(d => d.mins))} min</Text>
+        <Text style={styles.graphPeak}>{fmtDur(totalMinsSum)} total · peak {maxMins} min</Text>
       </View>
     </View>
   );
@@ -478,28 +480,14 @@ function CategoryBreakdown({ data }) {
   );
 }
 
-function LevelProgress({ level, xp }) {
-  const idx = LEVELS.indexOf(level);
-  const nextLevel = LEVELS[Math.min(idx + 1, LEVELS.length - 1)];
+function LevelProgress({ totalMins }) {
+  const mins = Math.max(0, Math.round(totalMins || 0));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
   return (
     <View style={styles.levelCard}>
-      <View style={styles.levelTop}>
-        <View>
-          <Text style={styles.levelSub}>CURRENT LEVEL</Text>
-          <Text style={styles.levelValue}>{level}</Text>
-        </View>
-        {idx < LEVELS.length - 1 && (
-          <View style={styles.nextLevelBadge}>
-            <Text style={styles.nextLevelText}>Next: {nextLevel}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.xpTrack}>
-        <View style={[styles.xpBar, { width: `${Math.min(xp * 100, 100)}%` }]} />
-      </View>
-      <Text style={styles.xpLabel}>
-        {level === 'Elite' ? 'Maximum level reached' : `${Math.round(xp * 100)}% to ${nextLevel}`}
-      </Text>
+      <Text style={styles.levelSub}>TOTAL PRACTICE</Text>
+      <Text style={styles.levelValue}>{h}h {m}m</Text>
     </View>
   );
 }
@@ -656,7 +644,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
 
       {/* Add friend modal */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add a Friend</Text>
             <Text style={styles.modalSub}>Enter their Prova account email</Text>
@@ -679,7 +667,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -694,7 +682,6 @@ const DEFAULT_WIDGETS = [
   { id: 'leaderboard', enabled: true },
   { id: 'level', enabled: true },
   { id: 'daily', enabled: true },
-  { id: 'weekly', enabled: true },
   { id: 'heatmap', enabled: true },
   { id: 'categories', enabled: true },
   { id: 'milestones', enabled: true },
@@ -702,7 +689,7 @@ const DEFAULT_WIDGETS = [
 ];
 const WIDGET_LABELS = {
   stats: 'Stats', score: 'Prova Score', leaderboard: 'Leaderboard', level: 'Level',
-  daily: 'Daily graph', weekly: 'Weekly hours', heatmap: 'Activity graph',
+  daily: 'Daily graph', heatmap: 'Activity graph',
   categories: 'Categories', milestones: 'Milestones', goals: 'Goals',
 };
 function mergeLayout(saved) {
@@ -712,6 +699,112 @@ function mergeLayout(saved) {
   const have = new Set(kept.map((w) => w.id));
   DEFAULT_WIDGETS.forEach((d) => { if (!have.has(d.id)) kept.push({ ...d }); });
   return kept;
+}
+
+// Customize-mode list: hold the grip (≡) and drag a row to reorder, tap a row to
+// preview the widget, and use the eye to show/hide it. PanResponder-based (no
+// extra deps); rows measure their own height so previews of any size reorder ok.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+// A short slide used when rows swap order mid-drag, so neighbours glide into
+// place instead of snapping.
+const REORDER_ANIM = { duration: 170, update: { type: LayoutAnimation.Types.easeInEaseOut } };
+
+const ROW_H = 56;
+function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStateChange }) {
+  const [dragId, setDragId] = useState(null);
+  const [open, setOpen] = useState({});
+  const orderRef = useRef(layout);
+  orderRef.current = layout;
+  const heights = useRef({});
+  const responders = useRef({});
+  const pan = useRef(new Animated.Value(0)).current;
+  const startTop = useRef(0);
+
+  const offsetsOf = (order) => {
+    const o = {}; let y = 0;
+    order.forEach((w) => { o[w.id] = y; y += (heights.current[w.id] || ROW_H); });
+    return o;
+  };
+
+  const getResponder = (id) => {
+    if (responders.current[id]) return responders.current[id];
+    responders.current[id] = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startTop.current = offsetsOf(orderRef.current)[id] || 0;
+        pan.setValue(0);
+        setDragId(id);
+        onDragStateChange && onDragStateChange(true);
+      },
+      onPanResponderMove: (_, g) => {
+        const order = orderRef.current;
+        const offs = offsetsOf(order);
+        const desiredTop = startTop.current + g.dy;
+        const center = desiredTop + (heights.current[id] || ROW_H) / 2;
+        let target = 0;
+        for (let i = 0; i < order.length; i++) {
+          if (center >= offs[order[i].id]) target = i; else break;
+        }
+        const curIndex = order.findIndex((w) => w.id === id);
+        if (target !== curIndex) {
+          const arr = [...order];
+          const [it] = arr.splice(curIndex, 1);
+          arr.splice(target, 0, it);
+          LayoutAnimation.configureNext(REORDER_ANIM); // slide neighbours smoothly
+          onReorder(arr);
+          pan.setValue(desiredTop - (offsetsOf(arr)[id] || 0));
+        } else {
+          pan.setValue(desiredTop - offs[id]);
+        }
+      },
+      onPanResponderRelease: () => { setDragId(null); pan.setValue(0); onDragStateChange && onDragStateChange(false); },
+      onPanResponderTerminate: () => { setDragId(null); pan.setValue(0); onDragStateChange && onDragStateChange(false); },
+    });
+    return responders.current[id];
+  };
+
+  return (
+    <View style={{ marginBottom: SPACING.md }}>
+      {layout.map((w) => {
+        const dragging = dragId === w.id;
+        const isOpen = open[w.id];
+        const preview = isOpen ? renderPreview(w.id) : null;
+        return (
+          <Animated.View
+            key={w.id}
+            onLayout={(e) => { heights.current[w.id] = e.nativeEvent.layout.height + SPACING.sm; }}
+            style={[
+              styles.editItem,
+              dragging && styles.editItemDragging,
+              dragging && { transform: [{ translateY: pan }], zIndex: 20, elevation: 8 },
+            ]}
+          >
+            <View style={styles.editHeader}>
+              <View {...getResponder(w.id).panHandlers} style={styles.grip}>
+                <Ionicons name="reorder-three" size={26} color={COLORS.textSecondary} />
+              </View>
+              <TouchableOpacity style={styles.editNameWrap} onPress={() => setOpen((o) => ({ ...o, [w.id]: !o[w.id] }))} activeOpacity={0.7}>
+                <Ionicons name={isOpen ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+                <Text style={[styles.editRowName, !w.enabled && { color: COLORS.textMuted }]} numberOfLines={1}>{WIDGET_LABELS[w.id]}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => onToggle(w.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {isOpen && (
+              <View pointerEvents="none" style={[styles.editPreview, !w.enabled && { opacity: 0.4 }]}>
+                {preview || <Text style={styles.emptyMini}>Nothing to preview yet.</Text>}
+              </View>
+            )}
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
 }
 
 export default function ProgressScreen() {
@@ -725,6 +818,7 @@ export default function ProgressScreen() {
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const [editMode, setEditMode] = useState(false);
+  const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
   const [convos, setConvos] = useState([]);
@@ -952,11 +1046,11 @@ export default function ProgressScreen() {
             onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
           />
         );
-      case 'level': return <LevelProgress level={level} xp={xp} />;
-      case 'daily': return <LineGraph data={dailyData} />;
-      case 'weekly': return <WeeklyBarChart data={weeklyData} />;
-      case 'heatmap': return <ActivityGraph data={weeklyTrend} streak={streak} />;
-      case 'categories': return <CategoryBreakdown data={categoryData} />;
+      case 'level': return <LevelProgress totalMins={totalMins} />;
+      // Charts hide themselves until there's data, so new users don't see empty boxes.
+      case 'daily': return dailyData.some(d => d.mins > 0) ? <LineGraph data={dailyData} /> : null;
+      case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
+      case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
       case 'milestones': return <Milestones data={milestones} />;
       case 'goals':
         return userData?.goals?.length > 0 ? (
@@ -976,7 +1070,7 @@ export default function ProgressScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Progress</Text>
           <TouchableOpacity
@@ -985,12 +1079,12 @@ export default function ProgressScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name={editMode ? 'checkmark' : 'create-outline'} size={16} color={editMode ? '#fff' : COLORS.primary} />
-            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Edit'}</Text>
+            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Customize'}</Text>
           </TouchableOpacity>
         </View>
 
         {editMode && (
-          <Text style={styles.editHelp}>Reorder with the arrows or hide a card with the eye. Tap Done to save.</Text>
+          <Text style={styles.editHelp}>Hold the grip ⠿ and drag to reorder, or tap the eye to hide a card. Tap Done to save.</Text>
         )}
 
         {!editMode && (
@@ -1003,32 +1097,31 @@ export default function ProgressScreen() {
 
         <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
 
-        {layout.map((w, i) => {
-          const content = renderWidget(w.id);
-          if (!content) return null;
-          if (editMode) {
-            return (
-              <View key={w.id} style={styles.editWrap}>
-                <View style={styles.editBar}>
-                  <Text style={styles.editName}>{WIDGET_LABELS[w.id]}</Text>
-                  <View style={styles.editControls}>
-                    <TouchableOpacity onPress={() => moveWidget(w.id, -1)} disabled={i === 0} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Ionicons name="arrow-up" size={20} color={i === 0 ? COLORS.textMuted : COLORS.text} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => moveWidget(w.id, 1)} disabled={i === layout.length - 1} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Ionicons name="arrow-down" size={20} color={i === layout.length - 1 ? COLORS.textMuted : COLORS.text} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => toggleWidget(w.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Ionicons name={w.enabled ? 'eye' : 'eye-off'} size={20} color={w.enabled ? COLORS.primary : COLORS.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View pointerEvents="none" style={!w.enabled && { opacity: 0.35 }}>{content}</View>
-              </View>
-            );
-          }
-          return w.enabled ? <View key={w.id}>{content}</View> : null;
-        })}
+        {editMode ? (
+          <WidgetEditList
+            layout={layout}
+            onReorder={setLayout}
+            onToggle={toggleWidget}
+            renderPreview={renderWidget}
+            onDragStateChange={setDragging}
+          />
+        ) : (
+          layout.map((w) => {
+            const content = renderWidget(w.id);
+            if (!content) return null;
+            return w.enabled ? <View key={w.id}>{content}</View> : null;
+          })
+        )}
+
+        {!editMode && !dailyData.some(d => d.mins > 0) && (
+          <View style={styles.section}>
+            <ChartEmpty
+              icon="bar-chart-outline"
+              title="Your practice charts will appear here"
+              hint="Finish your first session and your daily activity, trend and category breakdown all fill in automatically."
+            />
+          </View>
+        )}
       </ScrollView>
 
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
@@ -1103,6 +1196,15 @@ const styles = StyleSheet.create({
   editName: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
   editControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
 
+  editItem: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm, overflow: 'hidden' },
+  editItemDragging: { borderColor: COLORS.primary, backgroundColor: COLORS.surface, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  editHeader: { height: ROW_H, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md },
+  editNameWrap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  grip: { paddingVertical: 10, paddingHorizontal: 4 },
+  editRowName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  editPreview: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.md },
+  emptyMini: { color: COLORS.textMuted, fontSize: 13 },
+
   statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   statValue: { color: COLORS.text, fontSize: 22, fontWeight: '900' },
@@ -1139,10 +1241,9 @@ const styles = StyleSheet.create({
   scoreBadge: { backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
   scoreBadgeText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
 
-  levelCard: { backgroundColor: COLORS.primary + '22', borderRadius: 16, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg },
-  levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.md },
-  levelSub: { color: COLORS.primary, fontSize: 10, fontWeight: '700', letterSpacing: 2 },
-  levelValue: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
+  levelCard: { backgroundColor: COLORS.primary + '22', borderRadius: 14, paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg, borderWidth: 1, borderColor: COLORS.primary + '44', marginBottom: SPACING.lg },
+  levelSub: { color: COLORS.primary, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
+  levelValue: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   nextLevelBadge: { backgroundColor: COLORS.primary + '33', borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
   nextLevelText: { color: COLORS.primary, fontSize: 12, fontWeight: '600' },
   xpTrack: { height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginBottom: SPACING.xs },
@@ -1246,7 +1347,7 @@ const styles = StyleSheet.create({
   addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 80, marginBottom: -40, borderTopWidth: 1, borderColor: COLORS.border },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   modalInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },

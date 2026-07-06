@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,21 +8,43 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
-
-// Open a YouTube SEARCH for a task (never a hard-coded video link).
-function openSearch(phrase) {
-  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(phrase)}`;
-  Linking.openURL(url).catch(() => {});
-}
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 
 const norm = (s) => (s || '').toLowerCase();
+
+// A calm, borderless filter pill row. Selected = solid fill, unselected = subtle
+// surface — no borders, so a long row of options reads cleanly instead of as a
+// wall of boxes.
+function FilterRow({ label, options, value, onSelect }) {
+  return (
+    <View style={styles.filterGroup}>
+      <Text style={styles.groupLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        {options.map((opt) => {
+          const on = value === opt;
+          return (
+            <TouchableOpacity
+              key={opt}
+              style={[styles.chip, on && styles.chipOn]}
+              onPress={() => onSelect(opt)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
 
 export default function LibraryScreen({ navigation }) {
   const [instrument, setInstrument] = useState(null); // 'Guitar' | 'Bass' | null
   const [levelFilter, setLevelFilter] = useState('All'); // defaults to the user's level once loaded
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
-  const [openId, setOpenId] = useState(null);
+  const [selected, setSelected] = useState(null); // topic opened in the detail modal
+  const [watch, setWatch] = useState(null); // { query } for the in-app video player
 
   useEffect(() => {
     (async () => {
@@ -63,20 +85,23 @@ export default function LibraryScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
-          <Text style={styles.backText}>Back</Text>
+          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Lesson Library</Text>
-        <View style={{ width: 72 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets>
+        {/* Title */}
+        <Text style={styles.pageTitle}>Lesson Library</Text>
+        <Text style={styles.pageSub}>
+          {topics.length} lesson{topics.length === 1 ? '' : 's'}{instrument ? ` · ${instrument}` : ''}
+        </Text>
+
         {/* Search */}
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search any topic — e.g. barre chords, slap, modes"
+            placeholder="Search barre chords, slap, modes…"
             placeholderTextColor={COLORS.textMuted}
             value={query}
             onChangeText={setQuery}
@@ -90,112 +115,110 @@ export default function LibraryScreen({ navigation }) {
           )}
         </View>
 
-        {/* Level filter — defaults to the student's own level */}
-        <Text style={styles.filterLabel}>LEVEL</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow} style={{ marginBottom: SPACING.sm }}>
-          {levels.map((lv) => {
-            const on = levelFilter === lv;
-            return (
-              <TouchableOpacity
-                key={lv}
-                style={[styles.catChip, on && styles.catChipOn]}
-                onPress={() => { setLevelFilter(lv); setCat('All'); }}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.catChipText, on && styles.catChipTextOn]}>{lv}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {/* Filters */}
+        <FilterRow label="Level" options={levels} value={levelFilter} onSelect={(lv) => { setLevelFilter(lv); setCat('All'); }} />
+        <FilterRow label="Category" options={cats} value={cat} onSelect={setCat} />
 
-        {/* Category filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow} style={{ marginBottom: SPACING.md }}>
-          {cats.map((c) => {
-            const on = cat === c;
-            return (
-              <TouchableOpacity key={c} style={[styles.catChip, on && styles.catChipOn]} onPress={() => setCat(c)} activeOpacity={0.85}>
-                <Text style={[styles.catChipText, on && styles.catChipTextOn]}>{c}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <Text style={styles.count}>{topics.length} topic{topics.length === 1 ? '' : 's'}</Text>
+        <View style={{ height: SPACING.md }} />
 
         {topics.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-            <Text style={styles.emptyText}>No topics match “{query}”.</Text>
+            <Text style={styles.emptyText}>No lessons match “{query}”.</Text>
             <Text style={styles.emptySub}>Try a simpler word, or clear the search to browse.</Text>
           </View>
         ) : (
-          topics.map((t) => {
-            const open = openId === t.id;
-            return (
-              <View key={t.id} style={styles.card}>
-                <TouchableOpacity style={styles.cardHead} onPress={() => setOpenId(open ? null : t.id)} activeOpacity={0.7}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>{t.title}</Text>
-                    <Text style={styles.cardMeta}>{t.category} · {t.level}</Text>
-                  </View>
-                  <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
-                </TouchableOpacity>
-
-                {open && (
-                  <View style={styles.cardBody}>
-                    {!!t.summary && <Text style={styles.summary}>{t.summary}</Text>}
-                    {(t.tasks || []).map((task, i) => (
-                      <View key={i} style={styles.task}>
-                        <Text style={styles.taskText}>{task.text}</Text>
-                        {!!task.yt && (
-                          <TouchableOpacity style={styles.watch} onPress={() => openSearch(task.yt)} activeOpacity={0.7}>
-                            <Ionicons name="logo-youtube" size={14} color="#FF0000" />
-                            <Text style={styles.watchText} numberOfLines={1}>Watch: {task.yt}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                )}
+          topics.map((t) => (
+            <TouchableOpacity key={t.id} style={styles.card} onPress={() => setSelected(t)} activeOpacity={0.7}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.cardTitle} numberOfLines={1}>{t.title}</Text>
+                <Text style={styles.cardMeta}>{t.category} · {t.level}</Text>
               </View>
-            );
-          })
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          ))
         )}
       </ScrollView>
+
+      {/* Topic detail — opens the lesson content in a modal over the list */}
+      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+        <View style={styles.sheetBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.sheetTitle} numberOfLines={2}>{selected?.title}</Text>
+                <Text style={styles.sheetMeta}>{selected?.category} · {selected?.level}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelected(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: SPACING.xl }} showsVerticalScrollIndicator={false}>
+              {!!selected?.summary && <Text style={styles.summary}>{selected.summary}</Text>}
+              {(selected?.tasks || []).map((task, i) => (
+                <View key={i} style={styles.task}>
+                  <Text style={styles.taskText}>{task.text}</Text>
+                  {!!task.yt && (
+                    <TouchableOpacity style={styles.watchBtn} onPress={() => setWatch({ query: task.yt, title: selected.title })} activeOpacity={0.8}>
+                      <Ionicons name="play-circle" size={18} color={COLORS.primary} />
+                      <Text style={styles.watchBtnText} numberOfLines={1}>Watch videos on {selected.title}</Text>
+                      <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Nested so the player stacks over this sheet and returns here on close */}
+            <YouTubePlayerModal
+              visible={!!watch}
+              query={watch?.query}
+              title={watch?.title ? `Videos on ${watch.title}` : 'Watch'}
+              onClose={() => setWatch(null)}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  backBtn: { flexDirection: 'row', alignItems: 'center', width: 72 },
-  backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
-  navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
-  content: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
 
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 10, marginBottom: SPACING.md },
+  navBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+
+  content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
+
+  pageTitle: { color: COLORS.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  pageSub: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 4, marginBottom: SPACING.lg },
+
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.lg },
   searchInput: { flex: 1, color: COLORS.text, fontSize: 15, padding: 0 },
 
-  filterLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.xs },
-  catRow: { gap: SPACING.sm, paddingRight: SPACING.lg },
-  catChip: { paddingHorizontal: SPACING.md, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card },
-  catChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
-  catChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  catChipTextOn: { color: COLORS.primary },
+  filterGroup: { marginBottom: SPACING.md },
+  groupLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginBottom: SPACING.sm },
+  chipRow: { gap: SPACING.sm, paddingRight: SPACING.lg },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: COLORS.surface },
+  chipOn: { backgroundColor: COLORS.primary },
+  chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  chipTextOn: { color: '#FFFFFF', fontWeight: '700' },
 
-  count: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
-
-  card: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm, overflow: 'hidden' },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.md },
+  card: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm },
   cardTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
-  cardMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 2 },
-  cardBody: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md, gap: SPACING.sm },
-  summary: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
-  task: { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
-  taskText: { color: COLORS.text, fontSize: 13, lineHeight: 19 },
-  watch: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  watchText: { color: COLORS.textSecondary, fontSize: 12, textDecorationLine: 'underline', flexShrink: 1 },
+  cardMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 3 },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl, maxHeight: '85%' },
+  sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.lg },
+  sheetTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
+  sheetMeta: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
+  summary: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21, marginBottom: SPACING.md },
+  task: { marginBottom: SPACING.md },
+  taskText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
+  watchBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 2 },
+  watchBtnText: { flex: 1, color: COLORS.primary, fontSize: 13, fontWeight: '600' },
 
   empty: { alignItems: 'center', paddingVertical: SPACING.xl },
   emptyText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },

@@ -8,6 +8,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import QRCode from 'react-native-qrcode-svg';
 import { COLORS, SPACING } from '../constants/theme';
 import { startLiveGig, endLiveGig, watchGigRequests, gigRequestUrl } from '../lib/livegig';
+import YouTubePlayerModal from './YouTubePlayerModal';
 
 const GIG_DOMAIN = 'prova-583c9.web.app';
 // Demo: pre-populate a few audience requests so the panel isn't empty when
@@ -41,6 +42,7 @@ export default function PerformanceMode({
   const [gigId, setGigId] = useState(null);
   const [requests, setRequests] = useState([]);
   const [showAudience, setShowAudience] = useState(false);
+  const [watch, setWatch] = useState(null); // { query, title } for the in-app tab/video player
 
   useEffect(() => {
     let unsub = () => {};
@@ -184,7 +186,7 @@ export default function PerformanceMode({
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.songActionBtn}
-                  onPress={() => openTabs(song)}
+                  onPress={() => setWatch({ query: `${song.title || ''} ${song.artist || ''} guitar tab`.trim(), title: song.title })}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="logo-youtube" size={18} color="#FF0000" />
@@ -283,6 +285,13 @@ export default function PerformanceMode({
           </View>
         )}
       </SafeAreaView>
+
+      <YouTubePlayerModal
+        visible={!!watch}
+        query={watch?.query}
+        title={watch?.title || 'Tabs'}
+        onClose={() => setWatch(null)}
+      />
     </Modal>
   );
 }

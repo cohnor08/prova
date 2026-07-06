@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
-  Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
+  Modal, TextInput, Alert, KeyboardAvoidingView, Platform, InputAccessoryView, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
+import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING } from '../../constants/theme';
 
 // Friendly label for a stored ISO due date.
@@ -59,9 +60,16 @@ export default function ResourceLibraryScreen() {
   const [newUrl, setNewUrl] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newInstrument, setNewInstrument] = useState('Guitar'); // where this resource is filed
+  const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
   const [newLevel, setNewLevel] = useState('Beginner');
   const [resSearch, setResSearch] = useState('');       // search across the teacher's own resources
   const [expandedRes, setExpandedRes] = useState(null);
+  const [resCategories, setResCategories] = useState([]); // teacher's own category names
+  const [newCategory, setNewCategory] = useState('');    // category for the resource being added/edited
+  const [addingCat, setAddingCat] = useState(false);     // showing the new-category input in the modal
+  const [newCatText, setNewCatText] = useState('');
+  const [resCatFilter, setResCatFilter] = useState('All'); // 'Your resources' chip filter
+  const [showAllRes, setShowAllRes] = useState(false);   // 'show more' expansion
 
   // The shared lesson-library bank shown right on this page.
   const [librarySearch, setLibrarySearch] = useState('');
@@ -74,13 +82,20 @@ export default function ResourceLibraryScreen() {
   const [assignTarget, setAssignTarget] = useState(null); // { title, url, description } | null
   const [assignInstructions, setAssignInstructions] = useState('');
   const [assignDueDate, setAssignDueDate] = useState(null); // ISO datetime or null
+  const [assignDuration, setAssignDuration] = useState(10); // timer minutes (default 10; clear for no limit)
   const [showAssignDuePicker, setShowAssignDuePicker] = useState(false);
+  const [selClasses, setSelClasses] = useState(() => new Set());  // multi-select: chosen class ids
+  const [selStudents, setSelStudents] = useState(() => new Set()); // multi-select: chosen student uids
 
-  // Seed the instructions/due-date when a resource is chosen to assign.
+  // Seed the instructions/due-date/timer + clear the recipient picks when a
+  // resource is chosen to assign.
   useEffect(() => {
     if (assignTarget) {
       setAssignInstructions(assignTarget.description || '');
       setAssignDueDate(null);
+      setAssignDuration(10);
+      setSelClasses(new Set());
+      setSelStudents(new Set());
     }
   }, [assignTarget]);
 
@@ -90,6 +105,7 @@ export default function ResourceLibraryScreen() {
       .then((s) => {
         setCustom(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
         setClasses(Array.isArray(s.data()?.classes) ? s.data().classes : []);
+        setResCategories(Array.isArray(s.data()?.resourceCategories) ? s.data().resourceCategories : []);
       })
       .catch(() => {});
     getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)))
@@ -106,34 +122,80 @@ export default function ResourceLibraryScreen() {
     return unsub;
   }, []);
 
-  // Assign the selected resource / task (with its link) to recipients.
-  const assignResourceTo = async (recipientUids, klass) => {
-    if (!assignTarget || recipientUids.length === 0) return;
+  const toggleSel = (setter) => (id) => setter((prev) => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const toggleClass = toggleSel(setSelClasses);
+  const toggleStudent = toggleSel(setSelStudents);
+
+  // Every unique student the current selection resolves to (class members +
+  // individually-picked students), used for the button label and the send.
+  const resolveRecipients = () => {
+    const set = new Set();
+    selClasses.forEach((cid) => {
+      const c = classes.find((x) => x.id === cid);
+      (c?.studentUids || []).filter((uid) => students.some((s) => s.uid === uid)).forEach((u) => set.add(u));
+    });
+    selStudents.forEach((u) => set.add(u));
+    return set;
+  };
+
+  // Assign the chosen resource to every selected class + student at once. A
+  // class pick tags the task with classId/className so it groups on the student's
+  // Today; an individual pick sends it as a solo task.
+  const assignToSelection = async () => {
+    if (!assignTarget) return;
     const base = {
       title: assignTarget.title,
       description: assignInstructions.trim(),
       youtube: assignTarget.url,
       song: '',
       dueDate: assignDueDate,
-      durationMin: 0,
+      durationMin: assignDuration || 0,
       completed: false,
       assignedAt: new Date().toISOString(),
       teacherUid: auth.currentUser.uid,
-      ...(klass ? { classId: klass.id, className: klass.name } : {}),
     };
+    const byUser = new Map(); // uid -> [task, ...] (pre-id)
+    const push = (uid, extra) => {
+      if (!byUser.has(uid)) byUser.set(uid, []);
+      byUser.get(uid).push({ ...base, ...extra });
+    };
+    selClasses.forEach((cid) => {
+      const c = classes.find((x) => x.id === cid);
+      if (!c) return;
+      (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid))
+        .forEach((uid) => push(uid, { classId: c.id, className: c.name }));
+    });
+    selStudents.forEach((uid) => push(uid, {}));
+    if (byUser.size === 0) { Alert.alert('Pick someone', 'Select at least one student or class.'); return; }
     try {
-      await Promise.all(
-        recipientUids.map((uid, i) =>
-          updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion({ ...base, id: `${Date.now()}_${i}` }) })
-        )
-      );
+      let seq = 0;
+      await Promise.all([...byUser.entries()].map(([uid, tasks]) => {
+        const withIds = tasks.map((t) => ({ ...t, id: `${Date.now()}_${seq++}` }));
+        return updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion(...withIds) });
+      }));
       setAssignTarget(null);
-      Alert.alert('Assigned', klass
-        ? `Sent to ${recipientUids.length} student${recipientUids.length === 1 ? '' : 's'} in ${klass.name}.`
-        : 'Sent to the student.');
+      Alert.alert('Assigned', `Sent to ${byUser.size} student${byUser.size === 1 ? '' : 's'}.`);
     } catch (e) {
       Alert.alert('Error', e.message);
     }
+  };
+
+  const saveCategories = (next) => {
+    setResCategories(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { resourceCategories: next }).catch(() => {});
+  };
+  // Create a category (if new) and select it for the resource being edited.
+  const addCategory = (raw) => {
+    const n = (raw || '').trim();
+    if (!n) return;
+    if (!resCategories.some((c) => c.toLowerCase() === n.toLowerCase())) saveCategories([...resCategories, n]);
+    setNewCategory(n);
+    setNewCatText(''); setAddingCat(false);
   };
 
   const saveCustom = (next) => {
@@ -142,7 +204,7 @@ export default function ResourceLibraryScreen() {
     if (uid) updateDoc(doc(db, 'users', uid), { customResources: next }).catch(() => {});
   };
 
-  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); };
+  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); setNewCategory(''); setAddingCat(false); setNewCatText(''); };
   // New resources default to the currently-viewed instrument/level; editing keeps
   // the resource's own.
   const openAdd = () => { resetForm(); setNewInstrument(instrument); setNewLevel(level); setShowAdd(true); };
@@ -153,6 +215,7 @@ export default function ResourceLibraryScreen() {
     setNewDesc(r.description || '');
     setNewInstrument(r.instrument || 'Guitar');
     setNewLevel(r.level || 'Beginner');
+    setNewCategory(r.category || '');
     setShowAdd(true);
   };
 
@@ -163,10 +226,10 @@ export default function ResourceLibraryScreen() {
     }
     if (editingId) {
       saveCustom(custom.map((x) => x.id === editingId
-        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel }
+        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '' }
         : x));
     } else {
-      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel };
+      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '' };
       saveCustom([item, ...custom]);
     }
     resetForm(); setShowAdd(false);
@@ -182,12 +245,20 @@ export default function ResourceLibraryScreen() {
   // The teacher's own links. When searching, match across ALL their resources;
   // otherwise show the ones for the currently selected instrument + level.
   const resQuery = resSearch.trim().toLowerCase();
-  const myResources = resQuery
+  let myResources = resQuery
     ? custom.filter((r) =>
         (r.title || '').toLowerCase().includes(resQuery)
         || (r.description || '').toLowerCase().includes(resQuery)
         || (r.url || '').toLowerCase().includes(resQuery))
     : custom.filter((r) => r.instrument === instrument && r.level === level);
+  // Category chip filter (only when browsing, not searching).
+  if (!resQuery && resCatFilter !== 'All') {
+    myResources = myResources.filter((r) => (r.category || '') === resCatFilter);
+  }
+  // Compact the list once there are more than 3 — "Show more" reveals the rest.
+  const RES_COMPACT = 3;
+  const resTooMany = myResources.length > RES_COMPACT;
+  const shownResources = showAllRes || !resTooMany ? myResources : myResources.slice(0, RES_COMPACT);
 
   // The shared lesson library. The category chip always applies. Search matches
   // the WHOLE bank; browsing (no search) narrows to the selected instrument
@@ -204,7 +275,7 @@ export default function ResourceLibraryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.kicker}>TEACHING LIBRARY</Text>
         <Text style={styles.title}>Resources</Text>
         <Text style={styles.subtitle}>Your own links, plus a full searchable lesson library — assign any of it to a student or class.</Text>
@@ -250,28 +321,44 @@ export default function ResourceLibraryScreen() {
             </View>
           )}
 
+          {resCategories.length > 0 && !resQuery && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll} style={{ marginBottom: SPACING.sm }}>
+              {['All', ...resCategories].map((c) => {
+                const on = resCatFilter === c;
+                return (
+                  <TouchableOpacity key={c} style={[styles.catChip, on && styles.catChipOn]} onPress={() => { setResCatFilter(c); setShowAllRes(false); }} activeOpacity={0.85}>
+                    <Text style={[styles.catChipText, on && styles.catChipTextOn]}>{c}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
           {myResources.length === 0 ? (
             <Text style={styles.emptyRes}>
               {resQuery
                 ? `No resources match “${resSearch.trim()}”.`
-                : `No links added for ${instrument} · ${level} yet. Tap “Add” to save one.`}
+                : resCatFilter !== 'All'
+                  ? `No resources in “${resCatFilter}” for ${instrument} · ${level}.`
+                  : `No links added for ${instrument} · ${level} yet. Tap “Add” to save one.`}
             </Text>
           ) : (
-            myResources.map((r) => {
+            shownResources.map((r) => {
               const open = expandedRes === r.id;
               return (
                 <View key={r.id} style={styles.item}>
                   <TouchableOpacity style={styles.customRow} onPress={() => setExpandedRes(open ? null : r.id)} activeOpacity={0.7}>
                     <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
                     <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>{r.title}</Text>
-                    {resQuery ? <Text style={styles.resTag}>{r.instrument} · {r.level}</Text> : null}
+                    {resQuery ? <Text style={styles.resTag}>{r.instrument} · {r.level}</Text> : (r.category ? <Text style={styles.resTag}>{r.category}</Text> : null)}
                   </TouchableOpacity>
                   {open && (
                     <>
                       {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
-                      <TouchableOpacity style={styles.ytRow} onPress={() => openResource(r.url)} activeOpacity={0.7}>
-                        <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                        <Text style={styles.ytText} numberOfLines={1}>Open: {r.url}</Text>
+                      <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.8}>
+                        <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                        <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
+                        <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                       </TouchableOpacity>
                       <View style={styles.resActions}>
                         <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
@@ -292,6 +379,12 @@ export default function ResourceLibraryScreen() {
                 </View>
               );
             })
+          )}
+          {resTooMany && (
+            <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAllRes((v) => !v)} activeOpacity={0.7}>
+              <Text style={styles.showMoreText}>{showAllRes ? 'Show less' : `Show ${myResources.length - RES_COMPACT} more`}</Text>
+              <Ionicons name={showAllRes ? 'chevron-up' : 'chevron-down'} size={15} color={COLORS.primary} />
+            </TouchableOpacity>
           )}
         </View>
 
@@ -351,9 +444,10 @@ export default function ResourceLibraryScreen() {
                         <View key={i} style={styles.libTask}>
                           <Text style={styles.itemDetail}>{task.text}</Text>
                           {!!task.yt && (
-                            <TouchableOpacity style={styles.ytRow} onPress={() => openYouTube(task.yt)} activeOpacity={0.7}>
-                              <Ionicons name="logo-youtube" size={15} color="#FF0000" />
-                              <Text style={styles.ytText} numberOfLines={1}>Watch: {task.yt}</Text>
+                            <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.8}>
+                              <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                              <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
+                              <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                             </TouchableOpacity>
                           )}
                           <TouchableOpacity
@@ -421,6 +515,33 @@ export default function ResourceLibraryScreen() {
                   <Pill key={l} label={l} active={newLevel === l} onPress={() => setNewLevel(l)} />
                 ))}
               </View>
+              <Text style={styles.pickLabel}>CATEGORY (OPTIONAL)</Text>
+              <View style={styles.pillRow}>
+                <Pill label="None" active={!newCategory} onPress={() => setNewCategory('')} />
+                {resCategories.map((c) => (
+                  <Pill key={c} label={c} active={newCategory === c} onPress={() => setNewCategory(c)} />
+                ))}
+                <TouchableOpacity style={styles.pill} onPress={() => setAddingCat((v) => !v)} activeOpacity={0.8}>
+                  <Text style={[styles.pillText, { color: COLORS.primary }]}>+ New</Text>
+                </TouchableOpacity>
+              </View>
+              {addingCat && (
+                <View style={[styles.searchRow, { marginBottom: SPACING.md }]}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="New category name"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={newCatText}
+                    onChangeText={setNewCatText}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={() => addCategory(newCatText)}
+                  />
+                  <TouchableOpacity onPress={() => addCategory(newCatText)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.addCatDone}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
                   <Text style={styles.cancelText}>Cancel</Text>
@@ -436,7 +557,7 @@ export default function ResourceLibraryScreen() {
 
       {/* Pick who to assign the chosen resource / task to */}
       <Modal visible={!!assignTarget} transparent animationType="slide" onRequestClose={() => setAssignTarget(null)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.customRow}>
               <Text style={styles.modalTitle} numberOfLines={1}>Assign “{assignTarget?.title}”</Text>
@@ -461,19 +582,54 @@ export default function ResourceLibraryScreen() {
               <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
             </TouchableOpacity>
 
-            <Text style={styles.pickLabel}>SEND TO</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
+            <View style={styles.assignDueRow}>
+              <Ionicons name="timer-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.assignDueLabel}>Timer</Text>
+              <TextInput
+                style={styles.assignDurInput}
+                placeholder="0"
+                placeholderTextColor={COLORS.textMuted}
+                value={assignDuration ? String(assignDuration) : ''}
+                onChangeText={(t) => {
+                  const n = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                  setAssignDuration(isNaN(n) ? 0 : Math.min(n, 600));
+                }}
+                keyboardType="number-pad"
+                maxLength={3}
+                inputAccessoryViewID={Platform.OS === 'ios' ? 'resTimerDone' : undefined}
+              />
+              <Text style={styles.assignDurUnit}>min</Text>
+              {assignDuration > 0 && (
+                <TouchableOpacity onPress={() => setAssignDuration(0)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.assignDurClear}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {Platform.OS === 'ios' && (
+              <InputAccessoryView nativeID="resTimerDone">
+                <View style={styles.accessoryBar}>
+                  <TouchableOpacity onPress={() => Keyboard.dismiss()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.accessoryDone}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </InputAccessoryView>
+            )}
+
+            <Text style={styles.pickLabel}>SEND TO — pick any number</Text>
+            <ScrollView style={{ maxHeight: 280 }}>
               {classes.length > 0 && <Text style={styles.pickLabel}>CLASSES</Text>}
               {classes.map((c) => {
                 const memberUids = (c.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+                const on = selClasses.has(c.id);
                 return (
                   <TouchableOpacity
                     key={c.id}
                     style={[styles.pickRow, memberUids.length === 0 && { opacity: 0.4 }]}
-                    onPress={() => memberUids.length > 0 && assignResourceTo(memberUids, c)}
+                    onPress={() => memberUids.length > 0 && toggleClass(c.id)}
                     disabled={memberUids.length === 0}
                     activeOpacity={0.7}
                   >
+                    <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? COLORS.primary : COLORS.textMuted} />
                     <Ionicons name="school-outline" size={18} color={COLORS.primary} />
                     <Text style={styles.pickName} numberOfLines={1}>{c.name}</Text>
                     <Text style={styles.pickMeta}>{memberUids.length} student{memberUids.length === 1 ? '' : 's'}</Text>
@@ -485,14 +641,32 @@ export default function ResourceLibraryScreen() {
               {students.length === 0 ? (
                 <Text style={styles.emptyRes}>No connected students yet.</Text>
               ) : (
-                students.map((s) => (
-                  <TouchableOpacity key={s.uid} style={styles.pickRow} onPress={() => assignResourceTo([s.uid], null)} activeOpacity={0.7}>
-                    <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.pickName} numberOfLines={1}>{displayName(s)}</Text>
-                  </TouchableOpacity>
-                ))
+                students.map((s) => {
+                  const on = selStudents.has(s.uid);
+                  return (
+                    <TouchableOpacity key={s.uid} style={styles.pickRow} onPress={() => toggleStudent(s.uid)} activeOpacity={0.7}>
+                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? COLORS.primary : COLORS.textMuted} />
+                      <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
+                      <Text style={styles.pickName} numberOfLines={1}>{displayName(s)}</Text>
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </ScrollView>
+            {(() => {
+              const n = resolveRecipients().size;
+              return (
+                <TouchableOpacity
+                  style={[styles.assignSendBtn, n === 0 && { opacity: 0.5 }]}
+                  onPress={assignToSelection}
+                  disabled={n === 0}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="paper-plane" size={16} color={COLORS.text} />
+                  <Text style={styles.assignSendText}>{n > 0 ? `Assign to ${n} student${n === 1 ? '' : 's'}` : 'Assign'}</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
           {showAssignDuePicker && (
             <DueDatePicker
@@ -501,8 +675,15 @@ export default function ResourceLibraryScreen() {
               onSet={setAssignDueDate}
             />
           )}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      <YouTubePlayerModal
+        visible={!!watch}
+        query={watch?.query}
+        title={watch?.title || 'Watch'}
+        onClose={() => setWatch(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -524,8 +705,8 @@ const styles = StyleSheet.create({
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   itemDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
-  ytRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
-  ytText: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1, textDecorationLine: 'underline' },
+  ytRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm },
+  ytText: { flex: 1, color: COLORS.error, fontSize: 13, fontWeight: '600' },
   addResBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
   addResBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   emptyRes: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
@@ -533,6 +714,16 @@ const styles = StyleSheet.create({
   assignDueRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 11, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
   assignDueLabel: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
   assignDueValue: { flex: 1, textAlign: 'right', color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  showMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10 },
+  showMoreText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  addCatDone: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  assignSendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md },
+  assignSendText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  assignDurInput: { flex: 1, textAlign: 'right', color: COLORS.text, fontSize: 14, fontWeight: '700', paddingVertical: 0 },
+  assignDurUnit: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  assignDurClear: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  accessoryBar: { backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 8, paddingHorizontal: SPACING.md, alignItems: 'flex-end' },
+  accessoryDone: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
@@ -553,7 +744,7 @@ const styles = StyleSheet.create({
   pickName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
   pickMeta: { color: COLORS.textMuted, fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40 },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },
   input: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14, marginBottom: SPACING.sm },

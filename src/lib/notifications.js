@@ -90,6 +90,23 @@ export async function cancelStreakSaver() {
   try { await Notifications.cancelScheduledNotificationAsync(STREAK_ID); } catch (e) {}
 }
 
+// Teacher-side ping when assigned task(s) have gone past their due date.
+export async function notifyOverdueTasks(items) {
+  if (!items || items.length === 0) return;
+  try {
+    const first = items[0];
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Task overdue ⏰',
+        body: items.length === 1
+          ? `"${first.title}" — ${first.student} hasn't finished it.`
+          : `${items.length} tasks are overdue, starting with "${first.title}" (${first.student}).`,
+      },
+      trigger: null,
+    });
+  } catch (e) { /* ignore */ }
+}
+
 // Immediate ping when the student's app first sees new teacher task(s).
 export async function notifyNewTasks(count) {
   try {
