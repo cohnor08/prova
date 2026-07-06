@@ -156,7 +156,7 @@ function NotesChip({ onPress }) {
 // credit — 3 of 20 min still pays), then "Practice again" lets them run another
 // lap for more. Points are time-proportional, so the only way to score is to
 // put in the real minutes.
-function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy }) {
+function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, topDivider }) {
   const target = (task.durationMin || 0) * 60; // 0 = no set target, just a stopwatch
   const [elapsed, setElapsed] = useState(0);   // seconds practiced THIS lap
   const [running, setRunning] = useState(false);
@@ -194,7 +194,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
   };
 
   return (
-    <View style={styles.teacherTask}>
+    <View style={[styles.teacherTask, topDivider && styles.teacherTaskDivider]}>
       <View style={styles.teacherTaskRow}>
         <TouchableOpacity style={styles.teacherTaskMain} onPress={onToggle} activeOpacity={0.7}>
           <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
@@ -265,11 +265,10 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
       {expanded && (
         <View style={styles.ttTimer}>
           <View style={styles.ttRow}>
-            {/* Left column absorbs the changing text so the buttons never move.
-                Timed tasks count DOWN the remaining time; open-ended ones are a
-                count-up stopwatch. */}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.ttTimerText}>
+            {/* The clock never shrinks or wraps; the spacer absorbs the slack so
+                the buttons stay put. Timed tasks count DOWN; open-ended count up. */}
+            <View style={{ flexShrink: 0 }}>
+              <Text style={styles.ttTimerText} numberOfLines={1}>
                 {target > 0 ? fmt(Math.max(0, target - prior - elapsed)) : fmt(elapsed)}
               </Text>
               {elapsed > 0 && (
@@ -278,6 +277,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onBank, openTaskLink, onOpe
                 </Text>
               )}
             </View>
+            <View style={{ flex: 1 }} />
             <TouchableOpacity style={[styles.ttTimerBtn, running && styles.ttTimerBtnActive]} onPress={() => setRunning((r) => !r)} activeOpacity={0.8}>
               <Ionicons name={running ? 'pause' : 'play'} size={14} color={COLORS.text} />
               <Text style={styles.ttTimerBtnText} numberOfLines={1}>
@@ -1383,20 +1383,25 @@ export default function TodayScreen({ navigation }) {
                 <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
-            {soloOpen && soloTasks.map((t) => (
-              <TeacherTaskCard
-                key={t.id}
-                task={t}
-                expanded={expandedTask === t.id}
-                onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                onBank={bankTeacherTask}
-                openTaskLink={openTaskLink}
-                onOpenSong={openSongInLibrary}
-                onAttachProof={attachProof}
-                onViewProof={viewProof}
-                proofBusy={proofBusyId === t.id}
-              />
-            ))}
+            {soloOpen && soloTasks.length > 0 && (
+              <View style={styles.taskGroup}>
+                {soloTasks.map((t, i) => (
+                  <TeacherTaskCard
+                    key={t.id}
+                    task={t}
+                    topDivider={i > 0}
+                    expanded={expandedTask === t.id}
+                    onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                    onBank={bankTeacherTask}
+                    openTaskLink={openTaskLink}
+                    onOpenSong={openSongInLibrary}
+                    onAttachProof={attachProof}
+                    onViewProof={viewProof}
+                    proofBusy={proofBusyId === t.id}
+                  />
+                ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -1413,20 +1418,25 @@ export default function TodayScreen({ navigation }) {
                 </View>
                 <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
-              {!collapsed && g.tasks.map((t) => (
-                <TeacherTaskCard
-                  key={t.id}
-                  task={t}
-                  expanded={expandedTask === t.id}
-                  onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                  onBank={bankTeacherTask}
-                  openTaskLink={openTaskLink}
-                onOpenSong={openSongInLibrary}
-                  onAttachProof={attachProof}
-                  onViewProof={viewProof}
-                  proofBusy={proofBusyId === t.id}
-                />
-              ))}
+              {!collapsed && g.tasks.length > 0 && (
+                <View style={styles.taskGroup}>
+                  {g.tasks.map((t, i) => (
+                    <TeacherTaskCard
+                      key={t.id}
+                      task={t}
+                      topDivider={i > 0}
+                      expanded={expandedTask === t.id}
+                      onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                      onBank={bankTeacherTask}
+                      openTaskLink={openTaskLink}
+                      onOpenSong={openSongInLibrary}
+                      onAttachProof={attachProof}
+                      onViewProof={viewProof}
+                      proofBusy={proofBusyId === t.id}
+                    />
+                  ))}
+                </View>
+              )}
               {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
                 <ClassScoreboard
                   classId={g.tasks[0].classId}
@@ -1710,13 +1720,22 @@ const styles = StyleSheet.create({
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
-  teacherTask: { paddingVertical: SPACING.sm },
+  // Tasks live flush inside one grouped inset panel (taskGroup); each row is
+  // full-width with a hairline between rows, iOS-grouped-list style.
+  taskGroup: {
+    backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border + '66',
+    marginTop: SPACING.sm, overflow: 'hidden',
+    // Stretch past the parent card's padding so tasks get more width.
+    marginHorizontal: -(SPACING.lg - SPACING.sm),
+  },
+  teacherTask: { paddingVertical: SPACING.md, paddingHorizontal: SPACING.md },
+  teacherTaskDivider: { borderTopWidth: 1, borderTopColor: COLORS.border + '55' },
   teacherTaskRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, justifyContent: 'space-between' },
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   teacherTaskDone: { color: COLORS.textMuted },
-  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm, marginLeft: 22 },
-  teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, marginLeft: 22 },
+  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm },
+  teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
   teacherTaskLinkText: { color: COLORS.textSecondary, fontSize: 13, textDecorationLine: 'underline', flexShrink: 1 },
   teacherTaskWatchText: { flex: 1, color: COLORS.primary, fontWeight: '600', textDecorationLine: 'none' },
   teacherTaskSongText: { flex: 1, color: COLORS.text, fontWeight: '600', textDecorationLine: 'none' },
@@ -1726,21 +1745,21 @@ const styles = StyleSheet.create({
   teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   teacherDoneTextLocked: { color: COLORS.textMuted },
-  ttTimer: { marginLeft: 22, marginTop: SPACING.md },
+  ttTimer: { marginTop: SPACING.md },
   ttRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   ttTimerText: { color: COLORS.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   ttTimerTarget: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
   ttDurationLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 6 },
   ttLapPts: { color: COLORS.accent, fontSize: 13, fontWeight: '800' },
-  ttTimerBtn: { backgroundColor: COLORS.primaryDark, borderRadius: 999, width: 104, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ttTimerBtn: { backgroundColor: COLORS.primaryDark, borderRadius: 999, width: 100, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
   ttTimerBtnActive: { backgroundColor: COLORS.border },
   ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
-  ttBankBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 999, width: 76, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ttBankBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 999, width: 76, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 18 },
   ttBankBtnDim: { backgroundColor: COLORS.card },
   ttBankBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
   ttBankBtnTextDim: { color: COLORS.textMuted },
   teacherEarned: { color: COLORS.success, fontSize: 11, fontWeight: '700', marginTop: 2 },
-  scoreboard: { marginTop: SPACING.md, backgroundColor: COLORS.background, borderRadius: 12, padding: SPACING.sm },
+  scoreboard: { marginTop: SPACING.md, backgroundColor: COLORS.background, borderRadius: 12, padding: SPACING.sm, marginHorizontal: -(SPACING.lg - SPACING.sm) },
   scoreboardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   scoreboardTitle: { flex: 1, color: COLORS.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
   scoreboardEmpty: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.sm, paddingHorizontal: 4 },
@@ -1861,8 +1880,9 @@ const styles = StyleSheet.create({
   },
   lessonRow: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
-    paddingVertical: 9, paddingHorizontal: 10, marginTop: SPACING.sm,
+    paddingVertical: 9, paddingHorizontal: 12, marginTop: SPACING.sm,
     backgroundColor: COLORS.primary + '12', borderRadius: 10,
+    marginHorizontal: -(SPACING.lg - SPACING.sm), // full-width like the task group
   },
   lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   attDot: { width: 9, height: 9, borderRadius: 5 },
@@ -1874,10 +1894,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, marginLeft: 22, marginRight: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   proofAddIcon: { position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' },
   proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, marginLeft: 22, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
   proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   proofViewLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofReplaceLink: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
