@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { generateSongPlan } from '../../lib/claude';
@@ -74,9 +74,14 @@ export default function LearnSongScreen({ navigation }) {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     const patch = { learningSongs: nextSongs, ...extra };
-    if (addedScore) patch.provaScore = (userData?.provaScore || 0) + addedScore;
+    const newScore = (userData?.provaScore || 0) + addedScore;
+    if (addedScore) patch.provaScore = newScore;
     setUserData((u) => ({ ...(u || {}), ...patch }));
-    await setDoc(doc(db, 'users', uid), patch, { merge: true });
+    // Write the score as an increment so a concurrent award elsewhere can't be
+    // overwritten by this stale-closure total (absolute once for legacy docs).
+    const write = { ...patch };
+    if (addedScore && typeof userData?.provaScore === 'number') write.provaScore = increment(addedScore);
+    await setDoc(doc(db, 'users', uid), write, { merge: true });
   };
 
   // ── Generate a new song plan ──────────────────────────────────────────────
