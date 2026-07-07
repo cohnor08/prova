@@ -1925,7 +1925,7 @@ const styles = StyleSheet.create({
   gigAskSkip: { alignItems: 'center', paddingVertical: 14, marginTop: SPACING.xs },
   gigAskSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   bellBtn: { position: 'absolute', right: SPACING.xl, zIndex: 10 },
-  setlistLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, marginTop: 2 },
+  setlistLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, marginTop: 12 },
   setlistLinkText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   bellDot: { position: 'absolute', top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },

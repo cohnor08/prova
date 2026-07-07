@@ -2061,7 +2061,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
   },
   gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  manualLink: { alignItems: 'center', paddingVertical: 8 },
+  manualLink: { alignItems: 'center', paddingVertical: 8, marginTop: 12 },
   manualLinkText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   manualSearchRow: { flexDirection: 'row', gap: SPACING.sm },
   manualSearchBtn: { width: 48, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
