@@ -7,10 +7,9 @@ import { PitchDetector } from 'pitchy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { taskPoints, displayScore, formatScore } from '../../lib/score';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -308,64 +307,9 @@ export default function PracticeScreen({ route, navigation }) {
 
 
   // Which tool is visible: 'metronome' | 'tuner' | 'songs'
-  // (the practice timer now lives inline on the task card above)
+  // (practicing happens in the guided player on Today — the task card here is
+  // a preview whose "Practice this" opens it)
   const [tool, setTool] = useState('metronome');
-
-  // Timer — declared before effects so closures always capture the right bindings
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const timerRef = useRef(null);
-  const timerSecondsRef = useRef(0); // always-current mirror of timerSeconds
-  const awardedRef = useRef({}); // session ids already banked this mount (avoid double-award)
-
-  // Bank a finished session's points and record it as done for today, so it
-  // counts even when practiced here in the Practice tab (the Today screen reads
-  // the same shared `sessionProgress` store and won't re-award it).
-  const completeSession = async (session) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !session || awardedRef.current[session.id]) return;
-    awardedRef.current[session.id] = true;
-    try {
-      const snap = await getDoc(doc(db, 'users', uid));
-      const data = snap.data() || {};
-      const today = new Date().toDateString();
-      const prior = data.sessionProgress?.date === today ? (data.sessionProgress.ids || []) : [];
-      if (prior.includes(session.id)) return; // already completed (e.g. on Today)
-      const pts = taskPoints(session);
-      const newScore = displayScore(data) + pts;
-      await updateDoc(doc(db, 'users', uid), {
-        provaScore: newScore,
-        sessionProgress: { date: today, ids: [...prior, session.id] },
-      });
-      Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
-    } catch (e) {
-      awardedRef.current[session.id] = false; // let them retry on failure
-    }
-  };
-
-  // Soft glow pulse on the task card when the student arrives from Today, so
-  // they know this is the one to do.
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const pulseGlow = () => {
-    glowAnim.setValue(0);
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
-      ]),
-      { iterations: 1 },
-    ).start();
-  };
-
-  // When navigated from Today with a specific session, snap to it. Clear the
-  // param afterwards so the silent refresh-on-focus loader doesn't lose it.
-  useEffect(() => {
-    if (route?.params?.activeSession) {
-      setActiveSession(route.params.activeSession);
-      navigation.setParams({ activeSession: undefined });
-      pulseGlow();
-    }
-  }, [route?.params?.activeSession]);
 
   // When navigated with a specific tool (e.g. from Today's song card), open it
   useEffect(() => {
@@ -373,41 +317,6 @@ export default function PracticeScreen({ route, navigation }) {
       setTool(route.params.tool);
     }
   }, [route?.params?.tool]);
-
-  // Reset timer when active session changes
-  useEffect(() => {
-    clearInterval(timerRef.current);
-    timerRef.current = null;
-    const secs = activeSession ? activeSession.duration * 60 : 0;
-    setTimerActive(false);
-    setTimerSeconds(secs);
-    timerSecondsRef.current = secs; // update ref synchronously so play works immediately
-  }, [activeSession?.id]);
-
-  // Countdown
-  useEffect(() => {
-    clearInterval(timerRef.current);
-    timerRef.current = null;
-    if (!timerActive) return;
-    if (timerSecondsRef.current <= 0) { setTimerActive(false); return; }
-
-    timerRef.current = setInterval(() => {
-      setTimerSeconds((s) => {
-        const next = s - 1;
-        timerSecondsRef.current = next;
-        if (next <= 0) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-          setTimerActive(false);
-          completeSession(activeSession); // bank points + mark done when it finishes
-          return 0;
-        }
-        return next;
-      });
-    }, 1000);
-
-    return () => { clearInterval(timerRef.current); timerRef.current = null; };
-  }, [timerActive]);
 
   // Metronome
   const [bpm, setBpm] = useState(80);
@@ -623,12 +532,6 @@ export default function PracticeScreen({ route, navigation }) {
     setTool(next);
   };
 
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
   const strings = tunerInstrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS;
 
   // ── Pre-Gig Mode ──
@@ -729,19 +632,7 @@ export default function PracticeScreen({ route, navigation }) {
             )}
 
             {activeSession && (
-              <Animated.View
-                style={[
-                  styles.taskCard,
-                  { borderLeftColor: categoryColor },
-                  {
-                    borderColor: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [COLORS.border, categoryColor] }),
-                    shadowColor: categoryColor,
-                    shadowOpacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] }),
-                    shadowRadius: 14,
-                    shadowOffset: { width: 0, height: 0 },
-                  },
-                ]}
-              >
+              <View style={[styles.taskCard, { borderLeftColor: categoryColor }]}>
                 <View style={styles.taskCardTop}>
                   <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
                     <Text style={[styles.categoryText, { color: categoryColor }]}>
@@ -755,54 +646,19 @@ export default function PracticeScreen({ route, navigation }) {
                 <Text style={styles.taskTitle}>{activeSession.title}</Text>
                 <Text style={styles.taskDesc}>{activeSession.description}</Text>
 
-                {/* Inline practice timer */}
-                <View style={styles.inlineTimerBox}>
-                  <View style={styles.inlineTimer}>
-                    <View style={styles.inlineTimerLeft}>
-                      <Ionicons name="time-outline" size={18} color={COLORS.textMuted} />
-                      <Text style={[styles.inlineTimerTime, { color: COLORS.text }]}>
-                        {formatTime(timerSeconds)}
-                      </Text>
-                      <Text style={styles.inlineTimerTotal}>/ {activeSession.duration} min</Text>
-                    </View>
-                    <View style={styles.inlineTimerControls}>
-                      <TouchableOpacity
-                        style={styles.inlineResetBtn}
-                        onPress={() => {
-                          clearInterval(timerRef.current);
-                          setTimerActive(false);
-                          setTimerSeconds(activeSession.duration * 60);
-                        }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.inlinePlayBtn, { backgroundColor: timerActive ? COLORS.error : COLORS.primaryDark }]}
-                        onPress={() => setTimerActive((p) => !p)}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name={timerActive ? 'pause' : 'play'} size={20} color={COLORS.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* Thin progress bar */}
-                  <View style={styles.inlineTimerBarTrack}>
-                    <View
-                      style={[
-                        styles.inlineTimerBarFill,
-                        {
-                          width: activeSession.duration * 60 > 0
-                            ? `${(1 - timerSeconds / (activeSession.duration * 60)) * 100}%`
-                            : '0%',
-                          backgroundColor: COLORS.primaryDark,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-              </Animated.View>
+                {/* Practicing happens in the guided player — this just opens it */}
+                <TouchableOpacity
+                  style={[styles.practiceThisBtn, { backgroundColor: categoryColor }]}
+                  onPress={() => navigation.navigate('Today', {
+                    screen: 'TodayHome',
+                    params: { openPlayer: true, playerStartId: `s_${activeSession.id}` },
+                  })}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="play" size={15} color={COLORS.text} />
+                  <Text style={styles.practiceThisText}>Practice this</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </>
         )}
@@ -1066,16 +922,11 @@ const styles = StyleSheet.create({
   taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
 
   // Inline practice timer (lives on the task card)
-  inlineTimerBox: { marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
-  inlineTimer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  inlineTimerLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  inlineTimerTime: { fontSize: 27, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
-  inlineTimerTotal: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 1 },
-  inlineTimerControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  inlineResetBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
-  inlinePlayBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  inlineTimerBarTrack: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, marginTop: SPACING.sm + 2, overflow: 'hidden' },
-  inlineTimerBarFill: { height: '100%', borderRadius: 2 },
+  practiceThisBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
+  },
+  practiceThisText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
   // Metronome
   beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
