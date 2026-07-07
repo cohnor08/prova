@@ -1157,13 +1157,14 @@ export default function TodayScreen({ navigation }) {
     (next ? AsyncStorage.setItem(progressKey, JSON.stringify(next)) : AsyncStorage.removeItem(progressKey)).catch(() => {});
   };
   const progressToday = playerProgress?.date === new Date().toDateString() ? playerProgress : null;
-  // Resume at the exact task the student exited from — if it's still to do.
-  const resumeId = progressToday?.lastItemId && playerQueue.some((q) => q.id === progressToday.lastItemId)
+  // Resume at the exact task the student exited from — UNLESS they completed
+  // it (then it's out of the queue). Fallback: the first still-to-do task that
+  // has time on its clock, so an unfinished task is never silently skipped.
+  const inQueue = (id) => playerQueue.some((q) => q.id === id);
+  const resumeId = (progressToday?.lastItemId && inQueue(progressToday.lastItemId))
     ? progressToday.lastItemId
-    : null;
-  const hasStartedToday = anyDoneToday
-    || !!resumeId
-    || Object.keys(progressToday?.elapsedById || {}).some((id) => playerQueue.some((q) => q.id === id));
+    : Object.keys(progressToday?.elapsedById || {}).find(inQueue) || null;
+  const hasStartedToday = anyDoneToday || !!resumeId;
   const startLabel = hasStartedToday ? 'Resume practice' : 'Start practice';
 
   // ── Pre-Gig set rehearsal ───────────────────────────────────────────────────
@@ -1699,6 +1700,12 @@ export default function TodayScreen({ navigation }) {
         onAttachProof={attachProof}
         proofBusyId={proofBusyId}
         onClose={() => { setPlayerVisible(false); setGigSongItem(null); }}
+        onGigSongEnd={() => {
+          // Back to the song picker so they choose: another song, or the tasks.
+          setPlayerVisible(false);
+          setGigSongItem(null);
+          setTimeout(() => setSetlistAsk('pick'), 450); // wait out the player's dismissal (one modal at a time)
+        }}
         onFinishReview={() => {
           setPlayerVisible(false);
           setGigSongItem(null);

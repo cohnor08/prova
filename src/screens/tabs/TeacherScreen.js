@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
@@ -7,7 +7,6 @@ import {
 import ProofMedia from '../../components/ProofMedia';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
@@ -1282,7 +1281,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo, inSheet }) {
+function InlineChatView({ student, myUid, isDemo }) {
   const otherUid = student.uid;
   const otherEmail = student.email;
   const myEmail = auth.currentUser?.email || '';
@@ -1298,7 +1297,6 @@ function InlineChatView({ student, myUid, isDemo, inSheet }) {
     }));
   };
 
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState(initMessages);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -1401,10 +1399,6 @@ function InlineChatView({ student, myUid, isDemo, inSheet }) {
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      // In the tab, the tab bar sits between the input and the keyboard, so it
-      // offsets the avoidance. In the chat sheet the tab bar is covered — an
-      // offset there leaves a gap between the keyboard and the input.
-      keyboardVerticalOffset={inSheet ? 0 : tabBarHeight}
     >
       {/* Inverted = bottom-anchored: the newest message stays above the input
           whatever the keyboard does; dragging dismisses the keyboard. */}
@@ -2949,7 +2943,6 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
                 student={{ uid: teacherUid, email: teacherEmail, demoMessages: [] }}
                 myUid={myUid}
                 isDemo={false}
-                inSheet
               />
       </SheetModal>
     </>

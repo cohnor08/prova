@@ -61,6 +61,7 @@ export default function PracticePlayer({
   onCompleteSession, // (sessionId) -> Promise<pts>
   onBankTeacher,     // (taskId, seconds) -> Promise<pts>
   onBankSong,        // (seconds) -> Promise<pts> — pre-gig setlist rehearsal
+  onGigSongEnd,      // Done/Next on a setlist song → back to the song picker
   onAttachProof,
   proofBusyId,
   onClose,
@@ -209,6 +210,9 @@ export default function PracticePlayer({
     Promise.resolve(write)
       .then((pts) => { statsRef.current.pts += pts || 0; })
       .catch(() => { /* keep flowing; the old surfaces will re-sync */ });
+    // A finished set song hands back to the song picker — the student chooses
+    // to rehearse another or move on to the day's tasks.
+    if (cur.kind === 'gigsong' && onGigSongEnd) { reportProgress(null); onGigSongEnd(); return; }
     reportProgress(idx + 1 < items.length ? items[idx + 1].id : null);
     advance();
   };
@@ -217,8 +221,10 @@ export default function PracticePlayer({
   const handleSkip = () => {
     if (!item || advancingRef.current) return;
     advancingRef.current = true;
+    const wasGigSong = item.kind === 'gigsong';
     stashCurrent();
     statsRef.current.skipped += 1;
+    if (wasGigSong && onGigSongEnd) { reportProgress(null); onGigSongEnd(); return; }
     reportProgress(idx + 1 < items.length ? items[idx + 1].id : null);
     advance();
   };

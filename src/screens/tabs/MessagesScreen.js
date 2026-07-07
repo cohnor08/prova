@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
   Platform, Modal, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs,
@@ -38,7 +37,6 @@ function formatTime(ts) {
 
 function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const headerName = otherName || (otherEmail ? otherEmail.split('@')[0] : '');
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -182,7 +180,6 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={tabBarHeight}
       >
         {/* Inverted list = bottom-anchored, the real chat-app pattern: the
             newest message stays glued above the input no matter what the
