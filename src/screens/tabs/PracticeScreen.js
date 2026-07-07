@@ -334,12 +334,14 @@ export default function PracticeScreen({ route, navigation }) {
   const recordingRef = useRef(null);
   const smoothedHzRef = useRef(null);
 
-  // Load click sounds once on mount
+  // Load click sounds once on mount. Played ~26% fast without pitch correction,
+  // which shifts the click up about two whole tones (2^(4/12) ≈ 1.26) — the
+  // stock sample sat too low in the mix.
   useEffect(() => {
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-    Audio.Sound.createAsync(require('../../../assets/tick.wav'))
+    Audio.Sound.createAsync(require('../../../assets/tick.wav'), { rate: 1.26, shouldCorrectPitch: false })
       .then(({ sound }) => { tickSound.current = sound; });
-    Audio.Sound.createAsync(require('../../../assets/tick-accent.wav'))
+    Audio.Sound.createAsync(require('../../../assets/tick-accent.wav'), { rate: 1.26, shouldCorrectPitch: false })
       .then(({ sound }) => { accentSound.current = sound; });
     return () => {
       tickSound.current?.unloadAsync();

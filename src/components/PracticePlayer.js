@@ -64,6 +64,8 @@ export default function PracticePlayer({
   proofBusyId,
   onClose,
   onFinishReview,    // close + open the "How did today go?" review
+  savedElapsed,      // { itemId: seconds } persisted from an earlier run today
+  onProgress,        // ({ elapsedById, lastItemId } | null) -> parent persists it
 }) {
   const [items, setItems] = useState([]);
   const [idx, setIdx] = useState(0);
@@ -71,19 +73,20 @@ export default function PracticePlayer({
   const [paused, setPaused] = useState(false);
   const [, setTick] = useState(0);            // re-render pulse for the clock
   const [watch, setWatch] = useState(null);   // { query, title }
-  const [busy, setBusy] = useState(false);
 
   // Timestamp-based timing so a locked phone doesn't drift the clock.
   const startedAtRef = useRef(null);
   const accumRef = useRef(0);
   const buzzedRef = useRef(false);
+  const advancingRef = useRef(false); // swallow double-taps during a transition
   const statsRef = useRef({ sec: 0, pts: 0, done: 0, skipped: 0 });
   const savedElapsedRef = useRef({}); // itemId -> seconds on the clock, resumes on revisit
 
   const elapsed = () => accumRef.current + (startedAtRef.current ? (Date.now() - startedAtRef.current) / 1000 : 0);
 
   // Build the run when the player opens: rotate the queue so the tapped task
-  // goes first, the rest follow in order.
+  // goes first, the rest follow in order. Clocks stashed in an earlier run
+  // today carry over, so exiting never loses time.
   useEffect(() => {
     if (!visible) return;
     let q = [...(queue || [])];
@@ -95,7 +98,7 @@ export default function PracticePlayer({
     setIdx(0);
     setPhase(q.length === 0 ? 'summary' : 'play');
     statsRef.current = { sec: 0, pts: 0, done: 0, skipped: 0 };
-    savedElapsedRef.current = {};
+    savedElapsedRef.current = { ...(savedElapsed || {}) };
     setPaused(false);
   }, [visible]);
 
@@ -108,6 +111,7 @@ export default function PracticePlayer({
     accumRef.current = savedElapsedRef.current[item.id] || 0;
     startedAtRef.current = Date.now();
     buzzedRef.current = false;
+    advancingRef.current = false;
     setPaused(false);
   }, [idx, phase, visible, item?.id]);
 
@@ -141,69 +145,81 @@ export default function PracticePlayer({
     setPaused(false);
   };
 
+  // Tell the parent where the run stands so it survives closing the player
+  // (and the app): every task's stashed clock + which task the student was on.
+  const reportProgress = (lastItemId) => {
+    if (!onProgress) return;
+    onProgress({ elapsedById: { ...savedElapsedRef.current }, lastItemId: lastItemId || null });
+  };
+
   const advance = () => {
     if (idx + 1 < items.length) setIdx(idx + 1);
-    else setPhase('summary');
+    else { setPhase('summary'); reportProgress(null); }
   };
 
   // Save the current task's clock when leaving it WITHOUT completing (skip,
   // back, exit) — the student never has to press pause. Teacher tasks bank
-  // their real seconds to Firestore (points included, partial pays); plan
-  // sessions stash the clock locally so it resumes when revisited.
-  const stashCurrent = async () => {
+  // their real seconds to Firestore in the background (points included,
+  // partial pays); plan sessions stash the clock so it resumes on revisit.
+  // Never awaited — transitions must feel instant.
+  const stashCurrent = () => {
     if (!item) return;
     const sec = elapsed();
     pauseClock();
     if (sec <= 1) return;
+    statsRef.current.sec += sec;
     if (item.kind === 'teacher') {
-      try {
-        const pts = (await onBankTeacher(item.taskId, sec)) || 0;
-        statsRef.current.pts += pts;
-        // Keep this run's copy in sync so revisiting shows the right remaining time.
-        setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, priorSec: (it.priorSec || 0) + sec } : it)));
-        delete savedElapsedRef.current[item.id];
-      } catch (e) { /* best-effort */ }
+      const itemId = item.id;
+      // Keep this run's copy in sync so revisiting shows the right remaining time.
+      setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, priorSec: (it.priorSec || 0) + sec } : it)));
+      delete savedElapsedRef.current[itemId];
+      Promise.resolve(onBankTeacher(item.taskId, sec))
+        .then((pts) => { statsRef.current.pts += pts || 0; })
+        .catch(() => { /* best-effort; the old surfaces re-sync */ });
     } else {
       savedElapsedRef.current[item.id] = sec;
     }
-    statsRef.current.sec += sec;
   };
 
   // Done: sessions award via the normal completion path; teacher tasks bank the
-  // real seconds practiced (partial pays, target auto-completes) — exactly the
-  // same writes the old cards made.
-  const handleDone = async () => {
-    if (!item || busy) return;
-    setBusy(true);
+  // real seconds practiced (partial pays, target auto-completes) — the same
+  // writes the old cards made, but fired in the background so the next task
+  // appears instantly.
+  const handleDone = () => {
+    if (!item || advancingRef.current) return;
+    advancingRef.current = true;
+    const cur = item;
     const sec = elapsed();
     pauseClock();
-    try {
-      let pts = 0;
-      if (item.kind === 'session') pts = (await onCompleteSession(item.sessionId)) || 0;
-      else pts = (await onBankTeacher(item.taskId, sec)) || 0;
-      statsRef.current.sec += sec;
-      statsRef.current.pts += pts;
-      statsRef.current.done += 1;
-      delete savedElapsedRef.current[item.id];
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    } catch (e) { /* keep flowing; the old surfaces will re-sync */ }
-    setBusy(false);
+    statsRef.current.sec += sec;
+    statsRef.current.done += 1;
+    delete savedElapsedRef.current[cur.id];
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const write = cur.kind === 'session' ? onCompleteSession(cur.sessionId) : onBankTeacher(cur.taskId, sec);
+    Promise.resolve(write)
+      .then((pts) => { statsRef.current.pts += pts || 0; })
+      .catch(() => { /* keep flowing; the old surfaces will re-sync */ });
+    reportProgress(idx + 1 < items.length ? items[idx + 1].id : null);
     advance();
   };
 
   // Skip: the time already on the clock is saved automatically, then move on.
-  const handleSkip = async () => {
-    if (!item || busy) return;
-    setBusy(true);
-    await stashCurrent();
+  const handleSkip = () => {
+    if (!item || advancingRef.current) return;
+    advancingRef.current = true;
+    stashCurrent();
     statsRef.current.skipped += 1;
-    setBusy(false);
+    reportProgress(idx + 1 < items.length ? items[idx + 1].id : null);
     advance();
   };
 
-  // Leaving mid-task keeps the progress too, then closes.
-  const handleClose = async () => {
-    if (!busy) await stashCurrent();
+  // Leaving mid-task keeps the progress too — clock stashed, position saved —
+  // so the parent can offer "Resume practice" at this exact task.
+  const handleClose = () => {
+    if (phase === 'play' && item) {
+      stashCurrent();
+      reportProgress(item.id);
+    }
     onClose();
   };
 
@@ -218,11 +234,11 @@ export default function PracticePlayer({
 
   const stats = statsRef.current;
 
-  const goBack = async () => {
-    if (idx === 0 || busy) return;
-    setBusy(true);
-    await stashCurrent(); // going back also keeps this task's time
-    setBusy(false);
+  const goBack = () => {
+    if (idx === 0 || advancingRef.current) return;
+    advancingRef.current = true;
+    stashCurrent(); // going back also keeps this task's time
+    reportProgress(items[idx - 1].id);
     setIdx(idx - 1);
   };
 
@@ -302,12 +318,10 @@ export default function PracticePlayer({
               <TouchableOpacity
                 style={[styles.doneBtn, { backgroundColor: doneEnabled ? color : COLORS.card }]}
                 onPress={handleDone}
-                disabled={!doneEnabled || busy}
+                disabled={!doneEnabled}
                 activeOpacity={0.85}
               >
-                {busy
-                  ? <ActivityIndicator size="small" color={COLORS.text} />
-                  : <Ionicons name={doneEnabled ? 'checkmark' : 'lock-closed'} size={18} color={doneEnabled ? COLORS.text : COLORS.textMuted} />}
+                <Ionicons name={doneEnabled ? 'checkmark' : 'lock-closed'} size={18} color={doneEnabled ? COLORS.text : COLORS.textMuted} />
                 <Text style={[styles.doneText, !doneEnabled && { color: COLORS.textMuted }]}>Done</Text>
               </TouchableOpacity>
             </View>
