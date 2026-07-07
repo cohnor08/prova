@@ -445,7 +445,8 @@ export default function TodayScreen({ navigation }) {
   const [playerVisible, setPlayerVisible] = useState(false); // guided practice player
   const [playerStartId, setPlayerStartId] = useState(null);  // queue item to start on
   const [playerProgress, setPlayerProgress] = useState(null); // { date, elapsedById, lastItemId } — survives app restarts
-  const [setlistAsk, setSetlistAsk] = useState(null); // null | 'ask' | 'pick' — the pre-gig "practice your set first?" sheet
+  const [setlistAsk, setSetlistAsk] = useState(null); // null | 'ask' | 'pick' | 'lists' — the pre-gig "practice your set first?" sheet
+  const [pickSetlistId, setPickSetlistId] = useState(null); // setlist shown in the picker (null = the gig's linked one)
   const [gigSongItem, setGigSongItem] = useState(null); // chosen setlist song, runs first in the player
   const [unreadCount, setUnreadCount] = useState(0);  // inbox badge on the bell
   // What to open once the setlist sheet has FULLY closed — iOS can't present
@@ -1185,9 +1186,17 @@ export default function TodayScreen({ navigation }) {
 
   // Fresh runs get the ask; resuming mid-task goes straight back in.
   const openPlayerMaybeAsk = () => {
-    if (!resumeId && preGigSetlist) setSetlistAsk('ask');
+    if (!resumeId && preGigSetlist) { setPickSetlistId(null); setSetlistAsk('ask'); }
     else openPlayerAt(resumeId);
   };
+
+  // Which setlist the picker is showing: the gig's linked one by default, but
+  // the student can switch to ANY of their setlists from inside the sheet.
+  const rehearsableSetlists = (userData?.setlists || []).filter((s) => s.songs?.length > 0);
+  const activePickSetlist = rehearsableSetlists.find((s) => s.id === pickSetlistId)
+    || preGigSetlist?.setlist
+    || rehearsableSetlists[0]
+    || null;
 
   // Rehearsing a setlist song = an open-ended player task that banks points for
   // the real time practiced (same rate as everything else).
@@ -1198,7 +1207,7 @@ export default function TodayScreen({ navigation }) {
       title: song.title,
       description: [
         song.artist ? `by ${song.artist}` : null,
-        `From your “${preGigSetlist.setlist.name}” set — run it like it's the gig.`,
+        `From your “${activePickSetlist?.name || 'setlist'}” set — run it like it's the gig.`,
       ].filter(Boolean).join('  ·  '),
       category: 'repertoire',
       targetSec: 0,
@@ -1360,7 +1369,7 @@ export default function TodayScreen({ navigation }) {
               </TouchableOpacity>
             )}
             {preGigSetlist && (
-              <TouchableOpacity style={styles.setlistLink} onPress={() => setSetlistAsk('pick')} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.setlistLink} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
                 <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
                 <Text style={styles.setlistLinkText}>Practice setlist</Text>
               </TouchableOpacity>
@@ -1377,7 +1386,7 @@ export default function TodayScreen({ navigation }) {
               <Text style={styles.startPracticeText}>{startLabel}</Text>
             </TouchableOpacity>
             {preGigSetlist && (
-              <TouchableOpacity style={styles.setlistLink} onPress={() => setSetlistAsk('pick')} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.setlistLink} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
                 <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
                 <Text style={styles.setlistLinkText}>Practice setlist</Text>
               </TouchableOpacity>
@@ -1742,10 +1751,18 @@ export default function TodayScreen({ navigation }) {
       >
         {setlistAsk === 'pick' ? (
           <>
-            <Text style={styles.gigAskTitle}>Pick a song to rehearse</Text>
-            <Text style={styles.gigAskSub}>From “{preGigSetlist?.setlist.name}” — the clock runs and it counts for points.</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={[styles.gigAskTitle, { flex: 1 }]}>Pick a song to rehearse</Text>
+              {rehearsableSetlists.length > 1 && (
+                <TouchableOpacity style={styles.changeSetlistBtn} onPress={() => setSetlistAsk('lists')} activeOpacity={0.8}>
+                  <Ionicons name="swap-horizontal" size={14} color={COLORS.primary} />
+                  <Text style={styles.changeSetlistText}>Setlists</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.gigAskSub}>From “{activePickSetlist?.name}” — the clock runs and it counts for points.</Text>
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
-              {(preGigSetlist?.setlist.songs || []).map((s, i) => (
+              {(activePickSetlist?.songs || []).map((s, i) => (
                 <TouchableOpacity key={s.id || i} style={styles.gigSongRow} onPress={() => startGigSong(s)} activeOpacity={0.7}>
                   <Text style={styles.gigSongNum}>{i + 1}</Text>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -1760,6 +1777,28 @@ export default function TodayScreen({ navigation }) {
               <Text style={styles.gigAskSkipText}>Skip to today's tasks</Text>
             </TouchableOpacity>
           </>
+        ) : setlistAsk === 'lists' ? (
+          <>
+            <Text style={styles.gigAskTitle}>Your setlists</Text>
+            <Text style={styles.gigAskSub}>Pick which set to rehearse from.</Text>
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {rehearsableSetlists.map((s) => (
+                <TouchableOpacity key={s.id} style={styles.gigSongRow} onPress={() => { setPickSetlistId(s.id); setSetlistAsk('pick'); }} activeOpacity={0.7}>
+                  <Ionicons name="albums-outline" size={18} color={COLORS.primary} style={{ width: 20, textAlign: 'center' }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.gigSongTitle} numberOfLines={1}>{s.name}</Text>
+                    <Text style={styles.gigSongArtist}>
+                      {s.songs.length} song{s.songs.length === 1 ? '' : 's'}{activePickSetlist?.id === s.id ? '  ·  current' : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.gigAskSkip} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
+              <Text style={styles.gigAskSkipText}>Back</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <>
             <Text style={styles.gigAskKicker}>
@@ -1771,7 +1810,7 @@ export default function TodayScreen({ navigation }) {
               <TouchableOpacity style={styles.gigAskNo} onPress={() => { pendingPlayerRef.current = '__default__'; setSetlistAsk(null); }} activeOpacity={0.85}>
                 <Text style={styles.gigAskNoText}>Not now</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.gigAskYes} onPress={() => setSetlistAsk('pick')} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.gigAskYes} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.85}>
                 <Ionicons name="musical-notes" size={16} color={COLORS.text} />
                 <Text style={styles.gigAskYesText}>Practice my set</Text>
               </TouchableOpacity>
@@ -1927,6 +1966,8 @@ const styles = StyleSheet.create({
   bellBtn: { position: 'absolute', right: SPACING.xl, zIndex: 10 },
   setlistLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, marginTop: 12 },
   setlistLinkText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  changeSetlistBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary + '55' },
+  changeSetlistText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   bellDot: { position: 'absolute', top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   practiceThisBtn: {
