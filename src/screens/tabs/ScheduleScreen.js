@@ -143,24 +143,24 @@ export default function ScheduleScreen({ navigation, route }) {
 
   // When set, the form is editing an existing event instead of adding one.
   const [editing, setEditing] = useState(null); // null | { kind: 'gig'|'personal', id }
-  // Which day-list row is expanded to show its full details (gig or personal id).
-  const [expandedRow, setExpandedRow] = useState(null);
+  // Tapped day-list event, shown in the slide-up details sheet.
+  const [viewEvent, setViewEvent] = useState(null); // { e, gig, per }
 
   const resetForm = () => {
     setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime('16:00'); setNewGigTime(''); setNewNote('');
     setEditing(null); setShowAdd(false); Keyboard.dismiss();
   };
 
-  // Edit button on an expanded gig / self-added event → reopen the form prefilled.
+  // Edit button on the details sheet → reopen the add form prefilled.
   const startEditGig = (g) => {
     setAddType('gig');
     setNewGigName(g.name || ''); setNewGigTime(g.time || ''); setNewGigSetlistId(g.setlistId || null);
-    setEditing({ kind: 'gig', id: g.id }); setExpandedRow(null); setShowAdd(true);
+    setEditing({ kind: 'gig', id: g.id }); setViewEvent(null); setShowAdd(true);
   };
   const startEditPersonal = (p) => {
     setAddType(p.type === 'lesson' ? 'lesson' : 'task');
     setNewTitle(p.title || ''); setNewTime(p.time || '16:00'); setNewNote(p.note || '');
-    setEditing({ kind: 'personal', id: p.id }); setExpandedRow(null); setShowAdd(true);
+    setEditing({ kind: 'personal', id: p.id }); setViewEvent(null); setShowAdd(true);
   };
 
   const openTimeWheel = (which) => {
@@ -484,16 +484,14 @@ export default function ScheduleScreen({ navigation, route }) {
           const done = e.type === 'due' && e.done;
           const att = e.att && ATT_META[e.att.status] ? e.att : null;
           // Pressing a row: the student's own events (gigs, self-added
-          // lessons/tasks) expand to show everything + Edit/Remove buttons; a
+          // lessons/tasks) open the slide-up details sheet with Edit/Remove; a
           // marked teacher lesson opens its note window; other teacher-owned
           // rows stay read-only.
           const gigObj = e.gigId ? gigs.find((g) => g.id === e.gigId) : null;
           const perObj = e.personalId ? personalEvents.find((p) => p.id === e.personalId) : null;
-          const rowKey = e.gigId || e.personalId || null;
-          const expanded = !!rowKey && expandedRow === rowKey;
           const onRowPress = att
             ? () => navigation.navigate('LessonNotes', { date: selected })
-            : rowKey ? () => setExpandedRow(expanded ? null : rowKey)
+            : gigObj || perObj ? () => setViewEvent({ e, gig: gigObj, per: perObj })
             : null;
           const Card = onRowPress ? TouchableOpacity : View;
           return (
@@ -503,68 +501,82 @@ export default function ScheduleScreen({ navigation, route }) {
               activeOpacity={onRowPress ? 0.7 : 1}
               {...(onRowPress ? { onPress: onRowPress } : {})}
             >
-              <View style={styles.eventTop}>
-                <View style={[styles.eventIcon, { backgroundColor: (done ? COLORS.success : meta.color) + '22' }]}>
-                  <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.eventTitle, done && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]} numberOfLines={expanded ? undefined : 1}>{e.title}</Text>
-                  {!expanded && (
-                    <Text style={styles.eventSub} numberOfLines={1}>
-                      {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
-                    </Text>
-                  )}
-                  {att && (
-                    <View style={styles.attRow}>
-                      <View style={[styles.attPill, { backgroundColor: ATT_META[att.status].color + '22' }]}>
-                        <Text style={[styles.attPillText, { color: ATT_META[att.status].color }]}>{ATT_META[att.status].label}</Text>
-                      </View>
-                      {att.note ? <Text style={styles.attNoteHint}>View note ›</Text> : null}
-                    </View>
-                  )}
-                </View>
-                {rowKey
-                  ? <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
-                  : att ? <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-                  : done ? <Ionicons name="checkmark-circle" size={18} color={COLORS.success} /> : null}
+              <View style={[styles.eventIcon, { backgroundColor: (done ? COLORS.success : meta.color) + '22' }]}>
+                <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
               </View>
-
-              {expanded && (
-                <View style={styles.eventDetails}>
-                  <Text style={styles.eventDetailLine}>
-                    {meta.label}
-                    {e.type === 'gig' || e.type === 'lesson' || e.time
-                      ? ` · ${e.time && timeLabel(e.time) ? timeLabel(e.time) : 'no time set'}`
-                      : ''}
-                  </Text>
-                  {e.type === 'gig' && e.sub ? (
-                    <Text style={styles.eventDetailLine}>Setlist: {e.sub}</Text>
-                  ) : null}
-                  {perObj?.note ? <Text style={styles.eventNote}>{perObj.note}</Text> : null}
-                  <View style={styles.rowActions}>
-                    <TouchableOpacity
-                      style={styles.evBtn}
-                      onPress={() => (gigObj ? startEditGig(gigObj) : startEditPersonal(perObj))}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="create-outline" size={15} color={COLORS.text} />
-                      <Text style={styles.evBtnText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.evBtn}
-                      onPress={() => (perObj ? removePersonal(perObj.id, perObj.title) : removeGig(gigObj.id, gigObj.name))}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="trash-outline" size={15} color={COLORS.error} />
-                      <Text style={[styles.evBtnText, { color: COLORS.error }]}>Remove</Text>
-                    </TouchableOpacity>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.eventTitle, done && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]} numberOfLines={1}>{e.title}</Text>
+                <Text style={styles.eventSub} numberOfLines={1}>
+                  {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
+                </Text>
+                {att && (
+                  <View style={styles.attRow}>
+                    <View style={[styles.attPill, { backgroundColor: ATT_META[att.status].color + '22' }]}>
+                      <Text style={[styles.attPillText, { color: ATT_META[att.status].color }]}>{ATT_META[att.status].label}</Text>
+                    </View>
+                    {att.note ? <Text style={styles.attNoteHint}>View note ›</Text> : null}
                   </View>
-                </View>
-              )}
+                )}
+              </View>
+              {onRowPress
+                ? <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                : done ? <Ionicons name="checkmark-circle" size={18} color={COLORS.success} /> : null}
             </Card>
           );
         })}
       </ScrollView>
+
+      {/* Slide-up details for the student's own events: see everything, then
+          act — Edit reopens the prefilled form, Remove confirms as usual. */}
+      <Modal visible={!!viewEvent} transparent animationType="slide" onRequestClose={() => setViewEvent(null)}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setViewEvent(null)}>
+          <TouchableOpacity style={styles.sheetCard} activeOpacity={1} onPress={() => {}}>
+            {viewEvent && (() => {
+              const meta = TYPE_META[viewEvent.e.type];
+              return (
+                <>
+                  <View style={styles.evSheetHeader}>
+                    <View style={[styles.eventIcon, { backgroundColor: meta.color + '22' }]}>
+                      <Ionicons name={meta.icon} size={16} color={meta.color} />
+                    </View>
+                    <Text style={styles.evSheetTitle}>{viewEvent.e.title}</Text>
+                  </View>
+                  <Text style={styles.evSheetLine}>
+                    {meta.label} · {prettyDate(selected)}
+                    {viewEvent.e.time && timeLabel(viewEvent.e.time)
+                      ? ` · ${timeLabel(viewEvent.e.time)}`
+                      : viewEvent.e.type !== 'due' ? ' · no time set' : ''}
+                  </Text>
+                  {viewEvent.e.type === 'gig' && viewEvent.e.sub ? (
+                    <Text style={styles.evSheetLine}>Setlist: {viewEvent.e.sub}</Text>
+                  ) : null}
+                  {viewEvent.per?.note ? <Text style={styles.evSheetNote}>{viewEvent.per.note}</Text> : null}
+                  <View style={[styles.sheetBtns, { marginTop: SPACING.lg }]}>
+                    <TouchableOpacity
+                      style={styles.sheetCancelBtn}
+                      onPress={() => {
+                        const { gig, per } = viewEvent;
+                        setViewEvent(null);
+                        if (per) removePersonal(per.id, per.title); else removeGig(gig.id, gig.name);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.sheetCancelText, { color: COLORS.error }]}>Remove</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sheetSetBtn}
+                      onPress={() => (viewEvent.gig ? startEditGig(viewEvent.gig) : startEditPersonal(viewEvent.per))}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.sheetSetText}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Rollable time picker — same wheel as the Profile reminder time */}
       <Modal visible={!!timePickerFor} transparent animationType="slide" onRequestClose={() => setTimePickerFor(null)}>
@@ -648,7 +660,6 @@ const styles = StyleSheet.create({
   timeRowLabel: { color: COLORS.textMuted, fontSize: 15 },
   timeRowValue: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700', textAlign: 'right', marginRight: 2 },
   timeRowPlaceholder: { flex: 1, color: COLORS.textMuted, fontSize: 15, textAlign: 'right', marginRight: 2 },
-  rowActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 6 },
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   sheetCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
   sheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
@@ -666,14 +677,12 @@ const styles = StyleSheet.create({
   gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   empty: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
-  eventCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
-  eventTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-  eventDetails: { marginTop: SPACING.sm, paddingLeft: 32 + SPACING.md, gap: 5 },
-  eventDetailLine: { color: COLORS.textSecondary, fontSize: 13 },
-  eventNote: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
-  evBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  evBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  eventCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
   eventIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  evSheetHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm },
+  evSheetTitle: { flex: 1, color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  evSheetLine: { color: COLORS.textSecondary, fontSize: 14, marginTop: 2 },
+  evSheetNote: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: SPACING.sm },
   eventTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   eventSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
   attRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
