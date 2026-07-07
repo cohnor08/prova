@@ -1359,16 +1359,30 @@ export default function TodayScreen({ navigation }) {
                 <Text style={styles.startPracticeText}>{startLabel}</Text>
               </TouchableOpacity>
             )}
+            {preGigSetlist && (
+              <TouchableOpacity style={styles.setlistLink} onPress={() => setSetlistAsk('pick')} activeOpacity={0.7}>
+                <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
+                <Text style={styles.setlistLinkText}>Practice setlist</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
         {/* Students with no plan still get the one big practice button when the
             teacher has given them something to do. */}
         {isToday && sessions.length === 0 && playerQueue.length > 0 && (
-          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
-            <Ionicons name="play" size={18} color={COLORS.text} />
-            <Text style={styles.startPracticeText}>{startLabel}</Text>
-          </TouchableOpacity>
+          <View style={{ marginBottom: SPACING.lg }}>
+            <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
+              <Ionicons name="play" size={18} color={COLORS.text} />
+              <Text style={styles.startPracticeText}>{startLabel}</Text>
+            </TouchableOpacity>
+            {preGigSetlist && (
+              <TouchableOpacity style={styles.setlistLink} onPress={() => setSetlistAsk('pick')} activeOpacity={0.7}>
+                <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
+                <Text style={styles.setlistLinkText}>Practice setlist</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* Daily challenge — bonus task that keeps the streak alive */}
@@ -1911,6 +1925,8 @@ const styles = StyleSheet.create({
   gigAskSkip: { alignItems: 'center', paddingVertical: 14, marginTop: SPACING.xs },
   gigAskSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   bellBtn: { position: 'absolute', right: SPACING.xl, zIndex: 10 },
+  setlistLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, marginTop: 2 },
+  setlistLinkText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   bellDot: { position: 'absolute', top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   practiceThisBtn: {
