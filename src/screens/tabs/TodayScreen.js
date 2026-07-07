@@ -443,6 +443,17 @@ export default function TodayScreen({ navigation }) {
   const finalizedRef = useRef(null); // guards the once-a-day finish bonus
   const [playerVisible, setPlayerVisible] = useState(false); // guided practice player
   const [playerStartId, setPlayerStartId] = useState(null);  // queue item to start on
+  const [playerProgress, setPlayerProgress] = useState(null); // { date, elapsedById, lastItemId } — survives app restarts
+
+  // Restore any unfinished run from earlier today (stale days are ignored and
+  // overwritten on the next write).
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    AsyncStorage.getItem(`prova_player_progress_${uid}`)
+      .then((raw) => { if (raw) setPlayerProgress(JSON.parse(raw)); })
+      .catch(() => {});
+  }, []);
   const [reviewOpen, setReviewOpen] = useState(false);   // week-in-review modal
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewData, setReviewData] = useState(null);    // { changeSummary, weeklyPlan }
@@ -1076,24 +1087,11 @@ export default function TodayScreen({ navigation }) {
 
   // ── Guided practice player ──────────────────────────────────────────────────
   // Everything still to do today, normalized into one queue: plan sessions
-  // first, then teacher tasks (solo + class). The player is the ONLY place with
-  // a practice timer; cards/rows just open it.
-  //
-  // Pre-Gig Mode: within 14 days of the soonest upcoming gig, song tasks
-  // (repertoire + improvisation) jump to the front of the run — the rule the
-  // Practice tab applied to its task pills before it became a pure toolbox.
-  const SONG_TASK_CATEGORIES = new Set(['repertoire', 'improvisation']);
-  const preGigSoon = (Array.isArray(userData?.gigs) ? userData.gigs : []).some((g) => {
-    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
-    const days = Math.round((new Date(`${g.date}T00:00:00`) - midnight) / 86400000);
-    return days >= 0 && days <= 14;
-  });
-  const queueSessions = preGigSoon
-    ? [...sessions].sort((a, b) =>
-        (SONG_TASK_CATEGORIES.has(b.category) ? 1 : 0) - (SONG_TASK_CATEGORIES.has(a.category) ? 1 : 0))
-    : sessions;
+  // first (in plan order), then teacher tasks (solo + class). The player is the
+  // ONLY place with a practice timer; cards/rows just open it. Completed tasks
+  // are excluded, so a fresh run always starts at the first uncompleted task.
   const playerQueue = [
-    ...queueSessions
+    ...sessions
       .filter((s) => !completedIds.includes(s.id))
       .map((s) => ({
         id: `s_${s.id}`,
@@ -1124,6 +1122,25 @@ export default function TodayScreen({ navigation }) {
   ];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); };
   const anyDoneToday = completedIds.length > 0;
+
+  // Mid-run progress (each task's clock + which task was open) persists across
+  // closing the player AND the app, so exiting never loses practiced time. The
+  // player reports every change; stored per day in AsyncStorage.
+  const progressKey = `prova_player_progress_${auth.currentUser?.uid || ''}`;
+  const saveProgress = (p) => {
+    const next = p ? { date: new Date().toDateString(), ...p } : null;
+    setPlayerProgress(next);
+    (next ? AsyncStorage.setItem(progressKey, JSON.stringify(next)) : AsyncStorage.removeItem(progressKey)).catch(() => {});
+  };
+  const progressToday = playerProgress?.date === new Date().toDateString() ? playerProgress : null;
+  // Resume at the exact task the student exited from — if it's still to do.
+  const resumeId = progressToday?.lastItemId && playerQueue.some((q) => q.id === progressToday.lastItemId)
+    ? progressToday.lastItemId
+    : null;
+  const hasStartedToday = anyDoneToday
+    || !!resumeId
+    || Object.keys(progressToday?.elapsedById || {}).some((id) => playerQueue.some((q) => q.id === id));
+  const startLabel = hasStartedToday ? 'Resume practice' : 'Start practice';
 
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
   const nowDate = new Date();
@@ -1241,11 +1258,9 @@ export default function TodayScreen({ navigation }) {
               {completedIds.length} of {sessions.length} completed · {Math.round(progress * 100)}%
             </Text>
             {playerQueue.length > 0 && (
-              <TouchableOpacity style={styles.startPracticeBtn} onPress={() => openPlayerAt(null)} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.startPracticeBtn} onPress={() => openPlayerAt(resumeId)} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.text} />
-                <Text style={styles.startPracticeText}>
-                  {anyDoneToday ? 'Continue practice' : 'Start practice'}
-                </Text>
+                <Text style={styles.startPracticeText}>{startLabel}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1254,9 +1269,9 @@ export default function TodayScreen({ navigation }) {
         {/* Students with no plan still get the one big practice button when the
             teacher has given them something to do. */}
         {isToday && sessions.length === 0 && playerQueue.length > 0 && (
-          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={() => openPlayerAt(null)} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={() => openPlayerAt(resumeId)} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color={COLORS.text} />
-            <Text style={styles.startPracticeText}>Start practice</Text>
+            <Text style={styles.startPracticeText}>{startLabel}</Text>
           </TouchableOpacity>
         )}
 
@@ -1580,6 +1595,8 @@ export default function TodayScreen({ navigation }) {
         visible={playerVisible}
         queue={playerQueue}
         startId={playerStartId}
+        savedElapsed={progressToday?.elapsedById || {}}
+        onProgress={saveProgress}
         streak={userData?.streak || 0}
         allSessionsDone={sessions.length > 0 && sessions.every((s) => completedIds.includes(s.id))}
         onCompleteSession={(sessionId) => handleComplete(sessionId, { silent: true })}
