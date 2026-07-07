@@ -1264,16 +1264,13 @@ export default function SongsScreen({ route, navigation }) {
             Describe a gig and Prova builds you an ordered setlist — saved here as a playlist.
           </Text>
 
-          <View style={styles.setlistBtnRow}>
-            <TouchableOpacity style={[styles.gigNewBtn, { flex: 1.15, marginTop: 0 }]} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
-              <Ionicons name="sparkles" size={16} color="#fff" />
-              <Text style={styles.gigNewBtnText}>New gig setlist</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.manualBtn} activeOpacity={0.85} onPress={() => setShowManualForm(true)}>
-              <Ionicons name="create-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.manualBtnText}>Build my own</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.gigNewBtnText}>New gig setlist</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.manualLink} activeOpacity={0.7} onPress={() => setShowManualForm(true)}>
+            <Text style={styles.manualLinkText}>Build my own</Text>
+          </TouchableOpacity>
 
           {setlists.length === 0 ? (
             <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
@@ -2064,12 +2061,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
   },
   gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  setlistBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
-  manualBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: COLORS.primary + '66',
-  },
-  manualBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 15 },
+  manualLink: { alignItems: 'center', paddingVertical: 8 },
+  manualLinkText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   manualSearchRow: { flexDirection: 'row', gap: SPACING.sm },
   manualSearchBtn: { width: 48, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   manualResultRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
