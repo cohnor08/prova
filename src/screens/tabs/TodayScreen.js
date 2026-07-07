@@ -20,6 +20,7 @@ import ProofMedia from '../../components/ProofMedia';
 import { LinearGradient } from 'expo-linear-gradient';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
+import SheetModal from '../../components/SheetModal';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -1593,9 +1594,7 @@ export default function TodayScreen({ navigation }) {
       />
 
       {/* End-of-day review — rate every task in one place, then Submit */}
-      <Modal visible={dayReviewOpen} transparent animationType="slide" onRequestClose={skipDayReview}>
-        <KeyboardAvoidingView style={styles.drBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.drSheet}>
+      <SheetModal visible={dayReviewOpen} onRequestClose={skipDayReview} cardStyle={styles.drSheet} keyboardAvoiding>
             <View style={styles.drHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.drTitle}>How did today go?</Text>
@@ -1645,14 +1644,10 @@ export default function TodayScreen({ navigation }) {
             <TouchableOpacity style={styles.drSkip} onPress={skipDayReview} activeOpacity={0.7}>
               <Text style={styles.drSkipText}>Skip for today</Text>
             </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
       {/* Week in review — preview the adapted plan and approve or keep current */}
-      <Modal visible={reviewOpen} transparent animationType="slide" onRequestClose={() => setReviewOpen(false)}>
-        <View style={styles.reviewBackdrop}>
-          <View style={styles.reviewSheet}>
+      <SheetModal visible={reviewOpen} onRequestClose={() => setReviewOpen(false)} cardStyle={styles.reviewSheet}>
             <View style={styles.reviewHeader}>
               <Text style={styles.reviewSheetTitle}>Your week in review</Text>
               <TouchableOpacity onPress={() => setReviewOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -1694,9 +1689,7 @@ export default function TodayScreen({ navigation }) {
                 </TouchableOpacity>
               </>
             ) : null}
-          </View>
-        </View>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -1876,7 +1869,6 @@ const styles = StyleSheet.create({
   rateTodayCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.accent + '55', padding: SPACING.md, marginBottom: SPACING.md },
   rateTodayText: { flex: 1, color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
-  drBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   drSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40, maxHeight: '88%' },
   drHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.lg },
   drTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
@@ -1900,7 +1892,6 @@ const styles = StyleSheet.create({
   reviewTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
   reviewSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 17 },
 
-  reviewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   reviewSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xl, maxHeight: '86%' },
   reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   reviewSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },

@@ -11,6 +11,7 @@ import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
 import { formatProgressReport } from '../../lib/progressReport';
+import SheetModal from '../../components/SheetModal';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CHART_W = SCREEN_W - SPACING.xl * 2;
@@ -236,10 +237,7 @@ function ProvaScore({ score, onPress }) {
 function RanksModal({ visible, score, onClose }) {
   const current = scoreRank(score);
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.ranksBackdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.ranksSheet}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.ranksSheet} dismissOnBackdrop>
           <View style={styles.ranksHeader}>
             <Text style={styles.ranksTitle}>Ranks</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -262,9 +260,7 @@ function RanksModal({ visible, score, onClose }) {
               );
             })}
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -643,9 +639,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
       )}
 
       {/* Add friend modal */}
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>Add a Friend</Text>
             <Text style={styles.modalSub}>Enter their Prova account email</Text>
             <TextInput
@@ -666,9 +660,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
                 {adding ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
     </View>
   );
 }
@@ -1227,7 +1219,6 @@ const styles = StyleSheet.create({
   scoreAllLink: { color: COLORS.primary, fontSize: 12, fontWeight: '700', marginTop: SPACING.sm },
 
   // Ranks ladder modal
-  ranksBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   ranksSheet: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl },
   ranksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   ranksTitle: { color: COLORS.text, fontSize: 20, fontWeight: '900' },
@@ -1346,7 +1337,6 @@ const styles = StyleSheet.create({
   addFriendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, backgroundColor: COLORS.primary + '15', borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '33' },
   addFriendText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 80, marginBottom: -40, borderTopWidth: 1, borderColor: COLORS.border },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },

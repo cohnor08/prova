@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
   ScrollView, Image, Linking, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, SPACING } from '../constants/theme';
 import { searchYouTube } from '../lib/youtube';
+import SheetModal from './SheetModal';
 
 // Pull an 11-char video id out of any YouTube URL (watch, youtu.be, embed,
 // shorts). Returns null for a plain search phrase.
@@ -62,9 +63,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
   const playerHeight = Math.round((playerWidth * 9) / 16);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.sheet} dismissOnBackdrop>
           <View style={styles.header}>
             <Text style={styles.headerTitle} numberOfLines={1}>{title || 'Watch'}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -132,14 +131,11 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
               </TouchableOpacity>
             )}
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, maxHeight: '88%' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   headerTitle: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: '800', marginRight: SPACING.md },
