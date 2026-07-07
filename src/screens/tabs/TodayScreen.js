@@ -13,7 +13,7 @@ import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints } from '../../lib/score';
+import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import ProofMedia from '../../components/ProofMedia';
@@ -444,6 +444,8 @@ export default function TodayScreen({ navigation }) {
   const [playerVisible, setPlayerVisible] = useState(false); // guided practice player
   const [playerStartId, setPlayerStartId] = useState(null);  // queue item to start on
   const [playerProgress, setPlayerProgress] = useState(null); // { date, elapsedById, lastItemId } — survives app restarts
+  const [setlistAsk, setSetlistAsk] = useState(null); // null | 'ask' | 'pick' — the pre-gig "practice your set first?" sheet
+  const [gigSongItem, setGigSongItem] = useState(null); // chosen setlist song, runs first in the player
 
   // Restore any unfinished run from earlier today (stale days are ignored and
   // overwritten on the next write).
@@ -1142,6 +1144,61 @@ export default function TodayScreen({ navigation }) {
     || Object.keys(progressToday?.elapsedById || {}).some((id) => playerQueue.some((q) => q.id === id));
   const startLabel = hasStartedToday ? 'Resume practice' : 'Start practice';
 
+  // ── Pre-Gig set rehearsal ───────────────────────────────────────────────────
+  // A gig within 14 days that has a setlist attached: pressing Start practice
+  // first asks "practice your set first?" — opt-in, the student picks the song.
+  const preGigSetlist = (() => {
+    const gigs = Array.isArray(userData?.gigs) ? userData.gigs : [];
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const soon = gigs
+      .map((g) => ({ g, days: Math.round((new Date(`${g.date}T00:00:00`) - midnight) / 86400000) }))
+      .filter((x) => x.days >= 0 && x.days <= 14 && x.g.setlistId)
+      .sort((a, b) => a.days - b.days)[0];
+    if (!soon) return null;
+    const setlist = (userData?.setlists || []).find((s) => s.id === soon.g.setlistId);
+    return setlist && setlist.songs?.length > 0 ? { gig: soon.g, days: soon.days, setlist } : null;
+  })();
+
+  // Fresh runs get the ask; resuming mid-task goes straight back in.
+  const openPlayerMaybeAsk = () => {
+    if (!resumeId && preGigSetlist) setSetlistAsk('ask');
+    else openPlayerAt(resumeId);
+  };
+
+  // Rehearsing a setlist song = an open-ended player task that banks points for
+  // the real time practiced (same rate as everything else).
+  const startGigSong = (song) => {
+    setGigSongItem({
+      id: `gig_${song.id || song.title}`,
+      kind: 'gigsong',
+      title: song.title,
+      description: [
+        song.artist ? `by ${song.artist}` : null,
+        `From your “${preGigSetlist.setlist.name}” set — run it like it's the gig.`,
+      ].filter(Boolean).join('  ·  '),
+      category: 'repertoire',
+      targetSec: 0,
+      priorSec: 0,
+      watch: `${song.title} ${song.artist || ''} ${userData?.instrument || 'guitar'} lesson`,
+    });
+    setSetlistAsk(null);
+    setPlayerStartId(`gig_${song.id || song.title}`);
+    setPlayerVisible(true);
+  };
+
+  const bankGigSong = async (sec) => {
+    const uid = auth.currentUser?.uid;
+    const pts = Math.round((sec / 60) * POINTS_PER_MIN);
+    if (!uid || pts <= 0) return 0;
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        provaScore: typeof userData?.provaScore === 'number' ? increment(pts) : (displayScore(userData) + pts),
+      });
+      setUserData((u) => (u ? { ...u, provaScore: (u.provaScore || 0) + pts } : u));
+    } catch (e) { /* best-effort */ }
+    return pts;
+  };
+
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
   const nowDate = new Date();
   const nextLesson = lessons
@@ -1258,7 +1315,7 @@ export default function TodayScreen({ navigation }) {
               {completedIds.length} of {sessions.length} completed · {Math.round(progress * 100)}%
             </Text>
             {playerQueue.length > 0 && (
-              <TouchableOpacity style={styles.startPracticeBtn} onPress={() => openPlayerAt(resumeId)} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.text} />
                 <Text style={styles.startPracticeText}>{startLabel}</Text>
               </TouchableOpacity>
@@ -1269,7 +1326,7 @@ export default function TodayScreen({ navigation }) {
         {/* Students with no plan still get the one big practice button when the
             teacher has given them something to do. */}
         {isToday && sessions.length === 0 && playerQueue.length > 0 && (
-          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={() => openPlayerAt(resumeId)} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.startPracticeBtn, { marginBottom: SPACING.lg }]} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color={COLORS.text} />
             <Text style={styles.startPracticeText}>{startLabel}</Text>
           </TouchableOpacity>
@@ -1593,22 +1650,66 @@ export default function TodayScreen({ navigation }) {
       {/* Guided practice player — the one place practicing happens */}
       <PracticePlayer
         visible={playerVisible}
-        queue={playerQueue}
+        queue={gigSongItem ? [gigSongItem, ...playerQueue] : playerQueue}
         startId={playerStartId}
         savedElapsed={progressToday?.elapsedById || {}}
         onProgress={saveProgress}
+        onBankSong={bankGigSong}
         streak={userData?.streak || 0}
         allSessionsDone={sessions.length > 0 && sessions.every((s) => completedIds.includes(s.id))}
         onCompleteSession={(sessionId) => handleComplete(sessionId, { silent: true })}
         onBankTeacher={(taskId, sec) => bankTeacherTask(taskId, sec, { silent: true })}
         onAttachProof={attachProof}
         proofBusyId={proofBusyId}
-        onClose={() => setPlayerVisible(false)}
+        onClose={() => { setPlayerVisible(false); setGigSongItem(null); }}
         onFinishReview={() => {
           setPlayerVisible(false);
+          setGigSongItem(null);
           setTimeout(openDayReview, 400); // let the player dismiss before the sheet slides up
         }}
       />
+
+      {/* Pre-gig: "practice your set first?" → pick a song from the setlist */}
+      <SheetModal visible={!!setlistAsk} onRequestClose={() => setSetlistAsk(null)} cardStyle={styles.gigAskCard} dismissOnBackdrop>
+        {setlistAsk === 'pick' ? (
+          <>
+            <Text style={styles.gigAskTitle}>Pick a song to rehearse</Text>
+            <Text style={styles.gigAskSub}>From “{preGigSetlist?.setlist.name}” — the clock runs and it counts for points.</Text>
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {(preGigSetlist?.setlist.songs || []).map((s, i) => (
+                <TouchableOpacity key={s.id || i} style={styles.gigSongRow} onPress={() => startGigSong(s)} activeOpacity={0.7}>
+                  <Text style={styles.gigSongNum}>{i + 1}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.gigSongTitle} numberOfLines={1}>{s.title}</Text>
+                    {!!s.artist && <Text style={styles.gigSongArtist} numberOfLines={1}>{s.artist}</Text>}
+                  </View>
+                  <Ionicons name="play-circle" size={22} color={COLORS.primary} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.gigAskSkip} onPress={() => { setSetlistAsk(null); openPlayerAt(null); }} activeOpacity={0.7}>
+              <Text style={styles.gigAskSkipText}>Skip to today's tasks</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.gigAskKicker}>
+              🎸 {(preGigSetlist?.gig.name || 'YOUR GIG').toUpperCase()} · {preGigSetlist?.days === 0 ? 'TODAY' : preGigSetlist?.days === 1 ? 'TOMORROW' : `IN ${preGigSetlist?.days} DAYS`}
+            </Text>
+            <Text style={styles.gigAskTitle}>Practice your set first?</Text>
+            <Text style={styles.gigAskSub}>Rehearse songs from “{preGigSetlist?.setlist.name}” before today's tasks.</Text>
+            <View style={styles.gigAskBtns}>
+              <TouchableOpacity style={styles.gigAskNo} onPress={() => { setSetlistAsk(null); openPlayerAt(null); }} activeOpacity={0.85}>
+                <Text style={styles.gigAskNoText}>Not now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.gigAskYes} onPress={() => setSetlistAsk('pick')} activeOpacity={0.85}>
+                <Ionicons name="musical-notes" size={16} color={COLORS.text} />
+                <Text style={styles.gigAskYesText}>Practice my set</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </SheetModal>
 
       {/* End-of-day review — rate every task in one place, then Submit */}
       <SheetModal visible={dayReviewOpen} onRequestClose={skipDayReview} cardStyle={styles.drSheet} keyboardAvoiding>
@@ -1739,6 +1840,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, marginTop: SPACING.md,
   },
   startPracticeText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  gigAskCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
+  gigAskKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: SPACING.xs },
+  gigAskTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  gigAskSub: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
+  gigAskBtns: { flexDirection: 'row', gap: SPACING.sm },
+  gigAskNo: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  gigAskNoText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+  gigAskYes: { flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.primary },
+  gigAskYesText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  gigSongRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  gigSongNum: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700', width: 20, textAlign: 'center' },
+  gigSongTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  gigSongArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
+  gigAskSkip: { alignItems: 'center', paddingVertical: 14, marginTop: SPACING.xs },
+  gigAskSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   practiceThisBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: COLORS.primaryDark, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
