@@ -476,21 +476,23 @@ export default function ScheduleScreen({ navigation, route }) {
                     <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
                   )}
                 </TouchableOpacity>
-                {setlists.length > 0 && (
-                  <>
-                    <Text style={styles.gigFormLabel}>SETLIST (OPTIONAL)</Text>
-                    <View style={styles.gigChips}>
-                      {setlists.map((s) => {
-                        const on = newGigSetlistId === s.id;
-                        return (
-                          <TouchableOpacity key={s.id} style={[styles.gigChip, on && styles.gigChipOn]} onPress={() => setNewGigSetlistId(on ? null : s.id)} activeOpacity={0.8}>
-                            <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </>
-                )}
+                <Text style={styles.gigFormLabel}>SETLIST (OPTIONAL)</Text>
+                <View style={styles.gigChips}>
+                  {setlists.map((s) => {
+                    const on = newGigSetlistId === s.id;
+                    return (
+                      <TouchableOpacity key={s.id} style={[styles.gigChip, on && styles.gigChipOn]} onPress={() => setNewGigSetlistId(on ? null : s.id)} activeOpacity={0.8}>
+                        <Text style={[styles.gigChipText, on && styles.gigChipTextOn]} numberOfLines={1}>{s.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* The form keeps everything typed while they build one — this
+                      screen stays mounted under the pushed Songs screen. */}
+                  <TouchableOpacity style={styles.gigChipCreate} onPress={() => navigation.navigate('Songs')} activeOpacity={0.8}>
+                    <Ionicons name="add" size={13} color={COLORS.primary} />
+                    <Text style={styles.gigChipCreateText}>Create a setlist</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
@@ -777,6 +779,8 @@ const styles = StyleSheet.create({
   gigChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, maxWidth: '100%' },
   gigChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
   gigChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  gigChipCreate: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: COLORS.primary + '55', borderStyle: 'dashed' },
+  gigChipCreateText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   gigChipTextOn: { color: COLORS.primary },
   gigSaveBtn: { paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center', marginTop: SPACING.xs },
   gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },

@@ -86,18 +86,16 @@ export default function PracticePlayer({
 
   const elapsed = () => accumRef.current + (startedAtRef.current ? (Date.now() - startedAtRef.current) / 1000 : 0);
 
-  // Build the run when the player opens: rotate the queue so the tapped task
-  // goes first, the rest follow in order. Clocks stashed in an earlier run
-  // today carry over, so exiting never loses time.
+  // Build the run when the player opens. The queue KEEPS plan order — opening
+  // at a specific task jumps to its real position (so the counter reads
+  // "6 of 12", and Previous walks back toward the start). Clocks stashed in an
+  // earlier run today carry over, so exiting never loses time.
   useEffect(() => {
     if (!visible) return;
-    let q = [...(queue || [])];
-    if (startId) {
-      const at = q.findIndex((it) => it.id === startId);
-      if (at > 0) q = [...q.slice(at), ...q.slice(0, at)];
-    }
+    const q = [...(queue || [])];
+    const at = startId ? q.findIndex((it) => it.id === startId) : -1;
     setItems(q);
-    setIdx(0);
+    setIdx(at > 0 ? at : 0);
     setPhase(q.length === 0 ? 'summary' : 'play');
     statsRef.current = { sec: 0, pts: 0, done: 0, skipped: 0 };
     savedElapsedRef.current = { ...(savedElapsed || {}) };

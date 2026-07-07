@@ -319,6 +319,14 @@ export default function SongsScreen({ route, navigation }) {
   // Gig setlists — AI-built playlists saved inside the library
   const [setlists, setSetlists] = useState([]);
   const [showGigForm, setShowGigForm] = useState(false);   // "new gig setlist" modal
+
+  // Hand-built setlists — name it, search any song (iTunes), stack the list.
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualSearch, setManualSearch] = useState('');
+  const [manualResult, setManualResult] = useState(null); // resolved track | 'none'
+  const [manualSearching, setManualSearching] = useState(false);
+  const [manualSongs, setManualSongs] = useState([]);
   const [gigSetting, setGigSetting] = useState('');
   const [gigAudience, setGigAudience] = useState('');
   const [gigVibe, setGigVibe] = useState('');       // genres
@@ -734,6 +742,51 @@ export default function SongsScreen({ route, navigation }) {
       pendingExportRef.current = null;
     }
   }, [spotifyResponse]);
+
+  // ── Hand-built setlist helpers ──────────────────────────────────────────────
+  const runManualSearch = async () => {
+    const q = manualSearch.trim();
+    if (!q || manualSearching) return;
+    setManualSearching(true);
+    try {
+      const r = await searchTrack(q);
+      setManualResult(r || 'none');
+    } catch (e) {
+      setManualResult('none');
+    } finally {
+      setManualSearching(false);
+    }
+  };
+  const addManualSong = (title, artist) => {
+    const t = (title || '').trim();
+    if (!t) return;
+    setManualSongs((prev) => [...prev, {
+      id: `setsong_${Date.now()}_${prev.length}`,
+      title: t,
+      artist: (artist || '').trim(),
+      note: '',
+      fromLibrary: false,
+    }]);
+    setManualSearch('');
+    setManualResult(null);
+  };
+  const saveManualSetlist = async () => {
+    const name = manualName.trim();
+    if (!name) { Alert.alert('Name it', 'Give your setlist a name first.'); return; }
+    if (manualSongs.length === 0) { Alert.alert('Add songs', 'Search and add at least one song.'); return; }
+    const sl = {
+      id: `setlist_${Date.now()}`,
+      name: name.slice(0, 60),
+      setting: 'Custom',
+      audience: '',
+      vibe: '',
+      createdAt: new Date().toISOString(),
+      songs: manualSongs,
+    };
+    await saveSetlists([sl, ...setlists]);
+    setShowManualForm(false);
+    setManualName(''); setManualSearch(''); setManualResult(null); setManualSongs([]);
+  };
 
   const addSong = () => {
     const title = newTitle.trim();
@@ -1211,10 +1264,16 @@ export default function SongsScreen({ route, navigation }) {
             Describe a gig and Prova builds you an ordered setlist — saved here as a playlist.
           </Text>
 
-          <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
-            <Ionicons name="sparkles" size={16} color="#fff" />
-            <Text style={styles.gigNewBtnText}>New gig setlist</Text>
-          </TouchableOpacity>
+          <View style={styles.setlistBtnRow}>
+            <TouchableOpacity style={[styles.gigNewBtn, { flex: 1.15, marginTop: 0 }]} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
+              <Ionicons name="sparkles" size={16} color="#fff" />
+              <Text style={styles.gigNewBtnText}>New gig setlist</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.manualBtn} activeOpacity={0.85} onPress={() => setShowManualForm(true)}>
+              <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.manualBtnText}>Build my own</Text>
+            </TouchableOpacity>
+          </View>
 
           {setlists.length === 0 ? (
             <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
@@ -1614,6 +1673,95 @@ export default function SongsScreen({ route, navigation }) {
             </ScrollView>
       </SheetModal>
 
+      {/* Hand-built setlist — name it, search any song, stack the list. Same
+          keyboard pattern as the gig form: inner ScrollView with insets, no KAV. */}
+      <SheetModal
+        visible={showManualForm}
+        onRequestClose={() => setShowManualForm(false)}
+        cardStyle={[styles.gigSheet, { maxHeight: '88%' }]}
+        dismissOnBackdrop
+      >
+        <View style={styles.playerHandle} />
+        <Text style={styles.gigSheetTitle}>Build a setlist</Text>
+        <Text style={styles.gigSheetSub}>Search any song and add it — the order is your set order.</Text>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ gap: SPACING.xs, paddingBottom: SPACING.md }}
+        >
+          <TextInput
+            style={styles.songInput}
+            placeholder="Setlist name (e.g. Saturday acoustic set)"
+            placeholderTextColor={COLORS.textMuted}
+            value={manualName}
+            onChangeText={setManualName}
+            maxLength={60}
+          />
+          <View style={styles.manualSearchRow}>
+            <TextInput
+              style={[styles.songInput, { flex: 1 }]}
+              placeholder="Search any song…"
+              placeholderTextColor={COLORS.textMuted}
+              value={manualSearch}
+              onChangeText={(t) => { setManualSearch(t); if (manualResult) setManualResult(null); }}
+              onSubmitEditing={runManualSearch}
+              returnKeyType="search"
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.manualSearchBtn} onPress={runManualSearch} disabled={manualSearching} activeOpacity={0.85}>
+              {manualSearching
+                ? <ActivityIndicator size="small" color={COLORS.text} />
+                : <Ionicons name="search" size={17} color={COLORS.text} />}
+            </TouchableOpacity>
+          </View>
+
+          {manualResult && manualResult !== 'none' && (
+            <TouchableOpacity style={styles.manualResultRow} onPress={() => addManualSong(manualResult.title, manualResult.artist)} activeOpacity={0.8}>
+              <Ionicons name="musical-note" size={16} color={COLORS.primary} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.manualResultTitle} numberOfLines={1}>{manualResult.title}</Text>
+                {!!manualResult.artist && <Text style={styles.manualResultArtist} numberOfLines={1}>{manualResult.artist}</Text>}
+              </View>
+              <Ionicons name="add-circle" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+          {manualResult === 'none' && !!manualSearch.trim() && (
+            <TouchableOpacity style={styles.manualResultRow} onPress={() => addManualSong(manualSearch, '')} activeOpacity={0.8}>
+              <Ionicons name="help-circle-outline" size={16} color={COLORS.textMuted} />
+              <Text style={[styles.manualResultTitle, { flex: 1 }]} numberOfLines={1}>No match — add “{manualSearch.trim()}” as typed</Text>
+              <Ionicons name="add-circle-outline" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          )}
+
+          {manualSongs.length > 0 && <Text style={styles.gigLabel}>YOUR SET ({manualSongs.length})</Text>}
+          {manualSongs.map((s, i) => (
+            <View key={s.id} style={styles.manualSongRow}>
+              <Text style={styles.manualSongNum}>{i + 1}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.manualResultTitle} numberOfLines={1}>{s.title}</Text>
+                {!!s.artist && <Text style={styles.manualResultArtist} numberOfLines={1}>{s.artist}</Text>}
+              </View>
+              <TouchableOpacity onPress={() => setManualSongs((prev) => prev.filter((x) => x.id !== s.id))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={[styles.gigGenerateBtn, (!manualName.trim() || manualSongs.length === 0) && { opacity: 0.5 }]}
+            onPress={saveManualSetlist}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="checkmark" size={18} color="#fff" />
+            <Text style={styles.gigGenerateText}>Save setlist</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.openInCancel} onPress={() => setShowManualForm(false)} activeOpacity={0.7}>
+            <Text style={styles.openInCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SheetModal>
+
       {/* Setlist detail — the ordered songs, each previewable + openable */}
       <Modal
         visible={!!viewingSetlist}
@@ -1916,6 +2064,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
   },
   gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  setlistBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+  manualBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: COLORS.primary + '66',
+  },
+  manualBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 15 },
+  manualSearchRow: { flexDirection: 'row', gap: SPACING.sm },
+  manualSearchBtn: { width: 48, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  manualResultRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
+  manualResultTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  manualResultArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
+  manualSongRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 8 },
+  manualSongNum: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700', width: 18, textAlign: 'center' },
   gigEmpty: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' },
   setlistRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
