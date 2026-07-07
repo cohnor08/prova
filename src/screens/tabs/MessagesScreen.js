@@ -587,15 +587,15 @@ const styles = StyleSheet.create({
   emptyBtnText: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
 
   // Chat nav header
-  chatNavHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
-  backBtn: { flexDirection: 'row', alignItems: 'center', width: 90 },
-  backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
-  progressBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, width: 90 },
-  progressBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  chatNavHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md + 2, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
+  backBtn: { flexDirection: 'row', alignItems: 'center', width: 96 },
+  backText: { color: COLORS.primary, fontSize: 16, fontWeight: '600' },
+  progressBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, width: 96 },
+  progressBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   chatNavCenter: { flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm },
-  chatAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
-  chatAvatarText: { color: COLORS.text, fontSize: 12, fontWeight: '800' },
-  chatNavEmail: { color: COLORS.text, fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  chatAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  chatAvatarText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  chatNavEmail: { color: COLORS.text, fontSize: 17, fontWeight: '800', flexShrink: 1 },
 
   // Messages
   messageList: { padding: SPACING.md, gap: SPACING.xs, flexGrow: 1 },

@@ -236,7 +236,23 @@ export default function TeacherHomeScreen({ navigation }) {
     ensureTeacherCode(uid).then(setJoinCode).catch(() => {});
     getDoc(doc(db, 'users', uid))
       .then((s) => {
-        setLayout(mergeLayout(s.data()?.teacherWidgets));
+        // One-time order fix for layouts saved before 2026-07-07: the calendar
+        // and lessons cards belong above Top Students. Guarded by a doc flag so
+        // it never re-runs — reordering afterwards sticks.
+        let merged = mergeLayout(s.data()?.teacherWidgets);
+        if (s.data()?.widgetOrderFixed !== true) {
+          const topIdx = merged.findIndex((w) => w.id === 'top');
+          const calIdxs = ['calendar', 'lessons'].map((id) => merged.findIndex((w) => w.id === id)).filter((i) => i !== -1);
+          if (topIdx !== -1 && calIdxs.some((i) => i > topIdx)) {
+            const next = [...merged];
+            const [topW] = next.splice(topIdx, 1);
+            const lastCal = Math.max(...['calendar', 'lessons'].map((id) => next.findIndex((w) => w.id === id)));
+            next.splice(lastCal + 1, 0, topW);
+            merged = next;
+          }
+          updateDoc(doc(db, 'users', uid), { teacherWidgets: merged, widgetOrderFixed: true }).catch(() => {});
+        }
+        setLayout(merged);
         setNote(s.data()?.teacherNote || '');
         setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
       })

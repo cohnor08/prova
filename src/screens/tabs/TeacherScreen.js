@@ -1272,7 +1272,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo }) {
+function InlineChatView({ student, myUid, isDemo, inSheet }) {
   const otherUid = student.uid;
   const otherEmail = student.email;
   const myEmail = auth.currentUser?.email || '';
@@ -1391,7 +1391,10 @@ function InlineChatView({ student, myUid, isDemo }) {
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={tabBarHeight}
+      // In the tab, the tab bar sits between the input and the keyboard, so it
+      // offsets the avoidance. In the chat sheet the tab bar is covered — an
+      // offset there leaves a gap between the keyboard and the input.
+      keyboardVerticalOffset={inSheet ? 0 : tabBarHeight}
     >
       {/* Inverted = bottom-anchored: the newest message stays above the input
           whatever the keyboard does; dragging dismisses the keyboard. */}
@@ -2923,7 +2926,9 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
         )}
       </ScrollView>
 
-      <SheetModal visible={chatOpen} onRequestClose={() => setChatOpen(false)} cardStyle={styles.chatSheet} keyboardAvoiding>
+      {/* No keyboardAvoiding here — InlineChatView carries its own KAV (with a
+          zero offset in the sheet); two avoiders would double-compensate. */}
+      <SheetModal visible={chatOpen} onRequestClose={() => setChatOpen(false)} cardStyle={styles.chatSheet}>
               <View style={styles.chatHeader}>
                 <Text style={styles.chatTitle}>Your Teacher</Text>
                 <TouchableOpacity onPress={() => setChatOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -2934,6 +2939,7 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
                 student={{ uid: teacherUid, email: teacherEmail, demoMessages: [] }}
                 myUid={myUid}
                 isDemo={false}
+                inSheet
               />
       </SheetModal>
     </>
