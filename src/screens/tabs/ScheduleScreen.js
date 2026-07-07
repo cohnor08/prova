@@ -141,9 +141,24 @@ export default function ScheduleScreen({ navigation, route }) {
     }
   };
 
+  // When set, the form is editing an existing event instead of adding one.
+  const [editing, setEditing] = useState(null); // null | { kind: 'gig'|'personal', id }
+
   const resetForm = () => {
     setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime('16:00'); setNewGigTime(''); setNewNote('');
-    setShowAdd(false); Keyboard.dismiss();
+    setEditing(null); setShowAdd(false); Keyboard.dismiss();
+  };
+
+  // Tap a gig / self-added event in the day list → reopen the form prefilled.
+  const startEditGig = (g) => {
+    setAddType('gig');
+    setNewGigName(g.name || ''); setNewGigTime(g.time || ''); setNewGigSetlistId(g.setlistId || null);
+    setEditing({ kind: 'gig', id: g.id }); setShowAdd(true);
+  };
+  const startEditPersonal = (p) => {
+    setAddType(p.type === 'lesson' ? 'lesson' : 'task');
+    setNewTitle(p.title || ''); setNewTime(p.time || '16:00'); setNewNote(p.note || '');
+    setEditing({ kind: 'personal', id: p.id }); setShowAdd(true);
   };
 
   const openTimeWheel = (which) => {
@@ -158,15 +173,16 @@ export default function ScheduleScreen({ navigation, route }) {
     if (addType === 'gig') {
       const name = newGigName.trim();
       if (!name) { Alert.alert('Name your gig', 'Give the gig a name first.'); return; }
-      const gig = {
-        id: `gig_${Date.now()}`,
+      const fields = {
         name: name.slice(0, 60),
         date: selected,
         time: newGigTime || null,
         setlistId: newGigSetlistId || null,
-        createdAt: new Date().toISOString(),
       };
-      saveGigs([...gigs, gig].sort((a, b) => a.date.localeCompare(b.date)));
+      const next = editing
+        ? gigs.map((g) => (g.id === editing.id ? { ...g, ...fields } : g))
+        : [...gigs, { id: `gig_${Date.now()}`, createdAt: new Date().toISOString(), ...fields }];
+      saveGigs(next.sort((a, b) => a.date.localeCompare(b.date)));
       resetForm();
       return;
     }
@@ -175,16 +191,17 @@ export default function ScheduleScreen({ navigation, route }) {
       Alert.alert(addType === 'task' ? 'Name your task' : 'Name your lesson', 'Give it a name first.');
       return;
     }
-    const ev = {
-      id: `pe_${Date.now()}`,
+    const fields = {
       type: addType, // 'task' | 'lesson'
       title: title.slice(0, 80),
       date: selected,
       time: addType === 'lesson' ? newTime : '',
       note: newNote.trim().slice(0, 140),
-      createdAt: new Date().toISOString(),
     };
-    savePersonal([...personalEvents, ev].sort((a, b) => a.date.localeCompare(b.date)));
+    const next = editing
+      ? personalEvents.map((p) => (p.id === editing.id ? { ...p, ...fields } : p))
+      : [...personalEvents, { id: `pe_${Date.now()}`, createdAt: new Date().toISOString(), ...fields }];
+    savePersonal(next.sort((a, b) => a.date.localeCompare(b.date)));
     resetForm();
   };
 
@@ -337,7 +354,7 @@ export default function ScheduleScreen({ navigation, route }) {
 
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle} numberOfLines={1}>{prettyDate(selected)}</Text>
-          <TouchableOpacity style={styles.addGigBtn} onPress={() => setShowAdd((v) => !v)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.addGigBtn} onPress={() => (showAdd ? resetForm() : setShowAdd(true))} activeOpacity={0.85}>
             <Ionicons name={showAdd ? 'close' : 'add'} size={15} color="#fff" />
             <Text style={styles.addGigText}>{showAdd ? 'Cancel' : 'Add event'}</Text>
           </TouchableOpacity>
@@ -348,6 +365,8 @@ export default function ScheduleScreen({ navigation, route }) {
             out-of-school lesson. */}
         {showAdd && (
           <View style={styles.gigForm}>
+            {/* Editing keeps the event's kind — the chooser only applies to new events */}
+            {!editing && (
             <View style={styles.typeRow}>
               {[
                 { key: 'gig', label: 'Gig', icon: 'mic' },
@@ -363,6 +382,7 @@ export default function ScheduleScreen({ navigation, route }) {
                 );
               })}
             </View>
+            )}
 
             {addType === 'gig' && (
               <>
@@ -449,7 +469,7 @@ export default function ScheduleScreen({ navigation, route }) {
 
             <TouchableOpacity style={styles.gigSaveBtn} onPress={addEvent} activeOpacity={0.85}>
               <Text style={styles.gigSaveText}>
-                Add {addType} on {parseYmd(selected).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {editing ? 'Save changes' : `Add ${addType} on ${parseYmd(selected).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -461,14 +481,23 @@ export default function ScheduleScreen({ navigation, route }) {
           const meta = TYPE_META[e.type];
           const done = e.type === 'due' && e.done;
           const att = e.att && ATT_META[e.att.status] ? e.att : null;
-          // A marked lesson opens its note in its own window when pressed.
-          const Card = att ? TouchableOpacity : View;
+          // Pressing a row: a marked teacher lesson opens its note window; the
+          // student's own events (gigs, self-added lessons/tasks) open the form
+          // to edit them. Teacher-owned rows stay read-only.
+          const gigObj = e.gigId ? gigs.find((g) => g.id === e.gigId) : null;
+          const perObj = e.personalId ? personalEvents.find((p) => p.id === e.personalId) : null;
+          const onRowPress = att
+            ? () => navigation.navigate('LessonNotes', { date: selected })
+            : gigObj ? () => startEditGig(gigObj)
+            : perObj ? () => startEditPersonal(perObj)
+            : null;
+          const Card = onRowPress ? TouchableOpacity : View;
           return (
             <Card
               key={i}
               style={styles.eventCard}
-              activeOpacity={att ? 0.7 : 1}
-              {...(att ? { onPress: () => navigation.navigate('LessonNotes', { date: selected }) } : {})}
+              activeOpacity={onRowPress ? 0.7 : 1}
+              {...(onRowPress ? { onPress: onRowPress } : {})}
             >
               <View style={[styles.eventIcon, { backgroundColor: (done ? COLORS.success : meta.color) + '22' }]}>
                 <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
@@ -487,10 +516,16 @@ export default function ScheduleScreen({ navigation, route }) {
                   </View>
                 )}
               </View>
-              {e.personalId
-                ? <TouchableOpacity onPress={() => removePersonal(e.personalId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
-                : e.type === 'gig'
-                ? <TouchableOpacity onPress={() => removeGig(e.gigId, e.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Ionicons name="close-circle" size={20} color={COLORS.textMuted} /></TouchableOpacity>
+              {e.personalId || e.type === 'gig'
+                ? <View style={styles.rowActions}>
+                    <Ionicons name="create-outline" size={17} color={COLORS.textMuted} />
+                    <TouchableOpacity
+                      onPress={() => (e.personalId ? removePersonal(e.personalId, e.title) : removeGig(e.gigId, e.title))}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
                 : att ? <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                 : done ? <Ionicons name="checkmark-circle" size={18} color={COLORS.success} /> : null}
             </Card>
@@ -580,6 +615,7 @@ const styles = StyleSheet.create({
   timeRowLabel: { color: COLORS.textMuted, fontSize: 15 },
   timeRowValue: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700', textAlign: 'right', marginRight: 2 },
   timeRowPlaceholder: { flex: 1, color: COLORS.textMuted, fontSize: 15, textAlign: 'right', marginRight: 2 },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   sheetCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
   sheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
