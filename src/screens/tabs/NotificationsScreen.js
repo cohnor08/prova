@@ -145,6 +145,15 @@ export default function NotificationsScreen({ navigation }) {
                   <View style={styles.statusRow}>
                     <Ionicons name="checkmark-circle" size={15} color={COLORS.success} />
                     <Text style={[styles.statusText, { color: COLORS.success }]}>Added to your calendar</Text>
+                    <TouchableOpacity
+                      style={styles.calendarBtn}
+                      onPress={() => navigation.navigate('Practice', { screen: 'Schedule', params: { date: g.date } })}
+                      activeOpacity={0.85}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="calendar-outline" size={13} color={COLORS.primary} />
+                      <Text style={styles.calendarBtnText}>Calendar</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : n.status === 'declined' ? (
                   <View style={styles.statusRow}>
@@ -190,7 +199,9 @@ const styles = StyleSheet.create({
   cardWhen: { color: COLORS.text, fontSize: 13, fontWeight: '600', marginTop: 4 },
   cardTime: { color: COLORS.textMuted, fontSize: 11, marginTop: 4 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: SPACING.sm, marginLeft: 32 + SPACING.md },
-  statusText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
+  statusText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  calendarBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: COLORS.primary + '18', borderWidth: 1, borderColor: COLORS.primary + '44' },
+  calendarBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   inviteBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm, marginLeft: 32 + SPACING.md },
   declineBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   declineText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },

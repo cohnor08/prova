@@ -157,7 +157,8 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, topDivider }) {
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, proofPct, topDivider }) {
+  const uploadingLabel = proofPct != null ? `Uploading… ${proofPct}%` : 'Uploading…';
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
   const due = assignedDueLabel(task.dueDate);
   const earnedSoFar = task.pointsEarned || 0;
@@ -241,7 +242,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
                 ? <ActivityIndicator size="small" color={COLORS.primary} />
                 : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
             </View>
-            <Text style={styles.proofAddText}>{proofBusy ? 'Uploading…' : 'Add proof of practice'}</Text>
+            <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice'}</Text>
           </TouchableOpacity>
         )
       )}
@@ -483,6 +484,7 @@ export default function TodayScreen({ navigation }) {
   const [expandedTask, setExpandedTask] = useState(null);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [proofBusyId, setProofBusyId] = useState(null); // task id currently uploading a proof clip
+  const [proofPct, setProofPct] = useState(null); // upload progress 0-100 while a proof clip uploads
   const [proofView, setProofView] = useState(null);     // { url, type, proofs, taskId } currently being watched
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
@@ -968,19 +970,25 @@ export default function TodayScreen({ navigation }) {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     setProofBusyId(taskId);
+    let rollSaved = false;
     try {
       const picked = await getMedia();
       if (!picked) { setProofBusyId(null); return; }
       if (picked.error) { Alert.alert('Proof', picked.error); setProofBusyId(null); return; }
       // Recorded in Prova → also save the clip to the camera roll, so the
       // student keeps their own copy (best-effort; skipped if declined).
+      // iOS "limited" photo access still allows adding new items.
       if (fromCamera) {
         try {
           const perm = await MediaLibrary.requestPermissionsAsync(true); // write-only access
-          if (perm.granted) await MediaLibrary.saveToLibraryAsync(picked.uri);
+          if (perm.granted || perm.accessPrivileges === 'limited') {
+            await MediaLibrary.saveToLibraryAsync(picked.uri);
+            rollSaved = true;
+          }
         } catch (e) { /* never block the upload on this */ }
       }
-      const url = await uploadProofMedia(picked.uri, uid, picked.type);
+      setProofPct(0);
+      const url = await uploadProofMedia(picked.uri, uid, picked.type, setProofPct);
       const next = (userData?.assignedTasks || []).map((t) => {
         if (t.id !== taskId) return t;
         const existing = Array.isArray(t.proofs) && t.proofs.length > 0
@@ -994,11 +1002,18 @@ export default function TodayScreen({ navigation }) {
       });
       setUserData((p) => ({ ...p, assignedTasks: next }));
       await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
-      Alert.alert('Proof submitted 🎥', 'Your teacher can now review it.');
+      Alert.alert(
+        'Proof submitted 🎥',
+        `Your teacher can now review it.${fromCamera ? (rollSaved ? ' The clip was saved to your camera roll too.' : " (Couldn't save a copy to your camera roll.)") : ''}`
+      );
     } catch (e) {
-      Alert.alert('Upload failed', "Couldn't upload your clip. Please try again.");
+      // Show the real reason — "storage/unauthorized" etc. tells us whether
+      // it's rules, size, or network, instead of a dead-end generic message.
+      const detail = e?.friendly ? e.message : `Couldn't upload your clip. Please try again.${e?.code ? `\n(${e.code})` : ''}`;
+      Alert.alert('Upload failed', detail);
     } finally {
       setProofBusyId(null);
+      setProofPct(null);
     }
   };
 
@@ -1098,10 +1113,21 @@ export default function TodayScreen({ navigation }) {
   // A student account is free and has no AI plan unless they opt in. Distinguish
   // "no plan at all" from a genuine rest day inside an existing plan.
   const hasPlan = !!plan && Object.keys(plan).length > 0;
-  const totalMins = sessions.reduce((s, x) => s + x.duration, 0);
-  // Minutes practised today = summed duration of the sessions completed so far.
-  const practisedMins = sessions.reduce((s, x) => s + (completedIds.includes(x.id) ? x.duration : 0), 0);
-  const progress = sessions.length > 0 ? completedIds.length / sessions.length : 0;
+  // Teacher/class tasks count as exercises in the summary alongside plan
+  // sessions. A completed task only counts if it was finished TODAY (completed
+  // tasks stay on the doc forever for the teacher's dashboard). Only tasks
+  // with a set time add to the planned minutes — open-ended ones add nothing.
+  const tasksDoneToday = assignedTasks.filter((t) => t.completed && t.completedAt
+    && new Date(t.completedAt).toDateString() === new Date().toDateString());
+  const openTasks = assignedTasks.filter((t) => !t.completed);
+  const exerciseCount = sessions.length + openTasks.length + tasksDoneToday.length;
+  const doneCount = completedIds.length + tasksDoneToday.length;
+  const totalMins = sessions.reduce((s, x) => s + (x.duration || 0), 0)
+    + [...openTasks, ...tasksDoneToday].reduce((s, t) => s + (t.durationMin || 0), 0);
+  // Minutes practised today = summed duration of everything completed so far.
+  const practisedMins = sessions.reduce((s, x) => s + (completedIds.includes(x.id) ? (x.duration || 0) : 0), 0)
+    + tasksDoneToday.reduce((s, t) => s + (t.durationMin || 0), 0);
+  const progress = exerciseCount > 0 ? doneCount / exerciseCount : 0;
   // Show the "review today" entry point once every session is done but the day
   // hasn't been closed out yet (covers re-opening + finishing in the Practice tab).
   const allSessionsDone = sessions.length > 0 && sessions.every(s => completedIds.includes(s.id));
@@ -1336,14 +1362,16 @@ export default function TodayScreen({ navigation }) {
           })}
         </View>
 
-        {/* Today's progress — one cohesive summary card */}
-        {isToday && sessions.length > 0 && (
+        {/* Today's progress — one cohesive summary card. Everything to do today
+            counts: plan sessions AND teacher/class tasks, so free students with
+            only assigned work get the same card. */}
+        {isToday && exerciseCount > 0 && (
           <View style={styles.summaryCard}>
             <View style={styles.summaryStats}>
               {[
-                { value: practisedMins, suffix: ` /${totalMins}`, label: 'MINUTES' },
-                { value: sessions.length, label: 'EXERCISES' },
-                { value: completedIds.length, label: 'DONE' },
+                { value: practisedMins, suffix: totalMins > 0 ? ` /${totalMins}` : null, label: 'MINUTES' },
+                { value: exerciseCount, label: 'EXERCISES' },
+                { value: doneCount, label: 'DONE' },
               ].map((stat, i) => (
                 <React.Fragment key={stat.label}>
                   {i > 0 && <View style={styles.summaryDivider} />}
@@ -1360,7 +1388,7 @@ export default function TodayScreen({ navigation }) {
               <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
             <Text style={styles.progressLabel}>
-              {completedIds.length} of {sessions.length} completed · {Math.round(progress * 100)}%
+              {doneCount} of {exerciseCount} completed · {Math.round(progress * 100)}%
             </Text>
             {playerQueue.length > 0 && (
               <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
@@ -1368,23 +1396,6 @@ export default function TodayScreen({ navigation }) {
                 <Text style={styles.startPracticeText}>{startLabel}</Text>
               </TouchableOpacity>
             )}
-            {preGigSetlist && (
-              <TouchableOpacity style={styles.setlistLink} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
-                <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
-                <Text style={styles.setlistLinkText}>Practice setlist</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Students with no plan still get the one big practice button when the
-            teacher has given them something to do. */}
-        {isToday && sessions.length === 0 && playerQueue.length > 0 && (
-          <View style={{ marginBottom: SPACING.lg }}>
-            <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
-              <Ionicons name="play" size={18} color={COLORS.text} />
-              <Text style={styles.startPracticeText}>{startLabel}</Text>
-            </TouchableOpacity>
             {preGigSetlist && (
               <TouchableOpacity style={styles.setlistLink} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
                 <Ionicons name="musical-notes-outline" size={13} color={COLORS.primary} />
@@ -1542,6 +1553,7 @@ export default function TodayScreen({ navigation }) {
                     onAttachProof={attachProof}
                     onViewProof={viewProof}
                     proofBusy={proofBusyId === t.id}
+                    proofPct={proofBusyId === t.id ? proofPct : null}
                   />
                 ))}
               </View>
@@ -1577,6 +1589,7 @@ export default function TodayScreen({ navigation }) {
                       onAttachProof={attachProof}
                       onViewProof={viewProof}
                       proofBusy={proofBusyId === t.id}
+                      proofPct={proofBusyId === t.id ? proofPct : null}
                     />
                   ))}
                 </View>
@@ -1723,6 +1736,7 @@ export default function TodayScreen({ navigation }) {
         onBankTeacher={(taskId, sec) => bankTeacherTask(taskId, sec, { silent: true })}
         onAttachProof={attachProof}
         proofBusyId={proofBusyId}
+        proofPct={proofPct}
         onClose={() => { setPlayerVisible(false); setGigSongItem(null); }}
         onGigSongEnd={() => {
           // Back to the song picker so they choose: another song, or the tasks.

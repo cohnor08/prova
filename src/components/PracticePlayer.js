@@ -64,6 +64,7 @@ export default function PracticePlayer({
   onGigSongEnd,      // Done/Next on a setlist song → back to the song picker
   onAttachProof,
   proofBusyId,
+  proofPct,
   onClose,
   onFinishReview,    // close + open the "How did today go?" review
   savedElapsed,      // { itemId: seconds } persisted from an earlier run today
@@ -320,7 +321,7 @@ export default function PracticePlayer({
                     {proofBusyId === item.taskId
                       ? <ActivityIndicator size="small" color={COLORS.primary} />
                       : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
-                    <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? 'Uploading…' : 'Add proof of practice'}</Text>
+                    <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? (proofPct != null ? `Uploading… ${proofPct}%` : 'Uploading…') : 'Add proof of practice'}</Text>
                   </TouchableOpacity>
                 )
               )}
