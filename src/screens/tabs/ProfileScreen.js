@@ -13,6 +13,7 @@ import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode } from '../../lib/teacher';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
+import SheetModal from '../../components/SheetModal';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
@@ -42,9 +43,7 @@ function PickerModal({ visible, title, options, selected, multi, onSave, onClose
   const isSelected = (val) => multi ? current.includes(val) : current === val;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard}>
           <Text style={styles.modalTitle}>{title}</Text>
 
           <ScrollView style={styles.modalOptions} showsVerticalScrollIndicator={false}>
@@ -77,9 +76,7 @@ function PickerModal({ visible, title, options, selected, multi, onSave, onClose
               <Text style={styles.modalSaveText}>Save</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -795,9 +792,7 @@ export default function ProfileScreen({ navigation }) {
         />
       )}
 
-      <Modal visible={usernameModal} transparent animationType="slide" onRequestClose={() => setUsernameModal(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={usernameModal} onRequestClose={() => setUsernameModal(false)} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>Set Username</Text>
             <TextInput
               style={styles.usernameInput}
@@ -824,13 +819,9 @@ export default function ProfileScreen({ navigation }) {
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
-      <Modal visible={tipModal} transparent animationType="slide" onRequestClose={() => setTipModal(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={tipModal} onRequestClose={() => setTipModal(false)} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>Tip link</Text>
             <TextInput
               style={styles.usernameInput}
@@ -858,13 +849,9 @@ export default function ProfileScreen({ navigation }) {
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
-      <Modal visible={timePickerOpen} transparent animationType="slide" onRequestClose={() => setTimePickerOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={timePickerOpen} onRequestClose={() => setTimePickerOpen(false)} cardStyle={styles.modalCard}>
             <Text style={styles.modalTitle}>Reminder time</Text>
             <Text style={styles.usernameHint}>When should we nudge you to practice each day?</Text>
             <View style={{ marginVertical: SPACING.lg }}>
@@ -878,9 +865,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.modalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>  );
 }
 

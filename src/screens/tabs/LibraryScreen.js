@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
+import SheetModal from '../../components/SheetModal';
 
 const norm = (s) => (s || '').toLowerCase();
 
@@ -141,9 +142,7 @@ export default function LibraryScreen({ navigation }) {
       </ScrollView>
 
       {/* Topic detail — opens the lesson content in a modal over the list */}
-      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
-        <View style={styles.sheetBackdrop}>
-          <View style={styles.sheet}>
+      <SheetModal visible={!!selected} onRequestClose={() => setSelected(null)} cardStyle={styles.sheet} dismissOnBackdrop>
             <View style={styles.sheetHeader}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.sheetTitle} numberOfLines={2}>{selected?.title}</Text>
@@ -176,9 +175,7 @@ export default function LibraryScreen({ navigation }) {
               title={watch?.title ? `Videos on ${watch.title}` : 'Watch'}
               onClose={() => setWatch(null)}
             />
-          </View>
-        </View>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -209,7 +206,6 @@ const styles = StyleSheet.create({
   cardTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   cardMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 3 },
 
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xl, maxHeight: '85%' },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, marginBottom: SPACING.lg },
   sheetTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },

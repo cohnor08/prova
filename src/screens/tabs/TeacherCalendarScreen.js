@@ -9,6 +9,7 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'fireb
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import { COLORS, SPACING } from '../../constants/theme';
+import SheetModal from '../../components/SheetModal';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -346,9 +347,7 @@ export default function TeacherCalendarScreen({ navigation }) {
       </ScrollView>
 
       {/* Add lesson modal */}
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>New lesson</Text>
             <Text style={styles.modalSub}>{prettyDate(selected)}</Text>
 
@@ -433,9 +432,7 @@ export default function TeacherCalendarScreen({ navigation }) {
                 <Text style={styles.saveText}>Add lesson</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -490,7 +487,6 @@ const styles = StyleSheet.create({
   repeatLabel: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   repeatHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40 },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },

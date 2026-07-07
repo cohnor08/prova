@@ -24,6 +24,7 @@ function dueLabel(iso) {
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
+import SheetModal from '../../components/SheetModal';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
 
@@ -472,10 +473,7 @@ export default function ResourceLibraryScreen() {
       </ScrollView>
 
       {/* Add / edit a resource */}
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
+      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding>
               <Text style={styles.modalTitle}>{editingId ? 'Edit resource' : 'Add resource'}</Text>
               <Text style={styles.modalSub}>Add a link and choose where it’s filed.</Text>
               <TextInput
@@ -550,15 +548,10 @@ export default function ResourceLibraryScreen() {
                   <Text style={styles.saveText}>{editingId ? 'Save' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
       {/* Pick who to assign the chosen resource / task to */}
-      <Modal visible={!!assignTarget} transparent animationType="slide" onRequestClose={() => setAssignTarget(null)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={!!assignTarget} onRequestClose={() => setAssignTarget(null)} cardStyle={styles.modalCard} keyboardAvoiding>
             <View style={styles.customRow}>
               <Text style={styles.modalTitle} numberOfLines={1}>Assign “{assignTarget?.title}”</Text>
               <TouchableOpacity onPress={() => setAssignTarget(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -667,7 +660,6 @@ export default function ResourceLibraryScreen() {
                 </TouchableOpacity>
               );
             })()}
-          </View>
           {showAssignDuePicker && (
             <DueDatePicker
               initial={assignDueDate}
@@ -675,8 +667,7 @@ export default function ResourceLibraryScreen() {
               onSet={setAssignDueDate}
             />
           )}
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
       <YouTubePlayerModal
         visible={!!watch}
@@ -743,7 +734,6 @@ const styles = StyleSheet.create({
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   pickName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
   pickMeta: { color: COLORS.textMuted, fontSize: 12 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40 },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },

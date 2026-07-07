@@ -19,6 +19,7 @@ import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
+import SheetModal from '../../components/SheetModal';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -523,10 +524,7 @@ export default function MessagesScreen() {
         />
       )}
 
-      <Modal visible={showNewChat} transparent animationType="slide" onRequestClose={() => setShowNewChat(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
+      <SheetModal visible={showNewChat} onRequestClose={() => setShowNewChat(false)} cardStyle={styles.modalCard} keyboardAvoiding>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>New Message</Text>
                 <TouchableOpacity onPress={() => { setShowNewChat(false); setSearchEmail(''); }}
@@ -556,10 +554,7 @@ export default function MessagesScreen() {
                   ? <ActivityIndicator color={COLORS.text} size="small" />
                   : <Text style={styles.startBtnText}>Open Chat</Text>}
               </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -619,7 +614,6 @@ const styles = StyleSheet.create({
   receipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // New chat modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs },
   modalTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },

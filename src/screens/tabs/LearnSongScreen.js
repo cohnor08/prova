@@ -11,6 +11,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { generateSongPlan } from '../../lib/claude';
 import { POINTS_PER_MIN } from '../../lib/score';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
+import SheetModal from '../../components/SheetModal';
 
 const ytUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 const stepPoints = (seconds) => Math.round((seconds / 60) * POINTS_PER_MIN);
@@ -353,9 +354,7 @@ export default function LearnSongScreen({ navigation }) {
       )}
 
       {/* Add / generate modal */}
-      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => !generating && setAddOpen(false)}>
-        <KeyboardAvoidingView style={styles.modalWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={addOpen} onRequestClose={() => !generating && setAddOpen(false)} cardStyle={styles.modalCard} keyboardAvoiding>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>Learn a song</Text>
               <TouchableOpacity onPress={() => !generating && setAddOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -417,9 +416,7 @@ export default function LearnSongScreen({ navigation }) {
                 <Text style={styles.capHint}>5 new song plans per week. Songs already learned are free to practice.</Text>
               </ScrollView>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
 
       <YouTubePlayerModal
         visible={!!watch}
@@ -490,7 +487,6 @@ const styles = StyleSheet.create({
   removeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' },
   removeText: { color: COLORS.textSecondary, fontSize: 13 },
 
-  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   // Overshoots the bottom edge so no background "crack" shows above the keyboard.
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, paddingBottom: SPACING.md + 40, marginBottom: -40, maxHeight: '85%' },
   modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
