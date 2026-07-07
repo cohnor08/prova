@@ -60,6 +60,7 @@ export default function PracticePlayer({
   allSessionsDone,
   onCompleteSession, // (sessionId) -> Promise<pts>
   onBankTeacher,     // (taskId, seconds) -> Promise<pts>
+  onBankSong,        // (seconds) -> Promise<pts> — pre-gig setlist rehearsal
   onAttachProof,
   proofBusyId,
   onClose,
@@ -176,6 +177,13 @@ export default function PracticePlayer({
       Promise.resolve(onBankTeacher(item.taskId, sec))
         .then((pts) => { statsRef.current.pts += pts || 0; })
         .catch(() => { /* best-effort; the old surfaces re-sync */ });
+    } else if (item.kind === 'gigsong') {
+      // Rehearsal time banks immediately — the song item doesn't persist
+      // across runs, so a local stash would lose it.
+      delete savedElapsedRef.current[item.id];
+      Promise.resolve(onBankSong && onBankSong(sec))
+        .then((pts) => { statsRef.current.pts += pts || 0; })
+        .catch(() => {});
     } else {
       savedElapsedRef.current[item.id] = sec;
     }
@@ -195,7 +203,9 @@ export default function PracticePlayer({
     statsRef.current.done += 1;
     delete savedElapsedRef.current[cur.id];
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    const write = cur.kind === 'session' ? onCompleteSession(cur.sessionId) : onBankTeacher(cur.taskId, sec);
+    const write = cur.kind === 'session' ? onCompleteSession(cur.sessionId)
+      : cur.kind === 'gigsong' ? onBankSong(sec)
+      : onBankTeacher(cur.taskId, sec);
     Promise.resolve(write)
       .then((pts) => { statsRef.current.pts += pts || 0; })
       .catch(() => { /* keep flowing; the old surfaces will re-sync */ });
@@ -228,9 +238,9 @@ export default function PracticePlayer({
   const reached = target > 0 && remaining <= 0;
   const color = item ? (CATEGORY_COLORS[item.category] || COLORS.primary) : COLORS.primary;
   // Any task with a set time locks Done until the clock runs out (banked time
-  // from earlier laps counts). Open-ended teacher tasks just need real time on
-  // the clock.
-  const doneEnabled = item && (target > 0 ? reached : (item.kind === 'teacher' ? elapsed() > 0 : true));
+  // from earlier laps counts). Open-ended teacher tasks and setlist rehearsals
+  // just need real time on the clock.
+  const doneEnabled = item && (target > 0 ? reached : (item.kind === 'session' ? true : elapsed() > 0));
 
   const stats = statsRef.current;
 
@@ -259,7 +269,9 @@ export default function PracticePlayer({
             <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
               <View style={[styles.kickerPill, { backgroundColor: color + '22' }]}>
                 <Text style={[styles.kickerText, { color }]}>
-                  {item.kind === 'teacher' ? 'FROM YOUR TEACHER' : (item.category || '').replace('_', ' ').toUpperCase()}
+                  {item.kind === 'teacher' ? 'FROM YOUR TEACHER'
+                    : item.kind === 'gigsong' ? 'GIG REHEARSAL'
+                    : (item.category || '').replace('_', ' ').toUpperCase()}
                 </Text>
               </View>
               <Text style={styles.title}>{item.title}</Text>
