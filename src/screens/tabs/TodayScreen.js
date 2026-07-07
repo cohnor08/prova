@@ -1157,13 +1157,14 @@ export default function TodayScreen({ navigation }) {
     (next ? AsyncStorage.setItem(progressKey, JSON.stringify(next)) : AsyncStorage.removeItem(progressKey)).catch(() => {});
   };
   const progressToday = playerProgress?.date === new Date().toDateString() ? playerProgress : null;
-  // Resume at the exact task the student exited from — UNLESS they completed
-  // it (then it's out of the queue). Fallback: the first still-to-do task that
-  // has time on its clock, so an unfinished task is never silently skipped.
-  const inQueue = (id) => playerQueue.some((q) => q.id === id);
-  const resumeId = (progressToday?.lastItemId && inQueue(progressToday.lastItemId))
+  // Resume rule (Ethan's): reopen at the task the student exited from if it's
+  // unfinished. Completing a task records the NEXT one as the position, so
+  // closing right after a Done resumes at that next task. Anything else (ran
+  // to the end, set songs) starts from the first still-to-do task in plan
+  // order — no jumping back to old partial clocks; their time stays saved.
+  const resumeId = (progressToday?.lastItemId && playerQueue.some((q) => q.id === progressToday.lastItemId))
     ? progressToday.lastItemId
-    : Object.keys(progressToday?.elapsedById || {}).find(inQueue) || null;
+    : null;
   const hasStartedToday = anyDoneToday || !!resumeId;
   const startLabel = hasStartedToday ? 'Resume practice' : 'Start practice';
 
