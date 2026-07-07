@@ -263,9 +263,17 @@ export default function ScheduleScreen({ navigation, route }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* Pre-Gig countdown banner */}
+        {/* Pre-Gig countdown banner — tap to jump the calendar to the gig's day */}
         {nextGig && (
-          <View style={[styles.preGig, nextGigDays <= PRE_GIG_WINDOW && styles.preGigSoon]}>
+          <TouchableOpacity
+            style={[styles.preGig, nextGigDays <= PRE_GIG_WINDOW && styles.preGigSoon]}
+            activeOpacity={0.85}
+            onPress={() => {
+              setSelected(nextGig.date);
+              const parsed = parseYmd(nextGig.date);
+              if (!isNaN(parsed)) setCursor(parsed);
+            }}
+          >
             <View style={styles.preGigNum}>
               <Text style={styles.preGigNumText}>{nextGigDays}</Text>
               <Text style={styles.preGigUnit}>{nextGigDays === 1 ? 'DAY' : 'DAYS'}</Text>
@@ -273,10 +281,11 @@ export default function ScheduleScreen({ navigation, route }) {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.preGigName} numberOfLines={1}>🎸 {nextGig.name}</Text>
               <Text style={styles.preGigSub} numberOfLines={1}>
-                {nextGigDays <= PRE_GIG_WINDOW ? 'Pre-Gig Mode on — song tasks jump to the top of Practice.' : 'Your next performance.'}
+                {nextGigDays <= PRE_GIG_WINDOW ? 'Pre-Gig Mode on — song tasks go first in your practice.' : 'Your next performance.'}
               </Text>
             </View>
-          </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+          </TouchableOpacity>
         )}
 
         <View style={styles.legend}>
