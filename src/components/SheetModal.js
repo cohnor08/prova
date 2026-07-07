@@ -59,7 +59,13 @@ export default function SheetModal({
         enabled={kavEnabled}
       >
         <TouchableWithoutFeedback onPress={dismissOnBackdrop ? onRequestClose : undefined} accessible={false}>
-          <Animated.View style={[StyleSheet.absoluteFill, styles.dim, { opacity: anim }]} />
+          {/* The dim leads the card out: fully gone 40% into the exit, so no
+              faint dark flash lingers after the card has left the screen. */}
+          <Animated.View
+            style={[StyleSheet.absoluteFill, styles.dim, {
+              opacity: anim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+            }]}
+          />
         </TouchableWithoutFeedback>
         <Animated.View style={[cardStyle, slide]}>
           {visible ? children : lastChildren.current}
