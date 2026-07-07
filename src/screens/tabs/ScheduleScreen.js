@@ -1,15 +1,17 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, TextInput,
-  Alert, Keyboard, Modal, Animated,
+  Alert, Keyboard, Modal, Animated, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import TimeWheel from '../../components/TimeWheel';
+import { sendNotification } from '../../lib/inbox';
+import { displayName } from '../../lib/displayName';
 
 const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -146,6 +148,40 @@ export default function ScheduleScreen({ navigation, route }) {
   const [editing, setEditing] = useState(null); // null | { kind: 'gig'|'personal', id }
   // Tapped day-list event, shown in the slide-up details sheet.
   const [viewEvent, setViewEvent] = useState(null); // { e, gig, per }
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+
+  // Send a gig invite to another Prova user by email — it lands in their bell
+  // inbox with Accept/Decline; accepting copies the gig onto their calendar.
+  const sendGigInvite = async (gig) => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || inviting) return;
+    const me = auth.currentUser;
+    if (email === (me?.email || '').toLowerCase()) { Alert.alert('Invite', "That's your own email."); return; }
+    setInviting(true);
+    try {
+      const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+      if (snap.empty) {
+        Alert.alert('No user found', 'No Prova account uses that email.');
+        return;
+      }
+      const target = snap.docs[0];
+      const meSnap = await getDoc(doc(db, 'users', me.uid));
+      const fromName = displayName({ ...meSnap.data(), email: me.email });
+      await sendNotification(target.id, {
+        type: 'gig_invite',
+        title: `Gig invite: ${gig.name}`,
+        body: `${fromName} invited you to play.`,
+        data: { name: gig.name, date: gig.date, time: gig.time || null, fromUid: me.uid, fromName },
+      });
+      setInviteEmail('');
+      Alert.alert('Invite sent 🎸', 'They can accept it from their notifications.');
+    } catch (e) {
+      Alert.alert('Error', "Couldn't send the invite. Please try again.");
+    } finally {
+      setInviting(false);
+    }
+  };
 
   // Both bottom sheets animate the dim and the card separately: the backdrop
   // FADES while only the card slides — animationType="slide" would drag the
@@ -559,7 +595,8 @@ export default function ScheduleScreen({ navigation, route }) {
       {/* Slide-up details for the student's own events: see everything, then
           act — Edit reopens the prefilled form, Remove confirms as usual. */}
       <Modal visible={!!viewEvent} transparent animationType="none" onRequestClose={closeSheet}>
-        <View style={styles.sheetRoot}>
+        {/* KAV so typing an invite email lifts the sheet above the keyboard */}
+        <KeyboardAvoidingView style={styles.sheetRoot} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <TouchableWithoutFeedback onPress={closeSheet}>
             <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: sheetAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]} />
           </TouchableWithoutFeedback>
@@ -584,6 +621,34 @@ export default function ScheduleScreen({ navigation, route }) {
                     <Text style={styles.evSheetLine}>Setlist: {viewEvent.e.sub}</Text>
                   ) : null}
                   {viewEvent.per?.note ? <Text style={styles.evSheetNote}>{viewEvent.per.note}</Text> : null}
+
+                  {/* Gig invites: send another Prova user an invite they can
+                      accept (lands on their calendar) or decline. */}
+                  {viewEvent.gig && (
+                    <View style={styles.inviteBox}>
+                      <Text style={styles.inviteLabel}>INVITE A FRIEND</Text>
+                      <View style={styles.inviteRow}>
+                        <TextInput
+                          style={styles.inviteInput}
+                          placeholder="their@email.com"
+                          placeholderTextColor={COLORS.textMuted}
+                          value={inviteEmail}
+                          onChangeText={setInviteEmail}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                        />
+                        <TouchableOpacity
+                          style={[styles.inviteBtn, (!inviteEmail.trim() || inviting) && { opacity: 0.5 }]}
+                          onPress={() => sendGigInvite(viewEvent.gig)}
+                          disabled={!inviteEmail.trim() || inviting}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="paper-plane" size={15} color={COLORS.text} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
                   <View style={[styles.sheetBtns, { marginTop: SPACING.lg }]}>
                     <TouchableOpacity
                       style={styles.sheetCancelBtn}
@@ -611,7 +676,7 @@ export default function ScheduleScreen({ navigation, route }) {
               );
             })()}
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rollable time picker — same wheel as the Profile reminder time */}
@@ -723,6 +788,11 @@ const styles = StyleSheet.create({
   evSheetTitle: { flex: 1, color: COLORS.text, fontSize: 18, fontWeight: '800' },
   evSheetLine: { color: COLORS.textSecondary, fontSize: 14, marginTop: 2 },
   evSheetNote: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: SPACING.sm },
+  inviteBox: { marginTop: SPACING.md },
+  inviteLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 6 },
+  inviteRow: { flexDirection: 'row', gap: SPACING.sm },
+  inviteInput: { flex: 1, backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: 10, fontSize: 14, borderWidth: 1, borderColor: COLORS.border },
+  inviteBtn: { width: 44, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   eventTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   eventSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
   attRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
@@ -447,6 +447,15 @@ export default function TodayScreen({ navigation }) {
   const [playerProgress, setPlayerProgress] = useState(null); // { date, elapsedById, lastItemId } — survives app restarts
   const [setlistAsk, setSetlistAsk] = useState(null); // null | 'ask' | 'pick' — the pre-gig "practice your set first?" sheet
   const [gigSongItem, setGigSongItem] = useState(null); // chosen setlist song, runs first in the player
+  const [unreadCount, setUnreadCount] = useState(0);  // inbox badge on the bell
+
+  // Live unread count for the bell — gig invites, teacher task alerts.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const q = query(collection(db, 'users', uid, 'inbox'), where('read', '==', false), limit(10));
+    return onSnapshot(q, (snap) => setUnreadCount(snap.size), () => {});
+  }, []);
 
   // Restore any unfinished run from earlier today (stale days are ignored and
   // overwritten on the next write).
@@ -1250,6 +1259,20 @@ export default function TodayScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Bell — gig invites + teacher updates land here */}
+      <TouchableOpacity
+        style={styles.bellBtn}
+        onPress={() => navigation.navigate('Notifications')}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name={unreadCount > 0 ? 'notifications' : 'notifications-outline'} size={22} color={unreadCount > 0 ? COLORS.primary : COLORS.textSecondary} />
+        {unreadCount > 0 && (
+          <View style={styles.bellDot}>
+            <Text style={styles.bellDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
       <ScrollView contentContainerStyle={styles.content}>
 
         <Text style={[styles.date, styles.headerCentered]}>{todayLabel.toUpperCase()}</Text>
@@ -1864,6 +1887,9 @@ const styles = StyleSheet.create({
   gigSongArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   gigAskSkip: { alignItems: 'center', paddingVertical: 14, marginTop: SPACING.xs },
   gigAskSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  bellBtn: { position: 'absolute', top: 14, right: SPACING.xl, zIndex: 10 },
+  bellDot: { position: 'absolute', top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   practiceThisBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: COLORS.primaryDark, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,

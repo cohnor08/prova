@@ -12,6 +12,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
+import { sendNotification } from '../../lib/inbox';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING } from '../../constants/theme';
 
@@ -178,6 +179,15 @@ export default function ResourceLibraryScreen() {
         const withIds = tasks.map((t) => ({ ...t, id: `${Date.now()}_${seq++}` }));
         return updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion(...withIds) });
       }));
+      // Ring each student's bell (best-effort).
+      [...byUser.keys()].forEach((uid) => {
+        sendNotification(uid, {
+          type: 'task_assigned',
+          title: 'New task from your teacher',
+          body: assignTarget.title,
+          data: { taskTitle: assignTarget.title },
+        }).catch(() => {});
+      });
       setAssignTarget(null);
       Alert.alert('Assigned', `Sent to ${byUser.size} student${byUser.size === 1 ? '' : 's'}.`);
     } catch (e) {

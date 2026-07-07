@@ -18,6 +18,7 @@ import { generateSongPlan } from '../../lib/claude';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
+import { sendNotification } from '../../lib/inbox';
 import { displayName } from '../../lib/displayName';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1025,6 +1026,15 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
           })
         )
       );
+      // Ring each student's bell too (best-effort, never blocks the assign).
+      recipients.forEach((uid) => {
+        sendNotification(uid, {
+          type: 'task_assigned',
+          title: 'New task from your teacher',
+          body: base.title,
+          data: { taskTitle: base.title },
+        }).catch(() => {});
+      });
       // Keep the modal open so the teacher can assign several in a row.
       setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(10);
       setJustAdded((n) => n + 1);
