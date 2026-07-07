@@ -367,8 +367,10 @@ export default function ScheduleScreen({ navigation, route }) {
             const dueEvents = cellEvents.filter((e) => e.type === 'due');
             const allDueDone = dueEvents.length > 0 && dueEvents.every((e) => e.done);
             const dotColor = (tp) => (tp === 'due' && allDueDone ? COLORS.success : TYPE_META[tp].color);
+            // Picking a day keeps the add/edit form open (with everything
+            // typed) — it's how you choose which day the event lands on.
             return (
-              <TouchableOpacity key={d} style={styles.cell} onPress={() => { setSelected(cellYmd); setShowAdd(false); }} activeOpacity={0.7}>
+              <TouchableOpacity key={d} style={styles.cell} onPress={() => setSelected(cellYmd)} activeOpacity={0.7}>
                 <View style={[styles.cellInner, isSel && styles.cellSelected, isToday && !isSel && styles.cellToday]}>
                   <Text style={[styles.cellText, isSel && { color: '#fff', fontWeight: '800' }]}>{d}</Text>
                 </View>
@@ -559,7 +561,7 @@ export default function ScheduleScreen({ navigation, route }) {
       <Modal visible={!!viewEvent} transparent animationType="none" onRequestClose={closeSheet}>
         <View style={styles.sheetRoot}>
           <TouchableWithoutFeedback onPress={closeSheet}>
-            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: sheetAnim }]} />
+            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: sheetAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]} />
           </TouchableWithoutFeedback>
           <Animated.View style={[styles.sheetCard, slideUp(sheetAnim)]}>
             {viewEvent && (() => {
@@ -616,7 +618,7 @@ export default function ScheduleScreen({ navigation, route }) {
       <Modal visible={!!timePickerFor} transparent animationType="none" onRequestClose={closePicker}>
         <View style={styles.sheetRoot}>
           <TouchableWithoutFeedback onPress={closePicker}>
-            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: pickerAnim }]} />
+            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: pickerAnim.interpolate({ inputRange: [0.6, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }]} />
           </TouchableWithoutFeedback>
           <Animated.View style={[styles.sheetCard, slideUp(pickerAnim)]}>
             <Text style={styles.sheetTitle}>{timePickerFor === 'gig' ? 'Gig time' : 'Lesson time'}</Text>
