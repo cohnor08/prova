@@ -18,7 +18,6 @@ import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
 import ProofMedia from '../../components/ProofMedia';
-import { LinearGradient } from 'expo-linear-gradient';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
@@ -1622,19 +1621,15 @@ export default function TodayScreen({ navigation }) {
         {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
             tasks, classes and the song — those take priority. */}
         {isToday && !hasPlan && userData?.role === 'student' && (
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.accent || '#06B6D4']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={styles.upgradeHero}
-          >
-            <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={22} color="#fff" /></View>
+          <View style={styles.upgradeHero}>
+            <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={20} color={COLORS.primary} /></View>
             <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
             <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
-            <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.9}>
-              <Ionicons name="star" size={15} color={COLORS.primary} />
+            <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.85}>
+              <Ionicons name="star" size={15} color={COLORS.text} />
               <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
             </TouchableOpacity>
-          </LinearGradient>
+          </View>
         )}
 
       </ScrollView>
@@ -2215,12 +2210,12 @@ const styles = StyleSheet.create({
   restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
   makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
   makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md },
-  upgradeBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
-  upgradeTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'center' },
-  upgradeSub: { color: 'rgba(255,255,255,0.92)', fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
-  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: SPACING.xl, borderRadius: 999, backgroundColor: '#fff' },
-  upgradeBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
+  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  upgradeBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '33', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
+  upgradeTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  upgradeSub: { color: COLORS.textSecondary, fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
+  upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: SPACING.xl, borderRadius: 999, backgroundColor: COLORS.primary },
+  upgradeBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
 
   ratingBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   ratingSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },
