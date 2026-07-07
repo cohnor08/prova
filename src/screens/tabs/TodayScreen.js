@@ -431,7 +431,7 @@ function PlanCard({ session }) {
   );
 }
 
-export default function TodayScreen({ navigation, route }) {
+export default function TodayScreen({ navigation }) {
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
@@ -1077,8 +1077,22 @@ export default function TodayScreen({ navigation, route }) {
   // Everything still to do today, normalized into one queue: plan sessions
   // first, then teacher tasks (solo + class). The player is the ONLY place with
   // a practice timer; cards/rows just open it.
+  //
+  // Pre-Gig Mode: within 14 days of the soonest upcoming gig, song tasks
+  // (repertoire + improvisation) jump to the front of the run — the rule the
+  // Practice tab applied to its task pills before it became a pure toolbox.
+  const SONG_TASK_CATEGORIES = new Set(['repertoire', 'improvisation']);
+  const preGigSoon = (Array.isArray(userData?.gigs) ? userData.gigs : []).some((g) => {
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const days = Math.round((new Date(`${g.date}T00:00:00`) - midnight) / 86400000);
+    return days >= 0 && days <= 14;
+  });
+  const queueSessions = preGigSoon
+    ? [...sessions].sort((a, b) =>
+        (SONG_TASK_CATEGORIES.has(b.category) ? 1 : 0) - (SONG_TASK_CATEGORIES.has(a.category) ? 1 : 0))
+    : sessions;
   const playerQueue = [
-    ...sessions
+    ...queueSessions
       .filter((s) => !completedIds.includes(s.id))
       .map((s) => ({
         id: `s_${s.id}`,
@@ -1109,16 +1123,6 @@ export default function TodayScreen({ navigation, route }) {
   ];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); };
   const anyDoneToday = completedIds.length > 0;
-
-  // The Practice tab's task card opens the player here — one flow, one place.
-  // Clear the params first so re-focusing Today doesn't relaunch it.
-  useEffect(() => {
-    if (route?.params?.openPlayer) {
-      const startId = route.params.playerStartId || null;
-      navigation.setParams({ openPlayer: undefined, playerStartId: undefined });
-      openPlayerAt(startId);
-    }
-  }, [route?.params?.openPlayer]);
 
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
   const nowDate = new Date();
