@@ -10,6 +10,9 @@ export default function ProofMedia({ url, type, style }) {
 
   // Hooks can't be conditional — feed the player a null source for photos.
   const player = useVideoPlayer(type === 'video' ? url : null, (p) => {
+    // Start as soon as ~2s are buffered instead of waiting for a deep buffer —
+    // short clips over Storage were taking noticeably long to appear.
+    p.bufferOptions = { preferredForwardBufferDuration: 2 };
     p.play();
   });
 

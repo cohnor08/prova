@@ -16,6 +16,7 @@ import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges'
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
+import * as MediaLibrary from 'expo-media-library';
 import ProofMedia from '../../components/ProofMedia';
 import { LinearGradient } from 'expo-linear-gradient';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
@@ -949,7 +950,7 @@ export default function TodayScreen({ navigation }) {
   // the latest. proofUrl/proofType always mirror the newest clip so everything
   // reading the single-clip fields keeps working; a new upload clears teacher
   // verification so the fresh clip gets re-checked.
-  const runProofUpload = async (taskId, getMedia, mode = 'add') => {
+  const runProofUpload = async (taskId, getMedia, mode = 'add', fromCamera = false) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     setProofBusyId(taskId);
@@ -957,6 +958,14 @@ export default function TodayScreen({ navigation }) {
       const picked = await getMedia();
       if (!picked) { setProofBusyId(null); return; }
       if (picked.error) { Alert.alert('Proof', picked.error); setProofBusyId(null); return; }
+      // Recorded in Prova → also save the clip to the camera roll, so the
+      // student keeps their own copy (best-effort; skipped if declined).
+      if (fromCamera) {
+        try {
+          const perm = await MediaLibrary.requestPermissionsAsync(true); // write-only access
+          if (perm.granted) await MediaLibrary.saveToLibraryAsync(picked.uri);
+        } catch (e) { /* never block the upload on this */ }
+      }
       const url = await uploadProofMedia(picked.uri, uid, picked.type);
       const next = (userData?.assignedTasks || []).map((t) => {
         if (t.id !== taskId) return t;
@@ -985,7 +994,7 @@ export default function TodayScreen({ navigation }) {
       mode === 'replace' ? 'Replace your latest video' : 'Add proof of practice',
       'Show your teacher you practiced this.',
       [
-        { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode) },
+        { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode, true) },
         { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, mode) },
         { text: 'Cancel', style: 'cancel' },
       ]
