@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Keyboard, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, TextInput,
+  Alert, Keyboard, Modal, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -146,6 +147,33 @@ export default function ScheduleScreen({ navigation, route }) {
   // Tapped day-list event, shown in the slide-up details sheet.
   const [viewEvent, setViewEvent] = useState(null); // { e, gig, per }
 
+  // Both bottom sheets animate the dim and the card separately: the backdrop
+  // FADES while only the card slides — animationType="slide" would drag the
+  // whole dark overlay down with it on dismiss.
+  const sheetAnim = useRef(new Animated.Value(0)).current;   // details sheet
+  const pickerAnim = useRef(new Animated.Value(0)).current;  // time wheel
+  useEffect(() => {
+    if (viewEvent) {
+      sheetAnim.setValue(0);
+      Animated.timing(sheetAnim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+    }
+  }, [viewEvent]);
+  useEffect(() => {
+    if (timePickerFor) {
+      pickerAnim.setValue(0);
+      Animated.timing(pickerAnim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+    }
+  }, [timePickerFor]);
+  const closeSheet = () => {
+    Animated.timing(sheetAnim, { toValue: 0, duration: 190, useNativeDriver: true }).start(() => setViewEvent(null));
+  };
+  const closePicker = () => {
+    Animated.timing(pickerAnim, { toValue: 0, duration: 190, useNativeDriver: true }).start(() => setTimePickerFor(null));
+  };
+  const slideUp = (anim) => ({
+    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [480, 0] }) }],
+  });
+
   const resetForm = () => {
     setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime('16:00'); setNewGigTime(''); setNewNote('');
     setEditing(null); setShowAdd(false); Keyboard.dismiss();
@@ -155,12 +183,12 @@ export default function ScheduleScreen({ navigation, route }) {
   const startEditGig = (g) => {
     setAddType('gig');
     setNewGigName(g.name || ''); setNewGigTime(g.time || ''); setNewGigSetlistId(g.setlistId || null);
-    setEditing({ kind: 'gig', id: g.id }); setViewEvent(null); setShowAdd(true);
+    setEditing({ kind: 'gig', id: g.id }); setShowAdd(true);
   };
   const startEditPersonal = (p) => {
     setAddType(p.type === 'lesson' ? 'lesson' : 'task');
     setNewTitle(p.title || ''); setNewTime(p.time || '16:00'); setNewNote(p.note || '');
-    setEditing({ kind: 'personal', id: p.id }); setViewEvent(null); setShowAdd(true);
+    setEditing({ kind: 'personal', id: p.id }); setShowAdd(true);
   };
 
   const openTimeWheel = (which) => {
@@ -528,9 +556,12 @@ export default function ScheduleScreen({ navigation, route }) {
 
       {/* Slide-up details for the student's own events: see everything, then
           act — Edit reopens the prefilled form, Remove confirms as usual. */}
-      <Modal visible={!!viewEvent} transparent animationType="slide" onRequestClose={() => setViewEvent(null)}>
-        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setViewEvent(null)}>
-          <TouchableOpacity style={styles.sheetCard} activeOpacity={1} onPress={() => {}}>
+      <Modal visible={!!viewEvent} transparent animationType="none" onRequestClose={closeSheet}>
+        <View style={styles.sheetRoot}>
+          <TouchableWithoutFeedback onPress={closeSheet}>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: sheetAnim }]} />
+          </TouchableWithoutFeedback>
+          <Animated.View style={[styles.sheetCard, slideUp(sheetAnim)]}>
             {viewEvent && (() => {
               const meta = TYPE_META[viewEvent.e.type];
               return (
@@ -556,7 +587,7 @@ export default function ScheduleScreen({ navigation, route }) {
                       style={styles.sheetCancelBtn}
                       onPress={() => {
                         const { gig, per } = viewEvent;
-                        setViewEvent(null);
+                        closeSheet();
                         if (per) removePersonal(per.id, per.title); else removeGig(gig.id, gig.name);
                       }}
                       activeOpacity={0.85}
@@ -565,7 +596,10 @@ export default function ScheduleScreen({ navigation, route }) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.sheetSetBtn}
-                      onPress={() => (viewEvent.gig ? startEditGig(viewEvent.gig) : startEditPersonal(viewEvent.per))}
+                      onPress={() => {
+                        closeSheet();
+                        if (viewEvent.gig) startEditGig(viewEvent.gig); else startEditPersonal(viewEvent.per);
+                      }}
                       activeOpacity={0.85}
                     >
                       <Text style={styles.sheetSetText}>Edit</Text>
@@ -574,20 +608,23 @@ export default function ScheduleScreen({ navigation, route }) {
                 </>
               );
             })()}
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </Animated.View>
+        </View>
       </Modal>
 
       {/* Rollable time picker — same wheel as the Profile reminder time */}
-      <Modal visible={!!timePickerFor} transparent animationType="slide" onRequestClose={() => setTimePickerFor(null)}>
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetCard}>
+      <Modal visible={!!timePickerFor} transparent animationType="none" onRequestClose={closePicker}>
+        <View style={styles.sheetRoot}>
+          <TouchableWithoutFeedback onPress={closePicker}>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.sheetDim, { opacity: pickerAnim }]} />
+          </TouchableWithoutFeedback>
+          <Animated.View style={[styles.sheetCard, slideUp(pickerAnim)]}>
             <Text style={styles.sheetTitle}>{timePickerFor === 'gig' ? 'Gig time' : 'Lesson time'}</Text>
             <View style={{ marginVertical: SPACING.lg }}>
               <TimeWheel value={pendingTime} onChange={setPendingTime} />
             </View>
             <View style={styles.sheetBtns}>
-              <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setTimePickerFor(null)} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.sheetCancelBtn} onPress={closePicker} activeOpacity={0.85}>
                 <Text style={styles.sheetCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -595,14 +632,14 @@ export default function ScheduleScreen({ navigation, route }) {
                 onPress={() => {
                   if (timePickerFor === 'gig') setNewGigTime(pendingTime);
                   else setNewTime(pendingTime);
-                  setTimePickerFor(null);
+                  closePicker();
                 }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.sheetSetText}>Set time</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -660,7 +697,8 @@ const styles = StyleSheet.create({
   timeRowLabel: { color: COLORS.textMuted, fontSize: 15 },
   timeRowValue: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700', textAlign: 'right', marginRight: 2 },
   timeRowPlaceholder: { flex: 1, color: COLORS.textMuted, fontSize: 15, textAlign: 'right', marginRight: 2 },
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  sheetRoot: { flex: 1, justifyContent: 'flex-end' },
+  sheetDim: { backgroundColor: 'rgba(0,0,0,0.7)' },
   sheetCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
   sheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   sheetBtns: { flexDirection: 'row', gap: SPACING.sm },
