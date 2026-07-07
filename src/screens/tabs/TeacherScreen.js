@@ -1062,7 +1062,14 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-          <View style={styles.modalOverlay}>
+          {/* Android-only avoider — iOS is covered by the ScrollView's
+              automaticallyAdjustKeyboardInsets, and combining the two
+              double-compensates (sheet flies too high). */}
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'android' ? 'height' : undefined}
+            enabled={Platform.OS === 'android'}
+          >
             <View style={styles.modalCard}>
               <ScrollView
                 ref={formScrollRef}
@@ -1287,7 +1294,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 </View>
               </View>
             )}
-          </View>
+          </KeyboardAvoidingView>
     </Modal>
   );
 }
