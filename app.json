@@ -35,7 +35,8 @@
           "cameraPermission": "Prova uses the camera to take photos and record videos for your chats."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-video"
     ]
   }
 }
