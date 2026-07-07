@@ -29,15 +29,6 @@ const BASS_STRINGS = [
   { number: 1, note: 'G', octave: '2', freq: 98.00,  label: '1st string (G)' },
 ];
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
-
 const TIME_SIGNATURES = [2, 3, 4, 6];
 
 const BPM_MIN = 20;
@@ -291,13 +282,6 @@ const TUNER_RECORDING_OPTIONS = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PracticeScreen({ route, navigation }) {
-  // Tasks
-  const [sessions, setSessions] = useState([]);
-  const [activeSession, setActiveSession] = useState(null);
-  const [loadingTasks, setLoadingTasks] = useState(true);
-  const hasLoadedRef = useRef(false); // skip the loading flash on re-focus
-
-
   // Gig setlists — AI-built playlists saved inside the library
   const [setlists, setSetlists] = useState([]);
 
@@ -418,28 +402,16 @@ export default function PracticeScreen({ route, navigation }) {
   }, [isPlaying, bpm, beatsPerBar]);
 
   const loadData = async () => {
-    // Only show the loading placeholder on the very first load. On later focuses
-    // (e.g. returning from the Songs/Gigs screens) refresh silently — no flash.
-    if (!hasLoadedRef.current) setLoadingTasks(true);
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
       const snap = await getDoc(doc(db, 'users', uid));
       const data = snap.data();
-      const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const todaySessions = data?.practicePlan?.weeklyPlan?.[todayName]?.sessions || [];
-      setSessions(todaySessions);
-      // Keep whatever's already selected (e.g. the task tapped on Today) across
-      // a silent refresh; only fall back to the first session when nothing is.
-      setActiveSession((cur) => (cur && todaySessions.find((s) => s.id === cur.id)) || cur || todaySessions[0] || null);
       setSetlists(Array.isArray(data?.setlists) ? data.setlists : []);
       setGigs(Array.isArray(data?.gigs) ? data.gigs : []);
       if (data?.instrument === 'Bass') setTunerInstrument('Bass');
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoadingTasks(false);
-      hasLoadedRef.current = true;
     }
   };
 
@@ -545,17 +517,6 @@ export default function PracticeScreen({ route, navigation }) {
   const preGig = !!nextGig && daysToNextGig <= PRE_GIG_WINDOW;
   const nextGigSetlist = nextGig?.setlistId ? setlists.find((s) => s.id === nextGig.setlistId) : null;
 
-  // In Pre-Gig Mode, surface song/performance tasks first (repertoire + improv).
-  const SONG_TASK_CATEGORIES = new Set(['repertoire', 'improvisation']);
-  const displaySessions = preGig
-    ? [...sessions].sort((a, b) =>
-        (SONG_TASK_CATEGORIES.has(b.category) ? 1 : 0) - (SONG_TASK_CATEGORIES.has(a.category) ? 1 : 0))
-    : sessions;
-
-  const categoryColor = activeSession
-    ? (CATEGORY_COLORS[activeSession.category] || COLORS.primary)
-    : COLORS.primary;
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -590,77 +551,6 @@ export default function PracticeScreen({ route, navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
           </TouchableOpacity>
-        )}
-
-        {/* ── Task Instructions ── */}
-        <Text style={styles.sectionLabel}>
-          {preGig ? 'CURRENT TASK · SONGS FIRST' : 'CURRENT TASK'}
-        </Text>
-
-        {loadingTasks ? (
-          <View style={styles.taskPlaceholder} />
-        ) : sessions.length === 0 ? (
-          <View style={styles.emptyTask}>
-            <Ionicons name="musical-notes-outline" size={28} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-            <Text style={styles.emptyTaskText}>No sessions scheduled today</Text>
-          </View>
-        ) : (
-          <>
-            {sessions.length > 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillsRow}
-                style={{ marginBottom: SPACING.md }}
-              >
-                {displaySessions.map((s) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[styles.taskPill, activeSession?.id === s.id && styles.taskPillActive]}
-                    onPress={() => setActiveSession(s)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[styles.taskPillText, activeSession?.id === s.id && styles.taskPillTextActive]}
-                      numberOfLines={1}
-                    >
-                      {s.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
-            {activeSession && (
-              <View style={[styles.taskCard, { borderLeftColor: categoryColor }]}>
-                <View style={styles.taskCardTop}>
-                  <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '22' }]}>
-                    <Text style={[styles.categoryText, { color: categoryColor }]}>
-                      {activeSession.category?.replace('_', ' ').toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={styles.taskDuration}>
-                    <Ionicons name="time-outline" size={12} color={COLORS.textMuted} /> {activeSession.duration} min
-                  </Text>
-                </View>
-                <Text style={styles.taskTitle}>{activeSession.title}</Text>
-                <Text style={styles.taskDesc}>{activeSession.description}</Text>
-
-                {/* Practicing happens in the guided player — this just opens it */}
-                <TouchableOpacity
-                  style={[styles.practiceThisBtn, { backgroundColor: categoryColor }]}
-                  onPress={() => navigation.navigate('Today', {
-                    screen: 'TodayHome',
-                    params: { openPlayer: true, playerStartId: `s_${activeSession.id}` },
-                  })}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="play" size={15} color={COLORS.text} />
-                  <Text style={styles.practiceThisText}>Practice this</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </>
         )}
 
         {/* ── Tool selector ── */}
@@ -892,41 +782,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
-  sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: SPACING.sm },
   card: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
 
   // Tool selector
-  toolSelector: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, marginBottom: SPACING.lg },
+  toolSelector: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   toolBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
   toolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toolBtnText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
   toolBtnTextActive: { color: COLORS.text },
   libraryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 18, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
   libraryRowText: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
-
-  // Task
-  taskPlaceholder: { height: 100, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
-  emptyTask: { alignItems: 'center', paddingVertical: SPACING.xl, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
-  emptyTaskText: { color: COLORS.textMuted, fontSize: 14 },
-  pillsRow: { gap: SPACING.sm, paddingRight: SPACING.xl },
-  taskPill: { backgroundColor: COLORS.card, borderRadius: 20, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderWidth: 1, borderColor: COLORS.border },
-  taskPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  taskPillText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
-  taskPillTextActive: { color: COLORS.text },
-  taskCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 4, padding: SPACING.md },
-  taskCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
-  categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: 4 },
-  categoryText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-  taskDuration: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
-  taskTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700', marginBottom: SPACING.xs },
-  taskDesc: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
-
-  // Inline practice timer (lives on the task card)
-  practiceThisBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
-  },
-  practiceThisText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
 
   // Metronome
   beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
