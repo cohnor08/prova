@@ -1302,7 +1302,7 @@ export default function SongsScreen({ route, navigation }) {
 
         {/* ── Song Library ── */}
         {(
-        <View style={styles.card}>
+        <View style={[styles.card, { marginTop: SPACING.lg }]}>
           <Text style={styles.songsHeading}>My Song Library</Text>
           <Text style={styles.songsSub}>
             Add songs you want to learn. Prova features one to practice each day.

@@ -36,7 +36,13 @@
         }
       ],
       "expo-notifications",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Prova saves practice videos you record to your camera roll so you keep a copy."
+        }
+      ]
     ]
   }
 }
