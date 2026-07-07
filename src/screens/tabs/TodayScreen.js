@@ -2210,7 +2210,12 @@ const styles = StyleSheet.create({
   restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
   makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
   makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  upgradeHero: { borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  upgradeHero: {
+    borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md,
+    // A quiet glow — primary-tinted surface + soft halo, not the old full gradient.
+    backgroundColor: COLORS.primary + '14', borderWidth: 1, borderColor: COLORS.primary + '44',
+    shadowColor: COLORS.primary, shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 6,
+  },
   upgradeBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '33', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
   upgradeTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
   upgradeSub: { color: COLORS.textSecondary, fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
