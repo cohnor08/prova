@@ -4,7 +4,7 @@ import {
   ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
@@ -448,6 +448,10 @@ export default function TodayScreen({ navigation }) {
   const [setlistAsk, setSetlistAsk] = useState(null); // null | 'ask' | 'pick' — the pre-gig "practice your set first?" sheet
   const [gigSongItem, setGigSongItem] = useState(null); // chosen setlist song, runs first in the player
   const [unreadCount, setUnreadCount] = useState(0);  // inbox badge on the bell
+  // What to open once the setlist sheet has FULLY closed — iOS can't present
+  // the player while the sheet's modal is still dismissing (screen freezes).
+  const pendingPlayerRef = useRef(null); // '__default__' | queue item id | null
+  const insets = useSafeAreaInsets();
 
   // Live unread count for the bell — gig invites, teacher task alerts.
   useEffect(() => {
@@ -1199,9 +1203,9 @@ export default function TodayScreen({ navigation }) {
       priorSec: 0,
       watch: `${song.title} ${song.artist || ''} ${userData?.instrument || 'guitar'} lesson`,
     });
+    // The player opens from the sheet's onClosed — never while it's dismissing.
+    pendingPlayerRef.current = `gig_${song.id || song.title}`;
     setSetlistAsk(null);
-    setPlayerStartId(`gig_${song.id || song.title}`);
-    setPlayerVisible(true);
   };
 
   const bankGigSong = async (sec) => {
@@ -1259,9 +1263,10 @@ export default function TodayScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Bell — gig invites + teacher updates land here */}
+      {/* Bell — gig invites + teacher updates land here. Absolute positioning
+          ignores the SafeAreaView's padding, so offset by the real inset. */}
       <TouchableOpacity
-        style={styles.bellBtn}
+        style={[styles.bellBtn, { top: insets.top + 10 }]}
         onPress={() => navigation.navigate('Notifications')}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         activeOpacity={0.7}
@@ -1702,7 +1707,17 @@ export default function TodayScreen({ navigation }) {
       />
 
       {/* Pre-gig: "practice your set first?" → pick a song from the setlist */}
-      <SheetModal visible={!!setlistAsk} onRequestClose={() => setSetlistAsk(null)} cardStyle={styles.gigAskCard} dismissOnBackdrop>
+      <SheetModal
+        visible={!!setlistAsk}
+        onRequestClose={() => setSetlistAsk(null)}
+        cardStyle={styles.gigAskCard}
+        dismissOnBackdrop
+        onClosed={() => {
+          const p = pendingPlayerRef.current;
+          pendingPlayerRef.current = null;
+          if (p) openPlayerAt(p === '__default__' ? null : p);
+        }}
+      >
         {setlistAsk === 'pick' ? (
           <>
             <Text style={styles.gigAskTitle}>Pick a song to rehearse</Text>
@@ -1719,7 +1734,7 @@ export default function TodayScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={styles.gigAskSkip} onPress={() => { setSetlistAsk(null); openPlayerAt(null); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.gigAskSkip} onPress={() => { pendingPlayerRef.current = '__default__'; setSetlistAsk(null); }} activeOpacity={0.7}>
               <Text style={styles.gigAskSkipText}>Skip to today's tasks</Text>
             </TouchableOpacity>
           </>
@@ -1731,7 +1746,7 @@ export default function TodayScreen({ navigation }) {
             <Text style={styles.gigAskTitle}>Practice your set first?</Text>
             <Text style={styles.gigAskSub}>Rehearse songs from “{preGigSetlist?.setlist.name}” before today's tasks.</Text>
             <View style={styles.gigAskBtns}>
-              <TouchableOpacity style={styles.gigAskNo} onPress={() => { setSetlistAsk(null); openPlayerAt(null); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.gigAskNo} onPress={() => { pendingPlayerRef.current = '__default__'; setSetlistAsk(null); }} activeOpacity={0.85}>
                 <Text style={styles.gigAskNoText}>Not now</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.gigAskYes} onPress={() => setSetlistAsk('pick')} activeOpacity={0.85}>
@@ -1887,7 +1902,7 @@ const styles = StyleSheet.create({
   gigSongArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   gigAskSkip: { alignItems: 'center', paddingVertical: 14, marginTop: SPACING.xs },
   gigAskSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
-  bellBtn: { position: 'absolute', top: 14, right: SPACING.xl, zIndex: 10 },
+  bellBtn: { position: 'absolute', right: SPACING.xl, zIndex: 10 },
   bellDot: { position: 'absolute', top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   practiceThisBtn: {

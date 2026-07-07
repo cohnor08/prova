@@ -18,9 +18,13 @@ import {
 //                         e.g. a ScrollView with automaticallyAdjustKeyboardInsets)
 //   dismissOnBackdrop   — tap the dim to close; off by default so form sheets
 //                         can't be discarded mid-typing
+//   onClosed            — fires after the exit animation fully unmounts the
+//                         Modal. iOS can only present one modal at a time, so
+//                         anything that opens ANOTHER modal on close must wait
+//                         for this (opening early freezes the screen).
 export default function SheetModal({
   visible, onRequestClose, children, cardStyle,
-  centered = false, keyboardAvoiding = false, dismissOnBackdrop = false,
+  centered = false, keyboardAvoiding = false, dismissOnBackdrop = false, onClosed,
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
@@ -35,7 +39,10 @@ export default function SheetModal({
       anim.setValue(0);
       Animated.timing(anim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
     } else if (mounted) {
-      Animated.timing(anim, { toValue: 0, duration: 190, useNativeDriver: true }).start(() => setMounted(false));
+      Animated.timing(anim, { toValue: 0, duration: 190, useNativeDriver: true }).start(() => {
+        setMounted(false);
+        if (onClosed) onClosed();
+      });
     }
   }, [visible]);
 
