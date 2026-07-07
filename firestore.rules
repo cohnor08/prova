@@ -20,6 +20,14 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teacherUid'])
         && resource.data.teacherUid == request.auth.uid
         && request.resource.data.teacherUid == null;
+
+      // In-app notification inbox (the bell on Today): any signed-in user can
+      // DROP a notification here (gig invites, teacher task alerts) but only
+      // the owner can read, mark read, or delete them.
+      match /inbox/{noteId} {
+        allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null;
+      }
     }
 
     // Session history — written by the app when a session is rated,

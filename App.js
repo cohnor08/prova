@@ -34,6 +34,7 @@ import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
+import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -75,6 +76,7 @@ function TodayStackScreen() {
       <TodayStack.Screen name="TodayHome" component={TodayScreen} />
       <TodayStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
       <TodayStack.Screen name="Paywall" component={PaywallScreen} />
+      <TodayStack.Screen name="Notifications" component={NotificationsScreen} />
     </TodayStack.Navigator>
   );
 }
