@@ -22,6 +22,7 @@ import {
   SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES, SPOTIFY_DISCOVERY,
   SPOTIFY_EXPORT_ENABLED, isSpotifyConfigured, exportSetlistToSpotify,
 } from '../../lib/spotify';
+import SheetModal from '../../components/SheetModal';
 
 // Lets the OAuth popup hand control back to the app when Spotify redirects.
 WebBrowser.maybeCompleteAuthSession();
@@ -1509,18 +1510,12 @@ export default function SongsScreen({ route, navigation }) {
       </Modal>
 
       {/* "New gig setlist" — describe the gig, Prova builds the setlist */}
-      <Modal
+      <SheetModal
         visible={showGigForm}
-        transparent
-        animationType="slide"
         onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
+        cardStyle={[styles.gigSheet, { maxHeight: '85%' }]}
+        dismissOnBackdrop
       >
-        <View style={styles.playerBackdrop}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            onPress={() => !generatingSetlist && setShowGigForm(false)}
-          />
-          <View style={[styles.gigSheet, { maxHeight: '85%' }]}>
             <View style={styles.playerHandle} />
             <Text style={styles.gigSheetTitle}>Plan a gig</Text>
             <Text style={styles.gigSheetSub}>The more you describe, the better the setlist.</Text>
@@ -1617,9 +1612,7 @@ export default function SongsScreen({ route, navigation }) {
               </TouchableOpacity>
             )}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </SheetModal>
 
       {/* Setlist detail — the ordered songs, each previewable + openable */}
       <Modal

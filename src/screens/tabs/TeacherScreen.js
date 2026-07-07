@@ -25,6 +25,7 @@ import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
+import SheetModal from '../../components/SheetModal';
 
 // ─── Demo ─────────────────────────────────────────────────────────────────────
 
@@ -344,10 +345,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>New class</Text>
             <TextInput
               style={styles.input}
@@ -401,10 +399,7 @@ function CreateClassModal({ visible, students, onClose, onCreate }) {
                 <Text style={styles.modalAssignText}>Create class</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -447,10 +442,7 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>New group chat</Text>
             <Text style={styles.tplSheetEmpty}>Only you can post — students can react.</Text>
             <TextInput
@@ -515,10 +507,7 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
                 <Text style={styles.modalAssignText}>Create chat</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -549,10 +538,7 @@ function AddStudentsModal({ visible, klass, students, onClose, onAdd }) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding>
             <Text style={styles.modalTitle}>Add students{klass ? ` to ${klass.name}` : ''}</Text>
             {available.length === 0 ? (
               <Text style={styles.tplSheetEmpty}>All your students are already in this class.</Text>
@@ -598,10 +584,7 @@ function AddStudentsModal({ visible, klass, students, onClose, onAdd }) {
                 <Text style={styles.modalAssignText}>Add{selected.size > 0 ? ` (${selected.size})` : ''}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -827,9 +810,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => !assigning && !generating && close()}>
-      <KeyboardAvoidingView style={styles.songModalWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.songModalCard}>
+    <SheetModal visible={visible} onRequestClose={() => !assigning && !generating && close()} cardStyle={styles.songModalCard} keyboardAvoiding>
           <View style={styles.songModalHead}>
             <Text style={styles.songModalTitle}>Assign a song to learn</Text>
             <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -889,9 +870,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
               </View>
             </>
           )}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -1061,16 +1040,10 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-          {/* Android-only avoider — iOS is covered by the ScrollView's
-              automaticallyAdjustKeyboardInsets, and combining the two
-              double-compensates (sheet flies too high). */}
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'android' ? 'height' : undefined}
-            enabled={Platform.OS === 'android'}
-          >
-            <View style={styles.modalCard}>
+    // keyboardAvoiding="android" only — iOS is covered by the ScrollView's
+    // automaticallyAdjustKeyboardInsets, and combining the two double-compensates
+    // (sheet flies too high).
+    <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding="android">
               <ScrollView
                 ref={formScrollRef}
                 keyboardShouldPersistTaps="handled"
@@ -1220,7 +1193,6 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 </TouchableOpacity>
               </View>
               </ScrollView>
-            </View>
             {showDuePicker && (
               <DueDatePicker
                 initial={dueDate}
@@ -1294,8 +1266,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 </View>
               </View>
             )}
-          </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -2750,9 +2721,7 @@ Sent from Prova`;
       />
 
       {/* Everything this student has finished, in its own window. */}
-      <Modal visible={!!completedView} transparent animationType="slide" onRequestClose={() => setCompletedView(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      <SheetModal visible={!!completedView} onRequestClose={() => setCompletedView(null)} cardStyle={styles.modalCard}>
             {(() => {
               const live = students.find((s) => s.uid === completedView?.uid) || completedView;
               const done = (live?.assignedTasks || [])
@@ -2810,9 +2779,7 @@ Sent from Prova`;
                 </>
               );
             })()}
-          </View>
-        </View>
-      </Modal>
+      </SheetModal>
 
       <Modal visible={!!proofView} transparent animationType="fade" onRequestClose={() => setProofView(null)}>
         <View style={styles.proofBackdrop}>
@@ -2956,10 +2923,7 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
         )}
       </ScrollView>
 
-      <Modal visible={chatOpen} transparent animationType="slide" onRequestClose={() => setChatOpen(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.chatOverlay}>
-            <View style={styles.chatSheet}>
+      <SheetModal visible={chatOpen} onRequestClose={() => setChatOpen(false)} cardStyle={styles.chatSheet} keyboardAvoiding>
               <View style={styles.chatHeader}>
                 <Text style={styles.chatTitle}>Your Teacher</Text>
                 <TouchableOpacity onPress={() => setChatOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -2971,10 +2935,7 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
                 myUid={myUid}
                 isDemo={false}
               />
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </SheetModal>
     </>
   );
 }
@@ -3190,7 +3151,6 @@ const styles = StyleSheet.create({
   songBtnText: { color: COLORS.background, fontSize: 14, fontWeight: '800' },
 
   // AssignSongModal
-  songModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   // The extra bottom padding + negative margin let the sheet overshoot the
   // screen edge, so no background "crack" shows between it and the keyboard.
   songModalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.md, paddingBottom: SPACING.md + 40, marginBottom: -40, maxHeight: '88%' },
@@ -3291,7 +3251,6 @@ const styles = StyleSheet.create({
   chatReceipt: { alignSelf: 'flex-end', color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 2, marginRight: 4 },
 
   // Chat modal (student side)
-  chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   chatSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '80%' },
   chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   chatTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
