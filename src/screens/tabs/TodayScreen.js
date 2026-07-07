@@ -1795,7 +1795,7 @@ export default function TodayScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={styles.gigAskSkip} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.gigAskSkip} onPress={() => setSetlistAsk('pick')} activeOpacity={0.7}>
               <Text style={styles.gigAskSkipText}>Back</Text>
             </TouchableOpacity>
           </>
