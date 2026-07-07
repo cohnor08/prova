@@ -431,7 +431,7 @@ function PlanCard({ session }) {
   );
 }
 
-export default function TodayScreen({ navigation }) {
+export default function TodayScreen({ navigation, route }) {
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
@@ -1109,6 +1109,16 @@ export default function TodayScreen({ navigation }) {
   ];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); };
   const anyDoneToday = completedIds.length > 0;
+
+  // The Practice tab's task card opens the player here — one flow, one place.
+  // Clear the params first so re-focusing Today doesn't relaunch it.
+  useEffect(() => {
+    if (route?.params?.openPlayer) {
+      const startId = route.params.playerStartId || null;
+      navigation.setParams({ openPlayer: undefined, playerStartId: undefined });
+      openPlayerAt(startId);
+    }
+  }, [route?.params?.openPlayer]);
 
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
   const nowDate = new Date();
