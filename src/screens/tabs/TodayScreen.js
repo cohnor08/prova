@@ -4,6 +4,7 @@ import {
   ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1621,7 +1622,11 @@ export default function TodayScreen({ navigation }) {
         {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
             tasks, classes and the song — those take priority. */}
         {isToday && !hasPlan && userData?.role === 'student' && (
-          <View style={styles.upgradeHero}>
+          <LinearGradient
+            colors={[COLORS.primary + '3D', (COLORS.accent || '#06B6D4') + '1A']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.upgradeHero}
+          >
             <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={20} color={COLORS.primary} /></View>
             <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
             <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
@@ -1629,7 +1634,7 @@ export default function TodayScreen({ navigation }) {
               <Ionicons name="star" size={15} color={COLORS.text} />
               <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
             </TouchableOpacity>
-          </View>
+          </LinearGradient>
         )}
 
       </ScrollView>
@@ -2212,9 +2217,7 @@ const styles = StyleSheet.create({
   makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   upgradeHero: {
     borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md,
-    // A quiet glow — primary-tinted surface + soft halo, not the old full gradient.
-    backgroundColor: COLORS.primary + '14', borderWidth: 1, borderColor: COLORS.primary + '44',
-    shadowColor: COLORS.primary, shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 6,
+    borderWidth: 1, borderColor: COLORS.primary + '55', overflow: 'hidden',
   },
   upgradeBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '1A', borderWidth: 1, borderColor: COLORS.primary + '33', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
   upgradeTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
