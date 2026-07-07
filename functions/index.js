@@ -13,6 +13,11 @@ const MODEL = 'claude-haiku-4-5-20251001';
 // setlists). Haiku tends to default to generic phrasing for these.
 const MODEL_SMART = 'claude-sonnet-4-6';
 
+// Cached song plans expire after this long, so stale plans eventually regenerate
+// and the songPlans collection can't grow without bound. expiresAt is a Firestore
+// Timestamp so a native TTL policy on songPlans.expiresAt can delete expired docs.
+const SONG_PLAN_TTL_DAYS = 180;
+
 // ─── Rate limits ──────────────────────────────────────────────────────────────
 // Each action has a daily cap on both requests AND tokens consumed.
 // Tokens are tracked using the actual usage reported by the Claude API,
@@ -583,9 +588,14 @@ exports.generateSongPlan = onCall(
     const cacheRef = db.doc(`songPlans/${key}`);
 
     // ── Cache hit: return for free, don't count against the weekly limit ──
+    // An entry past its expiresAt (or a legacy one without it) counts as a miss,
+    // so it regenerates and is rewritten with a fresh TTL stamp.
     const cached = await cacheRef.get();
     if (cached.exists) {
-      return { ...cached.data(), cached: true };
+      const exp = cached.data().expiresAt;
+      if (exp && exp.toDate() > new Date()) {
+        return { ...cached.data(), cached: true };
+      }
     }
 
     // ── Cache miss: this is a real generation, so it costs quota ──
@@ -677,6 +687,8 @@ Rules:
       steps,
       model: MODEL_SMART,
       createdAt: new Date().toISOString(),
+      expiresAt: admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + SONG_PLAN_TTL_DAYS * 24 * 60 * 60 * 1000)),
     };
 
     await cacheRef.set(record);
