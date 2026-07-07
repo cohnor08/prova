@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Keyboard,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Keyboard, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import TimeWheel from '../../components/TimeWheel';
 
 const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -33,22 +34,6 @@ function timeLabel(v) {
   const [h, m] = (v || '').split(':').map(Number);
   if (isNaN(h)) return null;
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-}
-
-// Forgiving parse of a typed time into "HH:MM" 24h; accepts "16:30", "4:30 pm",
-// "4pm", "9". Returns '' if it can't make sense of it.
-function normalizeTime(raw) {
-  const s = (raw || '').trim();
-  if (!s) return '';
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
-  if (!m) return '';
-  let h = parseInt(m[1], 10);
-  const min = m[2] ? parseInt(m[2], 10) : 0;
-  const ap = m[3] ? m[3].toLowerCase() : null;
-  if (ap === 'pm' && h < 12) h += 12;
-  if (ap === 'am' && h === 12) h = 0;
-  if (h > 23 || min > 59) return '';
-  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
 function prettyDate(ymdStr) {
@@ -96,8 +81,13 @@ export default function ScheduleScreen({ navigation, route }) {
   const [newGigName, setNewGigName] = useState('');
   const [newGigSetlistId, setNewGigSetlistId] = useState(null);
   const [newTitle, setNewTitle] = useState('');
-  const [newTime, setNewTime] = useState('');
+  const [newTime, setNewTime] = useState('16:00'); // lesson time — always set, picked on the wheel
+  const [newGigTime, setNewGigTime] = useState(''); // gig time — optional
   const [newNote, setNewNote] = useState('');
+  // The time-wheel sheet: which field it's editing + the in-progress value,
+  // committed on Set (late wheel onChange fires make value-as-visibility buggy).
+  const [timePickerFor, setTimePickerFor] = useState(null); // null | 'lesson' | 'gig'
+  const [pendingTime, setPendingTime] = useState('16:00');
 
   useFocusEffect(
     useCallback(() => {
@@ -152,8 +142,14 @@ export default function ScheduleScreen({ navigation, route }) {
   };
 
   const resetForm = () => {
-    setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime(''); setNewNote('');
+    setNewGigName(''); setNewGigSetlistId(null); setNewTitle(''); setNewTime('16:00'); setNewGigTime(''); setNewNote('');
     setShowAdd(false); Keyboard.dismiss();
+  };
+
+  const openTimeWheel = (which) => {
+    Keyboard.dismiss();
+    setPendingTime(which === 'gig' ? (newGigTime || '19:00') : newTime);
+    setTimePickerFor(which);
   };
 
   // Add whatever type the chooser is on. Gigs live in `gigs`; self-assigned
@@ -166,6 +162,7 @@ export default function ScheduleScreen({ navigation, route }) {
         id: `gig_${Date.now()}`,
         name: name.slice(0, 60),
         date: selected,
+        time: newGigTime || null,
         setlistId: newGigSetlistId || null,
         createdAt: new Date().toISOString(),
       };
@@ -183,7 +180,7 @@ export default function ScheduleScreen({ navigation, route }) {
       type: addType, // 'task' | 'lesson'
       title: title.slice(0, 80),
       date: selected,
-      time: addType === 'lesson' ? normalizeTime(newTime) : '',
+      time: addType === 'lesson' ? newTime : '',
       note: newNote.trim().slice(0, 140),
       createdAt: new Date().toISOString(),
     };
@@ -213,7 +210,7 @@ export default function ScheduleScreen({ navigation, route }) {
     gigs.forEach((g) => {
       if (g.date === dateStr) {
         const sl = g.setlistId ? setlists.find((s) => s.id === g.setlistId) : null;
-        out.push({ type: 'gig', title: g.name || 'Gig', sub: sl ? sl.name : null, time: null, gigId: g.id });
+        out.push({ type: 'gig', title: g.name || 'Gig', sub: sl ? sl.name : null, time: g.time || null, gigId: g.id });
       }
     });
     tasks.forEach((t) => {
@@ -262,7 +259,7 @@ export default function ScheduleScreen({ navigation, route }) {
         <View style={{ width: 72 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* Pre-Gig countdown banner — tap to jump the calendar to the gig's day */}
         {nextGig && (
           <TouchableOpacity
@@ -377,6 +374,20 @@ export default function ScheduleScreen({ navigation, route }) {
                   onChangeText={setNewGigName}
                   maxLength={60}
                 />
+                <TouchableOpacity style={styles.timeRow} onPress={() => openTimeWheel('gig')} activeOpacity={0.8}>
+                  <Ionicons name="time-outline" size={16} color={COLORS.textMuted} />
+                  <Text style={styles.timeRowLabel}>Time</Text>
+                  <Text style={newGigTime ? styles.timeRowValue : styles.timeRowPlaceholder}>
+                    {newGigTime ? timeLabel(newGigTime) : 'Add a time (optional)'}
+                  </Text>
+                  {newGigTime ? (
+                    <TouchableOpacity onPress={() => setNewGigTime('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  ) : (
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                  )}
+                </TouchableOpacity>
                 {setlists.length > 0 && (
                   <>
                     <Text style={styles.gigFormLabel}>SETLIST (OPTIONAL)</Text>
@@ -416,14 +427,12 @@ export default function ScheduleScreen({ navigation, route }) {
                   onChangeText={setNewTitle}
                   maxLength={80}
                 />
-                <TextInput
-                  style={styles.gigInput}
-                  placeholder="Time, optional (e.g. 4:30 PM)"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={newTime}
-                  onChangeText={setNewTime}
-                  maxLength={10}
-                />
+                <TouchableOpacity style={styles.timeRow} onPress={() => openTimeWheel('lesson')} activeOpacity={0.8}>
+                  <Ionicons name="time-outline" size={16} color={COLORS.textMuted} />
+                  <Text style={styles.timeRowLabel}>Time</Text>
+                  <Text style={styles.timeRowValue}>{timeLabel(newTime)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </>
             )}
 
@@ -488,6 +497,34 @@ export default function ScheduleScreen({ navigation, route }) {
           );
         })}
       </ScrollView>
+
+      {/* Rollable time picker — same wheel as the Profile reminder time */}
+      <Modal visible={!!timePickerFor} transparent animationType="slide" onRequestClose={() => setTimePickerFor(null)}>
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheetCard}>
+            <Text style={styles.sheetTitle}>{timePickerFor === 'gig' ? 'Gig time' : 'Lesson time'}</Text>
+            <View style={{ marginVertical: SPACING.lg }}>
+              <TimeWheel value={pendingTime} onChange={setPendingTime} />
+            </View>
+            <View style={styles.sheetBtns}>
+              <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setTimePickerFor(null)} activeOpacity={0.85}>
+                <Text style={styles.sheetCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.sheetSetBtn}
+                onPress={() => {
+                  if (timePickerFor === 'gig') setNewGigTime(pendingTime);
+                  else setNewTime(pendingTime);
+                  setTimePickerFor(null);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.sheetSetText}>Set time</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -539,6 +576,18 @@ const styles = StyleSheet.create({
   typeChipTextOn: { color: COLORS.primary },
   gigInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
   gigFormLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginTop: SPACING.xs },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: 12, borderWidth: 1, borderColor: COLORS.border },
+  timeRowLabel: { color: COLORS.textMuted, fontSize: 15 },
+  timeRowValue: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700', textAlign: 'right', marginRight: 2 },
+  timeRowPlaceholder: { flex: 1, color: COLORS.textMuted, fontSize: 15, textAlign: 'right', marginRight: 2 },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  sheetCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
+  sheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  sheetBtns: { flexDirection: 'row', gap: SPACING.sm },
+  sheetCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  sheetCancelText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+  sheetSetBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
+  sheetSetText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   gigChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   gigChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, maxWidth: '100%' },
   gigChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
