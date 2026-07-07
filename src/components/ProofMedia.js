@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Image, Text } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { COLORS } from '../constants/theme';
 
 // Renders a proof clip/photo with a visible loading state, so opening a proof
@@ -8,16 +8,20 @@ import { COLORS } from '../constants/theme';
 export default function ProofMedia({ url, type, style }) {
   const [ready, setReady] = useState(false);
 
+  // Hooks can't be conditional — feed the player a null source for photos.
+  const player = useVideoPlayer(type === 'video' ? url : null, (p) => {
+    p.play();
+  });
+
   return (
     <View style={[style, { alignItems: 'center', justifyContent: 'center' }]}>
       {type === 'video' ? (
-        <Video
-          source={{ uri: url }}
+        <VideoView
+          player={player}
           style={StyleSheet.absoluteFill}
-          useNativeControls
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
-          onReadyForDisplay={() => setReady(true)}
+          nativeControls
+          contentFit="contain"
+          onFirstFrameRender={() => setReady(true)}
         />
       ) : (
         <Image

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { COLORS, SPACING } from '../constants/theme';
 
 // Renders a chat message that carries a photo or video inline (mediaUrl +
@@ -8,15 +8,18 @@ import { COLORS, SPACING } from '../constants/theme';
 export default function MediaMessageBubble({ item, isMe }) {
   const isVideo = item.mediaType === 'video';
 
+  // Hooks can't be conditional — feed the player a null source for photos.
+  // No autoplay: the recipient taps play, like the old inline video.
+  const player = useVideoPlayer(isVideo ? item.mediaUrl : null);
+
   return (
     <View style={[styles.wrap, isMe ? styles.wrapMe : styles.wrapThem]}>
       {isVideo ? (
-        <Video
+        <VideoView
           style={styles.media}
-          source={{ uri: item.mediaUrl }}
-          useNativeControls
-          resizeMode={ResizeMode.CONTAIN}
-          isLooping={false}
+          player={player}
+          nativeControls
+          contentFit="contain"
         />
       ) : (
         <Image style={styles.media} source={{ uri: item.mediaUrl }} resizeMode="cover" />
