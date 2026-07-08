@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from './firebase';
+import { createUploadTask, getInfoAsync, FileSystemUploadType } from 'expo-file-system/legacy';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { auth, storage } from './firebase';
 
 // Storage rules cap uploads at 50 MB and require an image/* or video/* content
 // type — enforce both client-side so failures are a clear message, not a
@@ -13,68 +14,82 @@ function contentTypeFor(uri, type) {
   return ext === 'png' ? 'image/png' : 'image/jpeg';
 }
 
-// Read a local file:// URI into a blob via XMLHttpRequest. In Expo Go,
-// fetch(file://).blob() frequently returns an EMPTY/unreadable blob, which is
-// what silently breaks Storage uploads (they hang or fail instantly). XHR reads
-// the file reliably every time — the canonical Expo upload fix.
-function uriToBlob(uri) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => resolve(xhr.response);
-    xhr.onerror = () => {
-      const err = new Error("Couldn't read the video file off your device. Please try again.");
-      err.friendly = true;
-      reject(err);
-    };
-    xhr.responseType = 'blob';
-    xhr.open('GET', uri, true);
-    xhr.send(null);
-  });
-}
-
-// Shared upload core. We always send an explicit contentType (the Storage rules
-// reject anything that isn't image/* or video/*, and RN blobs often arrive
-// type-less) and upload resumable so we get progress + a real error callback.
-// A hard timeout means a stalled upload becomes a visible error, never an
-// endless spinner.
+// Shared upload core. The Firebase JS SDK's blob upload (uploadBytes /
+// uploadBytesResumable) HANGS in Expo Go — the clip sits on "Uploading…"
+// forever with no error, because the SDK's blob handling isn't supported there.
+// Instead we upload the file NATIVELY with expo-file-system: it streams the
+// file straight from disk to Firebase Storage's REST endpoint, authenticated
+// with the user's Firebase ID token, so the Storage rules run exactly as they
+// would through the SDK. This works in Expo Go without a dev build.
 async function uploadMedia(uri, path, type, onProgress) {
-  const blob = await uriToBlob(uri);
-  if (!blob || blob.size === 0) {
-    const err = new Error('That clip came through empty — try recording it again.');
+  const user = auth.currentUser;
+  if (!user) {
+    const err = new Error('You need to be signed in to upload.');
     err.friendly = true;
     throw err;
   }
-  if (blob.size > MAX_UPLOAD_BYTES) {
-    const mb = Math.round(blob.size / (1024 * 1024));
-    const err = new Error(`This video is too large to upload (${mb} MB, max 50 MB). Try a shorter clip.`);
-    err.friendly = true;
-    throw err;
-  }
-  const storageRef = ref(storage, path);
-  const task = uploadBytesResumable(storageRef, blob, { contentType: contentTypeFor(uri, type) });
+
+  // Size guard first, for a clear message instead of a raw HTTP 403 from the
+  // rules' 50 MB cap. Ignore getInfo failures — the server still enforces it.
   try {
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        try { task.cancel(); } catch (e) { /* already settled */ }
-        const err = new Error('Upload timed out — check your connection and try again.');
-        err.friendly = true;
-        reject(err);
-      }, 90000);
-      task.on(
-        'state_changed',
-        (snap) => {
-          if (onProgress && snap.totalBytes > 0) {
-            onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
-          }
-        },
-        (err) => { clearTimeout(timer); reject(err); },
-        () => { clearTimeout(timer); resolve(); }
-      );
-    });
-  } finally {
-    if (blob.close) blob.close(); // free the RN blob's backing memory
+    const info = await getInfoAsync(uri);
+    if (info?.size && info.size > MAX_UPLOAD_BYTES) {
+      const mb = Math.round(info.size / (1024 * 1024));
+      const err = new Error(`This video is too large to upload (${mb} MB, max 50 MB). Try a shorter clip.`);
+      err.friendly = true;
+      throw err;
+    }
+  } catch (e) {
+    if (e.friendly) throw e;
   }
-  return getDownloadURL(storageRef);
+
+  const bucket = storage.app.options.storageBucket;
+  const token = await user.getIdToken();
+  const encodedPath = encodeURIComponent(path);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?uploadType=media&name=${encodedPath}`;
+
+  const task = createUploadTask(
+    url,
+    uri,
+    {
+      httpMethod: 'POST',
+      uploadType: FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        Authorization: `Firebase ${token}`,
+        'Content-Type': contentTypeFor(uri, type),
+      },
+    },
+    (data) => {
+      if (onProgress && data.totalBytesExpectedToSend > 0) {
+        onProgress(Math.round((data.totalBytesSent / data.totalBytesExpectedToSend) * 100));
+      }
+    }
+  );
+
+  const res = await task.uploadAsync();
+  if (!res || res.status < 200 || res.status >= 300) {
+    const err = new Error(
+      res?.status === 403
+        ? "The upload was blocked — check you're signed in and the clip is under 50 MB."
+        : `Upload failed (HTTP ${res?.status ?? 'no response'}).`
+    );
+    err.friendly = res?.status === 403;
+    err.code = `http/${res?.status ?? 'none'}`;
+    throw err;
+  }
+
+  // Prefer the SDK's tokenized download URL (a lightweight metadata GET — only
+  // the blob UPLOAD hangs in Expo Go, not reads). Fall back to the download
+  // token the upload response already returned.
+  try {
+    return await getDownloadURL(ref(storage, path));
+  } catch (e) {
+    let meta = {};
+    try { meta = JSON.parse(res.body); } catch (_) { /* non-JSON body */ }
+    const dlToken = meta.downloadTokens ? String(meta.downloadTokens).split(',')[0] : '';
+    if (dlToken) return `${url.split('?')[0]}/${encodedPath}?alt=media&token=${dlToken}`;
+    throw e;
+  }
 }
 
 // Opens the device library to pick a photo or video. Returns { uri, type }
@@ -110,6 +125,11 @@ export async function captureMedia() {
     mediaTypes: ['images', 'videos'],
     quality: 0.7,
     videoMaxDuration: 120,
+    // Default to the BACK camera. The front camera mirrors what it records
+    // (text/hands come out flipped — the "inverted" video), and for proof of
+    // practice you want to film the instrument/hands anyway. The user can still
+    // flip to selfie in the camera UI if they want.
+    cameraType: ImagePicker.CameraType.back,
     // Record at medium quality — full-res camera video is huge and slow to
     // upload/stream (quality only affects photos).
     videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
