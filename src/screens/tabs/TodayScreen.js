@@ -244,7 +244,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
                 ? <ActivityIndicator size="small" color={COLORS.primary} />
                 : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
             </View>
-            <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice ·v7'}</Text>
+            <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice'}</Text>
           </TouchableOpacity>
         )
       )}
