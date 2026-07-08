@@ -251,7 +251,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       {expanded && !task.completed && (
         <TouchableOpacity style={styles.practiceThisBtn} onPress={() => onPractice(task)} activeOpacity={0.85}>
           <Ionicons name="play" size={15} color={COLORS.text} />
-          <Text style={styles.practiceThisText}>Practice this{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
+          <Text style={styles.practiceThisText}>Practice{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -397,7 +397,7 @@ function SessionCard({ session, completed, onPractice }) {
         {!completed && (
           <TouchableOpacity style={[styles.practiceThisBtn, { backgroundColor: categoryColor }]} onPress={() => onPractice(session)} activeOpacity={0.85}>
             <Ionicons name="play" size={15} color={COLORS.text} />
-            <Text style={styles.practiceThisText}>Practice this</Text>
+            <Text style={styles.practiceThisText}>Practice</Text>
           </TouchableOpacity>
         )}
         {completed && (
@@ -1009,7 +1009,9 @@ export default function TodayScreen({ navigation }) {
     } catch (e) {
       // Show the real reason — "storage/unauthorized" etc. tells us whether
       // it's rules, size, or network, instead of a dead-end generic message.
-      const detail = e?.friendly ? e.message : `Couldn't upload your clip. Please try again.${e?.code ? `\n(${e.code})` : ''}`;
+      const detail = e?.friendly
+        ? e.message
+        : `Couldn't upload your clip.\n${e?.code || e?.message || 'Unknown error'}`;
       Alert.alert('Upload failed', detail);
     } finally {
       setProofBusyId(null);
@@ -2205,10 +2207,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   notesChipText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.sm, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.md, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   proofAddIcon: { position: 'absolute', left: 14, top: 0, bottom: 0, justifyContent: 'center' },
   proofAddText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.md, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
   proofRowText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   proofViewLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofReplaceLink: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
