@@ -20,7 +20,8 @@ function contentTypeFor(uri, type) {
 // file straight from disk to Firebase Storage's REST endpoint, authenticated
 // with the user's Firebase ID token, so the Storage rules run exactly as they
 // would through the SDK. This works in Expo Go without a dev build.
-async function uploadMedia(uri, path, type, onProgress) {
+async function uploadMedia(uri, path, type, onProgress, onStep) {
+  const step = (s) => { console.log('[proof-upload] step:', s); if (onStep) onStep(s); };
   const user = auth.currentUser;
   if (!user) {
     const err = new Error('You need to be signed in to upload.');
@@ -30,6 +31,7 @@ async function uploadMedia(uri, path, type, onProgress) {
 
   // Size guard first, for a clear message instead of a raw HTTP 403 from the
   // rules' 50 MB cap. Ignore getInfo failures — the server still enforces it.
+  step('Checking…');
   try {
     const info = await getInfoAsync(uri);
     if (info?.size && info.size > MAX_UPLOAD_BYTES) {
@@ -42,11 +44,13 @@ async function uploadMedia(uri, path, type, onProgress) {
     if (e.friendly) throw e;
   }
 
+  step('Preparing…');
   const bucket = storage.app.options.storageBucket;
   const token = await user.getIdToken();
   const encodedPath = encodeURIComponent(path);
   const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?uploadType=media&name=${encodedPath}`;
   console.log('[proof-upload] uploading', path);
+  step('Uploading…');
 
   const task = createUploadTask(
     url,
@@ -82,6 +86,7 @@ async function uploadMedia(uri, path, type, onProgress) {
   ]);
   clearTimeout(timer);
   console.log('[proof-upload] http status', res?.status);
+  step('Saving…');
 
   if (!res || res.status < 200 || res.status >= 300) {
     const err = new Error(
@@ -161,15 +166,15 @@ export async function captureMedia() {
 
 // Uploads a local file URI to Firebase Storage under the chat's folder and
 // returns the public download URL.
-export async function uploadChatMedia(uri, chatId, type, onProgress) {
+export async function uploadChatMedia(uri, chatId, type, onProgress, onStep) {
   const ext = type === 'video' ? 'mp4' : 'jpg';
-  return uploadMedia(uri, `chatMedia/${chatId}/${Date.now()}.${ext}`, type, onProgress);
+  return uploadMedia(uri, `chatMedia/${chatId}/${Date.now()}.${ext}`, type, onProgress, onStep);
 }
 
 // Uploads a practice-proof clip for a student's task. Stored under the chatMedia
 // rule space (`chatMedia/proof_{uid}`) so the existing Storage rules already
 // cover it — the student may upload, the teacher watches via the download URL.
-export async function uploadProofMedia(uri, uid, type, onProgress) {
+export async function uploadProofMedia(uri, uid, type, onProgress, onStep) {
   const ext = type === 'video' ? 'mp4' : 'jpg';
-  return uploadMedia(uri, `chatMedia/proof_${uid}/${Date.now()}.${ext}`, type, onProgress);
+  return uploadMedia(uri, `chatMedia/proof_${uid}/${Date.now()}.${ext}`, type, onProgress, onStep);
 }
