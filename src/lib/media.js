@@ -1,6 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 import { createUploadTask, getInfoAsync, FileSystemUploadType } from 'expo-file-system/legacy';
-import { ref, getDownloadURL } from 'firebase/storage';
 import { auth, storage } from './firebase';
 
 // Storage rules cap uploads at 50 MB and require an image/* or video/* content
@@ -47,6 +46,7 @@ async function uploadMedia(uri, path, type, onProgress) {
   const token = await user.getIdToken();
   const encodedPath = encodeURIComponent(path);
   const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?uploadType=media&name=${encodedPath}`;
+  console.log('[proof-upload] uploading', path);
 
   const task = createUploadTask(
     url,
@@ -66,7 +66,23 @@ async function uploadMedia(uri, path, type, onProgress) {
     }
   );
 
-  const res = await task.uploadAsync();
+  // Guard against a native upload that never settles — a clear timeout beats an
+  // endless "Uploading…".
+  let timer;
+  const res = await Promise.race([
+    task.uploadAsync(),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        try { task.cancelAsync(); } catch (e) { /* already settled */ }
+        const err = new Error('Upload timed out — check your connection and try again.');
+        err.friendly = true;
+        reject(err);
+      }, 120000);
+    }),
+  ]);
+  clearTimeout(timer);
+  console.log('[proof-upload] http status', res?.status);
+
   if (!res || res.status < 200 || res.status >= 300) {
     const err = new Error(
       res?.status === 403
@@ -78,18 +94,21 @@ async function uploadMedia(uri, path, type, onProgress) {
     throw err;
   }
 
-  // Prefer the SDK's tokenized download URL (a lightweight metadata GET — only
-  // the blob UPLOAD hangs in Expo Go, not reads). Fall back to the download
-  // token the upload response already returned.
-  try {
-    return await getDownloadURL(ref(storage, path));
-  } catch (e) {
-    let meta = {};
-    try { meta = JSON.parse(res.body); } catch (_) { /* non-JSON body */ }
-    const dlToken = meta.downloadTokens ? String(meta.downloadTokens).split(',')[0] : '';
-    if (dlToken) return `${url.split('?')[0]}/${encodedPath}?alt=media&token=${dlToken}`;
-    throw e;
+  // Build the tokenized download URL straight from the REST response. Do NOT
+  // call the Firebase Storage SDK's getDownloadURL here: EVERY Storage-SDK call
+  // hangs in Expo Go (that was the "stuck on Uploading… forever" bug — the
+  // native upload finished but getDownloadURL never returned). The upload
+  // response already carries the download token.
+  let meta = {};
+  try { meta = JSON.parse(res.body); } catch (_) { /* non-JSON body */ }
+  const dlToken = meta.downloadTokens ? String(meta.downloadTokens).split(',')[0] : '';
+  if (!dlToken) {
+    const err = new Error('Upload saved but no download link came back — please try again.');
+    err.code = 'no-download-token';
+    throw err;
   }
+  console.log('[proof-upload] done');
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${dlToken}`;
 }
 
 // Opens the device library to pick a photo or video. Returns { uri, type }
