@@ -157,8 +157,10 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, proofPct, topDivider }) {
-  const uploadingLabel = proofPct != null ? `Uploading… ${proofPct}%` : 'Uploading…';
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
+  const uploadingLabel = proofPct != null
+    ? `Uploading… ${proofPct}%`
+    : (proofStep || 'Uploading…');
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
   const due = assignedDueLabel(task.dueDate);
   const earnedSoFar = task.pointsEarned || 0;
@@ -485,6 +487,7 @@ export default function TodayScreen({ navigation }) {
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [proofBusyId, setProofBusyId] = useState(null); // task id currently uploading a proof clip
   const [proofPct, setProofPct] = useState(null); // upload progress 0-100 while a proof clip uploads
+  const [proofStep, setProofStep] = useState(null); // human label for the current upload phase
   const [proofView, setProofView] = useState(null);     // { url, type, proofs, taskId } currently being watched
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
@@ -988,7 +991,10 @@ export default function TodayScreen({ navigation }) {
         } catch (e) { /* never block the upload on this */ }
       }
       setProofPct(0);
-      const url = await uploadProofMedia(picked.uri, uid, picked.type, setProofPct);
+      // Report each phase to the button so a stall shows WHICH step is stuck
+      // (Checking / Preparing / Uploading / Saving) instead of a blank spinner.
+      const onStep = (s) => { setProofStep(s); if (s !== 'Uploading…') setProofPct(null); };
+      const url = await uploadProofMedia(picked.uri, uid, picked.type, setProofPct, onStep);
       const next = (userData?.assignedTasks || []).map((t) => {
         if (t.id !== taskId) return t;
         const existing = Array.isArray(t.proofs) && t.proofs.length > 0
@@ -1016,6 +1022,7 @@ export default function TodayScreen({ navigation }) {
     } finally {
       setProofBusyId(null);
       setProofPct(null);
+      setProofStep(null);
     }
   };
 
@@ -1556,6 +1563,7 @@ export default function TodayScreen({ navigation }) {
                     onViewProof={viewProof}
                     proofBusy={proofBusyId === t.id}
                     proofPct={proofBusyId === t.id ? proofPct : null}
+                    proofStep={proofBusyId === t.id ? proofStep : null}
                   />
                 ))}
               </View>
@@ -1592,6 +1600,7 @@ export default function TodayScreen({ navigation }) {
                       onViewProof={viewProof}
                       proofBusy={proofBusyId === t.id}
                       proofPct={proofBusyId === t.id ? proofPct : null}
+                      proofStep={proofBusyId === t.id ? proofStep : null}
                     />
                   ))}
                 </View>
@@ -1739,6 +1748,7 @@ export default function TodayScreen({ navigation }) {
         onAttachProof={attachProof}
         proofBusyId={proofBusyId}
         proofPct={proofPct}
+        proofStep={proofStep}
         onClose={() => { setPlayerVisible(false); setGigSongItem(null); }}
         onGigSongEnd={() => {
           // Back to the song picker so they choose: another song, or the tasks.

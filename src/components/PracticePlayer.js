@@ -65,6 +65,7 @@ export default function PracticePlayer({
   onAttachProof,
   proofBusyId,
   proofPct,
+  proofStep,
   onClose,
   onFinishReview,    // close + open the "How did today go?" review
   savedElapsed,      // { itemId: seconds } persisted from an earlier run today
@@ -321,7 +322,7 @@ export default function PracticePlayer({
                     {proofBusyId === item.taskId
                       ? <ActivityIndicator size="small" color={COLORS.primary} />
                       : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
-                    <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? (proofPct != null ? `Uploading… ${proofPct}%` : 'Uploading…') : 'Add proof of practice'}</Text>
+                    <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…')) : 'Add proof of practice'}</Text>
                   </TouchableOpacity>
                 )
               )}
