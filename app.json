@@ -9,6 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.ethanlam.prova",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument and record video messages.",
         "NSPhotoLibraryUsageDescription": "Prova lets you attach photos and videos to your chats.",
@@ -16,6 +17,7 @@
       }
     },
     "android": {
+      "package": "com.ethanlam.prova",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
