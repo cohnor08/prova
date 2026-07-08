@@ -23,7 +23,16 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,6 +54,12 @@
           "savePhotosPermission": "Prova saves practice videos you record to your camera roll so you keep a copy."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "11cd202c-966d-4820-87c9-3d7a984a7026"
+      }
+    },
+    "owner": "ethanlam2309"
   }
 }
