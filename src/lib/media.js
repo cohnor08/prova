@@ -1,5 +1,4 @@
 import * as ImagePicker from 'expo-image-picker';
-import { createUploadTask, getInfoAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { auth, storage } from './firebase';
 
 // Storage rules cap uploads at 50 MB and require an image/* or video/* content
@@ -13,13 +12,14 @@ function contentTypeFor(uri, type) {
   return ext === 'png' ? 'image/png' : 'image/jpeg';
 }
 
-// Shared upload core. The Firebase JS SDK's blob upload (uploadBytes /
-// uploadBytesResumable) HANGS in Expo Go — the clip sits on "Uploading…"
-// forever with no error, because the SDK's blob handling isn't supported there.
-// Instead we upload the file NATIVELY with expo-file-system: it streams the
-// file straight from disk to Firebase Storage's REST endpoint, authenticated
-// with the user's Firebase ID token, so the Storage rules run exactly as they
-// would through the SDK. This works in Expo Go without a dev build.
+// Shared upload core. History on this: the Firebase Storage SDK (uploadBytes)
+// worked once but now hangs in Expo Go, and expo-file-system's uploadAsync
+// hangs at the transfer too. So we do the most basic thing the app already
+// relies on everywhere else — a direct XMLHttpRequest POST of the file blob to
+// Firebase Storage's REST endpoint, authed with the user's Firebase ID token so
+// the Storage rules still apply. XHR is the same transport the SDK uses under
+// the hood (it worked on July 6), but without the SDK's wrapper, and it gives
+// real upload-progress events + a hard timeout so it can never spin forever.
 async function uploadMedia(uri, path, type, onProgress, onStep) {
   const step = (s) => { console.log('[proof-upload] step:', s); if (onStep) onStep(s); };
   const user = auth.currentUser;
@@ -29,83 +29,72 @@ async function uploadMedia(uri, path, type, onProgress, onStep) {
     throw err;
   }
 
-  // Size guard first, for a clear message instead of a raw HTTP 403 from the
-  // rules' 50 MB cap. Ignore getInfo failures — the server still enforces it.
-  step('Checking…');
-  try {
-    const info = await getInfoAsync(uri);
-    if (info?.size && info.size > MAX_UPLOAD_BYTES) {
-      const mb = Math.round(info.size / (1024 * 1024));
-      const err = new Error(`This video is too large to upload (${mb} MB, max 50 MB). Try a shorter clip.`);
-      err.friendly = true;
-      throw err;
-    }
-  } catch (e) {
-    if (e.friendly) throw e;
-  }
-
   step('Preparing…');
   const bucket = storage.app.options.storageBucket;
   const token = await user.getIdToken();
   const encodedPath = encodeURIComponent(path);
   const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?uploadType=media&name=${encodedPath}`;
-  console.log('[proof-upload] uploading', path);
-  step('Uploading…');
 
-  const task = createUploadTask(
-    url,
-    uri,
-    {
-      httpMethod: 'POST',
-      uploadType: FileSystemUploadType.BINARY_CONTENT,
-      headers: {
-        Authorization: `Firebase ${token}`,
-        'Content-Type': contentTypeFor(uri, type),
-      },
-    },
-    (data) => {
-      if (onProgress && data.totalBytesExpectedToSend > 0) {
-        onProgress(Math.round((data.totalBytesSent / data.totalBytesExpectedToSend) * 100));
-      }
-    }
-  );
-
-  // Guard against a native upload that never settles — a clear timeout beats an
-  // endless "Uploading…".
-  let timer;
-  const res = await Promise.race([
-    task.uploadAsync(),
-    new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        try { task.cancelAsync(); } catch (e) { /* already settled */ }
-        const err = new Error('Upload timed out — check your connection and try again.');
-        err.friendly = true;
-        reject(err);
-      }, 120000);
-    }),
-  ]);
-  clearTimeout(timer);
-  console.log('[proof-upload] http status', res?.status);
-  step('Saving…');
-
-  if (!res || res.status < 200 || res.status >= 300) {
-    const err = new Error(
-      res?.status === 403
-        ? "The upload was blocked — check you're signed in and the clip is under 50 MB."
-        : `Upload failed (HTTP ${res?.status ?? 'no response'}).`
-    );
-    err.friendly = res?.status === 403;
-    err.code = `http/${res?.status ?? 'none'}`;
+  // Read the file into a blob (this part works — the original code got a blob
+  // fine; the hang was always the SDK, not this).
+  step('Reading…');
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  if (!blob || blob.size === 0) {
+    const err = new Error('That clip came through empty — try recording it again.');
+    err.friendly = true;
+    throw err;
+  }
+  if (blob.size > MAX_UPLOAD_BYTES) {
+    const mb = Math.round(blob.size / (1024 * 1024));
+    const err = new Error(`This video is too large to upload (${mb} MB, max 50 MB). Try a shorter clip.`);
+    err.friendly = true;
     throw err;
   }
 
-  // Build the tokenized download URL straight from the REST response. Do NOT
-  // call the Firebase Storage SDK's getDownloadURL here: EVERY Storage-SDK call
-  // hangs in Expo Go (that was the "stuck on Uploading… forever" bug — the
-  // native upload finished but getDownloadURL never returned). The upload
-  // response already carries the download token.
+  step('Uploading…');
+  console.log('[proof-upload] POST', url, 'size', blob.size);
+  const responseText = await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', `Firebase ${token}`);
+    xhr.setRequestHeader('Content-Type', contentTypeFor(uri, type));
+    xhr.timeout = 60000;
+    if (xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+    xhr.onload = () => {
+      console.log('[proof-upload] http status', xhr.status);
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(xhr.responseText); return; }
+      const err = new Error(
+        xhr.status === 403
+          ? "The upload was blocked — check you're signed in and the clip is under 50 MB."
+          : `Upload failed (HTTP ${xhr.status}).`
+      );
+      err.friendly = xhr.status === 403;
+      err.code = `http/${xhr.status}`;
+      reject(err);
+    };
+    xhr.onerror = () => {
+      const err = new Error("Network error during upload — check your Wi-Fi/data and try again.");
+      err.friendly = true;
+      err.code = 'xhr/error';
+      reject(err);
+    };
+    xhr.ontimeout = () => {
+      const err = new Error('Upload timed out — check your connection and try again.');
+      err.friendly = true;
+      err.code = 'xhr/timeout';
+      reject(err);
+    };
+    xhr.send(blob);
+  });
+
+  step('Saving…');
   let meta = {};
-  try { meta = JSON.parse(res.body); } catch (_) { /* non-JSON body */ }
+  try { meta = JSON.parse(responseText); } catch (_) { /* non-JSON body */ }
   const dlToken = meta.downloadTokens ? String(meta.downloadTokens).split(',')[0] : '';
   if (!dlToken) {
     const err = new Error('Upload saved but no download link came back — please try again.');
