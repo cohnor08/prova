@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, orderBy, onSnapshot, doc, deleteDoc,
@@ -17,7 +17,7 @@ import { COLORS, SPACING } from '../constants/theme';
 // composer (teacher) and a read-only note (students).
 export default function GroupChatView({ group, myUid, myName, isTeacher, onBack }) {
   const groupId = group.id;
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -70,8 +70,11 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
   const memberCount = (group.memberUids || []).length;
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.navHeader}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+      <View style={[styles.navHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
           <Text style={styles.backText}>Back</Text>
@@ -88,11 +91,6 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
         <View style={{ width: 70 }} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={tabBarHeight}
-      >
         <FlatList
           ref={flatRef}
           data={messages}
@@ -159,7 +157,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
         />
 
         {isTeacher ? (
-          <View style={styles.inputRow}>
+          <View style={[styles.inputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
             <TextInput
               style={styles.input}
               placeholder="Post to your class…"
@@ -180,13 +178,12 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.readOnlyBar}>
+          <View style={[styles.readOnlyBar, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
             <Ionicons name="lock-closed" size={13} color={COLORS.textMuted} />
             <Text style={styles.readOnlyText}>Only your teacher can post here — tap an emoji to react</Text>
           </View>
         )}
       </KeyboardAvoidingView>
-    </View>
   );
 }
 

@@ -955,15 +955,19 @@ export default function ProgressScreen() {
     rankName: scoreRank(provaScore).name, level,
   });
 
-  // Open the share sheet: load the user's in-app conversations so they can send
-  // the report straight to a friend, with "share outside the app" as a fallback.
+  // Open the share sheet: the only in-app recipient is the student's teacher
+  // (peer-to-peer messaging is disabled), with "share outside the app" as the
+  // fallback for everyone else.
   const openShare = async () => {
     setShareOpen(true);
     setShareLoading(true);
     try {
       const uid = auth.currentUser?.uid;
+      const teacherUid = userData?.teacherUid || null;
       const snap = await getDocs(collection(db, 'userChats', uid, 'conversations'));
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.otherUid);
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((c) => c.otherUid && teacherUid && c.otherUid === teacherUid);
       const withNames = await Promise.all(list.map(async (c) => {
         let name = c.otherEmail ? c.otherEmail.split('@')[0] : 'Someone';
         try { const us = await getDoc(doc(db, 'users', c.otherUid)); name = displayName({ uid: c.otherUid, ...us.data() }); } catch (e) { /* fall back to email */ }
@@ -1121,17 +1125,17 @@ export default function ProgressScreen() {
           <TouchableOpacity style={styles.shareSheet} activeOpacity={1}>
             <View style={styles.shareSheetHandle} />
             <Text style={styles.shareSheetTitle}>Share my progress</Text>
-            <Text style={styles.shareSheetSub}>Send it to a friend in the app, or share it anywhere.</Text>
+            <Text style={styles.shareSheetSub}>Send it to your teacher in the app, or share it anywhere.</Text>
 
             {shareLoading ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
             ) : convos.length === 0 ? (
-              <Text style={styles.shareEmpty}>No chats yet — start a conversation in Messages first, or share outside the app below.</Text>
+              <Text style={styles.shareEmpty}>Connect a teacher to send it in-app, or share it outside the app below.</Text>
             ) : (
               <ScrollView style={{ maxHeight: 260 }}>
                 {convos.map((c) => (
                   <TouchableOpacity key={c.id} style={styles.shareRow} onPress={() => sendToConversation(c)} disabled={sendingTo != null} activeOpacity={0.7}>
-                    <View style={styles.shareAvatar}><Text style={styles.shareAvatarText}>{c.name.charAt(0).toUpperCase()}</Text></View>
+                    <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color="#fff" /></View>
                     <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
                     {sendingTo === c.otherUid
                       ? <ActivityIndicator size="small" color={COLORS.primary} />
@@ -1179,6 +1183,7 @@ const styles = StyleSheet.create({
   shareEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginVertical: SPACING.md },
   shareRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   shareAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' },
+  shareAvatarTeacher: { backgroundColor: COLORS.accent || COLORS.primary },
   shareAvatarText: { color: COLORS.primary, fontSize: 16, fontWeight: '800' },
   shareRowName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
   shareExternalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: SPACING.lg, paddingVertical: 13, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },

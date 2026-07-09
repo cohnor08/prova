@@ -4,10 +4,11 @@ import {
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
   Platform, Modal, Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  collection, query, where, getDocs,
+  collection, query, where,
   onSnapshot, orderBy, doc, getDoc, deleteDoc, setDoc,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
@@ -15,10 +16,9 @@ import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptS
 import { displayName } from '../../lib/displayName';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
-import SheetModal from '../../components/SheetModal';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -44,6 +44,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const [sendingProgress, setSendingProgress] = useState(false);
   const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
+  const insets = useSafeAreaInsets();
   const otherUid = otherUidFromChatId(chatId, myUid);
 
   // Watch the other participant's read marker.
@@ -157,8 +158,11 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.chatNavHeader}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+      <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
           <Text style={styles.backText}>Messages</Text>
@@ -177,10 +181,6 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
         {/* Inverted list = bottom-anchored, the real chat-app pattern: the
             newest message stays glued above the input no matter what the
             keyboard does. Dragging the list tucks the keyboard away. */}
@@ -228,7 +228,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
             );
           }}
         />
-        <View style={styles.inputRow}>
+        <View style={[styles.inputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
           <TouchableOpacity
             style={styles.attachBtn}
             onPress={() => handleMedia(captureMedia)}
@@ -265,7 +265,6 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </View>
   );
 }
 
@@ -277,14 +276,23 @@ export default function MessagesScreen() {
   const [activeGroup, setActiveGroup] = useState(null);
   const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
+  const [role, setRole] = useState(null); // 'teacher' | 'student' | 'personal'
   const [loading, setLoading] = useState(true);
   const [activeChat, setActiveChat] = useState(null);
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [searchEmail, setSearchEmail] = useState('');
-  const [searching, setSearching] = useState(false);
 
+  const navigation = useNavigation();
   const myUid = auth.currentUser?.uid;
   const myEmail = auth.currentUser?.email || '';
+  const isTeacher = role === 'teacher';
+
+  // Hide the bottom tab bar while a chat/announcement thread is open, so the
+  // chat can own the full screen (fixes the input sitting above a tab-bar gap
+  // and the keyboard-avoidance math). Restored to the shared style on back.
+  const inChat = !!(activeChat || activeGroup);
+  useEffect(() => {
+    navigation.setOptions({ tabBarStyle: inChat ? { display: 'none' } : TAB_BAR_STYLE });
+    return () => navigation.setOptions({ tabBarStyle: TAB_BAR_STYLE });
+  }, [inChat, navigation]);
 
   useEffect(() => {
     if (!myUid) return;
@@ -332,7 +340,9 @@ export default function MessagesScreen() {
     (async () => {
       try {
         const meSnap = await getDoc(doc(db, 'users', myUid));
-        const teacherUid = meSnap.data()?.teacherUid;
+        const md = meSnap.data() || {};
+        setRole(md.role || null);
+        const teacherUid = md.teacherUid;
         if (!teacherUid) return;
         const teacherSnap = await getDoc(doc(db, 'users', teacherUid));
         const td = teacherSnap.data() || {};
@@ -348,36 +358,9 @@ export default function MessagesScreen() {
     })();
   }, [myUid]);
 
-  const startChat = async () => {
-    const email = searchEmail.trim().toLowerCase();
-    if (!email) return;
-    setSearching(true);
-    try {
-      const q = query(collection(db, 'users'), where('email', '==', email));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        Alert.alert('Not found', 'No Prova account found with that email.');
-        return;
-      }
-      const otherUid = snap.docs[0].id;
-      if (otherUid === myUid) {
-        Alert.alert('Oops', "You can't message yourself.");
-        return;
-      }
-      const chatId = makeChatId(myUid, otherUid);
-      setShowNewChat(false);
-      setSearchEmail('');
-      setActiveChat({ chatId, otherEmail: email, otherUid });
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    } finally {
-      setSearching(false);
-    }
-  };
-
   if (activeGroup) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.container}>
         <GroupChatView
           group={activeGroup}
           myUid={myUid}
@@ -385,13 +368,13 @@ export default function MessagesScreen() {
           isTeacher={activeGroup.teacherUid === myUid}
           onBack={() => setActiveGroup(null)}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (activeChat) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.container}>
         <ChatView
           chatId={activeChat.chatId}
           myUid={myUid}
@@ -400,7 +383,7 @@ export default function MessagesScreen() {
           otherName={activeChat.otherName}
           onBack={() => setActiveChat(null)}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -418,7 +401,10 @@ export default function MessagesScreen() {
       lastMessageAt: null,
     }];
   }
-  const otherRows = conversations.filter((c) => c.otherUid !== teacherUid);
+  // Peer-to-peer DMs are disabled for students/personal accounts — they only
+  // ever see their teacher's thread + class announcements. Teachers still see
+  // their (teacher↔student) conversations here.
+  const otherRows = isTeacher ? conversations.filter((c) => c.otherUid !== teacherUid) : [];
   const listData = [];
   if (teacherRows.length) {
     listData.push({ type: 'header', id: 'h-teacher', label: 'YOUR TEACHER' });
@@ -437,9 +423,6 @@ export default function MessagesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
-        <TouchableOpacity onPress={() => setShowNewChat(true)} style={styles.newBtn} activeOpacity={0.7}>
-          <Ionicons name="create-outline" size={22} color={COLORS.primary} />
-        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -450,10 +433,11 @@ export default function MessagesScreen() {
             <Ionicons name="chatbubbles-outline" size={40} color={COLORS.primary} />
           </View>
           <Text style={styles.emptyTitle}>No messages yet</Text>
-          <Text style={styles.emptySubtitle}>Tap the pencil icon to message a friend or your teacher</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowNewChat(true)} activeOpacity={0.8}>
-            <Text style={styles.emptyBtnText}>Start a conversation</Text>
-          </TouchableOpacity>
+          <Text style={styles.emptySubtitle}>
+            {isTeacher
+              ? 'Messages with your students and class announcements will appear here.'
+              : 'Messages from your teacher and class announcements will appear here.'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -520,38 +504,6 @@ export default function MessagesScreen() {
           }}
         />
       )}
-
-      <SheetModal visible={showNewChat} onRequestClose={() => setShowNewChat(false)} cardStyle={styles.modalCard} keyboardAvoiding>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>New Message</Text>
-                <TouchableOpacity onPress={() => { setShowNewChat(false); setSearchEmail(''); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Ionicons name="close" size={22} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.modalHint}>Enter the email address of another Prova user</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="friend@email.com"
-                placeholderTextColor={COLORS.textMuted}
-                value={searchEmail}
-                onChangeText={setSearchEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoFocus
-                onSubmitEditing={startChat}
-              />
-              <TouchableOpacity
-                style={[styles.startBtn, (!searchEmail.trim() || searching) && { opacity: 0.5 }]}
-                onPress={startChat}
-                disabled={!searchEmail.trim() || searching}
-                activeOpacity={0.8}
-              >
-                {searching
-                  ? <ActivityIndicator color={COLORS.text} size="small" />
-                  : <Text style={styles.startBtnText}>Open Chat</Text>}
-              </TouchableOpacity>
-      </SheetModal>
     </SafeAreaView>
   );
 }

@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './src/hooks/useAuth';
 import { useMaintenance } from './src/hooks/useMaintenance';
 import { AuthContext } from './src/contexts/AuthContext';
-import { COLORS } from './src/constants/theme';
+import { COLORS, TAB_BAR_STYLE } from './src/constants/theme';
+import { CelebrationProvider } from './src/components/Celebration';
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -111,14 +112,7 @@ function MainTabs({ role }) {
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.border,
-          borderTopWidth: 1,
-          height: 84,
-          paddingBottom: 20,
-          paddingTop: 10,
-        },
+        tabBarStyle: TAB_BAR_STYLE,
         tabBarShowLabel: true,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
@@ -185,6 +179,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ setOnboardingComplete, role }}>
+      <CelebrationProvider>
       <NavigationContainer>
         <StatusBar style="light" />
         {!user ? (
@@ -200,6 +195,7 @@ export default function App() {
           <MainTabs role={role} />
         )}
       </NavigationContainer>
+      </CelebrationProvider>
     </AuthContext.Provider>
   );
 }

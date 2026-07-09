@@ -5,8 +5,8 @@ import {
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
 } from 'react-native';
 import ProofMedia from '../../components/ProofMedia';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
@@ -22,7 +22,7 @@ import { displayName } from '../../lib/displayName';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 import SheetModal from '../../components/SheetModal';
@@ -443,6 +443,12 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
 
   return (
     <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding>
+          <ScrollView
+            style={{ maxHeight: 380 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: SPACING.sm }}
+          >
             <Text style={styles.modalTitle}>New group chat</Text>
             <Text style={styles.tplSheetEmpty}>Only you can post — students can react.</Text>
             <TextInput
@@ -483,7 +489,7 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
                     autoCorrect={false}
                   />
                 )}
-                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                <View>
                   {shown.length === 0 ? (
                     <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
                   ) : shown.map((s) => {
@@ -496,9 +502,10 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </View>
               </>
             )}
+          </ScrollView>
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -1281,11 +1288,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo }) {
+function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   const otherUid = student.uid;
   const otherEmail = student.email;
   const myEmail = auth.currentUser?.email || '';
   const chatId = makeChatId(myUid, otherUid);
+  const insets = useSafeAreaInsets();
 
   const initMessages = () => {
     if (!isDemo) return [];
@@ -1400,6 +1408,17 @@ function InlineChatView({ student, myUid, isDemo }) {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
+        <TouchableOpacity onPress={onBack} style={styles.chatNavBackBtn}>
+          <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
+          <Text style={styles.chatNavBackText}>Messages</Text>
+        </TouchableOpacity>
+        <View style={styles.chatNavCenter}>
+          <Text style={styles.chatNavTitle} numberOfLines={1}>{title}</Text>
+          {!!subtitle && <Text style={styles.chatNavSub}>{subtitle}</Text>}
+        </View>
+        <View style={{ width: 80 }} />
+      </View>
       {/* Inverted = bottom-anchored: the newest message stays above the input
           whatever the keyboard does; dragging dismisses the keyboard. */}
       <FlatList
@@ -1437,7 +1456,7 @@ function InlineChatView({ student, myUid, isDemo }) {
           </View>
         }
       />
-      <View style={styles.chatInputRow}>
+      <View style={[styles.chatInputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
           onPress={() => handleMedia(captureMedia)}
@@ -1587,6 +1606,15 @@ function TeacherDashboard() {
   });
 
   const myUid = auth.currentUser?.uid;
+  const navigation = useNavigation();
+
+  // Hide the bottom tab bar while a chat / class announcement thread is open so
+  // it can own the full screen (fixes the input gap + keyboard avoidance).
+  const inChat = !!(activeChatStudent || activeGroup);
+  useEffect(() => {
+    navigation.setOptions({ tabBarStyle: inChat ? { display: 'none' } : TAB_BAR_STYLE });
+    return () => navigation.setOptions({ tabBarStyle: TAB_BAR_STYLE });
+  }, [inChat, navigation]);
 
   useEffect(() => {
     if (!myUid) return;
@@ -1980,19 +2008,15 @@ Sent from Prova`;
   if (activeChatStudent) {
     const chatTitle = displayName(activeChatStudent);
     return (
-      <View style={{ flex: 1 }}>
-        <View style={styles.chatNavHeader}>
-          <TouchableOpacity onPress={() => setActiveChatStudent(null)} style={styles.chatNavBackBtn}>
-            <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
-            <Text style={styles.chatNavBackText}>Messages</Text>
-          </TouchableOpacity>
-          <View style={styles.chatNavCenter}>
-            <Text style={styles.chatNavTitle} numberOfLines={1}>{chatTitle}</Text>
-            <Text style={styles.chatNavSub}>{activeChatStudent.level} · {activeChatStudent.instrument}</Text>
-          </View>
-          <View style={{ width: 80 }} />
-        </View>
-        <InlineChatView student={activeChatStudent} myUid={myUid} isDemo={DEMO_MODE} />
+      <View style={styles.container}>
+        <InlineChatView
+          student={activeChatStudent}
+          myUid={myUid}
+          isDemo={DEMO_MODE}
+          title={chatTitle}
+          subtitle={`${activeChatStudent.level} · ${activeChatStudent.instrument}`}
+          onBack={() => setActiveChatStudent(null)}
+        />
       </View>
     );
   }
@@ -2000,7 +2024,7 @@ Sent from Prova`;
   // ── Group chat view ──
   if (activeGroup) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.container}>
         <GroupChatView
           group={activeGroup}
           myUid={myUid}
@@ -2008,7 +2032,7 @@ Sent from Prova`;
           isTeacher
           onBack={() => setActiveGroup(null)}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -3056,7 +3080,7 @@ const styles = StyleSheet.create({
   classPickChipOn: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary },
   classPickChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   classPickChipTextOn: { color: COLORS.primary },
-  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   newGroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.primary + '1A', borderRadius: 12, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
   newGroupBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   newClassBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: SPACING.lg },

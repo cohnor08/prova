@@ -22,6 +22,7 @@ import ProofMedia from '../../components/ProofMedia';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
+import { useCelebration } from '../../components/Celebration';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -437,6 +438,7 @@ function PlanCard({ session }) {
 }
 
 export default function TodayScreen({ navigation }) {
+  const celebrate = useCelebration();
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
@@ -697,7 +699,7 @@ export default function TodayScreen({ navigation }) {
       });
       setUserData(p => ({ ...p, provaScore: newScore }));
       setCompletedIds(ids);
-      if (!silent) Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+      if (!silent) celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '🎸' });
       maybeRate(ids);
       return pts;
     } catch (e) {
@@ -908,10 +910,13 @@ export default function TodayScreen({ navigation }) {
       setUserData((p) => ({ ...p, ...updates }));
 
       const newRank = scoreRank(newScore);
-      Alert.alert(
-        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : 'Challenge complete! 🔥',
-        `+${formatScore(CHALLENGE_POINTS)} Prova points${newStreak > 1 ? ` · 🔥 ${newStreak}-day streak kept!` : ''}.`,
-      );
+      celebrate({
+        points: CHALLENGE_POINTS,
+        title: rankedUp ? `New rank: ${newRank.name}!` : 'Challenge complete!',
+        subtitle: 'Prova points',
+        emoji: rankedUp ? newRank.emoji : '🔥',
+        streak: newStreak > 1 ? newStreak : 0,
+      });
     } catch (e) {
       console.error(e);
       Alert.alert('Error', "Couldn't save your challenge. Please try again.");
@@ -956,9 +961,9 @@ export default function TodayScreen({ navigation }) {
     }
     if (!silent) {
       if (finished) {
-        Alert.alert('Task complete! ✅', `${pts > 0 ? `+${formatScore(pts)} Prova points 🎸\n` : ''}Nice work — that one's off your list.`);
+        celebrate({ points: pts, title: 'Task complete!', subtitle: "Off your list", emoji: '⭐' });
       } else if (pts > 0) {
-        Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+        celebrate({ points: pts, title: 'Nice work!', subtitle: 'Practice again to earn more', emoji: '⭐' });
       }
     }
     return pts;
@@ -1097,7 +1102,7 @@ export default function TodayScreen({ navigation }) {
     setUserData((p) => ({ ...p, ...updates }));
     try {
       await updateDoc(doc(db, 'users', uid), updates);
-      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practice today to keep it going.`);
+      celebrate({ title: 'Streak restored!', emoji: '🔥', subtitle: 'Practice today to keep it going', streak: userData?.streak || 0 });
     } catch (e) {
       Alert.alert('Error', "Couldn't restore your streak. Please try again.");
     }

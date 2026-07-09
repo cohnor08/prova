@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING } from '../constants/theme';
 import YouTubePlayerModal from './YouTubePlayerModal';
+import Celebration from './Celebration';
 
 // Full-screen guided practice player. One task at a time: big timer, the
 // instructions, watch link, then Done/Skip — the student drives, nothing
@@ -77,6 +78,7 @@ export default function PracticePlayer({
   const [paused, setPaused] = useState(false);
   const [, setTick] = useState(0);            // re-render pulse for the clock
   const [watch, setWatch] = useState(null);   // { query, title }
+  const [celeb, setCeleb] = useState(null);   // per-task celebration payload
 
   // Timestamp-based timing so a locked phone doesn't drift the clock.
   const startedAtRef = useRef(null);
@@ -208,7 +210,11 @@ export default function PracticePlayer({
       : cur.kind === 'gigsong' ? onBankSong(sec)
       : onBankTeacher(cur.taskId, sec);
     Promise.resolve(write)
-      .then((pts) => { statsRef.current.pts += pts || 0; })
+      .then((pts) => {
+        statsRef.current.pts += pts || 0;
+        const emoji = cur.kind === 'teacher' ? '⭐' : cur.kind === 'gigsong' ? '🎤' : '🎸';
+        setCeleb({ points: pts || 0, emoji, subtitle: 'Prova points' });
+      })
       .catch(() => { /* keep flowing; the old surfaces will re-sync */ });
     // A finished set song hands back to the song picker — the student chooses
     // to rehearse another or move on to the day's tasks.
@@ -399,6 +405,8 @@ export default function PracticePlayer({
           title={watch?.title || 'Watch'}
           onClose={() => setWatch(null)}
         />
+
+        <Celebration data={celeb} onDone={() => setCeleb(null)} />
       </InsetShell>
       </SafeAreaProvider>
     </Modal>
