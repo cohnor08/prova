@@ -291,11 +291,10 @@ export default function PacksScreen({ navigation }) {
       )}
 
       {/* ── Editor ── */}
-      <SheetModal visible={!!draft} onRequestClose={() => setDraft(null)} cardStyle={styles.sheet} keyboardAvoiding="android">
+      <SheetModal visible={!!draft} onRequestClose={() => setDraft(null)} cardStyle={styles.sheet} keyboardAvoiding>
         <ScrollView
-          style={{ maxHeight: 460 }}
+          style={{ maxHeight: 320 }}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: SPACING.sm }}
         >
@@ -390,8 +389,8 @@ export default function PacksScreen({ navigation }) {
       </SheetModal>
 
       {/* ── Program editor ── */}
-      <SheetModal visible={!!progDraft} onRequestClose={() => setProgDraft(null)} cardStyle={styles.sheet} keyboardAvoiding="android">
-        <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+      <SheetModal visible={!!progDraft} onRequestClose={() => setProgDraft(null)} cardStyle={styles.sheet} keyboardAvoiding>
+        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
           <Text style={styles.sheetTitle}>{progDraft?.id ? 'Edit program' : 'New program'}</Text>
           <TextInput
             style={styles.input}
