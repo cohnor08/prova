@@ -1612,6 +1612,7 @@ function TeacherDashboard() {
 
   const myUid = auth.currentUser?.uid;
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets(); // reliable inside a Modal (SafeAreaView reads 0 there)
 
   // Hide the bottom tab bar while a chat / class announcement thread is open so
   // it can own the full screen (fixes the input gap + keyboard avoidance).
@@ -2796,8 +2797,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       {/* Parent Contacts — a private email book, saved on the teacher's own doc.
           Fills in the "who to send to" half of parent reports. */}
       <Modal visible={contactsOpen} animationType="slide" onRequestClose={() => setContactsOpen(false)}>
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-          <View style={styles.pcNav}>
+        <View style={styles.container}>
+          <View style={[styles.pcNav, { paddingTop: insets.top + SPACING.md }]}>
             <TouchableOpacity onPress={() => setContactsOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.pcCancel}>Cancel</Text>
             </TouchableOpacity>
@@ -2830,7 +2831,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               </View>
             ))}
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       <AddStudentsModal

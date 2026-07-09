@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -42,6 +42,7 @@ export default function PacksScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
 
   const myUid = auth.currentUser?.uid;
+  const insets = useSafeAreaInsets(); // reliable even inside a Modal (SafeAreaView isn't)
 
   const load = useCallback(async () => {
     if (!myUid) { setLoading(false); return; }
@@ -292,8 +293,8 @@ export default function PacksScreen({ navigation }) {
 
       {/* ── Pack editor (full screen — keyboard-safe) ── */}
       <Modal visible={!!draft} animationType="slide" onRequestClose={() => setDraft(null)}>
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-          <View style={styles.nav}>
+        <View style={styles.container}>
+          <View style={[styles.nav, { paddingTop: insets.top + SPACING.sm + 2 }]}>
             <TouchableOpacity onPress={() => setDraft(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.navCancel}>Cancel</Text>
             </TouchableOpacity>
@@ -346,7 +347,7 @@ export default function PacksScreen({ navigation }) {
               <Text style={styles.addTaskText}>Add task to pack</Text>
             </TouchableOpacity>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* ── Assign (packs + programs) ── */}
@@ -391,8 +392,8 @@ export default function PacksScreen({ navigation }) {
 
       {/* ── Program editor (full screen — keyboard-safe) ── */}
       <Modal visible={!!progDraft} animationType="slide" onRequestClose={() => setProgDraft(null)}>
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-          <View style={styles.nav}>
+        <View style={styles.container}>
+          <View style={[styles.nav, { paddingTop: insets.top + SPACING.sm + 2 }]}>
             <TouchableOpacity onPress={() => setProgDraft(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.navCancel}>Cancel</Text>
             </TouchableOpacity>
@@ -441,7 +442,7 @@ export default function PacksScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
