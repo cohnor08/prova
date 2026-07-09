@@ -219,6 +219,7 @@ export default function PacksScreen({ navigation }) {
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
       ) : (
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <Text style={styles.sectionHeading}>PACKS</Text>
           <Text style={styles.intro}>Build a set of tasks once, then assign the whole pack to a student or class in one tap.</Text>
 
           {packs.length === 0 ? (
