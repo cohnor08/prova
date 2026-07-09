@@ -934,6 +934,7 @@ export default function ProgressScreen() {
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
+  const [pendingShare, setPendingShare] = useState(false); // fire OS share once the sheet has dismissed
   const [convos, setConvos] = useState([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [sendingTo, setSendingTo] = useState(null);
@@ -1103,13 +1104,17 @@ export default function ProgressScreen() {
     }
   };
 
+  // iOS can't present the OS share sheet while our own modal is still up, so we
+  // close ours and present the share sheet from the modal's onDismiss (fires
+  // after it's fully gone). Android has no such restriction — fire it directly.
   const shareExternal = () => {
-    // Close the sheet first, THEN present the OS share sheet — presenting it
-    // while our modal is still dismissing makes iOS silently drop it (nothing
-    // happens). The short delay lets the fade finish.
-    const msg = buildReportText();
-    setShareOpen(false);
-    setTimeout(() => { Share.share({ message: msg }).catch(() => {}); }, 300);
+    if (Platform.OS === 'ios') {
+      setPendingShare(true);
+      setShareOpen(false);
+    } else {
+      setShareOpen(false);
+      Share.share({ message: buildReportText() }).catch(() => {});
+    }
   };
 
   const sendToConversation = async (c) => {
@@ -1248,7 +1253,18 @@ export default function ProgressScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+      <Modal
+        visible={shareOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShareOpen(false)}
+        onDismiss={() => {
+          if (pendingShare) {
+            setPendingShare(false);
+            Share.share({ message: buildReportText() }).catch(() => {});
+          }
+        }}
+      >
         <TouchableOpacity style={styles.shareBackdrop} activeOpacity={1} onPress={() => setShareOpen(false)}>
           <TouchableOpacity style={styles.shareSheet} activeOpacity={1}>
             <View style={styles.shareSheetHandle} />
