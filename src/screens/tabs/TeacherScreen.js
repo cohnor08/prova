@@ -22,6 +22,8 @@ import { displayName } from '../../lib/displayName';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
@@ -1954,15 +1956,21 @@ function TeacherDashboard() {
     try {
       const snap = await getDocs(query(
         collection(db, 'sessionHistory', student.uid, 'logs'),
-        orderBy('date', 'desc'), limit(7),
+        orderBy('date', 'desc'), limit(14),
       ));
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); cutoff.setHours(0, 0, 0, 0);
-      let weekMins = 0; let daysPracticed = 0;
-      snap.forEach((d) => {
-        const data = d.data();
-        const day = new Date(`${d.id}T00:00:00`);
-        if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
-      });
+      const logMap = {};
+      snap.forEach((d) => { logMap[d.id] = d.data().totalMinutes || 0; });
+      // Last 7 calendar days, in order, for the bar chart + weekly totals.
+      const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const dt = new Date(); dt.setHours(0, 0, 0, 0); dt.setDate(dt.getDate() - i);
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        days.push({ label: DOW[dt.getDay()], mins: logMap[key] || 0 });
+      }
+      const weekMins = days.reduce((s, d) => s + d.mins, 0);
+      const daysPracticed = days.filter((d) => d.mins > 0).length;
+      const maxMins = Math.max(1, ...days.map((d) => d.mins));
       const name = displayName(student);
       const streak = student.streak || 0;
       const assigned = student.assignedTasks?.length || 0;
@@ -1972,42 +1980,79 @@ function TeacherDashboard() {
 
       // Pull lesson attendance, marks and the latest note from the teacher's own
       // doc (recorded on the lesson calendar) for the last ~term.
-      let lessonLines = '';
+      let attPct = null, avgMark = null, missed = 0, attended = 0, note = null;
       try {
         const meSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
         const att = meSnap.data()?.attendance || {};
         const c = new Date(); c.setDate(c.getDate() - 91);
         const cutoffYmd = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
-        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0;
-        let latestNote = null, latestNoteDate = '';
+        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0, latestNoteDate = '';
         Object.values(att).forEach((r) => {
           if (r.studentUid !== student.uid || (r.date || '') < cutoffYmd) return;
           if (r.status === 'present') present++;
           else if (r.status === 'late') late++;
           else if (r.status === 'absent') absent++;
           if (r.mark) { markSum += r.mark; markCount++; }
-          if (r.note && (r.date || '') >= latestNoteDate) { latestNote = r.note; latestNoteDate = r.date || ''; }
+          if (r.note && (r.date || '') >= latestNoteDate) { note = r.note; latestNoteDate = r.date || ''; }
         });
         const denom = present + late + absent;
-        if (denom > 0) {
-          const pct = Math.round(((present + late) / denom) * 100);
-          lessonLines += `\nLessons this term: ${present + late} of ${denom} attended (${pct}%)`;
-          if (absent > 0) lessonLines += ` · ${absent} missed`;
-        }
-        if (markCount > 0) lessonLines += `\nAverage lesson mark: ${(markSum / markCount).toFixed(1)} / 5 ⭐`;
-        if (latestNote) lessonLines += `\nLatest teacher note: ${latestNote}`;
+        if (denom > 0) { attended = present + late; missed = absent; attPct = Math.round((attended / denom) * 100); }
+        if (markCount > 0) avgMark = (markSum / markCount).toFixed(1);
       } catch (e) { /* attendance is optional — skip if it fails */ }
 
-      const report =
-`🎸 Prova practice report — ${name}
+      const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+      const bars = days.map((d) => `<div class="bc"><div class="bt"><div class="bf" style="height:${Math.round((d.mins / maxMins) * 100)}%"></div></div><div class="bl">${d.label}</div></div>`).join('');
 
-This week: practiced ${daysPracticed} of 7 days · ${timeStr} total
-Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
-Assigned tasks: ${done} of ${assigned} completed
-Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})${lessonLines}
+      // A clean, light, printable report card — Prova-branded.
+      const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;color:#0F172A;background:#fff}
+.wrap{max-width:640px;margin:0 auto;padding:34px 30px}
+.brand{display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:22px;font-weight:800;letter-spacing:1px;color:#2563EB}.logo b{color:#06B6D4}
+.date{color:#64748B;font-size:12px}
+.hero{margin:24px 0 4px}.hero h1{margin:0;font-size:26px}.hero p{margin:3px 0 0;color:#64748B;font-size:14px}
+.bars{display:flex;gap:10px;align-items:flex-end;height:130px;margin:22px 0 6px;padding:16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:16px}
+.bc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.bt{flex:1;width:62%;display:flex;align-items:flex-end}
+.bf{width:100%;background:linear-gradient(180deg,#3B82F6,#06B6D4);border-radius:6px;min-height:3px}
+.bl{margin-top:8px;font-size:11px;color:#94A3B8;font-weight:700}
+.grid{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.stat{flex:1 1 44%;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:14px 16px}
+.stat .v{font-size:22px;font-weight:800}.stat .l{font-size:12px;color:#64748B;margin-top:3px}
+.note{margin-top:8px;background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #2563EB;border-radius:10px;padding:14px 16px}
+.note .q{font-size:15px;font-style:italic}.note .a{font-size:12px;color:#64748B;margin-top:6px}
+.foot{margin-top:28px;text-align:center;color:#94A3B8;font-size:12px}
+</style></head><body><div class="wrap">
+<div class="brand"><div class="logo">PROVA<b>.</b></div><div class="date">${esc(today)}</div></div>
+<div class="hero"><h1>${esc(name)}'s practice report</h1><p>This week · ${esc(student.level || 'Beginner')} ${esc(student.instrument || 'Guitar')}</p></div>
+<div class="bars">${bars}</div>
+<div class="grid">
+<div class="stat"><div class="v">${timeStr}</div><div class="l">Practiced this week</div></div>
+<div class="stat"><div class="v">${daysPracticed}/7</div><div class="l">Days practiced</div></div>
+<div class="stat"><div class="v">${streak} 🔥</div><div class="l">Day streak</div></div>
+<div class="stat"><div class="v">${done}/${assigned}</div><div class="l">Tasks completed</div></div>
+${attPct != null ? `<div class="stat"><div class="v">${attPct}%</div><div class="l">Lessons attended${missed ? ` · ${missed} missed` : ''}</div></div>` : ''}
+${avgMark != null ? `<div class="stat"><div class="v">${avgMark}/5 ⭐</div><div class="l">Average lesson mark</div></div>` : ''}
+</div>
+${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a">— ${esc(myName || 'Your teacher')}</div></div>` : ''}
+<div class="foot">Sent with Prova · your music practice coach</div>
+</div></body></html>`;
 
-Sent from Prova`;
-      await Share.share({ message: report });
+      // Text fallback if PDF generation/sharing isn't available on the device.
+      const text = `🎸 Prova practice report — ${name}\n\nThis week: practiced ${daysPracticed} of 7 days · ${timeStr} total\nStreak: ${streak} day${streak === 1 ? '' : 's'}\nTasks: ${done} of ${assigned} completed${attPct != null ? `\nLessons: ${attended} of ${attended + missed} attended (${attPct}%)` : ''}${avgMark != null ? `\nMark: ${avgMark}/5` : ''}${note ? `\nNote: ${note}` : ''}\n\nSent from Prova`;
+
+      try {
+        const { uri } = await Print.printToFileAsync({ html });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `${name}'s report`, UTI: 'com.adobe.pdf' });
+        } else {
+          await Share.share({ message: text });
+        }
+      } catch (e) {
+        await Share.share({ message: text });
+      }
     } catch (e) {
       Alert.alert('Error', "Couldn't build the report. Please try again.");
     }
