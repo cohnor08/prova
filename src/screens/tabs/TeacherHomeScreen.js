@@ -13,6 +13,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { displayName } from '../../lib/displayName';
 import { sendNotification } from '../../lib/inbox';
+import { advancePrograms } from '../../lib/programs';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -326,6 +327,8 @@ export default function TeacherHomeScreen({ navigation }) {
         try {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
+          // Release any program weeks that have come due since last open.
+          advancePrograms(uid).catch(() => {});
           // Students who connected carry teacherUid === my uid.
           const [snap, meSnap] = await Promise.all([
             getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
@@ -399,7 +402,7 @@ export default function TeacherHomeScreen({ navigation }) {
             </View>
             <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt, styles.actionBtnWide]} onPress={goPacks} activeOpacity={0.85} disabled={editMode}>
               <Ionicons name="albums-outline" size={18} color={COLORS.primary} />
-              <Text style={[styles.actionText, { color: COLORS.primary }]}>Assignment packs</Text>
+              <Text style={[styles.actionText, { color: COLORS.primary }]}>Packs & Programs</Text>
             </TouchableOpacity>
           </View>
         );

@@ -11,14 +11,20 @@ import { displayName } from '../../lib/displayName';
 import { sendNotification } from '../../lib/inbox';
 import { COLORS, SPACING } from '../../constants/theme';
 import SheetModal from '../../components/SheetModal';
+import { advancePrograms } from '../../lib/programs';
 
 // Assignment Packs = a reusable bundle of practice tasks a teacher builds once
 // and assigns to any student or class in one tap. The pack lives on the teacher
 // doc (`taskPacks`); assigning writes a fresh copy of every task into each
 // recipient's `assignedTasks` (same shape the one-off assign flow uses).
+//
+// Programs = an ordered list of packs (one per week). Assign once and each week
+// auto-releases — see src/lib/programs.js. Stored on the teacher doc as
+// `taskPrograms`; live assignments live in `assignedPrograms`.
 
 const emptyDraft = () => ({ id: null, name: '', tasks: [], createdAt: null });
 const emptyTask = () => ({ title: '', description: '', youtube: '', durationMin: '10' });
+const emptyProg = () => ({ id: null, name: '', packIds: [] });
 
 export default function PacksScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -28,6 +34,9 @@ export default function PacksScreen({ navigation }) {
   const [draft, setDraft] = useState(null);            // pack being created/edited
   const [taskForm, setTaskForm] = useState(emptyTask());
   const [assignPack, setAssignPack] = useState(null);  // pack being assigned
+  const [programs, setPrograms] = useState([]);
+  const [progDraft, setProgDraft] = useState(null);    // program being created/edited
+  const [assignProg, setAssignProg] = useState(null);  // program being assigned
   const [selStudents, setSelStudents] = useState(() => new Set());
   const [selClasses, setSelClasses] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
@@ -40,6 +49,7 @@ export default function PacksScreen({ navigation }) {
       const meSnap = await getDoc(doc(db, 'users', myUid));
       const me = meSnap.data() || {};
       setPacks(Array.isArray(me.taskPacks) ? me.taskPacks : []);
+      setPrograms(Array.isArray(me.taskPrograms) ? me.taskPrograms : []);
       setClasses(Array.isArray(me.classes) ? me.classes : []);
       const snap = await getDocs(query(collection(db, 'users'), where('teacherUid', '==', myUid)));
       setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
@@ -89,10 +99,41 @@ export default function PacksScreen({ navigation }) {
     ]);
   };
 
-  // ── Assign ──
-  const openAssign = (p) => { setSelStudents(new Set()); setSelClasses(new Set()); setAssignPack(p); };
+  const persistPrograms = async (next) => {
+    setPrograms(next);
+    try { await updateDoc(doc(db, 'users', myUid), { taskPrograms: next }); }
+    catch (e) { Alert.alert('Error', "Couldn't save your programs. Please try again."); }
+  };
+
+  // ── Program editor (a program = ordered packs, one per week) ──
+  const openNewProg = () => {
+    if (packs.length === 0) { Alert.alert('Create a pack first', 'A program is built from your packs — make at least one pack, then chain them into weeks.'); return; }
+    setProgDraft(emptyProg());
+  };
+  const openEditProg = (pr) => setProgDraft({ ...pr, packIds: [...(pr.packIds || [])] });
+  const addWeek = (packId) => setProgDraft((d) => ({ ...d, packIds: [...d.packIds, packId] }));
+  const removeWeek = (i) => setProgDraft((d) => ({ ...d, packIds: d.packIds.filter((_, idx) => idx !== i) }));
+  const saveProgram = () => {
+    const name = (progDraft.name || '').trim();
+    if (!name) { Alert.alert('Name it', 'Give the program a name.'); return; }
+    if (progDraft.packIds.length === 0) { Alert.alert('Add a week', 'Add at least one pack as a week.'); return; }
+    const obj = { id: progDraft.id || `prog_${Date.now()}`, name, packIds: progDraft.packIds, createdAt: progDraft.createdAt || new Date().toISOString() };
+    persistPrograms(progDraft.id ? programs.map((p) => (p.id === progDraft.id ? obj : p)) : [...programs, obj]);
+    setProgDraft(null);
+  };
+  const deleteProgram = (pr) => {
+    Alert.alert('Delete program', `Delete "${pr.name}"? Students already on it keep the weeks they've been given.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => persistPrograms(programs.filter((x) => x.id !== pr.id)) },
+    ]);
+  };
+
+  // ── Assign (shared by packs + programs) ──
   const toggleIn = (setFn) => (id) => setFn((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const doAssign = async () => {
+  const openAssign = (p) => { setSelStudents(new Set()); setSelClasses(new Set()); setAssignPack(p); };
+  const openAssignProgram = (pr) => { setSelStudents(new Set()); setSelClasses(new Set()); setAssignProg(pr); };
+  const closeAssign = () => { setAssignPack(null); setAssignProg(null); };
+  const resolveRecipients = () => {
     const recipients = new Map(); // uid -> class tag | null
     selStudents.forEach((uid) => { if (!recipients.has(uid)) recipients.set(uid, null); });
     selClasses.forEach((cid) => {
@@ -101,23 +142,21 @@ export default function PacksScreen({ navigation }) {
         if (students.some((s) => s.uid === uid)) recipients.set(uid, { classId: c.id, className: c.name });
       });
     });
+    return recipients;
+  };
+
+  const doAssign = async () => {
+    const recipients = resolveRecipients();
     if (recipients.size === 0) { Alert.alert('Pick recipients', 'Choose at least one student or class.'); return; }
     setSaving(true);
     try {
       const stamp = Date.now();
       await Promise.all([...recipients.entries()].map(([uid, cls], ri) => {
         const tasks = (assignPack.tasks || []).map((t, ti) => ({
-          title: t.title,
-          description: t.description || '',
-          youtube: t.youtube || '',
-          song: '',
-          dueDate: null,
-          durationMin: t.durationMin || 0,
-          completed: false,
-          assignedAt: new Date().toISOString(),
-          teacherUid: myUid,
-          ...(cls || {}),
-          id: `${stamp}_${ri}_${ti}`,
+          title: t.title, description: t.description || '', youtube: t.youtube || '', song: '',
+          dueDate: null, durationMin: t.durationMin || 0, completed: false,
+          assignedAt: new Date().toISOString(), teacherUid: myUid,
+          ...(cls || {}), id: `${stamp}_${ri}_${ti}`,
         }));
         return updateDoc(doc(db, 'users', uid), { assignedTasks: arrayUnion(...tasks) });
       }));
@@ -125,10 +164,43 @@ export default function PacksScreen({ navigation }) {
         type: 'task_assigned', title: 'New tasks from your teacher', body: assignPack.name, data: { taskTitle: assignPack.name },
       }).catch(() => {}));
       const n = recipients.size;
-      setAssignPack(null);
+      closeAssign();
       Alert.alert('Assigned', `"${assignPack.name}" sent to ${n} student${n === 1 ? '' : 's'}.`);
     } catch (e) {
       Alert.alert('Error', "Couldn't assign the pack. Please try again.");
+    } finally { setSaving(false); }
+  };
+
+  const doAssignProgram = async () => {
+    const recipients = resolveRecipients();
+    if (recipients.size === 0) { Alert.alert('Pick recipients', 'Choose at least one student or class.'); return; }
+    setSaving(true);
+    try {
+      // Snapshot each pack's tasks as that week's content, so later pack edits
+      // don't retroactively change a running program.
+      const weeks = (assignProg.packIds || []).map((pid) => {
+        const p = packs.find((x) => x.id === pid);
+        return (p?.tasks || []).map((t) => ({ title: t.title, description: t.description || '', youtube: t.youtube || '', durationMin: t.durationMin || 0 }));
+      });
+      const startDate = new Date().toISOString();
+      const stamp = Date.now();
+      const meSnap = await getDoc(doc(db, 'users', myUid));
+      const existing = Array.isArray(meSnap.data()?.assignedPrograms) ? meSnap.data().assignedPrograms : [];
+      const records = [...recipients.entries()].map(([uid, cls], ri) => ({
+        id: `ap_${stamp}_${ri}`, programId: assignProg.id, name: assignProg.name,
+        weeks, startDate, weeksAssigned: 0, recipientUid: uid,
+        ...(cls ? { classId: cls.classId, className: cls.className } : {}),
+      }));
+      await updateDoc(doc(db, 'users', myUid), { assignedPrograms: [...existing, ...records] });
+      await advancePrograms(myUid); // release Week 1 right away
+      [...recipients.keys()].forEach((uid) => sendNotification(uid, {
+        type: 'task_assigned', title: 'New program from your teacher', body: assignProg.name, data: { taskTitle: assignProg.name },
+      }).catch(() => {}));
+      const n = recipients.size;
+      closeAssign();
+      Alert.alert('Program started', `"${assignProg.name}" — Week 1 sent to ${n} student${n === 1 ? '' : 's'}. Each week releases automatically.`);
+    } catch (e) {
+      Alert.alert('Error', "Couldn't start the program. Please try again.");
     } finally { setSaving(false); }
   };
 
@@ -139,7 +211,7 @@ export default function PacksScreen({ navigation }) {
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
           <Text style={styles.backText}>Home</Text>
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Assignment Packs</Text>
+        <Text style={styles.navTitle}>Packs & Programs</Text>
         <View style={{ width: 64 }} />
       </View>
 
@@ -178,6 +250,41 @@ export default function PacksScreen({ navigation }) {
           <TouchableOpacity style={styles.newBtn} onPress={openNew} activeOpacity={0.85}>
             <Ionicons name="add" size={18} color={COLORS.primary} />
             <Text style={styles.newBtnText}>New pack</Text>
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+          <Text style={styles.sectionHeading}>PROGRAMS</Text>
+          <Text style={styles.intro}>Chain packs into a multi-week program — assign it once and each week releases to the student automatically.</Text>
+
+          {programs.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="git-branch-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: SPACING.sm }} />
+              <Text style={styles.emptyText}>No programs yet. Build a few packs first, then chain them into weeks.</Text>
+            </View>
+          ) : programs.map((pr) => (
+            <View key={pr.id} style={styles.packCard}>
+              <View style={styles.packTop}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.packName} numberOfLines={1}>{pr.name}</Text>
+                  <Text style={styles.packMeta}>{pr.packIds.length} week{pr.packIds.length === 1 ? '' : 's'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => openEditProg(pr)} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="create-outline" size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteProgram(pr)} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignProgram(pr)} activeOpacity={0.85}>
+                <Ionicons name="rocket-outline" size={15} color={COLORS.text} />
+                <Text style={styles.assignBtnText}>Start program</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <TouchableOpacity style={styles.newBtn} onPress={openNewProg} activeOpacity={0.85}>
+            <Ionicons name="add" size={18} color={COLORS.primary} />
+            <Text style={styles.newBtnText}>New program</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
@@ -241,9 +348,9 @@ export default function PacksScreen({ navigation }) {
         </ScrollView>
       </SheetModal>
 
-      {/* ── Assign ── */}
-      <SheetModal visible={!!assignPack} onRequestClose={() => setAssignPack(null)} cardStyle={styles.sheet}>
-        <Text style={styles.sheetTitle}>Assign “{assignPack?.name}”</Text>
+      {/* ── Assign (packs + programs) ── */}
+      <SheetModal visible={!!(assignPack || assignProg)} onRequestClose={closeAssign} cardStyle={styles.sheet}>
+        <Text style={styles.sheetTitle}>{assignProg ? 'Start' : 'Assign'} “{(assignPack || assignProg)?.name}”</Text>
         <ScrollView style={{ maxHeight: 380 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {classes.length > 0 && <Text style={styles.label}>CLASSES</Text>}
           {classes.map((c) => {
@@ -272,13 +379,62 @@ export default function PacksScreen({ navigation }) {
           })}
         </ScrollView>
         <View style={styles.sheetBtns}>
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => setAssignPack(null)}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={closeAssign}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={doAssign} disabled={saving}>
-            {saving ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.saveText}>Assign</Text>}
+          <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={assignProg ? doAssignProgram : doAssign} disabled={saving}>
+            {saving ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.saveText}>{assignProg ? 'Start program' : 'Assign'}</Text>}
           </TouchableOpacity>
         </View>
+      </SheetModal>
+
+      {/* ── Program editor ── */}
+      <SheetModal visible={!!progDraft} onRequestClose={() => setProgDraft(null)} cardStyle={styles.sheet} keyboardAvoiding="android">
+        <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+          <Text style={styles.sheetTitle}>{progDraft?.id ? 'Edit program' : 'New program'}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Program name (e.g. Beginner Method)"
+            placeholderTextColor={COLORS.textMuted}
+            value={progDraft?.name}
+            onChangeText={(v) => setProgDraft((d) => ({ ...d, name: v }))}
+          />
+
+          {(progDraft?.packIds || []).length > 0 && <Text style={styles.label}>WEEKS ({progDraft.packIds.length})</Text>}
+          {(progDraft?.packIds || []).map((pid, i) => {
+            const p = packs.find((x) => x.id === pid);
+            return (
+              <View key={`${pid}_${i}`} style={styles.taskRow}>
+                <Text style={styles.weekBadge}>W{i + 1}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.taskRowTitle} numberOfLines={1}>{p ? p.name : 'Deleted pack'}</Text>
+                  <Text style={styles.taskRowMeta}>{p ? `${p.tasks.length} task${p.tasks.length === 1 ? '' : 's'}` : 'no longer exists'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => removeWeek(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+
+          <Text style={styles.label}>ADD A WEEK — TAP A PACK</Text>
+          {packs.map((p) => (
+            <TouchableOpacity key={p.id} style={styles.pickRow} onPress={() => addWeek(p.id)} activeOpacity={0.7}>
+              <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.pickName} numberOfLines={1}>{p.name}</Text>
+              <Text style={styles.pickMeta}>{p.tasks.length}</Text>
+            </TouchableOpacity>
+          ))}
+
+          <View style={styles.sheetBtns}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setProgDraft(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={saveProgram}>
+              <Text style={styles.saveText}>Save program</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SheetModal>
     </SafeAreaView>
   );
@@ -306,6 +462,9 @@ const styles = StyleSheet.create({
 
   newBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, paddingVertical: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
   newBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  divider: { height: 1, backgroundColor: COLORS.border, marginTop: SPACING.xl, marginBottom: SPACING.lg },
+  sectionHeading: { color: COLORS.text, fontSize: 18, fontWeight: '900', marginBottom: SPACING.xs },
+  weekBadge: { color: COLORS.primary, fontSize: 12, fontWeight: '900', width: 30 },
 
   sheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40 },
   sheetTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.md },
