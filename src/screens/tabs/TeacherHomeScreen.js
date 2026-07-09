@@ -41,7 +41,6 @@ function tipOfTheDay() {
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
   { id: 'code', enabled: true },
-  { id: 'pulse', enabled: true },
   { id: 'calendar', enabled: true },
   { id: 'lessons', enabled: true },
   { id: 'stats', enabled: true },
@@ -50,12 +49,12 @@ const DEFAULT_WIDGETS = [
   // Extra widgets — off by default; teachers switch them on in Edit mode.
   { id: 'tip', enabled: false },
   { id: 'top', enabled: false },
-  { id: 'attention', enabled: false },
   { id: 'notes', enabled: false },
+  // Practice Pulse sits at the bottom — the studio's at-a-glance status.
+  { id: 'pulse', enabled: true },
 ];
 const WIDGET_LABELS = {
   code: 'Join code',
-  pulse: 'Practice Pulse',
   calendar: 'Calendar',
   lessons: 'Lessons',
   stats: 'Stats',
@@ -63,8 +62,8 @@ const WIDGET_LABELS = {
   actions: 'Quick actions',
   tip: 'Tip of the day',
   top: 'Top students',
-  attention: 'Needs a nudge',
   notes: 'My notes',
+  pulse: 'Practice Pulse',
 };
 
 const LESSON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -489,7 +488,7 @@ export default function TeacherHomeScreen({ navigation }) {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.pulseName} numberOfLines={1}>{displayName(s)}</Text>
                     <Text style={styles.pulseMeta} numberOfLines={1}>
-                      {(s.streak || 0) > 0 ? `🔥 ${s.streak} · ` : ''}{st.label}
+                      {(s.streak || 0) > 0 ? `${s.streak}-day streak · ` : ''}{st.label}
                     </Text>
                   </View>
                   {st.rank < 2 && (
@@ -524,30 +523,6 @@ export default function TeacherHomeScreen({ navigation }) {
                 <Text style={styles.miniScore}>{(s.provaScore || 0).toLocaleString()}</Text>
               </View>
             ))}
-          </View>
-        );
-      }
-      case 'attention': {
-        const now = Date.now();
-        const flagged = students.filter((s) => {
-          if (!s.lastSessionDate) return true;
-          return now - new Date(s.lastSessionDate).getTime() >= 3 * 86400000;
-        });
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Needs a nudge</Text>
-            {flagged.length === 0 ? (
-              <Text style={styles.emptyMini}>Everyone's practiced recently 🎉</Text>
-            ) : flagged.slice(0, 5).map((s, i) => {
-              const days = s.lastSessionDate ? Math.floor((now - new Date(s.lastSessionDate).getTime()) / 86400000) : null;
-              return (
-                <View key={s.uid || i} style={styles.miniRow}>
-                  <Ionicons name="alert-circle-outline" size={16} color={COLORS.error} />
-                  <Text style={styles.miniName} numberOfLines={1}>{displayName(s)}</Text>
-                  <Text style={styles.miniMeta}>{days === null ? 'never' : `${days}d ago`}</Text>
-                </View>
-              );
-            })}
           </View>
         );
       }
