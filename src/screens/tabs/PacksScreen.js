@@ -183,8 +183,14 @@ export default function PacksScreen({ navigation }) {
       )}
 
       {/* ── Editor ── */}
-      <SheetModal visible={!!draft} onRequestClose={() => setDraft(null)} cardStyle={styles.sheet} keyboardAvoiding>
-        <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <SheetModal visible={!!draft} onRequestClose={() => setDraft(null)} cardStyle={styles.sheet} keyboardAvoiding="android">
+        <ScrollView
+          style={{ maxHeight: 460 }}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: SPACING.sm }}
+        >
           <Text style={styles.sheetTitle}>{draft?.id ? 'Edit pack' : 'New pack'}</Text>
           <TextInput
             style={styles.input}
@@ -223,15 +229,16 @@ export default function PacksScreen({ navigation }) {
             <Ionicons name="add" size={16} color={COLORS.primary} />
             <Text style={styles.addTaskText}>Add task to pack</Text>
           </TouchableOpacity>
+
+          <View style={styles.sheetBtns}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setDraft(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={saveDraft}>
+              <Text style={styles.saveText}>Save pack</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
-        <View style={styles.sheetBtns}>
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => setDraft(null)}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.saveBtn} onPress={saveDraft}>
-            <Text style={styles.saveText}>Save pack</Text>
-          </TouchableOpacity>
-        </View>
       </SheetModal>
 
       {/* ── Assign ── */}
