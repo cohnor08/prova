@@ -1589,6 +1589,9 @@ function TeacherDashboard() {
   const [myName, setMyName] = useState('');
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
+  const [parentEmails, setParentEmails] = useState({});     // { studentUid: 'parent@email' }
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState({});
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null); // class being renamed
@@ -1642,13 +1645,28 @@ function TeacherDashboard() {
     }, ignorePermissionDenied);
   }, [myUid]);
 
-  // Resolve my own display name (for labelling group-chat posts).
+  // Resolve my own display name (for labelling group-chat posts) + load my
+  // private parent-contact book.
   useEffect(() => {
     if (!myUid) return;
     getDoc(doc(db, 'users', myUid))
-      .then((s) => setMyName(displayName({ uid: myUid, ...(s.data() || {}) })))
+      .then((s) => {
+        const d = s.data() || {};
+        setMyName(displayName({ uid: myUid, ...d }));
+        setParentEmails(d.parentEmails && typeof d.parentEmails === 'object' ? d.parentEmails : {});
+      })
       .catch(() => {});
   }, [myUid]);
+
+  const openContacts = () => { setEmailDraft({ ...parentEmails }); setContactsOpen(true); };
+  const saveContacts = async () => {
+    // Drop blank entries so the map stays tidy.
+    const cleaned = {};
+    Object.entries(emailDraft).forEach(([uid, v]) => { const e = (v || '').trim(); if (e) cleaned[uid] = e; });
+    setParentEmails(cleaned);
+    setContactsOpen(false);
+    if (myUid) updateDoc(doc(db, 'users', myUid), { parentEmails: cleaned }).catch(() => {});
+  };
 
   // Class group chats I own/belong to (newest activity first).
   useEffect(() => {
@@ -2112,6 +2130,14 @@ Sent from Prova`;
                   <Text style={styles.shareCodeText}>Share code</Text>
                 </TouchableOpacity>
               </View>
+            )}
+
+            {!DEMO_MODE && (
+              <TouchableOpacity style={styles.contactsBtn} onPress={openContacts} activeOpacity={0.85}>
+                <Ionicons name="mail-outline" size={17} color={COLORS.primary} />
+                <Text style={styles.contactsBtnText}>Parent contacts</Text>
+                <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
             )}
 
             {!DEMO_MODE && !loading && students.length === 0 && (
@@ -2722,6 +2748,46 @@ Sent from Prova`;
         onCreate={createGroup}
       />
 
+      {/* Parent Contacts — a private email book, saved on the teacher's own doc.
+          Fills in the "who to send to" half of parent reports. */}
+      <Modal visible={contactsOpen} animationType="slide" onRequestClose={() => setContactsOpen(false)}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+          <View style={styles.pcNav}>
+            <TouchableOpacity onPress={() => setContactsOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.pcCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.pcTitle}>Parent Contacts</Text>
+            <TouchableOpacity onPress={saveContacts} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.pcSave}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
+            <Text style={styles.pcIntro}>Add each student's parent email. Saved privately to your account — ready for parent reports.</Text>
+            {students.length === 0 ? (
+              <Text style={styles.pcEmpty}>No students connected yet. Share your join code first.</Text>
+            ) : students.map((s) => (
+              <View key={s.uid} style={styles.pcRow}>
+                <Text style={styles.pcName} numberOfLines={1}>{displayName(s)}</Text>
+                <TextInput
+                  style={styles.pcInput}
+                  placeholder="parent@email.com"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={emailDraft[s.uid] || ''}
+                  onChangeText={(v) => setEmailDraft((d) => ({ ...d, [s.uid]: v }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       <AddStudentsModal
         visible={!!addToClass}
         klass={addToClass}
@@ -3065,6 +3131,18 @@ const styles = StyleSheet.create({
   codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
   shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
   shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  contactsBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingVertical: SPACING.md, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
+  contactsBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  // Parent Contacts page
+  pcNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  pcCancel: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
+  pcTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  pcSave: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  pcIntro: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
+  pcEmpty: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', marginTop: SPACING.xl },
+  pcRow: { marginBottom: SPACING.md },
+  pcName: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: SPACING.xs },
+  pcInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
   studentSearchRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   studentSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
   studentSearchEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.lg },
