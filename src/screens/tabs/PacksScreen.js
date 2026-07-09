@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -290,63 +290,64 @@ export default function PacksScreen({ navigation }) {
         </ScrollView>
       )}
 
-      {/* ── Editor ── */}
-      <SheetModal visible={!!draft} onRequestClose={() => setDraft(null)} cardStyle={styles.sheet} keyboardAvoiding>
-        <ScrollView
-          style={{ maxHeight: 320 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: SPACING.sm }}
-        >
-          <Text style={styles.sheetTitle}>{draft?.id ? 'Edit pack' : 'New pack'}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Pack name (e.g. Beginner Week 1)"
-            placeholderTextColor={COLORS.textMuted}
-            value={draft?.name}
-            onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))}
-          />
+      {/* ── Pack editor (full screen — keyboard-safe) ── */}
+      <Modal visible={!!draft} animationType="slide" onRequestClose={() => setDraft(null)}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+          <View style={styles.nav}>
+            <TouchableOpacity onPress={() => setDraft(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.navCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>{draft?.id ? 'Edit pack' : 'New pack'}</Text>
+            <TouchableOpacity onPress={saveDraft} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.navSave}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 80 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}
+          >
+            <TextInput
+              style={styles.input}
+              placeholder="Pack name (e.g. Beginner Week 1)"
+              placeholderTextColor={COLORS.textMuted}
+              value={draft?.name}
+              onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))}
+            />
 
-          {(draft?.tasks || []).length > 0 && <Text style={styles.label}>TASKS ({draft.tasks.length})</Text>}
-          {(draft?.tasks || []).map((t) => (
-            <View key={t.id} style={styles.taskRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.taskRowTitle} numberOfLines={1}>{t.title}</Text>
-                <Text style={styles.taskRowMeta}>{t.durationMin ? `${t.durationMin} min` : 'open-ended'}</Text>
+            {(draft?.tasks || []).length > 0 && <Text style={styles.label}>TASKS ({draft.tasks.length})</Text>}
+            {(draft?.tasks || []).map((t) => (
+              <View key={t.id} style={styles.taskRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.taskRowTitle} numberOfLines={1}>{t.title}</Text>
+                  <Text style={styles.taskRowMeta}>{t.durationMin ? `${t.durationMin} min` : 'open-ended'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => removeDraftTask(t.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => removeDraftTask(t.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
-              </TouchableOpacity>
+            ))}
+
+            <Text style={styles.label}>ADD A TASK</Text>
+            <TextInput style={styles.input} placeholder="Task title" placeholderTextColor={COLORS.textMuted}
+              value={taskForm.title} onChangeText={(v) => setTaskForm((f) => ({ ...f, title: v }))} />
+            <TextInput style={[styles.input, { minHeight: 56, textAlignVertical: 'top' }]} placeholder="Description (optional)" placeholderTextColor={COLORS.textMuted}
+              value={taskForm.description} onChangeText={(v) => setTaskForm((f) => ({ ...f, description: v }))} multiline />
+            <TextInput style={styles.input} placeholder="YouTube search or link (optional)" placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none" value={taskForm.youtube} onChangeText={(v) => setTaskForm((f) => ({ ...f, youtube: v }))} />
+            <View style={styles.durRow}>
+              <Text style={styles.durLabel}>Timer (min)</Text>
+              <TextInput style={styles.durInput} keyboardType="number-pad" placeholder="10" placeholderTextColor={COLORS.textMuted}
+                value={taskForm.durationMin} onChangeText={(v) => setTaskForm((f) => ({ ...f, durationMin: v.replace(/[^0-9]/g, '') }))} />
             </View>
-          ))}
-
-          <Text style={styles.label}>ADD A TASK</Text>
-          <TextInput style={styles.input} placeholder="Task title" placeholderTextColor={COLORS.textMuted}
-            value={taskForm.title} onChangeText={(v) => setTaskForm((f) => ({ ...f, title: v }))} />
-          <TextInput style={[styles.input, { minHeight: 56, textAlignVertical: 'top' }]} placeholder="Description (optional)" placeholderTextColor={COLORS.textMuted}
-            value={taskForm.description} onChangeText={(v) => setTaskForm((f) => ({ ...f, description: v }))} multiline />
-          <TextInput style={styles.input} placeholder="YouTube search or link (optional)" placeholderTextColor={COLORS.textMuted}
-            autoCapitalize="none" value={taskForm.youtube} onChangeText={(v) => setTaskForm((f) => ({ ...f, youtube: v }))} />
-          <View style={styles.durRow}>
-            <Text style={styles.durLabel}>Timer (min)</Text>
-            <TextInput style={styles.durInput} keyboardType="number-pad" placeholder="10" placeholderTextColor={COLORS.textMuted}
-              value={taskForm.durationMin} onChangeText={(v) => setTaskForm((f) => ({ ...f, durationMin: v.replace(/[^0-9]/g, '') }))} />
-          </View>
-          <TouchableOpacity style={styles.addTaskBtn} onPress={addTaskToDraft} activeOpacity={0.85}>
-            <Ionicons name="add" size={16} color={COLORS.primary} />
-            <Text style={styles.addTaskText}>Add task to pack</Text>
-          </TouchableOpacity>
-
-          <View style={styles.sheetBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setDraft(null)}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.addTaskBtn} onPress={addTaskToDraft} activeOpacity={0.85}>
+              <Ionicons name="add" size={16} color={COLORS.primary} />
+              <Text style={styles.addTaskText}>Add task to pack</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={saveDraft}>
-              <Text style={styles.saveText}>Save pack</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </SheetModal>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       {/* ── Assign (packs + programs) ── */}
       <SheetModal visible={!!(assignPack || assignProg)} onRequestClose={closeAssign} cardStyle={styles.sheet}>
@@ -388,54 +389,60 @@ export default function PacksScreen({ navigation }) {
         </View>
       </SheetModal>
 
-      {/* ── Program editor ── */}
-      <SheetModal visible={!!progDraft} onRequestClose={() => setProgDraft(null)} cardStyle={styles.sheet} keyboardAvoiding>
-        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
-          <Text style={styles.sheetTitle}>{progDraft?.id ? 'Edit program' : 'New program'}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Program name (e.g. Beginner Method)"
-            placeholderTextColor={COLORS.textMuted}
-            value={progDraft?.name}
-            onChangeText={(v) => setProgDraft((d) => ({ ...d, name: v }))}
-          />
-
-          {(progDraft?.packIds || []).length > 0 && <Text style={styles.label}>WEEKS ({progDraft.packIds.length})</Text>}
-          {(progDraft?.packIds || []).map((pid, i) => {
-            const p = packs.find((x) => x.id === pid);
-            return (
-              <View key={`${pid}_${i}`} style={styles.taskRow}>
-                <Text style={styles.weekBadge}>W{i + 1}</Text>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.taskRowTitle} numberOfLines={1}>{p ? p.name : 'Deleted pack'}</Text>
-                  <Text style={styles.taskRowMeta}>{p ? `${p.tasks.length} task${p.tasks.length === 1 ? '' : 's'}` : 'no longer exists'}</Text>
-                </View>
-                <TouchableOpacity onPress={() => removeWeek(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          <Text style={styles.label}>ADD A WEEK — TAP A PACK</Text>
-          {packs.map((p) => (
-            <TouchableOpacity key={p.id} style={styles.pickRow} onPress={() => addWeek(p.id)} activeOpacity={0.7}>
-              <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.pickName} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.pickMeta}>{p.tasks.length}</Text>
+      {/* ── Program editor (full screen — keyboard-safe) ── */}
+      <Modal visible={!!progDraft} animationType="slide" onRequestClose={() => setProgDraft(null)}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+          <View style={styles.nav}>
+            <TouchableOpacity onPress={() => setProgDraft(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.navCancel}>Cancel</Text>
             </TouchableOpacity>
-          ))}
-
-          <View style={styles.sheetBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setProgDraft(null)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={saveProgram}>
-              <Text style={styles.saveText}>Save program</Text>
+            <Text style={styles.navTitle}>{progDraft?.id ? 'Edit program' : 'New program'}</Text>
+            <TouchableOpacity onPress={saveProgram} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.navSave}>Save</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </SheetModal>
+          <ScrollView
+            contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 80 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}
+          >
+            <TextInput
+              style={styles.input}
+              placeholder="Program name (e.g. Beginner Method)"
+              placeholderTextColor={COLORS.textMuted}
+              value={progDraft?.name}
+              onChangeText={(v) => setProgDraft((d) => ({ ...d, name: v }))}
+            />
+
+            {(progDraft?.packIds || []).length > 0 && <Text style={styles.label}>WEEKS ({progDraft.packIds.length})</Text>}
+            {(progDraft?.packIds || []).map((pid, i) => {
+              const p = packs.find((x) => x.id === pid);
+              return (
+                <View key={`${pid}_${i}`} style={styles.taskRow}>
+                  <Text style={styles.weekBadge}>W{i + 1}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.taskRowTitle} numberOfLines={1}>{p ? p.name : 'Deleted pack'}</Text>
+                    <Text style={styles.taskRowMeta}>{p ? `${p.tasks.length} task${p.tasks.length === 1 ? '' : 's'}` : 'no longer exists'}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => removeWeek(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+            <Text style={styles.label}>ADD A WEEK — TAP A PACK</Text>
+            {packs.map((p) => (
+              <TouchableOpacity key={p.id} style={styles.pickRow} onPress={() => addWeek(p.id)} activeOpacity={0.7}>
+                <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.pickName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.pickMeta}>{p.tasks.length}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -446,6 +453,8 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 64 },
   backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  navCancel: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
+  navSave: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
   body: { padding: SPACING.xl, paddingBottom: 60 },
   intro: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
 
