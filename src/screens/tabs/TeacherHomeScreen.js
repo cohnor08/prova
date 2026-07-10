@@ -12,6 +12,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { displayName } from '../../lib/displayName';
+import { liveStreak } from '../../lib/score';
 import { sendNotification } from '../../lib/inbox';
 import { advancePrograms } from '../../lib/programs';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
@@ -478,8 +479,8 @@ export default function TeacherHomeScreen({ navigation }) {
           return { rank: 2, color: COLORS.success, label: days <= 0 ? 'practiced today' : 'yesterday' };
         };
         const rows = students
-          .map((s) => ({ s, st: statusOf(s) }))
-          .sort((a, b) => a.st.rank - b.st.rank || (b.s.streak || 0) - (a.s.streak || 0));
+          .map((s) => ({ s, st: statusOf(s), streak: liveStreak(s) }))
+          .sort((a, b) => a.st.rank - b.st.rank || b.streak - a.streak);
         // "Needs a nudge" = hasn't practised in more than 3 days (rank 0).
         const needCount = rows.filter((r) => r.st.rank === 0).length;
         const shown = pulseOpen ? rows : rows.slice(0, 3);
@@ -493,7 +494,7 @@ export default function TeacherHomeScreen({ navigation }) {
             </View>
             {rows.length === 0 ? (
               <Text style={styles.emptyMini}>Connect students to see their practice at a glance.</Text>
-            ) : shown.map(({ s, st }) => {
+            ) : shown.map(({ s, st, streak }) => {
               const done = nudged.has(s.uid);
               return (
                 <View key={s.uid} style={styles.pulseRow}>
@@ -501,7 +502,7 @@ export default function TeacherHomeScreen({ navigation }) {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.pulseName} numberOfLines={1}>{displayName(s)}</Text>
                     <Text style={styles.pulseMeta} numberOfLines={1}>
-                      {(s.streak || 0) > 0 ? `${s.streak}-day streak · ` : ''}{st.label}
+                      {streak > 0 ? `${streak}-day streak · ` : ''}{st.label}
                     </Text>
                   </View>
                   {st.rank === 0 && (
@@ -565,7 +566,7 @@ export default function TeacherHomeScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>

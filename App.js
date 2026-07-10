@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
@@ -37,6 +37,15 @@ import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
+import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
+
+// Dark navigation theme so screen push transitions (and the tab-bar hide when a
+// full-screen child like Ask Prova opens) never flash the default white
+// background. Safe now that the SafeAreaView bottom-gap is fixed at the source.
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: COLORS.background, card: COLORS.background },
+};
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -182,7 +191,7 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ setOnboardingComplete, role }}>
       <CelebrationProvider>
-      <NavigationContainer>
+      <NavigationContainer theme={NAV_THEME}>
         <StatusBar style="light" />
         {!user ? (
           <AuthStack />
@@ -194,7 +203,18 @@ export default function App() {
             />
           </Stack.Navigator>
         ) : (
-          <MainTabs role={role} />
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {/* MainTabs + any full-screen screens that should cover the tab bar
+                (e.g. Ask Prova) live here so opening them doesn't reflow the tab bar. */}
+            <Stack.Screen name="MainTabs">
+              {() => <MainTabs role={role} />}
+            </Stack.Screen>
+            <Stack.Screen
+              name="AskProva"
+              component={AskProvaScreen}
+              options={{ contentStyle: { backgroundColor: COLORS.background } }}
+            />
+          </Stack.Navigator>
         )}
       </NavigationContainer>
       </CelebrationProvider>

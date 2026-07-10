@@ -285,7 +285,7 @@ export default function ResourceLibraryScreen() {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.kicker}>TEACHING LIBRARY</Text>
         <Text style={styles.title}>Resources</Text>

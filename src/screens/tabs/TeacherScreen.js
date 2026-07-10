@@ -19,6 +19,7 @@ import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
 import { displayName } from '../../lib/displayName';
+import { liveStreak } from '../../lib/score';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
@@ -259,7 +260,7 @@ function PaywallScreen({ onUnlock }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.title}>Teacher Mode</Text>
         <Text style={styles.subtitle}>See what your dashboard looks like</Text>
@@ -1973,7 +1974,7 @@ function TeacherDashboard() {
       const daysPracticed = days.filter((d) => d.mins > 0).length;
       const maxMins = Math.max(1, ...days.map((d) => d.mins));
       const name = displayName(student);
-      const streak = student.streak || 0;
+      const streak = liveStreak(student);
       const assigned = student.assignedTasks?.length || 0;
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
       const h = Math.floor(weekMins / 60); const m = weekMins % 60;
@@ -2220,7 +2221,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
             {filteredStudents.map((student) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
-              const streak = student.streak || 0;
+              const streak = liveStreak(student);
               const totalMin = student.totalMinutes || 0;
               const hrs = Math.floor(totalMin / 60);
               const remMin = totalMin % 60;

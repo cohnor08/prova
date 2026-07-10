@@ -243,7 +243,6 @@ export default function PacksScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={styles.assignBtn} onPress={() => openAssign(p)} activeOpacity={0.85}>
-                <Ionicons name="send" size={15} color={COLORS.text} />
                 <Text style={styles.assignBtnText}>Assign pack</Text>
               </TouchableOpacity>
             </View>
@@ -278,7 +277,6 @@ export default function PacksScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignProgram(pr)} activeOpacity={0.85}>
-                <Ionicons name="rocket-outline" size={15} color={COLORS.text} />
                 <Text style={styles.assignBtnText}>Start program</Text>
               </TouchableOpacity>
             </View>

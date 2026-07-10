@@ -39,6 +39,9 @@ const RATE_LIMITS = {
   // limiter. `requests` caps how many NEW (uncached) searches one user can trigger
   // per day, protecting the project's shared 10k-unit/day YouTube quota.
   searchYouTube:          { requests: 40, tokens: 1 },
+  // Conversational AI coach ("Ask Prova"). Daily cap — it's a chat so several
+  // questions a day is normal, but bounded to keep Claude spend in check.
+  askProva:               { requests: 30, tokens: 60000 },
 };
 
 // Returns the bucket key for an action's rate-limit period. Daily actions key on
@@ -705,6 +708,86 @@ Rules:
     ]).catch(() => {});
 
     return { ...record, cached: false };
+  }
+);
+
+// ─── askProva ─────────────────────────────────────────────────────────────────
+// Conversational AI coach. The student asks a free-text playing question and Prova
+// answers like a friendly, expert guitar/bass teacher: short, concrete, encouraging.
+exports.askProva = onCall(
+  { ...BASE_OPTIONS, timeoutSeconds: 60, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const uid = request.auth.uid;
+    const appCheckPresent = !!request.app;
+    const startTime = Date.now();
+
+    const { question, instrument, level, history } = request.data || {};
+
+    if (typeof question !== 'string' || question.trim().length === 0 || question.length > 500)
+      throw new HttpsError('invalid-argument', 'Question must be 1–500 characters');
+
+    // Neutralise control chars before interpolating any user text into the prompt.
+    const clean = (s, max) => String(s || '')
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, max);
+
+    const safeQuestion = clean(question, 500);
+    const inst = ALLOWED_INSTRUMENTS.has(instrument) ? instrument : 'Guitar';
+    const lvl = (typeof level === 'string') ? clean(level, 40) : '';
+
+    // Last few turns for context (capped to keep tokens bounded).
+    const turns = (Array.isArray(history) ? history : [])
+      .filter((m) => m && typeof m.text === 'string')
+      .slice(-6)
+      .map((m) => `${m.role === 'prova' ? 'Prova' : 'Student'}: ${clean(m.text, 600)}`)
+      .join('\n');
+
+    await checkRateLimit(uid, 'askProva');
+
+    const prompt = `You are Prova, a warm, encouraging expert ${inst} teacher chatting with ${lvl ? `a ${lvl.toLowerCase()} ` : 'a '}${inst.toLowerCase()} player inside their practice app.
+
+Answer their question like a great one-on-one teacher:
+- Be concrete and specific to ${inst}: name actual chords, frets, strings, fingerings, BPM targets or techniques where relevant.
+- Give clear, doable steps — something they can try in their next practice session.
+- Keep it concise: a few short sentences or a short list. No walls of text, no markdown headers.
+- Be encouraging and human. Never say you are an AI or a language model.
+- If the question isn't about music, playing, practice, gear or motivation, gently steer them back to their playing.
+${turns ? `\nConversation so far:\n${turns}\n` : ''}
+Student: ${safeQuestion}
+Prova:`;
+
+    let result;
+    try {
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 800, MODEL, 55000);
+    } catch (err) {
+      await writeUsageLog(uid, 'askProva', {
+        tokensIn: 0, tokensOut: 0,
+        durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error',
+        appCheckPresent,
+      });
+      throw err;
+    }
+
+    const answer = (result.text || '').trim();
+    if (!answer) throw new HttpsError('internal', 'No answer — try rephrasing.');
+
+    Promise.all([
+      recordTokenUsage(uid, 'askProva', result.tokensIn + result.tokensOut),
+      writeUsageLog(uid, 'askProva', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+        durationMs: Date.now() - startTime,
+        success: true,
+        appCheckPresent,
+      }),
+      flagAbuseIfNeeded(uid, 'askProva', result.tokensIn + result.tokensOut),
+    ]).catch(() => {});
+
+    return { answer };
   }
 );
 
