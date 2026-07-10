@@ -534,8 +534,8 @@ export default function PracticeScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('ChordLibrary')} activeOpacity={0.85}>
             <View style={styles.learnIcon}><Ionicons name="grid-outline" size={20} color={COLORS.primary} /></View>
-            <Text style={styles.learnCardText}>Chord library</Text>
-            <Text style={styles.learnCardSub}>Fretboard shapes</Text>
+            <Text style={styles.learnCardText}>Chords & scales</Text>
+            <Text style={styles.learnCardSub}>Fretboard reference</Text>
           </TouchableOpacity>
         </View>
 
