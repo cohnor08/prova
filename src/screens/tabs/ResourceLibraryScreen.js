@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform, InputAccessoryView, Keyboard,
-  Image, ActivityIndicator,
+  Image, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -516,7 +516,8 @@ export default function ResourceLibraryScreen() {
       </ScrollView>
 
       {/* Add / edit a resource */}
-      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding>
+      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding="android">
+        <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit resource' : 'Add resource'}</Text>
               <Text style={styles.modalSub}>Add a link and choose where it’s filed.</Text>
               <TextInput
@@ -607,6 +608,7 @@ export default function ResourceLibraryScreen() {
                   <Text style={styles.saveText}>{editingId ? 'Save' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
+        </ScrollView>
       </SheetModal>
 
       {/* Pick who to assign the chosen resource / task to */}
@@ -794,6 +796,7 @@ const styles = StyleSheet.create({
   pickName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
   pickMeta: { color: COLORS.textMuted, fontSize: 12 },
   modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: SPACING.lg, paddingBottom: SPACING.xl + 40, marginBottom: -40 },
+  modalScroll: { maxHeight: Dimensions.get('window').height * 0.7 },
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },
   input: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14, marginBottom: SPACING.sm },
