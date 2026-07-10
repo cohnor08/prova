@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform, InputAccessoryView, Keyboard,
+  Image, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { pickMedia, captureMedia, uploadResourceMedia } from '../../lib/media';
 import {
   doc, getDoc, updateDoc, collection, query, where, getDocs, arrayUnion,
 } from 'firebase/firestore';
@@ -64,6 +66,8 @@ export default function ResourceLibraryScreen() {
   const [newInstrument, setNewInstrument] = useState('Guitar'); // where this resource is filed
   const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
   const [newLevel, setNewLevel] = useState('Beginner');
+  const [newPhoto, setNewPhoto] = useState('');   // uploaded resource-photo URL
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [resSearch, setResSearch] = useState('');       // search across the teacher's own resources
   const [expandedRes, setExpandedRes] = useState(null);
   const [resCategories, setResCategories] = useState([]); // teacher's own category names
@@ -153,6 +157,7 @@ export default function ResourceLibraryScreen() {
       title: assignTarget.title,
       description: assignInstructions.trim(),
       youtube: assignTarget.url,
+      photo: assignTarget.photo || '',
       song: '',
       dueDate: assignDueDate,
       durationMin: assignDuration || 0,
@@ -215,7 +220,35 @@ export default function ResourceLibraryScreen() {
     if (uid) updateDoc(doc(db, 'users', uid), { customResources: next }).catch(() => {});
   };
 
-  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); setNewCategory(''); setAddingCat(false); setNewCatText(''); };
+  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); setNewCategory(''); setAddingCat(false); setNewCatText(''); setNewPhoto(''); setPhotoBusy(false); };
+
+  // Attach a photo to the resource — from the library or the camera. Uploads to
+  // Storage and keeps the download URL. (Upload works on the dev build; it hangs
+  // in Expo Go like proof clips, the known parked limitation.)
+  const runPhoto = async (getter) => {
+    const picked = await getter();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Photo', picked.error); return; }
+    if (picked.type !== 'image') { Alert.alert('Photos only', 'Please choose a photo, not a video.'); return; }
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setPhotoBusy(true);
+    try {
+      const url = await uploadResourceMedia(picked.uri, uid, 'image');
+      setNewPhoto(url);
+    } catch (e) {
+      Alert.alert('Upload failed', e?.code || e?.message || 'Could not upload the photo. Try again.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+  const attachPhoto = () => {
+    Alert.alert('Add a photo', undefined, [
+      { text: 'Take photo', onPress: () => runPhoto(captureMedia) },
+      { text: 'Choose from library', onPress: () => runPhoto(pickMedia) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
   // New resources default to the currently-viewed instrument/level; editing keeps
   // the resource's own.
   const openAdd = () => { resetForm(); setNewInstrument(instrument); setNewLevel(level); setShowAdd(true); };
@@ -227,21 +260,21 @@ export default function ResourceLibraryScreen() {
     setNewInstrument(r.instrument || 'Guitar');
     setNewLevel(r.level || 'Beginner');
     setNewCategory(r.category || '');
+    setNewPhoto(r.photo || '');
     setShowAdd(true);
   };
 
   const saveResource = () => {
-    if (!newTitle.trim() || !newUrl.trim()) {
-      Alert.alert('Add a title and link', 'Both a title and a YouTube link (or search) are needed.');
+    if (!newTitle.trim() || (!newUrl.trim() && !newPhoto)) {
+      Alert.alert('Add a title and a link or photo', 'A title plus either a YouTube link (or search) or a photo is needed.');
       return;
     }
+    if (photoBusy) { Alert.alert('Photo still uploading', 'Wait for the photo to finish, then save.'); return; }
+    const fields = { title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '', photo: newPhoto || '' };
     if (editingId) {
-      saveCustom(custom.map((x) => x.id === editingId
-        ? { ...x, title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '' }
-        : x));
+      saveCustom(custom.map((x) => (x.id === editingId ? { ...x, ...fields } : x)));
     } else {
-      const item = { id: Date.now().toString(), title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '' };
-      saveCustom([item, ...custom]);
+      saveCustom([{ id: Date.now().toString(), ...fields }, ...custom]);
     }
     resetForm(); setShowAdd(false);
   };
@@ -372,7 +405,7 @@ export default function ResourceLibraryScreen() {
                         <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                       </TouchableOpacity>
                       <View style={styles.resActions}>
-                        <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '' })} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '', photo: r.photo || '' })} activeOpacity={0.7}>
                           <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
                           <Text style={styles.resActionText}>Assign</Text>
                         </TouchableOpacity>
@@ -549,6 +582,22 @@ export default function ResourceLibraryScreen() {
                     <Text style={styles.addCatDone}>Add</Text>
                   </TouchableOpacity>
                 </View>
+              )}
+              <Text style={styles.pickLabel}>PHOTO (OPTIONAL)</Text>
+              {newPhoto ? (
+                <View style={styles.photoRow}>
+                  <Image source={{ uri: newPhoto }} style={styles.photoPreview} />
+                  <TouchableOpacity onPress={() => setNewPhoto('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.photoRemove}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.photoAddBtn} onPress={attachPhoto} disabled={photoBusy} activeOpacity={0.85}>
+                  {photoBusy
+                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    : <Ionicons name="image-outline" size={18} color={COLORS.primary} />}
+                  <Text style={styles.photoAddText}>{photoBusy ? 'Uploading…' : 'Add a photo (library or camera)'}</Text>
+                </TouchableOpacity>
               )}
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
@@ -749,6 +798,11 @@ const styles = StyleSheet.create({
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },
   input: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14, marginBottom: SPACING.sm },
   inputMulti: { minHeight: 70, textAlignVertical: 'top' },
+  photoAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  photoAddText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  photoPreview: { width: 64, height: 64, borderRadius: 10, backgroundColor: COLORS.card },
+  photoRemove: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
   modalBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
