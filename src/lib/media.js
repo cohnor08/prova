@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { auth, storage } from './firebase';
 
-// Storage rules cap uploads at 50 MB and require an image/* or video/* content
+// Storage rules cap uploads at 150 MB and require an image/* or video/* content
 // type — enforce both client-side so failures are a clear message, not a
-// permission error after a long wait.
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+// permission error after a long wait. (150 MB fits ~2 min of 720p video.)
+const MAX_UPLOAD_BYTES = 150 * 1024 * 1024;
 
 function contentTypeFor(uri, type) {
   const ext = (uri.split('?')[0].split('.').pop() || '').toLowerCase();
@@ -116,10 +116,11 @@ export async function pickMedia() {
     mediaTypes: ['images', 'videos'],
     quality: 0.7,
     videoMaxDuration: 120,
-    // Re-encode picked videos to 540p — `quality` only compresses PHOTOS, so
-    // without this a library video uploads at full size (easily 100MB+),
-    // making uploads and the teacher's playback crawl.
-    videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
+    // Re-encode picked videos to 720p H.264 — `quality` only compresses
+    // PHOTOS, so without this a library video uploads at full size (easily
+    // hundreds of MB). 720p keeps fingers/frets clearly visible while staying
+    // well under the upload cap.
+    videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
   });
   if (result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];
@@ -143,9 +144,9 @@ export async function captureMedia() {
     // practice you want to film the instrument/hands anyway. The user can still
     // flip to selfie in the camera UI if they want.
     cameraType: ImagePicker.CameraType.back,
-    // Record at medium quality — full-res camera video is huge and slow to
-    // upload/stream (quality only affects photos).
-    videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+    // Record at 720p — Medium (~480p) was too blurry to see finger placement.
+    // Full-res High (1080p/4K) is still avoided: huge files, slow uploads.
+    videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
   });
   if (result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];
