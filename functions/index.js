@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -7,6 +8,18 @@ const db = admin.firestore();
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const YOUTUBE_API_KEY = defineSecret('YOUTUBE_API_KEY');
+// Resend (https://resend.com) sends the automated weekly parent reports. Raw REST
+// (no SDK) to match the rest of this file. Set with:
+//   firebase functions:secrets:set RESEND_API_KEY
+const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
+// Sender identity for parent emails. `onboarding@resend.dev` works immediately in
+// Resend's test mode BUT only delivers to the Resend account owner's own address —
+// swap this for an address on a verified domain (e.g. reports@prova.app) to email
+// real parents. Change it here once the domain is verified in Resend.
+const REPORT_FROM = 'Prova <onboarding@resend.dev>';
+// When the automated weekly run fires. App Engine cron syntax; change freely.
+const REPORT_SCHEDULE = 'every sunday 17:00';
+const REPORT_TIMEZONE = 'America/New_York';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
 // Sonnet for tasks that need genuinely specific, reasoned output (practice plans,
@@ -994,4 +1007,218 @@ Return only valid JSON, no markdown fences, no explanation.`;
       weeklyPlan: out.weeklyPlan,
     };
   }
+);
+
+// ─── Automated weekly parent reports ────────────────────────────────────────────
+// Every week Prova emails each parent a branded summary of their child's practice,
+// with zero teacher effort. The teacher collects parent emails on the Parent
+// Contacts page (users/{teacherUid}.parentEmails = { studentUid: 'parent@email' }).
+// This mirrors the data the client-side sendParentReport compiles for its PDF, but
+// composes the HTML server-side and delivers it by email via Resend.
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function nameFor(u) {
+  if (!u) return 'Someone';
+  if (u.username && u.username.trim()) return u.username.trim();
+  if (u.name && u.name.trim()) return u.name.trim();
+  if (u.email) return String(u.email).split('@')[0];
+  return 'Someone';
+}
+
+// Same rule as the client liveStreak(): a stored streak only counts if the last
+// session was today or yesterday. Computed in UTC on the server (a day of skew vs
+// the student's local midnight is acceptable for a weekly email).
+function liveStreak(u) {
+  const streak = u.streak || 0;
+  if (streak <= 0 || !u.lastSessionDate) return 0;
+  const last = new Date(u.lastSessionDate).toDateString();
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  return last === today || last === yesterday ? streak : 0;
+}
+
+// Compile one student's weekly report and return { subject, html }. `teacher` is the
+// teacher's full user doc (carries the attendance map + name); no extra read needed.
+async function buildStudentReport(student, teacher) {
+  // Last 14 daily logs → minutes keyed by their (UTC) date key, matching how
+  // sessionHistory logs are stored.
+  const logsSnap = await db
+    .collection('sessionHistory').doc(student.uid).collection('logs')
+    .orderBy('date', 'desc').limit(14).get();
+  const logMap = {};
+  logsSnap.forEach((d) => { logMap[d.id] = d.data().totalMinutes || 0; });
+
+  const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date(); dt.setUTCHours(0, 0, 0, 0); dt.setUTCDate(dt.getUTCDate() - i);
+    const key = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    days.push({ label: DOW[dt.getUTCDay()], mins: logMap[key] || 0 });
+  }
+  const weekMins = days.reduce((s, d) => s + d.mins, 0);
+  const daysPracticed = days.filter((d) => d.mins > 0).length;
+  const maxMins = Math.max(1, ...days.map((d) => d.mins));
+
+  const name = nameFor(student);
+  const streak = liveStreak(student);
+  const assigned = Array.isArray(student.assignedTasks) ? student.assignedTasks.length : 0;
+  const done = Array.isArray(student.assignedTasks) ? student.assignedTasks.filter((t) => t.completed).length : 0;
+  const h = Math.floor(weekMins / 60); const m = weekMins % 60;
+  const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+  // Lesson attendance / marks / latest note from the teacher's attendance map
+  // (recorded on the lesson calendar) over the last ~term.
+  let attPct = null, avgMark = null, missed = 0, note = null;
+  const att = teacher.attendance && typeof teacher.attendance === 'object' ? teacher.attendance : {};
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 91);
+  const cutoffYmd = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+  let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0, latestNoteDate = '';
+  Object.values(att).forEach((r) => {
+    if (!r || r.studentUid !== student.uid || (r.date || '') < cutoffYmd) return;
+    if (r.status === 'present') present++;
+    else if (r.status === 'late') late++;
+    else if (r.status === 'absent') absent++;
+    if (r.mark) { markSum += r.mark; markCount++; }
+    if (r.note && (r.date || '') >= latestNoteDate) { note = r.note; latestNoteDate = r.date || ''; }
+  });
+  const denom = present + late + absent;
+  const attended = present + late;
+  if (denom > 0) { missed = absent; attPct = Math.round((attended / denom) * 100); }
+  if (markCount > 0) avgMark = (markSum / markCount).toFixed(1);
+
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const bars = days.map((d) => `<div class="bc"><div class="bt"><div class="bf" style="height:${Math.round((d.mins / maxMins) * 100)}%"></div></div><div class="bl">${d.label}</div></div>`).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;color:#0F172A;background:#F1F5F9}
+.wrap{max-width:640px;margin:0 auto;padding:34px 30px;background:#fff}
+.brand{display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:22px;font-weight:800;letter-spacing:1px;color:#2563EB}.logo b{color:#06B6D4}
+.date{color:#64748B;font-size:12px}
+.hero{margin:24px 0 4px}.hero h1{margin:0;font-size:26px}.hero p{margin:3px 0 0;color:#64748B;font-size:14px}
+.bars{display:flex;gap:10px;align-items:flex-end;height:130px;margin:22px 0 6px;padding:16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:16px}
+.bc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.bt{flex:1;width:62%;display:flex;align-items:flex-end}
+.bf{width:100%;background:linear-gradient(180deg,#3B82F6,#06B6D4);border-radius:6px;min-height:3px}
+.bl{margin-top:8px;font-size:11px;color:#94A3B8;font-weight:700}
+.grid{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.stat{flex:1 1 44%;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:14px 16px}
+.stat .v{font-size:22px;font-weight:800}.stat .l{font-size:12px;color:#64748B;margin-top:3px}
+.note{margin-top:8px;background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #2563EB;border-radius:10px;padding:14px 16px}
+.note .q{font-size:15px;font-style:italic}.note .a{font-size:12px;color:#64748B;margin-top:6px}
+.foot{margin-top:28px;text-align:center;color:#94A3B8;font-size:12px}
+</style></head><body><div class="wrap">
+<div class="brand"><div class="logo">PROVA<b>.</b></div><div class="date">${escHtml(today)}</div></div>
+<div class="hero"><h1>${escHtml(name)}'s practice report</h1><p>This week · ${escHtml(student.level || 'Beginner')} ${escHtml(student.instrument || 'Guitar')}</p></div>
+<div class="bars">${bars}</div>
+<div class="grid">
+<div class="stat"><div class="v">${timeStr}</div><div class="l">Practiced this week</div></div>
+<div class="stat"><div class="v">${daysPracticed}/7</div><div class="l">Days practiced</div></div>
+<div class="stat"><div class="v">${streak} 🔥</div><div class="l">Day streak</div></div>
+<div class="stat"><div class="v">${done}/${assigned}</div><div class="l">Tasks completed</div></div>
+${attPct != null ? `<div class="stat"><div class="v">${attPct}%</div><div class="l">Lessons attended${missed ? ` · ${missed} missed` : ''}</div></div>` : ''}
+${avgMark != null ? `<div class="stat"><div class="v">${avgMark}/5 ⭐</div><div class="l">Average lesson mark</div></div>` : ''}
+</div>
+${note ? `<div class="note"><div class="q">“${escHtml(note)}”</div><div class="a">— ${escHtml(nameFor(teacher))}</div></div>` : ''}
+<div class="foot">Sent with Prova · your child's music practice coach</div>
+</div></body></html>`;
+
+  return { subject: `${name}'s practice report — this week 🎸`, html };
+}
+
+// Deliver one email through Resend's REST API.
+async function sendReportEmail({ to, subject, html, apiKey }) {
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: REPORT_FROM, to: [to], subject, html }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`resend ${resp.status}: ${body.slice(0, 300)}`);
+  }
+  return resp.json().catch(() => ({}));
+}
+
+// Send every parent report for one teacher. `opts.overrideEmail` redirects ALL
+// emails to one address (for testing); `opts.onlyStudentUid` limits to one student.
+async function sendReportsForTeacher(teacher, apiKey, opts = {}) {
+  const parentEmails = teacher.parentEmails && typeof teacher.parentEmails === 'object' ? teacher.parentEmails : {};
+  const entries = Object.entries(parentEmails);
+  let sent = 0, skipped = 0, failed = 0;
+  for (const [studentUid, rawEmail] of entries) {
+    if (opts.onlyStudentUid && studentUid !== opts.onlyStudentUid) continue;
+    const parentEmail = (opts.overrideEmail || String(rawEmail || '')).trim();
+    if (!parentEmail || !parentEmail.includes('@')) { skipped++; continue; }
+    try {
+      const studentSnap = await db.collection('users').doc(studentUid).get();
+      if (!studentSnap.exists) { skipped++; continue; }
+      const student = { uid: studentUid, ...studentSnap.data() };
+      // Only ever report on your own linked students.
+      if (student.teacherUid && student.teacherUid !== teacher.uid) { skipped++; continue; }
+      const { subject, html } = await buildStudentReport(student, teacher);
+      await sendReportEmail({ to: parentEmail, subject, html, apiKey });
+      sent++;
+    } catch (e) {
+      console.error('[parent-report] failed for student', studentUid, e.message);
+      failed++;
+    }
+  }
+  return { sent, skipped, failed, total: entries.length };
+}
+
+// Weekly automated run: every teacher with parent emails, all their students.
+exports.sendWeeklyParentReports = onSchedule(
+  {
+    schedule: REPORT_SCHEDULE,
+    timeZone: REPORT_TIMEZONE,
+    secrets: [RESEND_API_KEY],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async () => {
+    const apiKey = RESEND_API_KEY.value();
+    if (!apiKey) { console.error('[parent-report] RESEND_API_KEY not set — skipping run'); return; }
+    const teachersSnap = await db.collection('users').where('role', '==', 'teacher').get();
+    let teachers = 0, sent = 0, skipped = 0, failed = 0;
+    for (const t of teachersSnap.docs) {
+      const teacher = { uid: t.id, ...t.data() };
+      if (!teacher.parentEmails || Object.keys(teacher.parentEmails).length === 0) continue;
+      teachers++;
+      const r = await sendReportsForTeacher(teacher, apiKey);
+      sent += r.sent; skipped += r.skipped; failed += r.failed;
+    }
+    console.log(`[parent-report] weekly run done: ${teachers} teachers, ${sent} sent, ${skipped} skipped, ${failed} failed`);
+  },
+);
+
+// Teacher-triggered "send now" — powers the Parent Contacts "Email parents now"
+// button and lets a report be tested on demand without waiting for Sunday.
+// data: { studentUid?: string, testEmail?: string }
+exports.sendParentReportsNow = onCall(
+  { secrets: [RESEND_API_KEY], timeoutSeconds: 180 },
+  async (request) => {
+    const uid = request.auth && request.auth.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Please sign in.');
+    const apiKey = RESEND_API_KEY.value();
+    if (!apiKey) throw new HttpsError('failed-precondition', 'Email is not set up yet.');
+
+    const meSnap = await db.collection('users').doc(uid).get();
+    const teacher = { uid, ...(meSnap.data() || {}) };
+    if (teacher.role !== 'teacher') throw new HttpsError('permission-denied', 'Teachers only.');
+
+    const testEmail = typeof request.data?.testEmail === 'string' ? request.data.testEmail.trim() : '';
+    const studentUid = typeof request.data?.studentUid === 'string' ? request.data.studentUid : '';
+
+    const r = await sendReportsForTeacher(teacher, apiKey, {
+      onlyStudentUid: studentUid || null,
+      overrideEmail: testEmail || null,
+    });
+    return r;
+  },
 );

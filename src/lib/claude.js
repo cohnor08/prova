@@ -80,3 +80,14 @@ export async function refreshWeeklyPlan(profile, feedback) {
 export async function askProva({ question, instrument, level, history }) {
   return callFunction('askProva', { question, instrument, level, history }, 60000);
 }
+
+// Email this week's parent report now (teacher only). Reports also send
+// automatically every week; this is the on-demand "send now" / test path.
+// opts: { studentUid? } to send just one, { testEmail? } to redirect all to one
+// address for testing. Returns { sent, skipped, failed, total }.
+export async function sendParentReportsNow(opts = {}) {
+  return callFunction('sendParentReportsNow', {
+    studentUid: opts.studentUid || null,
+    testEmail: opts.testEmail || null,
+  }, 120000);
+}
