@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { loadSavedLogin, saveLogin } from '../../lib/savedLogin';
 
 const FIREBASE_ERRORS = {
   'auth/invalid-email': 'Please enter a valid email address.',
@@ -31,6 +32,17 @@ export default function LoginScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+  const [rememberMe, setRememberMe] = useState(true);
+
+  // Prefill the last remembered login (email always; password when the build
+  // has SecureStore) so switching accounts doesn't mean retyping everything.
+  useEffect(() => {
+    loadSavedLogin().then(({ remember, email: e, password: p }) => {
+      setRememberMe(remember);
+      if (e) setEmail(e);
+      if (p) setPassword(p);
+    });
+  }, []);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -40,6 +52,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      saveLogin(email.trim().toLowerCase(), password, rememberMe);
     } catch (error) {
       const message = FIREBASE_ERRORS[error.code] || 'Login failed. Please try again.';
       Alert.alert('Login Failed', message);
@@ -104,6 +117,20 @@ export default function LoginScreen({ navigation }) {
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={styles.rememberRow}
+            onPress={() => setRememberMe((v) => !v)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8 }}
+          >
+            <Ionicons
+              name={rememberMe ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={rememberMe ? COLORS.primary : COLORS.textMuted}
+            />
+            <Text style={styles.rememberText}>Remember me</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -177,6 +204,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     height: '100%',
   },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+    alignSelf: 'flex-start',
+  },
+  rememberText: { color: COLORS.textSecondary, fontSize: 14 },
   button: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
