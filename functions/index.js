@@ -1104,32 +1104,32 @@ async function buildStudentReport(student, teacher) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><style>
 *{box-sizing:border-box}
-body{font-family:-apple-system,'SF Pro Display',Helvetica,Arial,sans-serif;margin:0;background:transparent;color:#F2F2F4}
+body{font-family:-apple-system,'SF Pro Display',Helvetica,Arial,sans-serif;margin:0;background:transparent;color:#F0F4FF}
 .wrap{max-width:600px;margin:0 auto;padding:40px 26px;background:transparent}
 .brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px}
-.logo{font-size:17px;font-weight:800;letter-spacing:2px;color:#F2F2F4}
-.date{color:#7C7C82;font-size:12px}
+.logo{font-size:17px;font-weight:800;letter-spacing:2px;color:#F0F4FF}
+.date{color:#5E6E93;font-size:12px}
 .hero h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.4px;line-height:1.15}
-.hero p{margin:8px 0 0;color:#8A8A90;font-size:14px}
-.cap{margin:30px 0 10px;font-size:11px;font-weight:700;letter-spacing:1px;color:#6E6E75;text-transform:uppercase}
-.bars{display:flex;gap:9px;align-items:flex-end;height:132px;padding:18px;background:#1A1A1D;border:1px solid #2E2E33;border-radius:18px}
+.hero p{margin:8px 0 0;color:#8B9CC8;font-size:14px}
+.cap{margin:30px 0 10px;font-size:11px;font-weight:700;letter-spacing:1px;color:#5E6E93;text-transform:uppercase}
+.bars{display:flex;gap:9px;align-items:flex-end;height:132px;padding:18px;background:#0C1424;border:1px solid #1E2D48;border-radius:18px}
 .bars.empty{align-items:center;justify-content:center}
-.emptymsg{color:#8A8A90;font-size:14px;text-align:center}
+.emptymsg{color:#8B9CC8;font-size:14px;text-align:center}
 .bc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
 .bt{flex:1;width:58%;display:flex;align-items:flex-end}
 .bf{width:100%;background:linear-gradient(180deg,#3B82F6,#22D3EE);border-radius:6px;min-height:3px}
-.bl{margin-top:9px;font-size:11px;color:#6E6E75;font-weight:700}
+.bl{margin-top:9px;font-size:11px;color:#5E6E93;font-weight:700}
 .grid{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
-.stat{flex:1 1 44%;background:#1A1A1D;border:1px solid #2E2E33;border-radius:18px;padding:18px}
-.stat .v{font-size:24px;font-weight:800;letter-spacing:-.3px}.stat .l{font-size:13px;color:#8A8A90;margin-top:5px}
-.note{margin-top:14px;background:#1A1A1D;border:1px solid #2E2E33;border-radius:18px;padding:18px 20px}
-.note .q{font-size:16px;font-style:italic;color:#EDEDF0}.note .a{font-size:13px;color:#8A8A90;margin-top:8px}
-.foot{margin-top:34px;text-align:center;color:#5E5E65;font-size:12px}
+.stat{flex:1 1 44%;background:#0C1424;border:1px solid #1E2D48;border-radius:18px;padding:18px}
+.stat .v{font-size:24px;font-weight:800;letter-spacing:-.3px}.stat .l{font-size:13px;color:#8B9CC8;margin-top:5px}
+.note{margin-top:14px;background:#0C1424;border:1px solid #1E2D48;border-radius:18px;padding:18px 20px}
+.note .q{font-size:16px;font-style:italic;color:#F0F4FF}.note .a{font-size:13px;color:#8B9CC8;margin-top:8px}
+.foot{margin-top:34px;text-align:center;color:#5E6E93;font-size:12px}
 @media (prefers-color-scheme: light){
   body{background:#ffffff;color:#0F172A}
   .logo,.hero h1,.stat .v,.note .q{color:#0F172A}
   .date,.hero p,.cap,.bl,.emptymsg,.foot,.stat .l,.note .a{color:#64748B}
-  .bars,.stat,.note{background:#F7F8FA;border-color:#E7EAF0}
+  .bars,.stat,.note{background:#F5F7FB;border-color:#E4E9F2}
 }
 </style></head><body><div class="wrap">
 <div class="brand"><div class="logo">PROVA<b>.</b></div><div class="date">${escHtml(today)}</div></div>
@@ -1148,7 +1148,7 @@ ${note ? `<div class="note"><div class="q">“${escHtml(note)}”</div><div clas
 <div class="foot">Sent with Prova · your child's music practice coach</div>
 </div></body></html>`;
 
-  return { subject: `${name}'s practice report — this week 🎸`, html };
+  return { subject: `${name}'s practice report — this week`, html };
 }
 
 // Deliver one email through Resend's REST API.
