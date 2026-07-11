@@ -1095,58 +1095,75 @@ async function buildStudentReport(student, teacher) {
   if (markCount > 0) avgMark = (markSum / markCount).toFixed(1);
 
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const bars = days.map((d) => `<div class="bc"><div class="bt"><div class="bf" style="height:${Math.round((d.mins / maxMins) * 100)}%"></div></div><div class="bl">${d.label}</div></div>`).join('');
+
+  // Everything below is EMAIL-SAFE HTML: table layout + inline styles on every
+  // element, no <style> block, no flexbox. Desktop clients (Outlook & friends)
+  // strip <style> and don't do flex, which collapsed the old design into bare
+  // stacked text. No background colours are set anywhere so the report sits on
+  // the client's own light/dark background (forced dark fills get inverted by
+  // dark-mode mail apps); text inherits the client's colour, secondary text
+  // uses a mid-tone that reads on both. Cards are borders only.
+  const FONT = "font-family:-apple-system,'SF Pro Display',Helvetica,Arial,sans-serif;";
+  const MID = 'color:#7A8AAD;';     // secondary text — legible on white AND black
+  const BORDER = 'border:1px solid #2A3A5C;border-radius:16px;';
+  const CHART_H = 96;               // px height of the tallest possible bar
+
+  // Bars get server-computed PIXEL heights (an email can't do flex-grow).
+  const barCells = days.map((d) => {
+    const h = d.mins > 0 ? Math.max(6, Math.round((d.mins / maxMins) * CHART_H)) : 3;
+    return `<td align="center" valign="bottom" style="height:${CHART_H}px;padding:0 4px;"><div style="width:100%;max-width:34px;height:${h}px;background-color:#3B82F6;background:linear-gradient(180deg,#3B82F6,#22D3EE);border-radius:5px;font-size:0;line-height:0;">&nbsp;</div></td>`;
+  }).join('');
+  const barLabels = days.map((d) => `<td align="center" style="${FONT}padding-top:8px;font-size:11px;font-weight:700;${MID}">${d.label}</td>`).join('');
   // When there's no practice all week, an empty chart box is confusing — show a
   // clear message instead (and this "quiet week" is itself the signal to a parent).
-  const chartClass = weekMins > 0 ? 'bars' : 'bars empty';
-  const chartBody = weekMins > 0 ? bars : '<div class="emptymsg">No practice logged this week yet</div>';
+  const chartInner = weekMins > 0
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${barCells}</tr><tr>${barLabels}</tr></table>`
+    : `<div style="${FONT}font-size:14px;${MID}text-align:center;padding:38px 0;">No practice logged this week yet</div>`;
+
+  // Stat cards, paired into 2-across table rows with 12px gutters.
+  const stats = [
+    [timeStr, 'Practiced this week'],
+    [`${daysPracticed}/7`, 'Days practiced'],
+    [`${streak} 🔥`, 'Day streak'],
+    [`${done}/${assigned}`, 'Tasks completed'],
+  ];
+  if (attPct != null) stats.push([`${attPct}%`, `Lessons attended${missed ? ` · ${missed} missed` : ''}`]);
+  if (avgMark != null) stats.push([`${avgMark}/5 ⭐`, 'Average lesson mark']);
+  const statCell = (s) => s
+    ? `<td width="47%" valign="top" style="${BORDER}padding:16px 18px;"><div style="${FONT}font-size:24px;font-weight:800;">${s[0]}</div><div style="${FONT}font-size:13px;${MID}padding-top:5px;">${s[1]}</div></td>`
+    : '<td width="47%"></td>';
+  const statRows = [];
+  for (let i = 0; i < stats.length; i += 2) {
+    if (i > 0) statRows.push('<tr><td height="12" colspan="3" style="font-size:0;line-height:0;">&nbsp;</td></tr>');
+    statRows.push(`<tr>${statCell(stats[i])}<td width="12" style="font-size:0;">&nbsp;</td>${statCell(stats[i + 1])}</tr>`);
+  }
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><style>
-*{box-sizing:border-box}
-body{font-family:-apple-system,'SF Pro Display',Helvetica,Arial,sans-serif;margin:0;background:transparent;color:#F0F4FF}
-.wrap{max-width:600px;margin:0 auto;padding:40px 26px;background:transparent}
-.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px}
-.logo{font-size:17px;font-weight:800;letter-spacing:2px;color:#F0F4FF}
-.date{color:#5E6E93;font-size:12px}
-.hero h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.4px;line-height:1.15}
-.hero p{margin:8px 0 0;color:#8B9CC8;font-size:14px}
-.cap{margin:30px 0 10px;font-size:11px;font-weight:700;letter-spacing:1px;color:#5E6E93;text-transform:uppercase}
-.bars{display:flex;gap:9px;align-items:flex-end;height:132px;padding:18px;background:transparent;border:1px solid #2A3A5C;border-radius:18px}
-.bars.empty{align-items:center;justify-content:center}
-.emptymsg{color:#8B9CC8;font-size:14px;text-align:center}
-.bc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
-.bt{flex:1;width:58%;display:flex;align-items:flex-end}
-.bf{width:100%;background:linear-gradient(180deg,#3B82F6,#22D3EE);border-radius:6px;min-height:3px}
-.bl{margin-top:9px;font-size:11px;color:#5E6E93;font-weight:700}
-.grid{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
-.stat{flex:1 1 44%;background:transparent;border:1px solid #2A3A5C;border-radius:18px;padding:18px}
-.stat .v{font-size:24px;font-weight:800;letter-spacing:-.3px}.stat .l{font-size:13px;color:#8B9CC8;margin-top:5px}
-.note{margin-top:14px;background:transparent;border:1px solid #2A3A5C;border-radius:18px;padding:18px 20px}
-.note .q{font-size:16px;font-style:italic;color:#F0F4FF}.note .a{font-size:13px;color:#8B9CC8;margin-top:8px}
-.foot{margin-top:34px;text-align:center;color:#5E6E93;font-size:12px}
-@media (prefers-color-scheme: light){
-  body{background:#ffffff;color:#0F172A}
-  .logo,.hero h1,.stat .v,.note .q{color:#0F172A}
-  .date,.hero p,.cap,.bl,.emptymsg,.foot,.stat .l,.note .a{color:#64748B}
-  .bars,.stat,.note{background:#F5F7FB;border-color:#E4E9F2}
-}
-</style></head><body><div class="wrap">
-<div class="brand"><div class="logo">PROVA<b>.</b></div><div class="date">${escHtml(today)}</div></div>
-<div class="hero"><h1>${escHtml(name)}'s practice report</h1><p>This week · ${escHtml(student.level || 'Beginner')} ${escHtml(student.instrument || 'Guitar')}</p></div>
-<div class="cap">Minutes practiced each day</div>
-<div class="${chartClass}">${chartBody}</div>
-<div class="grid">
-<div class="stat"><div class="v">${timeStr}</div><div class="l">Practiced this week</div></div>
-<div class="stat"><div class="v">${daysPracticed}/7</div><div class="l">Days practiced</div></div>
-<div class="stat"><div class="v">${streak} 🔥</div><div class="l">Day streak</div></div>
-<div class="stat"><div class="v">${done}/${assigned}</div><div class="l">Tasks completed</div></div>
-${attPct != null ? `<div class="stat"><div class="v">${attPct}%</div><div class="l">Lessons attended${missed ? ` · ${missed} missed` : ''}</div></div>` : ''}
-${avgMark != null ? `<div class="stat"><div class="v">${avgMark}/5 ⭐</div><div class="l">Average lesson mark</div></div>` : ''}
-</div>
-${note ? `<div class="note"><div class="q">“${escHtml(note)}”</div><div class="a">— ${escHtml(nameFor(teacher))}</div></div>` : ''}
-<div class="foot">Sent with Prova · your child's music practice coach</div>
-</div></body></html>`;
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"></head>
+<body style="margin:0;padding:0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;"><tr><td style="padding:36px 24px;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="${FONT}font-size:16px;font-weight:800;letter-spacing:2px;">PROVA<span style="color:#3B82F6;">.</span></td>
+<td align="right" style="${FONT}font-size:12px;${MID}">${escHtml(today)}</td>
+</tr></table>
+
+<div style="${FONT}font-size:27px;font-weight:800;letter-spacing:-0.4px;line-height:1.15;padding-top:26px;">${escHtml(name)}'s practice report</div>
+<div style="${FONT}font-size:14px;${MID}padding-top:7px;">This week · ${escHtml(student.level || 'Beginner')} ${escHtml(student.instrument || 'Guitar')}</div>
+
+<div style="${FONT}font-size:11px;font-weight:700;letter-spacing:1px;${MID}text-transform:uppercase;padding:28px 0 10px;">Minutes practiced each day</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="${BORDER}"><tr><td style="padding:16px;">${chartInner}</td></tr></table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">${statRows.join('')}</table>
+
+${note ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;${BORDER}"><tr><td style="padding:16px 20px;"><div style="${FONT}font-size:16px;font-style:italic;">“${escHtml(note)}”</div><div style="${FONT}font-size:13px;${MID}padding-top:7px;">— ${escHtml(nameFor(teacher))}</div></td></tr></table>` : ''}
+
+<div style="${FONT}font-size:12px;${MID}text-align:center;padding-top:32px;">Sent with Prova · your child's music practice coach</div>
+
+</td></tr></table>
+</td></tr></table>
+</body></html>`;
 
   return { subject: `${name}'s practice report — this week`, html };
 }
