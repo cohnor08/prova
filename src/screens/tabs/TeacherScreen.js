@@ -1596,6 +1596,8 @@ function TeacherDashboard() {
   const [contactsOpen, setContactsOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState({});
   const [sendingReports, setSendingReports] = useState(false);
+  const [reportCadence, setReportCadence] = useState('off');   // off | weekly | fortnightly | monthly
+  const [lastAutoReportAt, setLastAutoReportAt] = useState(null);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null); // class being renamed
@@ -1659,9 +1661,18 @@ function TeacherDashboard() {
         const d = s.data() || {};
         setMyName(displayName({ uid: myUid, ...d }));
         setParentEmails(d.parentEmails && typeof d.parentEmails === 'object' ? d.parentEmails : {});
+        setReportCadence(d.reportCadence || 'off');
+        setLastAutoReportAt(d.lastAutoReportAt || null);
       })
       .catch(() => {});
   }, [myUid]);
+
+  // Auto-report cadence. Off by default (opt-in) so a new teacher never emails
+  // parents by accident — they pick a schedule here to turn it on. Optimistic.
+  const changeCadence = (c) => {
+    setReportCadence(c);
+    if (myUid) updateDoc(doc(db, 'users', myUid), { reportCadence: c }).catch(() => {});
+  };
 
   const openContacts = () => { setEmailDraft({ ...parentEmails }); setContactsOpen(true); };
   const saveContacts = async () => {
@@ -2841,6 +2852,27 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
             automaticallyAdjustKeyboardInsets
           >
             <Text style={styles.pcIntro}>Add each student's parent email. Saved privately to your account — ready for parent reports.</Text>
+
+            <View style={styles.cadenceBox}>
+              <Text style={styles.cadenceTitle}>Automatic reports</Text>
+              <Text style={styles.cadenceSub}>Email parents on a schedule, sent Sunday evenings. Off until you choose — nothing sends by accident.</Text>
+              <View style={styles.cadenceRow}>
+                {[['off', 'Off'], ['weekly', 'Weekly'], ['fortnightly', 'Every 2 weeks'], ['monthly', 'Monthly']].map(([val, label]) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.cadenceChip, reportCadence === val && styles.cadenceChipOn]}
+                    onPress={() => changeCadence(val)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.cadenceChipText, reportCadence === val && styles.cadenceChipTextOn]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {lastAutoReportAt ? (
+                <Text style={styles.cadenceLast}>Last sent {new Date(lastAutoReportAt).toLocaleDateString()}</Text>
+              ) : null}
+            </View>
+
             {students.length === 0 ? (
               <Text style={styles.pcEmpty}>No students connected yet. Share your join code first.</Text>
             ) : students.map((s) => (
@@ -3237,6 +3269,15 @@ const styles = StyleSheet.create({
   pcRow: { marginBottom: SPACING.md },
   pcName: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: SPACING.xs },
   pcInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
+  cadenceBox: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
+  cadenceTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  cadenceSub: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: SPACING.md },
+  cadenceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cadenceChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border },
+  cadenceChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  cadenceChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  cadenceChipTextOn: { color: '#fff' },
+  cadenceLast: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
   pcSendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: SPACING.md + 2, marginTop: SPACING.xl, minHeight: 52 },
   pcSendText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   pcSendNote: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.md },

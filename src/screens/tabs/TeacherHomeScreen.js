@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
@@ -234,6 +234,15 @@ export default function TeacherHomeScreen({ navigation }) {
   const [lessons, setLessons] = useState([]);
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
   const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
+  const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
+
+  // Live unread count for the teacher's bell (e.g. "parent reports sent").
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const q = query(collection(db, 'users', uid, 'inbox'), where('read', '==', false), limit(10));
+    return onSnapshot(q, (snap) => setUnreadCount(snap.size), () => {});
+  }, []);
 
   // One-tap nudge: drop an encouraging notification into the student's inbox
   // (shows under their Today bell). Optimistic — flips to "Nudged" instantly.
@@ -574,6 +583,19 @@ export default function TeacherHomeScreen({ navigation }) {
             <Text style={styles.title}>Welcome back, coach 👋</Text>
           </View>
           <TouchableOpacity
+            style={styles.bellBtn}
+            onPress={() => navigation.navigate('Notifications')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={unreadCount > 0 ? 'notifications' : 'notifications-outline'} size={22} color={unreadCount > 0 ? COLORS.primary : COLORS.textSecondary} />
+            {unreadCount > 0 && (
+              <View style={styles.bellDot}>
+                <Text style={styles.bellDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.editBtn, editMode && styles.editBtnActive]}
             onPress={() => (editMode ? saveLayout() : setEditMode(true))}
             activeOpacity={0.85}
@@ -609,6 +631,9 @@ const styles = StyleSheet.create({
   kicker: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
   title: { color: COLORS.text, fontSize: 24, fontWeight: '800', marginBottom: SPACING.lg },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACING.sm },
+  bellBtn: { paddingTop: 2, paddingHorizontal: 4 },
+  bellDot: { position: 'absolute', top: -5, right: -3, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  bellDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: COLORS.surface },
   editBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   editBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },

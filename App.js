@@ -103,6 +103,7 @@ function TeacherHomeStackScreen() {
       <TeacherHomeStack.Screen name="TeacherOverview" component={TeacherOverviewScreen} />
       <TeacherHomeStack.Screen name="LessonNote" component={LessonNoteScreen} />
       <TeacherHomeStack.Screen name="Packs" component={PacksScreen} />
+      <TeacherHomeStack.Screen name="Notifications" component={NotificationsScreen} />
     </TeacherHomeStack.Navigator>
   );
 }

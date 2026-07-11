@@ -1193,7 +1193,22 @@ async function sendReportsForTeacher(teacher, apiKey, opts = {}) {
   return { sent, skipped, failed, total: entries.length };
 }
 
-// Weekly automated run: every teacher with parent emails, all their students.
+// Whether an auto-report batch is due for a teacher, given their chosen cadence
+// and when the last batch went out. The job wakes WEEKLY, so 'weekly' is always
+// due; longer cadences gate on elapsed days since the last send. Anything else
+// (including the default/unset value) is 'off' — auto-send is opt-in.
+function autoReportDue(cadence, lastAutoReportAt) {
+  if (cadence === 'weekly') return true;
+  const last = lastAutoReportAt ? new Date(lastAutoReportAt).getTime() : 0;
+  const days = last ? (Date.now() - last) / 86400000 : Infinity;
+  if (cadence === 'fortnightly') return days >= 13;   // ~every 2nd weekly run
+  if (cadence === 'monthly') return days >= 27;        // ~every 4th weekly run
+  return false;                                        // 'off' / unknown
+}
+
+// Weekly automated run. Each teacher opts in and picks a cadence (reportCadence
+// on their user doc — default off). After a batch, records lastAutoReportAt and
+// drops a notification in the teacher's own inbox so they know it went out.
 exports.sendWeeklyParentReports = onSchedule(
   {
     schedule: REPORT_SCHEDULE,
@@ -1210,11 +1225,26 @@ exports.sendWeeklyParentReports = onSchedule(
     for (const t of teachersSnap.docs) {
       const teacher = { uid: t.id, ...t.data() };
       if (!teacher.parentEmails || Object.keys(teacher.parentEmails).length === 0) continue;
+      const cadence = teacher.reportCadence || 'off';   // opt-in: unset = off
+      if (!autoReportDue(cadence, teacher.lastAutoReportAt)) continue;
       teachers++;
       const r = await sendReportsForTeacher(teacher, apiKey);
       sent += r.sent; skipped += r.skipped; failed += r.failed;
+
+      const nowIso = new Date().toISOString();
+      await t.ref.set({ lastAutoReportAt: nowIso, lastAutoReportCount: r.sent }, { merge: true }).catch(() => {});
+      if (r.sent > 0) {
+        await db.collection('users').doc(t.id).collection('inbox').add({
+          type: 'reports_sent',
+          title: 'Parent reports sent',
+          body: `${r.sent} report${r.sent === 1 ? '' : 's'} emailed to parents`,
+          data: { count: r.sent },
+          read: false,
+          createdAt: nowIso,
+        }).catch(() => {});
+      }
     }
-    console.log(`[parent-report] weekly run done: ${teachers} teachers, ${sent} sent, ${skipped} skipped, ${failed} failed`);
+    console.log(`[parent-report] weekly run: ${teachers} teachers due, ${sent} sent, ${skipped} skipped, ${failed} failed`);
   },
 );
 
