@@ -524,13 +524,20 @@ export default function PracticeScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
 
-        {/* Browse the static lesson library (searchable, no AI) */}
-        <TouchableOpacity style={styles.libraryRow} onPress={() => navigation.navigate('Library')} activeOpacity={0.85}>
-          <Ionicons name="book-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.libraryRowText}>Browse the lesson library</Text>
-          <Ionicons name="search" size={16} color={COLORS.textMuted} />
-          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-        </TouchableOpacity>
+        {/* ── LEARN: browse content ── */}
+        <Text style={styles.sectionLabel}>LEARN</Text>
+        <View style={styles.learnRow}>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('Library')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="book-outline" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Lesson library</Text>
+            <Text style={styles.learnCardSub}>Guided topics</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('ChordLibrary')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="grid-outline" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Chords & scales</Text>
+            <Text style={styles.learnCardSub}>Fretboard reference</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
@@ -555,7 +562,8 @@ export default function PracticeScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* ── Tool selector ── */}
+        {/* ── TOOLS: practice with ── */}
+        <Text style={styles.sectionLabel}>TOOLS</Text>
         <View style={styles.toolSelector}>
           {[
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
@@ -794,6 +802,12 @@ const styles = StyleSheet.create({
   toolBtnTextActive: { color: COLORS.text },
   libraryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 18, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
   libraryRowText: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm, marginTop: SPACING.xs },
+  learnRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.lg },
+  learnCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
+  learnIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm },
+  learnCardText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  learnCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Metronome
   beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },

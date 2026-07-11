@@ -167,3 +167,10 @@ export async function uploadProofMedia(uri, uid, type, onProgress, onStep) {
   const ext = type === 'video' ? 'mp4' : 'jpg';
   return uploadMedia(uri, `chatMedia/proof_${uid}/${Date.now()}.${ext}`, type, onProgress, onStep);
 }
+
+// Uploads a teacher's resource/task image under chatMedia/resource_{uid}/…,
+// covered by the existing (non-proof) chatMedia Storage rules — no deploy needed.
+export async function uploadResourceMedia(uri, uid, type, onProgress, onStep) {
+  const ext = type === 'video' ? 'mp4' : 'jpg';
+  return uploadMedia(uri, `chatMedia/resource_${uid}/${Date.now()}.${ext}`, type, onProgress, onStep);
+}

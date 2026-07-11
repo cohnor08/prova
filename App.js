@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './src/hooks/useAuth';
 import { useMaintenance } from './src/hooks/useMaintenance';
 import { AuthContext } from './src/contexts/AuthContext';
-import { COLORS } from './src/constants/theme';
+import { COLORS, TAB_BAR_STYLE } from './src/constants/theme';
+import { CelebrationProvider } from './src/components/Celebration';
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -25,16 +26,27 @@ import TeacherHomeScreen from './src/screens/tabs/TeacherHomeScreen';
 import TeacherCalendarScreen from './src/screens/tabs/TeacherCalendarScreen';
 import TeacherOverviewScreen from './src/screens/tabs/TeacherOverviewScreen';
 import LessonNoteScreen from './src/screens/tabs/LessonNoteScreen';
+import PacksScreen from './src/screens/tabs/PacksScreen';
 import ResourceLibraryScreen from './src/screens/tabs/ResourceLibraryScreen';
 import PracticeScreen from './src/screens/tabs/PracticeScreen';
 import SongsScreen from './src/screens/tabs/SongsScreen';
 import ScheduleScreen from './src/screens/tabs/ScheduleScreen';
 import LibraryScreen from './src/screens/tabs/LibraryScreen';
+import ChordLibraryScreen from './src/screens/tabs/ChordLibraryScreen';
 import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
+import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
+
+// Dark navigation theme so screen push transitions (and the tab-bar hide when a
+// full-screen child like Ask Prova opens) never flash the default white
+// background. Safe now that the SafeAreaView bottom-gap is fixed at the source.
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: COLORS.background, card: COLORS.background },
+};
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -62,6 +74,7 @@ function PracticeStackScreen() {
       />
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
       <PracticeStack.Screen name="Library" component={LibraryScreen} />
+      <PracticeStack.Screen name="ChordLibrary" component={ChordLibraryScreen} />
       <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
       <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
     </PracticeStack.Navigator>
@@ -89,6 +102,7 @@ function TeacherHomeStackScreen() {
       <TeacherHomeStack.Screen name="TeacherCalendar" component={TeacherCalendarScreen} />
       <TeacherHomeStack.Screen name="TeacherOverview" component={TeacherOverviewScreen} />
       <TeacherHomeStack.Screen name="LessonNote" component={LessonNoteScreen} />
+      <TeacherHomeStack.Screen name="Packs" component={PacksScreen} />
     </TeacherHomeStack.Navigator>
   );
 }
@@ -111,14 +125,7 @@ function MainTabs({ role }) {
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.border,
-          borderTopWidth: 1,
-          height: 84,
-          paddingBottom: 20,
-          paddingTop: 10,
-        },
+        tabBarStyle: TAB_BAR_STYLE,
         tabBarShowLabel: true,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
@@ -185,7 +192,8 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ setOnboardingComplete, role }}>
-      <NavigationContainer>
+      <CelebrationProvider>
+      <NavigationContainer theme={NAV_THEME}>
         <StatusBar style="light" />
         {!user ? (
           <AuthStack />
@@ -197,9 +205,21 @@ export default function App() {
             />
           </Stack.Navigator>
         ) : (
-          <MainTabs role={role} />
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {/* MainTabs + any full-screen screens that should cover the tab bar
+                (e.g. Ask Prova) live here so opening them doesn't reflow the tab bar. */}
+            <Stack.Screen name="MainTabs">
+              {() => <MainTabs role={role} />}
+            </Stack.Screen>
+            <Stack.Screen
+              name="AskProva"
+              component={AskProvaScreen}
+              options={{ contentStyle: { backgroundColor: COLORS.background } }}
+            />
+          </Stack.Navigator>
         )}
       </NavigationContainer>
+      </CelebrationProvider>
     </AuthContext.Provider>
   );
 }

@@ -2,6 +2,22 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // School-Safe: a 1-to-1 chatId is the two participants' UIDs sorted and
+    // joined with '_' (see makeChatId in src/lib/chat.js; Firebase UIDs never
+    // contain '_'). A direct message thread is only permitted between a teacher
+    // and their own student — one participant must have the other set as their
+    // teacherUid. This blocks student↔student messaging at the database, not
+    // just in the app UI. (Teacher↔personal counts too — personal users can
+    // link a teacher via teacherUid.)
+    function isTeacherStudentChat(chatId) {
+      let parts = chatId.split('_');
+      return parts.size() == 2
+        && (
+          get(/databases/$(database)/documents/users/$(parts[0])).data.get('teacherUid', '') == parts[1] ||
+          get(/databases/$(database)/documents/users/$(parts[1])).data.get('teacherUid', '') == parts[0]
+        );
+    }
+
     // User profiles ─────────────────────────────────────────────────────────
     // Any signed-in user can read another user's profile (required for the
     // teacher search-by-email feature). Only the owner can write.
@@ -44,12 +60,21 @@ service cloud.firestore {
 
     // Direct messages between any two users ─────────────────────────────────
     // chatId = sorted(uid1, uid2).join('_')
-    // Only the two participants can read/write messages.
+    // Reading / editing / deleting messages: either participant (unchanged —
+    // keeps history readable and delete-for-everyone working, and lets a
+    // now-unlinked pair still see their old thread).
     match /chats/{chatId}/messages/{messageId} {
-      allow read, write: if request.auth != null && (
+      allow read, update, delete: if request.auth != null && (
         chatId.matches(request.auth.uid + '_.*') ||
         chatId.matches('.*_' + request.auth.uid)
       );
+      // Sending a new message: participant AND a teacher↔student pair. This is
+      // the School-Safe enforcement — students can't message each other even by
+      // bypassing the app.
+      allow create: if request.auth != null && (
+        chatId.matches(request.auth.uid + '_.*') ||
+        chatId.matches('.*_' + request.auth.uid)
+      ) && isTeacherStudentChat(chatId);
     }
 
     // Chat-level state (read receipts) — a `lastRead` map keyed by uid.

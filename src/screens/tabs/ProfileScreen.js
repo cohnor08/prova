@@ -530,7 +530,7 @@ export default function ProfileScreen({ navigation }) {
     dailyDuration: { options: PRACTICE_DURATIONS, multi: false },
   }[modal.key] : null;
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Profile</Text>
 

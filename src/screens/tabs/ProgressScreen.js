@@ -446,6 +446,122 @@ function ActivityGraph({ data, streak }) {
   );
 }
 
+// Shared helpers for the opt-in insight widgets below.
+const ymdKey = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+const fmtMins = (mins) => {
+  const m = Math.round(mins || 0);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60); const r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+};
+
+// ── Personal Records ── best-ever practice stats (opt-in). Celebrates PBs, so
+// it's distinct from the current-value Stats / threshold Milestones widgets.
+function PersonalRecords({ logMap, totalSessions }) {
+  const days = Object.entries(logMap).filter(([, l]) => (l.totalMinutes || 0) > 0).map(([d]) => d).sort();
+  const bestDay = days.reduce((mx, d) => Math.max(mx, logMap[d]?.totalMinutes || 0), 0);
+  let longest = 0, run = 0, prev = null;
+  days.forEach((d) => {
+    run = prev && Math.round((new Date(d) - new Date(prev)) / 86400000) === 1 ? run + 1 : 1;
+    longest = Math.max(longest, run); prev = d;
+  });
+  let bestWeek = 0;
+  days.forEach((d) => {
+    const base = new Date(d); let sum = 0;
+    for (let i = 0; i < 7; i++) { const dt = new Date(base); dt.setDate(base.getDate() - i); sum += logMap[ymdKey(dt)]?.totalMinutes || 0; }
+    bestWeek = Math.max(bestWeek, sum);
+  });
+  const recs = [
+    { icon: 'ribbon', label: 'Longest streak', value: `${longest}d` },
+    { icon: 'time', label: 'Best day', value: fmtMins(bestDay) },
+    { icon: 'calendar', label: 'Best week', value: fmtMins(bestWeek) },
+    { icon: 'musical-notes', label: 'Sessions', value: `${totalSessions || 0}` },
+  ];
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>PERSONAL RECORDS</Text>
+      <View style={styles.recordsGrid}>
+        {recs.map((r) => (
+          <View key={r.label} style={styles.recordCard}>
+            <Ionicons name={r.icon} size={19} color={COLORS.primary} />
+            <Text style={styles.recordValue}>{r.value}</Text>
+            <Text style={styles.recordLabel}>{r.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ── Weekly Momentum ── this week vs last week, with direction + %.
+function Momentum({ logMap }) {
+  const sumWindow = (startAgo, endAgo) => {
+    let sum = 0;
+    for (let i = startAgo; i <= endAgo; i++) { const dt = new Date(); dt.setDate(dt.getDate() - i); sum += logMap[ymdKey(dt)]?.totalMinutes || 0; }
+    return sum;
+  };
+  const thisWk = sumWindow(0, 6);
+  const lastWk = sumWindow(7, 13);
+  const diff = thisWk - lastWk;
+  const pct = lastWk > 0 ? Math.round((diff / lastWk) * 100) : (thisWk > 0 ? 100 : 0);
+  const up = diff >= 0;
+  const flat = thisWk === 0 && lastWk === 0;
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>WEEKLY MOMENTUM</Text>
+      <View style={styles.momentumCard}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.momentumBig}>{fmtMins(thisWk)}</Text>
+          <Text style={styles.momentumSub}>this week · {fmtMins(lastWk)} last week</Text>
+        </View>
+        {!flat && (
+          <View style={[styles.momentumChip, { backgroundColor: (up ? COLORS.success : COLORS.error) + '22' }]}>
+            <Ionicons name={up ? 'arrow-up' : 'arrow-down'} size={14} color={up ? COLORS.success : COLORS.error} />
+            <Text style={[styles.momentumPct, { color: up ? COLORS.success : COLORS.error }]}>{Math.abs(pct)}%</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ── Practice Calendar ── the current month as a dotted grid.
+function PracticeCalendar({ logMap }) {
+  const now = new Date();
+  const y = now.getFullYear(); const m = now.getMonth();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const firstDow = new Date(y, m, 1).getDay();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  let practiced = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const did = (logMap[key]?.totalMinutes || 0) > 0;
+    if (did) practiced += 1;
+    cells.push({ d, did, today: d === now.getDate() });
+  }
+  return (
+    <View style={styles.section}>
+      <View style={styles.calHead}>
+        <Text style={styles.sectionTitle}>{now.toLocaleString('default', { month: 'long' }).toUpperCase()}</Text>
+        <Text style={styles.calCount}>{practiced} day{practiced === 1 ? '' : 's'} practiced</Text>
+      </View>
+      <View style={styles.calGrid}>
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <Text key={`h${i}`} style={styles.calDow}>{d}</Text>)}
+        {cells.map((c, i) => c === null
+          ? <View key={`e${i}`} style={styles.calCell} />
+          : (
+            <View key={c.d} style={styles.calCell}>
+              <View style={[styles.calDay, c.did && styles.calDayDone, c.today && !c.did && styles.calDayToday]}>
+                <Text style={[styles.calDayText, c.did && styles.calDayTextDone]}>{c.d}</Text>
+              </View>
+            </View>
+          ))}
+      </View>
+    </View>
+  );
+}
+
 function CategoryBreakdown({ data }) {
   if (!data.length) {
     return (
@@ -678,11 +794,16 @@ const DEFAULT_WIDGETS = [
   { id: 'categories', enabled: true },
   { id: 'milestones', enabled: true },
   { id: 'goals', enabled: true },
+  // Extra insight widgets — off by default; turn them on in Customize.
+  { id: 'records', enabled: false },
+  { id: 'momentum', enabled: false },
+  { id: 'calendar', enabled: false },
 ];
 const WIDGET_LABELS = {
   stats: 'Stats', score: 'Prova Score', leaderboard: 'Leaderboard', level: 'Level',
   daily: 'Daily graph', heatmap: 'Activity graph',
   categories: 'Categories', milestones: 'Milestones', goals: 'Goals',
+  records: 'Personal records', momentum: 'Weekly momentum', calendar: 'Practice calendar',
 };
 function mergeLayout(saved) {
   if (!Array.isArray(saved)) return DEFAULT_WIDGETS;
@@ -813,6 +934,7 @@ export default function ProgressScreen() {
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
+  const [pendingShare, setPendingShare] = useState(false); // fire OS share once the sheet has dismissed
   const [convos, setConvos] = useState([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [sendingTo, setSendingTo] = useState(null);
@@ -955,15 +1077,19 @@ export default function ProgressScreen() {
     rankName: scoreRank(provaScore).name, level,
   });
 
-  // Open the share sheet: load the user's in-app conversations so they can send
-  // the report straight to a friend, with "share outside the app" as a fallback.
+  // Open the share sheet: the only in-app recipient is the student's teacher
+  // (peer-to-peer messaging is disabled), with "share outside the app" as the
+  // fallback for everyone else.
   const openShare = async () => {
     setShareOpen(true);
     setShareLoading(true);
     try {
       const uid = auth.currentUser?.uid;
+      const teacherUid = userData?.teacherUid || null;
       const snap = await getDocs(collection(db, 'userChats', uid, 'conversations'));
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.otherUid);
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((c) => c.otherUid && teacherUid && c.otherUid === teacherUid);
       const withNames = await Promise.all(list.map(async (c) => {
         let name = c.otherEmail ? c.otherEmail.split('@')[0] : 'Someone';
         try { const us = await getDoc(doc(db, 'users', c.otherUid)); name = displayName({ uid: c.otherUid, ...us.data() }); } catch (e) { /* fall back to email */ }
@@ -978,9 +1104,17 @@ export default function ProgressScreen() {
     }
   };
 
-  const shareExternal = async () => {
-    setShareOpen(false);
-    try { await Share.share({ message: buildReportText() }); } catch (e) { /* user cancelled */ }
+  // iOS can't present the OS share sheet while our own modal is still up, so we
+  // close ours and present the share sheet from the modal's onDismiss (fires
+  // after it's fully gone). Android has no such restriction — fire it directly.
+  const shareExternal = () => {
+    if (Platform.OS === 'ios') {
+      setPendingShare(true);
+      setShareOpen(false);
+    } else {
+      setShareOpen(false);
+      Share.share({ message: buildReportText() }).catch(() => {});
+    }
   };
 
   const sendToConversation = async (c) => {
@@ -1044,6 +1178,9 @@ export default function ProgressScreen() {
       case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
       case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
       case 'milestones': return <Milestones data={milestones} />;
+      case 'records': return <PersonalRecords logMap={logMap} totalSessions={totalSessions} />;
+      case 'momentum': return <Momentum logMap={logMap} />;
+      case 'calendar': return <PracticeCalendar logMap={logMap} />;
       case 'goals':
         return userData?.goals?.length > 0 ? (
           <View style={styles.section}>
@@ -1061,7 +1198,7 @@ export default function ProgressScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Progress</Text>
@@ -1116,22 +1253,33 @@ export default function ProgressScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+      <Modal
+        visible={shareOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShareOpen(false)}
+        onDismiss={() => {
+          if (pendingShare) {
+            setPendingShare(false);
+            Share.share({ message: buildReportText() }).catch(() => {});
+          }
+        }}
+      >
         <TouchableOpacity style={styles.shareBackdrop} activeOpacity={1} onPress={() => setShareOpen(false)}>
           <TouchableOpacity style={styles.shareSheet} activeOpacity={1}>
             <View style={styles.shareSheetHandle} />
             <Text style={styles.shareSheetTitle}>Share my progress</Text>
-            <Text style={styles.shareSheetSub}>Send it to a friend in the app, or share it anywhere.</Text>
+            <Text style={styles.shareSheetSub}>Send it to your teacher in the app, or share it anywhere.</Text>
 
             {shareLoading ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
             ) : convos.length === 0 ? (
-              <Text style={styles.shareEmpty}>No chats yet — start a conversation in Messages first, or share outside the app below.</Text>
+              <Text style={styles.shareEmpty}>Connect a teacher to send it in-app, or share it outside the app below.</Text>
             ) : (
               <ScrollView style={{ maxHeight: 260 }}>
                 {convos.map((c) => (
                   <TouchableOpacity key={c.id} style={styles.shareRow} onPress={() => sendToConversation(c)} disabled={sendingTo != null} activeOpacity={0.7}>
-                    <View style={styles.shareAvatar}><Text style={styles.shareAvatarText}>{c.name.charAt(0).toUpperCase()}</Text></View>
+                    <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color="#fff" /></View>
                     <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
                     {sendingTo === c.otherUid
                       ? <ActivityIndicator size="small" color={COLORS.primary} />
@@ -1179,6 +1327,7 @@ const styles = StyleSheet.create({
   shareEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginVertical: SPACING.md },
   shareRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   shareAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary + '22', alignItems: 'center', justifyContent: 'center' },
+  shareAvatarTeacher: { backgroundColor: COLORS.accent || COLORS.primary },
   shareAvatarText: { color: COLORS.primary, fontSize: 16, fontWeight: '800' },
   shareRowName: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '600' },
   shareExternalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: SPACING.lg, paddingVertical: 13, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
@@ -1242,6 +1391,31 @@ const styles = StyleSheet.create({
   xpLabel: { color: COLORS.textSecondary, fontSize: 12 },
 
   section: { marginBottom: SPACING.xl },
+
+  // Personal records
+  recordsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  recordCard: { flexBasis: '47%', flexGrow: 1, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingVertical: SPACING.md, paddingHorizontal: SPACING.md, gap: 4 },
+  recordValue: { color: COLORS.text, fontSize: 22, fontWeight: '900' },
+  recordLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+
+  // Weekly momentum
+  momentumCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  momentumBig: { color: COLORS.text, fontSize: 26, fontWeight: '900' },
+  momentumSub: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
+  momentumChip: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 12, paddingHorizontal: SPACING.sm + 2, paddingVertical: 6 },
+  momentumPct: { fontSize: 15, fontWeight: '900' },
+
+  // Practice calendar
+  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  calCount: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: SPACING.md },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calCell: { width: `${100 / 7}%`, alignItems: 'center', justifyContent: 'center', paddingVertical: 3 },
+  calDow: { width: `${100 / 7}%`, textAlign: 'center', color: COLORS.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  calDay: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  calDayDone: { backgroundColor: COLORS.primary },
+  calDayToday: { borderWidth: 1, borderColor: COLORS.primary },
+  calDayText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  calDayTextDone: { color: COLORS.text, fontWeight: '800' },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.md },
 
   emptyChart: { minHeight: 132, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl, gap: 6 },

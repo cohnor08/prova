@@ -22,6 +22,7 @@ import ProofMedia from '../../components/ProofMedia';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
+import { useCelebration } from '../../components/Celebration';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -167,12 +168,18 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
   // Long feedback clamps to 2 lines with a "Show more" toggle.
   const [fbOpen, setFbOpen] = useState(false);
   const fbLong = (task.feedback || '').length > 100 || (task.feedback || '').includes('\n');
+  // Long descriptions clamp to 6 lines with a Show more/less. Measure the real
+  // rendered line count once (unclamped first pass) so the toggle only appears
+  // when it's genuinely longer than 6 lines.
+  const [descOpen, setDescOpen] = useState(false);
+  const [descLineCount, setDescLineCount] = useState(null);
+  const descOverflow = (descLineCount || 0) > 6;
 
   return (
     <View style={[styles.teacherTask, topDivider && styles.teacherTaskDivider]}>
       <View style={styles.teacherTaskRow}>
         <TouchableOpacity style={styles.teacherTaskMain} onPress={onToggle} activeOpacity={0.7}>
-          <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} />
+          <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textMuted} style={styles.taskLineIcon} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.teacherTaskTitle, task.completed && styles.teacherTaskDone]} numberOfLines={expanded ? undefined : 2}>{task.title}</Text>
             {!task.completed && due && (
@@ -192,10 +199,28 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       </View>
 
       {/* Content first — the student reads what to do, then the timer sits at the bottom. */}
-      {expanded && !!task.description && <Text style={styles.teacherTaskDesc}>{task.description}</Text>}
+      {expanded && !!task.description && (
+        <View style={styles.teacherTaskDescRow}>
+          <Ionicons name="document-text-outline" size={15} color={COLORS.textMuted} style={[styles.taskLineIcon, { marginTop: 1 }]} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              style={styles.teacherTaskDesc}
+              numberOfLines={descOpen || descLineCount == null ? undefined : 6}
+              onTextLayout={(e) => { if (descLineCount == null) setDescLineCount(e.nativeEvent.lines.length); }}
+            >
+              {task.description}
+            </Text>
+            {descOverflow && (
+              <TouchableOpacity onPress={() => setDescOpen((o) => !o)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={styles.taskFeedbackMore}>{descOpen ? 'Show less' : 'Show more'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
       {expanded && !!task.feedback && (
         <View style={styles.taskFeedback}>
-          <Ionicons name="chatbubble-ellipses" size={13} color={COLORS.accent} />
+          <Ionicons name="chatbubble-ellipses" size={13} color={COLORS.accent} style={[styles.taskLineIcon, { marginTop: 1 }]} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.taskFeedbackText} numberOfLines={fbOpen ? undefined : 2}>“{task.feedback}”</Text>
             {fbLong && (
@@ -208,14 +233,14 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       )}
       {expanded && !!task.youtube && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.8}>
-          <Ionicons name="play-circle" size={18} color={COLORS.primary} />
+          <Ionicons name="play-circle" size={18} color={COLORS.primary} style={styles.taskLineIcon} />
           <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>Watch a tutorial</Text>
           <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
       {expanded && !!task.song && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
-          <Ionicons name="musical-notes" size={15} color={COLORS.accent} />
+          <Ionicons name="musical-notes" size={15} color={COLORS.primary} style={styles.taskLineIcon} />
           <Text style={[styles.teacherTaskLinkText, styles.teacherTaskSongText]} numberOfLines={1}>{task.song}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
@@ -437,6 +462,7 @@ function PlanCard({ session }) {
 }
 
 export default function TodayScreen({ navigation }) {
+  const celebrate = useCelebration();
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
@@ -697,7 +723,7 @@ export default function TodayScreen({ navigation }) {
       });
       setUserData(p => ({ ...p, provaScore: newScore }));
       setCompletedIds(ids);
-      if (!silent) Alert.alert('Task done', `+${formatScore(pts)} Prova points 🎸`);
+      if (!silent) celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '🎸' });
       maybeRate(ids);
       return pts;
     } catch (e) {
@@ -908,10 +934,13 @@ export default function TodayScreen({ navigation }) {
       setUserData((p) => ({ ...p, ...updates }));
 
       const newRank = scoreRank(newScore);
-      Alert.alert(
-        rankedUp ? `${newRank.emoji} New rank: ${newRank.name}!` : 'Challenge complete! 🔥',
-        `+${formatScore(CHALLENGE_POINTS)} Prova points${newStreak > 1 ? ` · 🔥 ${newStreak}-day streak kept!` : ''}.`,
-      );
+      celebrate({
+        points: CHALLENGE_POINTS,
+        title: rankedUp ? `New rank: ${newRank.name}!` : 'Challenge complete!',
+        subtitle: 'Prova points',
+        emoji: rankedUp ? newRank.emoji : '🔥',
+        streak: newStreak > 1 ? newStreak : 0,
+      });
     } catch (e) {
       console.error(e);
       Alert.alert('Error', "Couldn't save your challenge. Please try again.");
@@ -956,9 +985,9 @@ export default function TodayScreen({ navigation }) {
     }
     if (!silent) {
       if (finished) {
-        Alert.alert('Task complete! ✅', `${pts > 0 ? `+${formatScore(pts)} Prova points 🎸\n` : ''}Nice work — that one's off your list.`);
+        celebrate({ points: pts, title: 'Task complete!', subtitle: "Off your list", emoji: '⭐' });
       } else if (pts > 0) {
-        Alert.alert('Nice work', `+${formatScore(pts)} Prova points 🎸\nPractice it again to earn more.`);
+        celebrate({ points: pts, title: 'Nice work!', subtitle: 'Practice again to earn more', emoji: '⭐' });
       }
     }
     return pts;
@@ -1097,7 +1126,7 @@ export default function TodayScreen({ navigation }) {
     setUserData((p) => ({ ...p, ...updates }));
     try {
       await updateDoc(doc(db, 'users', uid), updates);
-      Alert.alert('🔥 Streak restored!', `Your ${userData?.streak || 0}-day streak is safe. Practice today to keep it going.`);
+      celebrate({ title: 'Streak restored!', emoji: '🔥', subtitle: 'Practice today to keep it going', streak: userData?.streak || 0 });
     } catch (e) {
       Alert.alert('Error', "Couldn't restore your streak. Please try again.");
     }
@@ -1308,7 +1337,7 @@ export default function TodayScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Bell — gig invites + teacher updates land here. Absolute positioning
           ignores the SafeAreaView's padding, so offset by the real inset. */}
       <TouchableOpacity
@@ -1412,6 +1441,20 @@ export default function TodayScreen({ navigation }) {
               </TouchableOpacity>
             )}
           </View>
+        )}
+
+        {/* Ask Prova — a separate card, sitting below the start-practice box */}
+        {isToday && (
+          <TouchableOpacity style={styles.askCard} activeOpacity={0.85} onPress={() => navigation.navigate('AskProva')}>
+            <View style={styles.askIcon}>
+              <Ionicons name="sparkles" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.askTitle}>Ask Prova</Text>
+              <Text style={styles.askSub} numberOfLines={1}>Your AI coach — ask anything about playing</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
         )}
 
         {/* Daily challenge — bonus task that keeps the streak alive */}
@@ -1578,11 +1621,9 @@ export default function TodayScreen({ navigation }) {
             <View key={g.key} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
                 <Ionicons name="people" size={16} color={COLORS.accent || COLORS.primary} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.classGroupKicker} numberOfLines={1}>{g.name.toUpperCase()}</Text>
-                  <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
-                </View>
-                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} />
+                <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
+                <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
+                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
               {!collapsed && g.tasks.length > 0 && (
                 <View style={styles.taskGroup}>
@@ -1628,7 +1669,7 @@ export default function TodayScreen({ navigation }) {
             })}
           >
             <View style={styles.songIcon}>
-              <Ionicons name="musical-notes" size={20} color={COLORS.accent} />
+              <Ionicons name="musical-notes" size={20} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.songLabel}>
@@ -2040,7 +2081,7 @@ const styles = StyleSheet.create({
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
-  classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.
@@ -2056,8 +2097,11 @@ const styles = StyleSheet.create({
   teacherTaskMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   teacherTaskTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   teacherTaskDone: { color: COLORS.textMuted },
-  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: SPACING.sm },
-  taskFeedback: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm, backgroundColor: COLORS.accent + '12', borderRadius: 10, padding: 10 },
+  // Shared leading-icon slot so every row's text starts in the same column (18 + 6 gap = 24).
+  taskLineIcon: { width: 18, textAlign: 'center' },
+  teacherTaskDescRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm },
+  teacherTaskDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  taskFeedback: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm },
   taskFeedbackText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
   taskFeedbackMore: { color: COLORS.primary, fontSize: 12, fontWeight: '700', marginTop: 4 },
   teacherTaskLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
@@ -2195,12 +2239,23 @@ const styles = StyleSheet.create({
   songCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
-    borderLeftWidth: 4, borderLeftColor: COLORS.accent, padding: SPACING.md, marginTop: SPACING.sm,
+    padding: SPACING.md,
   },
   songIcon: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.accent + '18',
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
+  askCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
+    padding: SPACING.md, marginBottom: SPACING.lg,
+  },
+  askIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  askTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  askSub: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 1 },
   lessonRow: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     paddingVertical: 9, paddingHorizontal: 12, marginTop: SPACING.sm,

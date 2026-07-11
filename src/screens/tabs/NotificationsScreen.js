@@ -17,6 +17,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 const TYPE_META = {
   gig_invite:    { icon: 'mic',              color: '#0EA5E9' },
   task_assigned: { icon: 'clipboard-outline', color: '#3B82F6' },
+  nudge:         { icon: 'hand-right',       color: '#F59E0B' },
   default:       { icon: 'notifications-outline', color: '#8B5CF6' },
 };
 

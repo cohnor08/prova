@@ -74,3 +74,9 @@ export async function generateSongPlan(song) {
 export async function refreshWeeklyPlan(profile, feedback) {
   return callFunction('refreshWeeklyPlan', { profile, feedback }, 240000);
 }
+
+// Ask the AI coach a free-text playing question. `history` = prior
+// [{ role:'user'|'prova', text }] turns for context. Returns { answer }.
+export async function askProva({ question, instrument, level, history }) {
+  return callFunction('askProva', { question, instrument, level, history }, 60000);
+}

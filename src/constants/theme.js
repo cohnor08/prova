@@ -27,6 +27,17 @@ export const SPACING = {
   xxl: 48,
 };
 
+// Shared bottom-tab bar style. Exported so screens can hide it (e.g. when a
+// chat is open) and restore it to the exact same look afterwards.
+export const TAB_BAR_STYLE = {
+  backgroundColor: COLORS.surface,
+  borderTopColor: COLORS.border,
+  borderTopWidth: 1,
+  height: 84,
+  paddingBottom: 20,
+  paddingTop: 10,
+};
+
 export const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 
 export const INSTRUMENTS = ['Guitar', 'Bass'];

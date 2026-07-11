@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, TextInput,
-  Animated, PanResponder,
+  Animated, PanResponder, Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +12,9 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { displayName } from '../../lib/displayName';
+import { liveStreak } from '../../lib/score';
+import { sendNotification } from '../../lib/inbox';
+import { advancePrograms } from '../../lib/programs';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -47,8 +51,9 @@ const DEFAULT_WIDGETS = [
   // Extra widgets — off by default; teachers switch them on in Edit mode.
   { id: 'tip', enabled: false },
   { id: 'top', enabled: false },
-  { id: 'attention', enabled: false },
   { id: 'notes', enabled: false },
+  // Practice Pulse sits at the bottom — the studio's at-a-glance status.
+  { id: 'pulse', enabled: true },
 ];
 const WIDGET_LABELS = {
   code: 'Join code',
@@ -59,8 +64,8 @@ const WIDGET_LABELS = {
   actions: 'Quick actions',
   tip: 'Tip of the day',
   top: 'Top students',
-  attention: 'Needs a nudge',
   notes: 'My notes',
+  pulse: 'Practice Pulse',
 };
 
 const LESSON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -227,6 +232,26 @@ export default function TeacherHomeScreen({ navigation }) {
   const [dragging, setDragging] = useState(false);
   const [note, setNote] = useState('');
   const [lessons, setLessons] = useState([]);
+  const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
+  const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
+
+  // One-tap nudge: drop an encouraging notification into the student's inbox
+  // (shows under their Today bell). Optimistic — flips to "Nudged" instantly.
+  const nudgeStudent = async (s) => {
+    if (!s?.uid || nudged.has(s.uid)) return;
+    setNudged((prev) => new Set(prev).add(s.uid));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      await sendNotification(s.uid, {
+        type: 'nudge',
+        title: 'A nudge from your teacher 👋',
+        body: 'Time for a quick practice — your teacher is cheering you on!',
+      });
+    } catch (e) {
+      setNudged((prev) => { const n = new Set(prev); n.delete(s.uid); return n; });
+      Alert.alert('Error', "Couldn't send the nudge. Please try again.");
+    }
+  };
 
   // Make sure this teacher has a join code (students use it to connect) and
   // load their saved home layout + personal note.
@@ -303,6 +328,8 @@ export default function TeacherHomeScreen({ navigation }) {
         try {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
+          // Release any program weeks that have come due since last open.
+          advancePrograms(uid).catch(() => {});
           // Students who connected carry teacherUid === my uid.
           const [snap, meSnap] = await Promise.all([
             getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
@@ -326,6 +353,7 @@ export default function TeacherHomeScreen({ navigation }) {
 
   const goStudents = () => navigation.navigate('Teacher');
   const goResources = () => navigation.navigate('Resources');
+  const goPacks = () => navigation.navigate('Packs');
 
   const renderWidget = (id) => {
     switch (id) {
@@ -362,14 +390,20 @@ export default function TeacherHomeScreen({ navigation }) {
         );
       case 'actions':
         return (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.actionBtn} onPress={goStudents} activeOpacity={0.85} disabled={editMode}>
-              <Ionicons name="person-add" size={18} color={COLORS.text} />
-              <Text style={styles.actionText}>Add a student</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85} disabled={editMode}>
-              <Ionicons name="library" size={18} color={COLORS.primary} />
-              <Text style={[styles.actionText, { color: COLORS.primary }]}>Resources</Text>
+          <View style={styles.actionsCol}>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity style={styles.actionBtn} onPress={goStudents} activeOpacity={0.85} disabled={editMode}>
+                <Ionicons name="person-add" size={18} color={COLORS.text} />
+                <Text style={styles.actionText}>Add a student</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85} disabled={editMode}>
+                <Ionicons name="library" size={18} color={COLORS.primary} />
+                <Text style={[styles.actionText, { color: COLORS.primary }]}>Resources</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt, styles.actionBtnWide]} onPress={goPacks} activeOpacity={0.85} disabled={editMode}>
+              <Ionicons name="albums-outline" size={18} color={COLORS.primary} />
+              <Text style={[styles.actionText, { color: COLORS.primary }]}>Packs & Programs</Text>
             </TouchableOpacity>
           </View>
         );
@@ -435,6 +469,64 @@ export default function TeacherHomeScreen({ navigation }) {
           </View>
         );
       }
+      case 'pulse': {
+        const now = Date.now();
+        const statusOf = (s) => {
+          if (!s.lastSessionDate) return { rank: 0, color: COLORS.error, label: 'never practiced' };
+          const days = Math.floor((now - new Date(s.lastSessionDate).getTime()) / 86400000);
+          if (days >= 4) return { rank: 0, color: COLORS.error, label: `${days}d ago` };
+          if (days >= 2) return { rank: 1, color: '#F59E0B', label: `${days}d ago` };
+          return { rank: 2, color: COLORS.success, label: days <= 0 ? 'practiced today' : 'yesterday' };
+        };
+        const rows = students
+          .map((s) => ({ s, st: statusOf(s), streak: liveStreak(s) }))
+          .sort((a, b) => a.st.rank - b.st.rank || b.streak - a.streak);
+        // "Needs a nudge" = hasn't practised in more than 3 days (rank 0).
+        const needCount = rows.filter((r) => r.st.rank === 0).length;
+        const shown = pulseOpen ? rows : rows.slice(0, 3);
+        return (
+          <View style={styles.card}>
+            <View style={styles.pulseHeader}>
+              <Text style={styles.cardTitle}>Practice Pulse</Text>
+              <Text style={styles.pulseSummary}>
+                {rows.length === 0 ? '' : needCount === 0 ? 'all on track' : `${needCount} need a nudge`}
+              </Text>
+            </View>
+            {rows.length === 0 ? (
+              <Text style={styles.emptyMini}>Connect students to see their practice at a glance.</Text>
+            ) : shown.map(({ s, st, streak }) => {
+              const done = nudged.has(s.uid);
+              return (
+                <View key={s.uid} style={styles.pulseRow}>
+                  <View style={[styles.pulseDot, { backgroundColor: st.color }]} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.pulseName} numberOfLines={1}>{displayName(s)}</Text>
+                    <Text style={styles.pulseMeta} numberOfLines={1}>
+                      {streak > 0 ? `${streak}-day streak · ` : ''}{st.label}
+                    </Text>
+                  </View>
+                  {st.rank === 0 && (
+                    <TouchableOpacity
+                      style={[styles.nudgeBtn, done && styles.nudgeBtnDone]}
+                      onPress={() => nudgeStudent(s)}
+                      disabled={done}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={done ? 'checkmark' : 'hand-right-outline'} size={13} color={done ? COLORS.success : COLORS.primary} />
+                      <Text style={[styles.nudgeText, done && { color: COLORS.success }]}>{done ? 'Nudged' : 'Nudge'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+            {rows.length > 3 && (
+              <TouchableOpacity onPress={() => setPulseOpen((v) => !v)} activeOpacity={0.7}>
+                <Text style={styles.pulseMore}>{pulseOpen ? 'Show less' : `Show more (${rows.length - 3})`}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      }
       case 'top': {
         const ranked = [...students].sort((a, b) => (b.provaScore || 0) - (a.provaScore || 0)).slice(0, 3);
         return (
@@ -449,30 +541,6 @@ export default function TeacherHomeScreen({ navigation }) {
                 <Text style={styles.miniScore}>{(s.provaScore || 0).toLocaleString()}</Text>
               </View>
             ))}
-          </View>
-        );
-      }
-      case 'attention': {
-        const now = Date.now();
-        const flagged = students.filter((s) => {
-          if (!s.lastSessionDate) return true;
-          return now - new Date(s.lastSessionDate).getTime() >= 3 * 86400000;
-        });
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Needs a nudge</Text>
-            {flagged.length === 0 ? (
-              <Text style={styles.emptyMini}>Everyone's practiced recently 🎉</Text>
-            ) : flagged.slice(0, 5).map((s, i) => {
-              const days = s.lastSessionDate ? Math.floor((now - new Date(s.lastSessionDate).getTime()) / 86400000) : null;
-              return (
-                <View key={s.uid || i} style={styles.miniRow}>
-                  <Ionicons name="alert-circle-outline" size={16} color={COLORS.error} />
-                  <Text style={styles.miniName} numberOfLines={1}>{displayName(s)}</Text>
-                  <Text style={styles.miniMeta}>{days === null ? 'never' : `${days}d ago`}</Text>
-                </View>
-              );
-            })}
           </View>
         );
       }
@@ -498,7 +566,7 @@ export default function TeacherHomeScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -588,6 +656,17 @@ const styles = StyleSheet.create({
   miniName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
   miniScore: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   miniMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  // Practice Pulse
+  pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  pulseSummary: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.border },
+  pulseDot: { width: 9, height: 9, borderRadius: 5, flexShrink: 0 },
+  pulseName: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  pulseMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 1 },
+  nudgeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary + '1A', borderRadius: 12, paddingHorizontal: SPACING.sm + 2, paddingVertical: 5, flexShrink: 0 },
+  nudgeBtnDone: { backgroundColor: COLORS.success + '1A' },
+  nudgeText: { color: COLORS.primary, fontSize: 12, fontWeight: '800' },
+  pulseMore: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' },
   noteInput: { color: COLORS.text, fontSize: 14, lineHeight: 20, minHeight: 70, textAlignVertical: 'top' },
   lessonsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
   calBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
@@ -595,12 +674,14 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 10 },
   checkLabel: { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   checkLabelDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
-  actionsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+  actionsCol: { marginBottom: SPACING.lg, gap: SPACING.sm },
+  actionsRow: { flexDirection: 'row', gap: SPACING.sm },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14,
   },
   actionBtnAlt: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  actionBtnWide: { flex: 0 },
   actionText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   tipCard: {
     backgroundColor: COLORS.surface, borderRadius: 16, padding: SPACING.lg,

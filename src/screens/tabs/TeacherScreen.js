@@ -5,8 +5,8 @@ import {
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
 } from 'react-native';
 import ProofMedia from '../../components/ProofMedia';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
@@ -19,10 +19,13 @@ import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
 import { displayName } from '../../lib/displayName';
+import { liveStreak } from '../../lib/score';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
-import { COLORS, SPACING } from '../../constants/theme';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 import SheetModal from '../../components/SheetModal';
@@ -257,7 +260,7 @@ function PaywallScreen({ onUnlock }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.title}>Teacher Mode</Text>
         <Text style={styles.subtitle}>See what your dashboard looks like</Text>
@@ -443,6 +446,12 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
 
   return (
     <SheetModal visible={visible} onRequestClose={onClose} cardStyle={styles.modalCard} keyboardAvoiding>
+          <ScrollView
+            style={{ maxHeight: 380 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: SPACING.sm }}
+          >
             <Text style={styles.modalTitle}>New group chat</Text>
             <Text style={styles.tplSheetEmpty}>Only you can post — students can react.</Text>
             <TextInput
@@ -483,7 +492,7 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
                     autoCorrect={false}
                   />
                 )}
-                <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                <View>
                   {shown.length === 0 ? (
                     <Text style={styles.tplSheetEmpty}>No students match “{search}”.</Text>
                   ) : shown.map((s) => {
@@ -496,9 +505,10 @@ function CreateGroupChatModal({ visible, students, classes, onClose, onCreate })
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </View>
               </>
             )}
+          </ScrollView>
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { reset(); onClose(); }}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -1281,11 +1291,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
 // ─── Inline Chat View ─────────────────────────────────────────────────────────
 
-function InlineChatView({ student, myUid, isDemo }) {
+function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   const otherUid = student.uid;
   const otherEmail = student.email;
   const myEmail = auth.currentUser?.email || '';
   const chatId = makeChatId(myUid, otherUid);
+  const insets = useSafeAreaInsets();
 
   const initMessages = () => {
     if (!isDemo) return [];
@@ -1400,6 +1411,17 @@ function InlineChatView({ student, myUid, isDemo }) {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
+        <TouchableOpacity onPress={onBack} style={styles.chatNavBackBtn}>
+          <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
+          <Text style={styles.chatNavBackText}>Messages</Text>
+        </TouchableOpacity>
+        <View style={styles.chatNavCenter}>
+          <Text style={styles.chatNavTitle} numberOfLines={1}>{title}</Text>
+          {!!subtitle && <Text style={styles.chatNavSub}>{subtitle}</Text>}
+        </View>
+        <View style={{ width: 80 }} />
+      </View>
       {/* Inverted = bottom-anchored: the newest message stays above the input
           whatever the keyboard does; dragging dismisses the keyboard. */}
       <FlatList
@@ -1437,7 +1459,7 @@ function InlineChatView({ student, myUid, isDemo }) {
           </View>
         }
       />
-      <View style={styles.chatInputRow}>
+      <View style={[styles.chatInputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
           onPress={() => handleMedia(captureMedia)}
@@ -1570,6 +1592,9 @@ function TeacherDashboard() {
   const [myName, setMyName] = useState('');
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
+  const [parentEmails, setParentEmails] = useState({});     // { studentUid: 'parent@email' }
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState({});
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null); // class being renamed
@@ -1587,6 +1612,16 @@ function TeacherDashboard() {
   });
 
   const myUid = auth.currentUser?.uid;
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets(); // reliable inside a Modal (SafeAreaView reads 0 there)
+
+  // Hide the bottom tab bar while a chat / class announcement thread is open so
+  // it can own the full screen (fixes the input gap + keyboard avoidance).
+  const inChat = !!(activeChatStudent || activeGroup);
+  useEffect(() => {
+    navigation.setOptions({ tabBarStyle: inChat ? { display: 'none' } : TAB_BAR_STYLE });
+    return () => navigation.setOptions({ tabBarStyle: TAB_BAR_STYLE });
+  }, [inChat, navigation]);
 
   useEffect(() => {
     if (!myUid) return;
@@ -1614,13 +1649,28 @@ function TeacherDashboard() {
     }, ignorePermissionDenied);
   }, [myUid]);
 
-  // Resolve my own display name (for labelling group-chat posts).
+  // Resolve my own display name (for labelling group-chat posts) + load my
+  // private parent-contact book.
   useEffect(() => {
     if (!myUid) return;
     getDoc(doc(db, 'users', myUid))
-      .then((s) => setMyName(displayName({ uid: myUid, ...(s.data() || {}) })))
+      .then((s) => {
+        const d = s.data() || {};
+        setMyName(displayName({ uid: myUid, ...d }));
+        setParentEmails(d.parentEmails && typeof d.parentEmails === 'object' ? d.parentEmails : {});
+      })
       .catch(() => {});
   }, [myUid]);
+
+  const openContacts = () => { setEmailDraft({ ...parentEmails }); setContactsOpen(true); };
+  const saveContacts = async () => {
+    // Drop blank entries so the map stays tidy.
+    const cleaned = {};
+    Object.entries(emailDraft).forEach(([uid, v]) => { const e = (v || '').trim(); if (e) cleaned[uid] = e; });
+    setParentEmails(cleaned);
+    setContactsOpen(false);
+    if (myUid) updateDoc(doc(db, 'users', myUid), { parentEmails: cleaned }).catch(() => {});
+  };
 
   // Class group chats I own/belong to (newest activity first).
   useEffect(() => {
@@ -1908,17 +1958,23 @@ function TeacherDashboard() {
     try {
       const snap = await getDocs(query(
         collection(db, 'sessionHistory', student.uid, 'logs'),
-        orderBy('date', 'desc'), limit(7),
+        orderBy('date', 'desc'), limit(14),
       ));
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); cutoff.setHours(0, 0, 0, 0);
-      let weekMins = 0; let daysPracticed = 0;
-      snap.forEach((d) => {
-        const data = d.data();
-        const day = new Date(`${d.id}T00:00:00`);
-        if (day >= cutoff && (data.totalMinutes || 0) > 0) { weekMins += data.totalMinutes; daysPracticed++; }
-      });
+      const logMap = {};
+      snap.forEach((d) => { logMap[d.id] = d.data().totalMinutes || 0; });
+      // Last 7 calendar days, in order, for the bar chart + weekly totals.
+      const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const dt = new Date(); dt.setHours(0, 0, 0, 0); dt.setDate(dt.getDate() - i);
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        days.push({ label: DOW[dt.getDay()], mins: logMap[key] || 0 });
+      }
+      const weekMins = days.reduce((s, d) => s + d.mins, 0);
+      const daysPracticed = days.filter((d) => d.mins > 0).length;
+      const maxMins = Math.max(1, ...days.map((d) => d.mins));
       const name = displayName(student);
-      const streak = student.streak || 0;
+      const streak = liveStreak(student);
       const assigned = student.assignedTasks?.length || 0;
       const done = student.assignedTasks?.filter((t) => t.completed).length || 0;
       const h = Math.floor(weekMins / 60); const m = weekMins % 60;
@@ -1926,42 +1982,79 @@ function TeacherDashboard() {
 
       // Pull lesson attendance, marks and the latest note from the teacher's own
       // doc (recorded on the lesson calendar) for the last ~term.
-      let lessonLines = '';
+      let attPct = null, avgMark = null, missed = 0, attended = 0, note = null;
       try {
         const meSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
         const att = meSnap.data()?.attendance || {};
         const c = new Date(); c.setDate(c.getDate() - 91);
         const cutoffYmd = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
-        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0;
-        let latestNote = null, latestNoteDate = '';
+        let present = 0, late = 0, absent = 0, markSum = 0, markCount = 0, latestNoteDate = '';
         Object.values(att).forEach((r) => {
           if (r.studentUid !== student.uid || (r.date || '') < cutoffYmd) return;
           if (r.status === 'present') present++;
           else if (r.status === 'late') late++;
           else if (r.status === 'absent') absent++;
           if (r.mark) { markSum += r.mark; markCount++; }
-          if (r.note && (r.date || '') >= latestNoteDate) { latestNote = r.note; latestNoteDate = r.date || ''; }
+          if (r.note && (r.date || '') >= latestNoteDate) { note = r.note; latestNoteDate = r.date || ''; }
         });
         const denom = present + late + absent;
-        if (denom > 0) {
-          const pct = Math.round(((present + late) / denom) * 100);
-          lessonLines += `\nLessons this term: ${present + late} of ${denom} attended (${pct}%)`;
-          if (absent > 0) lessonLines += ` · ${absent} missed`;
-        }
-        if (markCount > 0) lessonLines += `\nAverage lesson mark: ${(markSum / markCount).toFixed(1)} / 5 ⭐`;
-        if (latestNote) lessonLines += `\nLatest teacher note: ${latestNote}`;
+        if (denom > 0) { attended = present + late; missed = absent; attPct = Math.round((attended / denom) * 100); }
+        if (markCount > 0) avgMark = (markSum / markCount).toFixed(1);
       } catch (e) { /* attendance is optional — skip if it fails */ }
 
-      const report =
-`🎸 Prova practice report — ${name}
+      const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+      const bars = days.map((d) => `<div class="bc"><div class="bt"><div class="bf" style="height:${Math.round((d.mins / maxMins) * 100)}%"></div></div><div class="bl">${d.label}</div></div>`).join('');
 
-This week: practiced ${daysPracticed} of 7 days · ${timeStr} total
-Current streak: ${streak} day${streak === 1 ? '' : 's'} 🔥
-Assigned tasks: ${done} of ${assigned} completed
-Level: ${student.level || 'Beginner'} (${student.instrument || 'Guitar'})${lessonLines}
+      // A clean, light, printable report card — Prova-branded.
+      const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;color:#0F172A;background:#fff}
+.wrap{max-width:640px;margin:0 auto;padding:34px 30px}
+.brand{display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:22px;font-weight:800;letter-spacing:1px;color:#2563EB}.logo b{color:#06B6D4}
+.date{color:#64748B;font-size:12px}
+.hero{margin:24px 0 4px}.hero h1{margin:0;font-size:26px}.hero p{margin:3px 0 0;color:#64748B;font-size:14px}
+.bars{display:flex;gap:10px;align-items:flex-end;height:130px;margin:22px 0 6px;padding:16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:16px}
+.bc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.bt{flex:1;width:62%;display:flex;align-items:flex-end}
+.bf{width:100%;background:linear-gradient(180deg,#3B82F6,#06B6D4);border-radius:6px;min-height:3px}
+.bl{margin-top:8px;font-size:11px;color:#94A3B8;font-weight:700}
+.grid{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.stat{flex:1 1 44%;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:14px 16px}
+.stat .v{font-size:22px;font-weight:800}.stat .l{font-size:12px;color:#64748B;margin-top:3px}
+.note{margin-top:8px;background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #2563EB;border-radius:10px;padding:14px 16px}
+.note .q{font-size:15px;font-style:italic}.note .a{font-size:12px;color:#64748B;margin-top:6px}
+.foot{margin-top:28px;text-align:center;color:#94A3B8;font-size:12px}
+</style></head><body><div class="wrap">
+<div class="brand"><div class="logo">PROVA<b>.</b></div><div class="date">${esc(today)}</div></div>
+<div class="hero"><h1>${esc(name)}'s practice report</h1><p>This week · ${esc(student.level || 'Beginner')} ${esc(student.instrument || 'Guitar')}</p></div>
+<div class="bars">${bars}</div>
+<div class="grid">
+<div class="stat"><div class="v">${timeStr}</div><div class="l">Practiced this week</div></div>
+<div class="stat"><div class="v">${daysPracticed}/7</div><div class="l">Days practiced</div></div>
+<div class="stat"><div class="v">${streak} 🔥</div><div class="l">Day streak</div></div>
+<div class="stat"><div class="v">${done}/${assigned}</div><div class="l">Tasks completed</div></div>
+${attPct != null ? `<div class="stat"><div class="v">${attPct}%</div><div class="l">Lessons attended${missed ? ` · ${missed} missed` : ''}</div></div>` : ''}
+${avgMark != null ? `<div class="stat"><div class="v">${avgMark}/5 ⭐</div><div class="l">Average lesson mark</div></div>` : ''}
+</div>
+${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a">— ${esc(myName || 'Your teacher')}</div></div>` : ''}
+<div class="foot">Sent with Prova · your music practice coach</div>
+</div></body></html>`;
 
-Sent from Prova`;
-      await Share.share({ message: report });
+      // Text fallback if PDF generation/sharing isn't available on the device.
+      const text = `🎸 Prova practice report — ${name}\n\nThis week: practiced ${daysPracticed} of 7 days · ${timeStr} total\nStreak: ${streak} day${streak === 1 ? '' : 's'}\nTasks: ${done} of ${assigned} completed${attPct != null ? `\nLessons: ${attended} of ${attended + missed} attended (${attPct}%)` : ''}${avgMark != null ? `\nMark: ${avgMark}/5` : ''}${note ? `\nNote: ${note}` : ''}\n\nSent from Prova`;
+
+      try {
+        const { uri } = await Print.printToFileAsync({ html });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `${name}'s report`, UTI: 'com.adobe.pdf' });
+        } else {
+          await Share.share({ message: text });
+        }
+      } catch (e) {
+        await Share.share({ message: text });
+      }
     } catch (e) {
       Alert.alert('Error', "Couldn't build the report. Please try again.");
     }
@@ -1980,19 +2073,15 @@ Sent from Prova`;
   if (activeChatStudent) {
     const chatTitle = displayName(activeChatStudent);
     return (
-      <View style={{ flex: 1 }}>
-        <View style={styles.chatNavHeader}>
-          <TouchableOpacity onPress={() => setActiveChatStudent(null)} style={styles.chatNavBackBtn}>
-            <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
-            <Text style={styles.chatNavBackText}>Messages</Text>
-          </TouchableOpacity>
-          <View style={styles.chatNavCenter}>
-            <Text style={styles.chatNavTitle} numberOfLines={1}>{chatTitle}</Text>
-            <Text style={styles.chatNavSub}>{activeChatStudent.level} · {activeChatStudent.instrument}</Text>
-          </View>
-          <View style={{ width: 80 }} />
-        </View>
-        <InlineChatView student={activeChatStudent} myUid={myUid} isDemo={DEMO_MODE} />
+      <View style={styles.container}>
+        <InlineChatView
+          student={activeChatStudent}
+          myUid={myUid}
+          isDemo={DEMO_MODE}
+          title={chatTitle}
+          subtitle={`${activeChatStudent.level} · ${activeChatStudent.instrument}`}
+          onBack={() => setActiveChatStudent(null)}
+        />
       </View>
     );
   }
@@ -2000,7 +2089,7 @@ Sent from Prova`;
   // ── Group chat view ──
   if (activeGroup) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.container}>
         <GroupChatView
           group={activeGroup}
           myUid={myUid}
@@ -2008,7 +2097,7 @@ Sent from Prova`;
           isTeacher
           onBack={() => setActiveGroup(null)}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -2090,6 +2179,14 @@ Sent from Prova`;
               </View>
             )}
 
+            {!DEMO_MODE && (
+              <TouchableOpacity style={styles.contactsBtn} onPress={openContacts} activeOpacity={0.85}>
+                <Ionicons name="mail-outline" size={17} color={COLORS.primary} />
+                <Text style={styles.contactsBtnText}>Parent contacts</Text>
+                <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
+            )}
+
             {!DEMO_MODE && !loading && students.length === 0 && (
               <View style={styles.emptyStudents}>
                 <Ionicons name="people-outline" size={30} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
@@ -2124,7 +2221,7 @@ Sent from Prova`;
             {filteredStudents.map((student) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
-              const streak = student.streak || 0;
+              const streak = liveStreak(student);
               const totalMin = student.totalMinutes || 0;
               const hrs = Math.floor(totalMin / 60);
               const remMin = totalMin % 60;
@@ -2698,6 +2795,46 @@ Sent from Prova`;
         onCreate={createGroup}
       />
 
+      {/* Parent Contacts — a private email book, saved on the teacher's own doc.
+          Fills in the "who to send to" half of parent reports. */}
+      <Modal visible={contactsOpen} animationType="slide" onRequestClose={() => setContactsOpen(false)}>
+        <View style={styles.container}>
+          <View style={[styles.pcNav, { paddingTop: insets.top + SPACING.md }]}>
+            <TouchableOpacity onPress={() => setContactsOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.pcCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.pcTitle}>Parent Contacts</Text>
+            <TouchableOpacity onPress={saveContacts} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.pcSave}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
+            <Text style={styles.pcIntro}>Add each student's parent email. Saved privately to your account — ready for parent reports.</Text>
+            {students.length === 0 ? (
+              <Text style={styles.pcEmpty}>No students connected yet. Share your join code first.</Text>
+            ) : students.map((s) => (
+              <View key={s.uid} style={styles.pcRow}>
+                <Text style={styles.pcName} numberOfLines={1}>{displayName(s)}</Text>
+                <TextInput
+                  style={styles.pcInput}
+                  placeholder="parent@email.com"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={emailDraft[s.uid] || ''}
+                  onChangeText={(v) => setEmailDraft((d) => ({ ...d, [s.uid]: v }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
+
       <AddStudentsModal
         visible={!!addToClass}
         klass={addToClass}
@@ -3041,6 +3178,18 @@ const styles = StyleSheet.create({
   codeHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: SPACING.md },
   shareCodeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 },
   shareCodeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  contactsBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingVertical: SPACING.md, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
+  contactsBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  // Parent Contacts page
+  pcNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  pcCancel: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
+  pcTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
+  pcSave: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  pcIntro: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
+  pcEmpty: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', marginTop: SPACING.xl },
+  pcRow: { marginBottom: SPACING.md },
+  pcName: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: SPACING.xs },
+  pcInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
   studentSearchRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: SPACING.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   studentSearchInput: { flex: 1, color: COLORS.text, fontSize: 15, paddingVertical: 10 },
   studentSearchEmpty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: SPACING.lg },
@@ -3056,7 +3205,7 @@ const styles = StyleSheet.create({
   classPickChipOn: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary },
   classPickChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   classPickChipTextOn: { color: COLORS.primary },
-  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   newGroupBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.primary + '1A', borderRadius: 12, paddingHorizontal: SPACING.sm, paddingVertical: 4 },
   newGroupBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   newClassBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: SPACING.lg },

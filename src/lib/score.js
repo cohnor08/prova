@@ -82,6 +82,22 @@ export function displayScore(u = {}) {
   return typeof u.provaScore === 'number' ? u.provaScore : backfillScore(u);
 }
 
+// The stored `streak` field is only reset to 0 by a self-heal that runs on the
+// STUDENT's own device when they reopen Today after missing a day. Anyone else
+// reading their doc (a teacher dashboard, a parent report) can therefore see a
+// stale, already-dead streak — e.g. "1-day streak · 2d ago". This returns the
+// streak as it actually stands right now: it only counts if the last session was
+// today or yesterday (the same rule the student self-heal uses). Use this
+// wherever another user's streak is displayed.
+export function liveStreak(u = {}) {
+  const streak = u.streak || 0;
+  if (streak <= 0 || !u.lastSessionDate) return 0;
+  const last = new Date(u.lastSessionDate).toDateString();
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  return last === today || last === yesterday ? streak : 0;
+}
+
 // ─── Streak restores ─────────────────────────────────────────────────────────
 // A streak survives one missed day if the user spends a "restore". You get a few
 // free each month (TikTok-style) plus one earned per chunk of Prova Score, so an
