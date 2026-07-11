@@ -13,15 +13,25 @@ export function useAuth() {
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 8000);
     let firestoreUnsub = null;
+    let profileTimeout = null;
 
     const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeout);
+      if (profileTimeout) { clearTimeout(profileTimeout); profileTimeout = null; }
       // Tear down any listener from a previous session before (re)subscribing,
       // so signing out doesn't leave a listener attached that then fails with
       // permission-denied once the user is no longer authenticated.
       if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
       if (firebaseUser) {
+        // Hold the splash until we KNOW whether onboarding is done — deciding
+        // off the stale `false` here flashed the instrument picker for a moment
+        // on every fresh login to an existing account (and the wrong role's
+        // flow, since role hadn't loaded either).
+        setLoading(true);
         setUser(firebaseUser);
+        // Don't hang forever if Firestore is unreachable — fall through after
+        // 8s (worst case = the old behavior).
+        profileTimeout = setTimeout(() => setLoading(false), 8000);
 
         // Check AsyncStorage first so the app loads instantly without waiting for Firestore
         const cached = await AsyncStorage.getItem(`onboarding_${firebaseUser.uid}`);
@@ -60,6 +70,7 @@ export function useAuth() {
 
     return () => {
       clearTimeout(timeout);
+      if (profileTimeout) clearTimeout(profileTimeout);
       authUnsub();
       if (firestoreUnsub) firestoreUnsub();
     };
