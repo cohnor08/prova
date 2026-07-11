@@ -1125,11 +1125,11 @@ body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;color:#0F172A
 .note .q{font-size:15px;font-style:italic}.note .a{font-size:12px;color:#64748B;margin-top:6px}
 .foot{margin-top:28px;text-align:center;color:#94A3B8;font-size:12px}
 @media (prefers-color-scheme: dark){
-  body{background:#020617;color:#E2E8F0}
-  .wrap{background:#0B1220}
-  .date,.hero p,.cap,.bl,.emptymsg,.foot,.stat .l,.note .a{color:#94A3B8}
-  .bars,.stat{background:#111C33;border-color:#243247}
-  .note{background:#0E1D3D;border-color:#1E3A8A;border-left-color:#3B82F6}
+  body{background:transparent;color:#E7E9EE}
+  .wrap{background:transparent}
+  .date,.hero p,.cap,.bl,.emptymsg,.foot,.stat .l,.note .a{color:#9AA1AE}
+  .bars,.stat{background:#17191F;border-color:#2A2D35}
+  .note{background:#181A20;border-color:#2A2D35;border-left-color:#3B82F6}
   .logo{color:#60A5FA}.logo b{color:#22D3EE}
 }
 </style></head><body><div class="wrap">
