@@ -55,6 +55,10 @@ const RATE_LIMITS = {
   // Conversational AI coach ("Ask Prova"). Daily cap — it's a chat so several
   // questions a day is normal, but bounded to keep Claude spend in check.
   askProva:               { requests: 30, tokens: 60000 },
+  // Manual "email parents now" button. Doesn't use Claude tokens (tokens:1 never
+  // trips, like searchYouTube) — `requests` caps how many manual send bursts one
+  // teacher can trigger per day so the button can't be used to spam email.
+  sendParentReportsNow:   { requests: 10, tokens: 1 },
 };
 
 // Returns the bucket key for an action's rate-limit period. Daily actions key on
@@ -1211,6 +1215,9 @@ exports.sendParentReportsNow = onCall(
     const meSnap = await db.collection('users').doc(uid).get();
     const teacher = { uid, ...(meSnap.data() || {}) };
     if (teacher.role !== 'teacher') throw new HttpsError('permission-denied', 'Teachers only.');
+
+    // Cap manual sends per teacher per day so the button can't be used to spam.
+    await checkRateLimit(uid, 'sendParentReportsNow');
 
     const testEmail = typeof request.data?.testEmail === 'string' ? request.data.testEmail.trim() : '';
     const studentUid = typeof request.data?.studentUid === 'string' ? request.data.studentUid : '';
