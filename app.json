@@ -20,7 +20,7 @@
     "android": {
       "package": "com.ethanlam.prova",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#020408",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -62,7 +62,16 @@
           "savePhotosPermission": "Prova saves practice videos you record to your camera roll so you keep a copy."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#020408"
+        }
+      ]
     ],
     "extra": {
       "eas": {
