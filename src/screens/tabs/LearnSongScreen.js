@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { generateSongPlan } from '../../lib/claude';
 import { POINTS_PER_MIN } from '../../lib/score';
+import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import SheetModal from '../../components/SheetModal';
 
@@ -176,7 +177,19 @@ export default function LearnSongScreen({ navigation }) {
       };
     });
     setActive(null);
-    await persist(next, gained);
+    // Step time is real practice — stamp streak/lastSessionDate via persist's
+    // patch (plain values, safe in local state) and add the minutes to the
+    // lifetime total + today's log so charts/reports/Pulse count it.
+    const mins = Math.round(seconds / 60);
+    await persist(next, gained, mins > 0 ? practiceStreakUpdates(userData) : {});
+    if (mins > 0) {
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        updateDoc(doc(db, 'users', uid), { totalMinutes: increment(mins) }).catch(() => {});
+        logPracticeMinutes(uid, mins, 'song');
+        setUserData((u) => ({ ...(u || {}), totalMinutes: (u?.totalMinutes || 0) + mins }));
+      }
+    }
     if (gained > 0) Alert.alert('Step complete', `+${gained} Prova points 🎸`);
   };
 

@@ -15,6 +15,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
+import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
@@ -982,13 +983,24 @@ export default function TodayScreen({ navigation }) {
         timesCompleted: (t.timesCompleted || 0) + 1,
       };
     });
+    // Teacher-task time is REAL practice: feed the same minutes/streak stats
+    // the plan sessions use, so parent reports, Progress charts and the
+    // teacher's Pulse see it (previously it awarded points only — a student
+    // doing all their assigned work showed "0m practiced" with a dead streak).
+    const mins = Math.round(lapSeconds / 60);
+    const activity = mins > 0 ? practiceStreakUpdates(userData) : null;
     const newScore = displayScore(userData) + pts;
-    setUserData((p) => ({ ...p, assignedTasks: next, provaScore: newScore }));
+    setUserData((p) => ({
+      ...p, assignedTasks: next, provaScore: newScore,
+      ...(activity ? { ...activity, totalMinutes: (p?.totalMinutes || 0) + mins } : {}),
+    }));
     try {
       await updateDoc(doc(db, 'users', uid), {
         assignedTasks: next,
+        ...(activity ? { ...activity, totalMinutes: increment(mins) } : {}),
         provaScore: typeof userData?.provaScore === 'number' ? increment(pts) : newScore,
       });
+      if (mins > 0) logPracticeMinutes(uid, mins, 'teacher');
     } catch (e) {
       Alert.alert('Error', "Couldn't save. Please try again.");
     }
