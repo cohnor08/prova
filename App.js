@@ -175,65 +175,67 @@ export default function App() {
   // Animated brand intro on cold start — overlays every app state (auth and
   // data keep loading underneath it), then fades into whatever is ready.
   const [introDone, setIntroDone] = useState(false);
-  const intro = !introDone ? <IntroSplash onDone={() => setIntroDone(true)} /> : null;
 
+  // The body swaps between loading / maintenance / the real app, but the
+  // intro overlay must live at ONE stable position in the tree — if it sits
+  // inside each branch, the branch swap remounts it and the WebView replays
+  // the animation from the start (the visible "restart" glitch).
+  let body;
   if (loading || maintenanceLoading) {
-    return (
-      <View style={{ flex: 1 }}>
-        <View style={styles.loading}>
-          <StatusBar style="light" />
-          <Text style={styles.loadingLogo}>PROVA</Text>
-          <ActivityIndicator color={COLORS.primary} size="small" />
-        </View>
-        {intro}
+    body = (
+      <View style={styles.loading}>
+        <StatusBar style="light" />
+        <Text style={styles.loadingLogo}>PROVA</Text>
+        <ActivityIndicator color={COLORS.primary} size="small" />
       </View>
     );
-  }
-
-  if (isUnderMaintenance) {
-    return (
-      <View style={{ flex: 1 }}>
+  } else if (isUnderMaintenance) {
+    body = (
+      <>
         <StatusBar style="light" />
         <MaintenanceScreen message={message} />
-        {intro}
-      </View>
+      </>
+    );
+  } else {
+    body = (
+      <AuthContext.Provider value={{ setOnboardingComplete, role }}>
+        <CelebrationProvider>
+        <NavigationContainer theme={NAV_THEME}>
+          <StatusBar style="light" />
+          {!user ? (
+            <AuthStack />
+          ) : !onboardingComplete ? (
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen
+                name="Onboarding"
+                component={role === 'teacher' ? TeacherOnboarding : OnboardingFlow}
+              />
+            </Stack.Navigator>
+          ) : (
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              {/* MainTabs + any full-screen screens that should cover the tab bar
+                  (e.g. Ask Prova) live here so opening them doesn't reflow the tab bar. */}
+              <Stack.Screen name="MainTabs">
+                {() => <MainTabs role={role} />}
+              </Stack.Screen>
+              <Stack.Screen
+                name="AskProva"
+                component={AskProvaScreen}
+                options={{ contentStyle: { backgroundColor: COLORS.background } }}
+              />
+            </Stack.Navigator>
+          )}
+        </NavigationContainer>
+        </CelebrationProvider>
+      </AuthContext.Provider>
     );
   }
 
   return (
-    <AuthContext.Provider value={{ setOnboardingComplete, role }}>
-      <CelebrationProvider>
-      <View style={{ flex: 1 }}>
-      <NavigationContainer theme={NAV_THEME}>
-        <StatusBar style="light" />
-        {!user ? (
-          <AuthStack />
-        ) : !onboardingComplete ? (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen
-              name="Onboarding"
-              component={role === 'teacher' ? TeacherOnboarding : OnboardingFlow}
-            />
-          </Stack.Navigator>
-        ) : (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {/* MainTabs + any full-screen screens that should cover the tab bar
-                (e.g. Ask Prova) live here so opening them doesn't reflow the tab bar. */}
-            <Stack.Screen name="MainTabs">
-              {() => <MainTabs role={role} />}
-            </Stack.Screen>
-            <Stack.Screen
-              name="AskProva"
-              component={AskProvaScreen}
-              options={{ contentStyle: { backgroundColor: COLORS.background } }}
-            />
-          </Stack.Navigator>
-        )}
-      </NavigationContainer>
-      {intro}
-      </View>
-      </CelebrationProvider>
-    </AuthContext.Provider>
+    <View style={{ flex: 1 }}>
+      {body}
+      {!introDone && <IntroSplash onDone={() => setIntroDone(true)} />}
+    </View>
   );
 }
 
