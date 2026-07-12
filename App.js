@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -11,6 +11,7 @@ import { useMaintenance } from './src/hooks/useMaintenance';
 import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE } from './src/constants/theme';
 import { CelebrationProvider } from './src/components/Celebration';
+import IntroSplash from './src/components/IntroSplash';
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -171,29 +172,38 @@ function AuthStack() {
 export default function App() {
   const { user, onboardingComplete, setOnboardingComplete, role, loading } = useAuth();
   const { isUnderMaintenance, message, loading: maintenanceLoading } = useMaintenance();
+  // Animated brand intro on cold start — overlays every app state (auth and
+  // data keep loading underneath it), then fades into whatever is ready.
+  const [introDone, setIntroDone] = useState(false);
+  const intro = !introDone ? <IntroSplash onDone={() => setIntroDone(true)} /> : null;
 
   if (loading || maintenanceLoading) {
     return (
-      <View style={styles.loading}>
-        <StatusBar style="light" />
-        <Text style={styles.loadingLogo}>PROVA</Text>
-        <ActivityIndicator color={COLORS.primary} size="small" />
+      <View style={{ flex: 1 }}>
+        <View style={styles.loading}>
+          <StatusBar style="light" />
+          <Text style={styles.loadingLogo}>PROVA</Text>
+          <ActivityIndicator color={COLORS.primary} size="small" />
+        </View>
+        {intro}
       </View>
     );
   }
 
   if (isUnderMaintenance) {
     return (
-      <>
+      <View style={{ flex: 1 }}>
         <StatusBar style="light" />
         <MaintenanceScreen message={message} />
-      </>
+        {intro}
+      </View>
     );
   }
 
   return (
     <AuthContext.Provider value={{ setOnboardingComplete, role }}>
       <CelebrationProvider>
+      <View style={{ flex: 1 }}>
       <NavigationContainer theme={NAV_THEME}>
         <StatusBar style="light" />
         {!user ? (
@@ -220,6 +230,8 @@ export default function App() {
           </Stack.Navigator>
         )}
       </NavigationContainer>
+      {intro}
+      </View>
       </CelebrationProvider>
     </AuthContext.Provider>
   );
