@@ -58,7 +58,7 @@ export async function scheduleDailyReminder(timeStr) {
   try {
     await Notifications.scheduleNotificationAsync({
       identifier: DAILY_ID,
-      content: { title: 'Time to practice 🎸', body: "Your plan's ready — keep your streak going." },
+      content: { title: 'Time to practice', body: "Your plan's ready — keep your streak going." },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute },
     });
   } catch (e) { /* ignore */ }
@@ -88,7 +88,7 @@ export async function sendTestNotification() {
   if (!ok) return false;
   try {
     await Notifications.scheduleNotificationAsync({
-      content: { title: 'Prova test 🎸', body: 'Notifications are working — see you at practice time.' },
+      content: { title: 'Prova test', body: 'Notifications are working — see you at practice time.' },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
     });
     return true;
@@ -107,7 +107,7 @@ export async function scheduleStreakSaver(streak, hour = 20, minute = 30) {
     await Notifications.scheduleNotificationAsync({
       identifier: STREAK_ID,
       content: {
-        title: 'Your streak ends at midnight 🔥',
+        title: 'Your streak ends at midnight',
         body: `${streak}-day streak on the line — 10 minutes saves it.`,
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
@@ -126,7 +126,7 @@ export async function notifyOverdueTasks(items) {
     const first = items[0];
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Task overdue ⏰',
+        title: 'Task overdue',
         body: items.length === 1
           ? `"${first.title}" — ${first.student} hasn't finished it.`
           : `${items.length} tasks are overdue, starting with "${first.title}" (${first.student}).`,
@@ -141,7 +141,7 @@ export async function notifyNewTasks(count) {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'New task from your teacher 📌',
+        title: 'New task from your teacher',
         body: count > 1 ? `${count} new tasks on your Today screen.` : 'Tap to see what to practice.',
       },
       trigger: null,
