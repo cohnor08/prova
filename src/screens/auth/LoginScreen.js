@@ -97,6 +97,11 @@ export default function LoginScreen({ navigation }) {
               onFocus={() => setFocusedField('email')}
               onBlur={() => setFocusedField(null)}
             />
+            {email.length > 0 && (
+              <TouchableOpacity onPress={() => setEmail('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputWrapperFocused]}>

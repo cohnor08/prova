@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode } from '../../lib/teacher';
-import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver } from '../../lib/notifications';
+import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import SheetModal from '../../components/SheetModal';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -362,8 +362,11 @@ export default function ProfileScreen({ navigation }) {
       setUserData((prev) => ({ ...prev, [key]: value }));
 
       // Re-arm the daily reminder if the chosen time changed while it's on.
+      // Ensure permission first — after a reinstall the toggle can be on in
+      // Firestore while this install has never been granted permission, and
+      // scheduling without it silently never fires.
       if (key === 'reminderTime' && userData?.reminderEnabled) {
-        await scheduleDailyReminder(value);
+        if (await ensureNotificationPermission()) await scheduleDailyReminder(value);
       }
 
       if (planKeys.includes(key)) {
@@ -406,7 +409,10 @@ export default function ProfileScreen({ navigation }) {
       const uid = auth.currentUser.uid;
       await updateDoc(doc(db, 'users', uid), { reminderTime: value });
       setUserData((prev) => ({ ...prev, reminderTime: value }));
-      if (userData?.reminderEnabled) await scheduleDailyReminder(value);
+      // Same permission-first rule as handleSave — see the comment there.
+      if (userData?.reminderEnabled) {
+        if (await ensureNotificationPermission()) await scheduleDailyReminder(value);
+      }
     } catch (err) {
       Alert.alert('Error', "Couldn't save your reminder time. Please try again.");
     }
@@ -622,6 +628,21 @@ export default function ProfileScreen({ navigation }) {
               </View>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.row}
+            onPress={async () => {
+              const ok = await sendTestNotification();
+              if (ok) {
+                Alert.alert('Test sent', 'Lock your phone — a notification will appear in about 5 seconds.');
+              } else {
+                Alert.alert('Notifications are off', 'Turn on notifications for Prova in your phone’s Settings first.');
+              }
+            }}
+          >
+            <Text style={styles.rowLabel}>Send a test notification</Text>
+            <Text style={styles.rowArrow}>›</Text>
+          </TouchableOpacity>
 
           <Text style={styles.reminderHint}>A daily nudge to practice, plus a heads-up if your streak is about to break.</Text>
         </View>

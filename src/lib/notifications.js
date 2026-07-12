@@ -68,6 +68,35 @@ export async function cancelDailyReminder() {
   try { await Notifications.cancelScheduledNotificationAsync(DAILY_ID); } catch (e) {}
 }
 
+// Re-schedule the daily reminder if permission is already granted (never
+// prompts — safe to call on app open). A reinstall/new build wipes every
+// scheduled notification while Firestore still says reminders are on, so
+// without this the reminder silently never fires again after reinstalling.
+export async function rearmDailyReminder(timeStr) {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+    await scheduleDailyReminder(timeStr);
+  } catch (e) { /* ignore */ }
+}
+
+// Fire a test notification a few seconds from now so the user can verify
+// banners actually appear (lock the phone after tapping). Returns false when
+// permission is denied.
+export async function sendTestNotification() {
+  const ok = await ensureNotificationPermission();
+  if (!ok) return false;
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: { title: 'Prova test 🎸', body: 'Notifications are working — see you at practice time.' },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Schedule tonight's streak-saver if there's still time before the cutoff.
 export async function scheduleStreakSaver(streak, hour = 20, minute = 30) {
   try { await Notifications.cancelScheduledNotificationAsync(STREAK_ID); } catch (e) {}
