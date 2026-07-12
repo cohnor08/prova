@@ -48,6 +48,7 @@ const DEFAULT_WIDGETS = [
   { id: 'stats', enabled: true },
   { id: 'getstarted', enabled: true },
   { id: 'actions', enabled: true },
+  { id: 'ask', enabled: true },
   // Extra widgets — off by default; teachers switch them on in Edit mode.
   { id: 'tip', enabled: false },
   { id: 'top', enabled: false },
@@ -62,6 +63,7 @@ const WIDGET_LABELS = {
   stats: 'Stats',
   getstarted: 'Get started',
   actions: 'Quick actions',
+  ask: 'Ask Prova',
   tip: 'Tip of the day',
   top: 'Top students',
   notes: 'My notes',
@@ -416,6 +418,24 @@ export default function TeacherHomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         );
+      case 'ask':
+        return (
+          <TouchableOpacity
+            style={styles.askCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('AskProva')}
+            disabled={editMode}
+          >
+            <View style={styles.askIcon}>
+              <Ionicons name="sparkles" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.askTitle}>Ask Prova</Text>
+              <Text style={styles.askSub} numberOfLines={1}>Your AI assistant — lesson ideas, theory, anything</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        );
       case 'tip':
         return (
           <View style={styles.tipCard}>
@@ -715,4 +735,15 @@ const styles = StyleSheet.create({
   tipHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
   tipKicker: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   tipText: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21 },
+  askCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
+    padding: SPACING.md,
+  },
+  askIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  askTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  askSub: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 1 },
 });

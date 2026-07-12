@@ -17,6 +17,13 @@ const STARTERS = [
   'Give me a 5-minute warm-up',
   'How should I practice to improve fastest?',
 ];
+// Teachers get teaching-flavoured starters instead.
+const TEACHER_STARTERS = [
+  'Warm-up ideas for a 30-minute lesson',
+  'How do I teach barre chords to a beginner?',
+  'Fun ways to keep young students engaged',
+  'Ideas for a first bass lesson',
+];
 
 let _seq = 0;
 const nextId = () => `m${Date.now()}_${_seq++}`;
@@ -26,7 +33,7 @@ export default function AskProvaScreen({ navigation }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [profile, setProfile] = useState({ instrument: 'Guitar', level: '' });
+  const [profile, setProfile] = useState({ instrument: 'Guitar', level: '', role: '' });
   const scrollRef = useRef(null);
   // The input bar's own bottom padding: = safe-area (min 10) when the keyboard is
   // down, = keyboard height when it's up. It lives ON the input bar (surface
@@ -41,7 +48,7 @@ export default function AskProvaScreen({ navigation }) {
     getDoc(doc(db, 'users', uid))
       .then((snap) => {
         const d = snap.data() || {};
-        setProfile({ instrument: d.instrument || 'Guitar', level: d.level || '' });
+        setProfile({ instrument: d.instrument || 'Guitar', level: d.level || '', role: d.role || '' });
       })
       .catch(() => {});
   }, []);
@@ -148,13 +155,16 @@ export default function AskProvaScreen({ navigation }) {
         {empty ? (
           <View style={styles.intro}>
             <View style={styles.introIcon}><Ionicons name="sparkles" size={26} color={COLORS.primary} /></View>
-            <Text style={styles.introTitle}>Ask me anything about playing</Text>
+            <Text style={styles.introTitle}>
+              {profile.role === 'teacher' ? 'Ask me anything — playing or teaching' : 'Ask me anything about playing'}
+            </Text>
             <Text style={styles.introText}>
-              Chords, technique, theory, gear, or how to practice — I'm your{' '}
-              {profile.level ? profile.level.toLowerCase() + ' ' : ''}{instLabel} coach.
+              {profile.role === 'teacher'
+                ? "Lesson ideas, technique, theory, or how to explain something — I'm your teaching sidekick."
+                : `Chords, technique, theory, gear, or how to practice — I'm your ${profile.level ? profile.level.toLowerCase() + ' ' : ''}${instLabel} coach.`}
             </Text>
             <View style={styles.starters}>
-              {STARTERS.map((s) => (
+              {(profile.role === 'teacher' ? TEACHER_STARTERS : STARTERS).map((s) => (
                 <TouchableOpacity key={s} style={styles.starterChip} onPress={() => send(s)} activeOpacity={0.85}>
                   <Ionicons name="chatbubble-ellipses-outline" size={15} color={COLORS.primary} />
                   <Text style={styles.starterText}>{s}</Text>
