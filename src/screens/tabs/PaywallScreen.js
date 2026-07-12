@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +18,20 @@ const PERKS = [
 
 export default function PaywallScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
+  // Remote switch (config/paywall.mockCheckout in Firestore): while checkout
+  // is a mock, this controls whether "Start free trial" actually grants the
+  // upgrade or shows a coming-soon message — so the free self-upgrade can be
+  // shut off from the Firebase console without shipping an update.
+  const [mockCheckout, setMockCheckout] = useState(true);
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'paywall'))
+      .then((s) => { if (s.exists()) setMockCheckout(s.data().mockCheckout !== false); })
+      .catch(() => {});
+  }, []);
+
+  const comingSoon = () => {
+    Alert.alert('Coming soon', 'Upgrades aren’t open quite yet — hang tight, Personal is almost here!');
+  };
 
   const confirm = () => {
     Alert.alert(
@@ -94,10 +108,10 @@ export default function PaywallScreen({ navigation }) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.cta} onPress={confirm} disabled={busy} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.cta} onPress={mockCheckout ? confirm : comingSoon} disabled={busy} activeOpacity={0.9}>
           {busy
             ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.ctaText}>Start free trial</Text>}
+            : <Text style={styles.ctaText}>{mockCheckout ? 'Start free trial' : 'Coming soon'}</Text>}
         </TouchableOpacity>
         {busy && <Text style={styles.busyNote}>Setting up your plan — this can take a moment…</Text>}
       </View>

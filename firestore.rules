@@ -175,6 +175,15 @@ service cloud.firestore {
       }
     }
 
+    // Remote app switches (maintenance kill-switch, paywall toggle…). World-
+    // readable — maintenance must be checkable before login — and written only
+    // from the Firebase console / admin SDK, never by clients. NOTE: without
+    // this block the deny-all below silently broke the maintenance switch.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny everything else ───────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
