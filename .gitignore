@@ -8,3 +8,6 @@ web-build/
 .DS_Store
 ios/
 android/
+
+# Apple keys — never commit
+*.p8
