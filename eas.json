@@ -22,6 +22,13 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "/Users/ethanlam/.appstoreconnect/AuthKey_MYRSZSJ75U.p8",
+        "ascApiKeyId": "MYRSZSJ75U",
+        "ascApiKeyIssuerId": "d665c6cd-fa84-4ae8-8601-f7031369814f",
+        "ascAppId": "6789881436"
+      }
+    }
   }
 }
