@@ -738,7 +738,7 @@ const styles = StyleSheet.create({
   askCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
-    padding: SPACING.md,
+    padding: SPACING.md, marginBottom: SPACING.lg,
   },
   askIcon: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
