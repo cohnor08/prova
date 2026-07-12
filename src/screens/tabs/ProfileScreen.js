@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { signOut, deleteUser } from 'firebase/auth';
+import { doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
@@ -522,6 +522,44 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+  // In-app account deletion (App Store requirement 5.1.1(v)): removes the
+  // Firestore profile then the auth user. Firebase requires a RECENT login to
+  // delete the auth user — if that check trips, we tell the user to log back
+  // in and retry. Any residual server-side data is removed on request via
+  // support (see privacy policy §5).
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account, practice history, and progress. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete forever',
+          style: 'destructive',
+          onPress: async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+              await cancelDailyReminder();
+              await cancelStreakSaver();
+              await deleteDoc(doc(db, 'users', user.uid));
+              await deleteUser(user); // also signs out → app returns to Welcome
+            } catch (e) {
+              if (e.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Please log in again',
+                  'For security, deleting your account needs a fresh login. Log out, log back in, then delete your account.'
+                );
+              } else {
+                Alert.alert('Could not delete', 'Something went wrong. Please try again or email cehthoanprova@gmail.com and we will delete your account for you.');
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const durationLabel = (val) => {
     const found = PRACTICE_DURATIONS.find((d) => d.value === val);
     return found ? found.label : `${val} mins`;
@@ -786,6 +824,10 @@ export default function ProfileScreen({ navigation }) {
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount}>
+          <Text style={styles.deleteText}>Delete account</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <LegalModal
@@ -944,6 +986,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderWidth: 1, borderColor: COLORS.error + '44', marginTop: SPACING.sm,
   },
   logoutText: { color: COLORS.error, fontSize: 16, fontWeight: '600' },
+  deleteBtn: { alignItems: 'center', paddingVertical: SPACING.md, marginBottom: SPACING.xl },
+  deleteText: { color: COLORS.textMuted, fontSize: 13 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },

@@ -2,13 +2,13 @@
   "expo": {
     "name": "prova",
     "slug": "prova",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "prova",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.ethanlam.prova",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument and record video messages.",
