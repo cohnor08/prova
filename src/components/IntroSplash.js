@@ -15,8 +15,8 @@ const SVG = `
 <svg width="400" height="680" viewBox="0 0 400 680" xmlns="http://www.w3.org/2000/svg">
 <style>
 .bg { fill: #050810; }
-.bar1 { fill: #6a9adf; } .bar2 { fill: #5a8acf; } .bar3 { fill: #4a7abf; }
-.bar4 { fill: #3a6aaf; } .bar5 { fill: #2a5a9f; }
+.bar1 { fill: #7CB1FC; } .bar2 { fill: #60A5FA; } .bar3 { fill: #3B82F6; }
+.bar4 { fill: #2563EB; } .bar5 { fill: #1D4ED8; }
 @keyframes pulse1  { 0%,100%{height:8px;y:276px}  50%{height:55px;y:253px} }
 @keyframes pulse2  { 0%,100%{height:16px;y:272px} 50%{height:85px;y:238px} }
 @keyframes pulse3  { 0%,100%{height:28px;y:266px} 50%{height:110px;y:225px} }
@@ -45,13 +45,13 @@ const SVG = `
 .b13{animation:pulse13 0.8s ease-in-out infinite;animation-delay:0.72s}
 .wave-group { animation: waveFade 0.7s ease forwards; animation-delay: 2.4s; transform-origin: 200px 280px; }
 @keyframes waveFade { from{opacity:1;transform:scale(1)} to{opacity:0;transform:scale(0.15)} }
-.cd-group { opacity:0; animation:groupIn 0.01s ease forwards; animation-delay:3.0s; }
+.cd-group { opacity:0; animation:groupIn 0.01s ease forwards; animation-delay:3.0s; transform:translateY(-14px) scale(1.32); transform-origin:200px 275px; }
 @keyframes groupIn { to { opacity:1; } }
-.cd-outer  { fill:#0a0f1a; stroke:#4a7abf; stroke-width:9; stroke-dasharray:251; stroke-dashoffset:251; animation:drawCircle 0.9s ease forwards; animation-delay:3.0s; }
-.cd-mid    { fill:none; stroke:#1a3a6a; stroke-width:3; stroke-dasharray:233; stroke-dashoffset:233; animation:drawCircle 1.0s ease forwards; animation-delay:3.1s; }
-.cd-hole   { fill:#050810; stroke:#4a7abf; stroke-width:2; opacity:0; animation:fadeIn 0.4s ease forwards; animation-delay:3.8s; }
-.ring-in   { fill:none; stroke:#3a6aaf; stroke-width:1; stroke-dasharray:5 15; opacity:0; transform-origin:200px 275px; animation:spinIn 10s linear infinite; animation-delay:3.6s; }
-.ring-out  { fill:none; stroke:#2a4a8f; stroke-width:1; stroke-dasharray:3 12; opacity:0; transform-origin:200px 275px; animation:spinRev 14s linear infinite; animation-delay:3.7s; }
+.cd-outer  { fill:#0a0f1a; stroke:#3B82F6; stroke-width:9; stroke-dasharray:251; stroke-dashoffset:251; animation:drawCircle 0.9s ease forwards; animation-delay:3.0s; }
+.cd-mid    { fill:none; stroke:#1E40AF; stroke-width:3; stroke-dasharray:233; stroke-dashoffset:233; animation:drawCircle 1.0s ease forwards; animation-delay:3.1s; }
+.cd-hole   { fill:#050810; stroke:#3B82F6; stroke-width:2; opacity:0; animation:fadeIn 0.4s ease forwards; animation-delay:3.8s; }
+.ring-in   { fill:none; stroke:#2563EB; stroke-width:1; stroke-dasharray:5 15; opacity:0; transform-origin:200px 275px; animation:spinIn 10s linear infinite; animation-delay:3.6s; }
+.ring-out  { fill:none; stroke:#1D4ED8; stroke-width:1; stroke-dasharray:3 12; opacity:0; transform-origin:200px 275px; animation:spinRev 14s linear infinite; animation-delay:3.7s; }
 @keyframes drawCircle { to { stroke-dashoffset:0; } }
 @keyframes fadeIn     { to { opacity:1; } }
 @keyframes spinIn     { 0%{opacity:0;transform:rotate(0deg)} 8%{opacity:1} 100%{opacity:1;transform:rotate(360deg)} }
@@ -65,7 +65,7 @@ const SVG = `
 .dots    { animation:fadeUp 0.5s ease forwards; animation-delay:5.0s; opacity:0; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .glow  { opacity:0; animation:fadeIn 1.4s ease forwards; animation-delay:3.4s; }
-.burst { fill:none; stroke:#4a7abf; stroke-width:2; opacity:0; transform-origin:200px 275px; animation:burst 0.9s ease-out forwards; animation-delay:3.9s; }
+.burst { fill:none; stroke:#3B82F6; stroke-width:2; opacity:0; transform-origin:200px 261px; animation:burst 0.9s ease-out forwards; animation-delay:3.9s; }
 @keyframes burst { 0%{opacity:0.7;transform:scale(0.55)} 100%{opacity:0;transform:scale(1.9)} }
 .dotmid { animation:dotPulse 1.8s ease-in-out infinite; animation-delay:5.5s; }
 @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
@@ -92,7 +92,7 @@ const SVG = `
     <stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>
   </radialGradient>
 </defs>
-<circle class="glow" cx="200" cy="275" r="115" fill="url(#glowGrad)"/>
+<circle class="glow" cx="200" cy="261" r="150" fill="url(#glowGrad)"/>
 <g class="cd-group">
   <circle cx="200" cy="275" r="40" class="cd-outer"/>
   <circle cx="200" cy="275" r="37" class="cd-mid"/>
@@ -100,14 +100,14 @@ const SVG = `
   <circle cx="200" cy="275" r="50" class="ring-in"/>
   <circle cx="200" cy="275" r="62" class="ring-out"/>
 </g>
-<circle class="burst" cx="200" cy="275" r="70"/>
-<rect x="75" y="408" width="250" height="1" fill="#3a5a8f" opacity="0.8" class="theline"/>
-<text x="200" y="400" text-anchor="middle" fill="#ddeeff" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
-<text x="200" y="432" text-anchor="middle" fill="#3a6aaf" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
+<circle class="burst" cx="200" cy="261" r="92"/>
+<rect x="75" y="408" width="250" height="1" fill="#3B82F6" opacity="0.8" class="theline"/>
+<text x="200" y="400" text-anchor="middle" fill="#F0F4FF" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
+<text x="200" y="432" text-anchor="middle" fill="#60A5FA" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
 <g class="dots">
-  <circle cx="160" cy="458" r="2" fill="#1a3a6a"/>
-  <circle cx="200" cy="458" r="2" fill="#4a7abf" class="dotmid"/>
-  <circle cx="240" cy="458" r="2" fill="#1a3a6a"/>
+  <circle cx="160" cy="458" r="2" fill="#1E40AF"/>
+  <circle cx="200" cy="458" r="2" fill="#3B82F6" class="dotmid"/>
+  <circle cx="240" cy="458" r="2" fill="#1E40AF"/>
 </g>
 </svg>`;
 
