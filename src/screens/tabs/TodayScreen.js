@@ -9,7 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
-import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks } from '../../lib/notifications';
+import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
@@ -578,6 +578,15 @@ export default function TodayScreen({ navigation }) {
       cancelStreakSaver();
     }
   }, [userData, completedIds]);
+
+  // Re-arm the daily reminder on open (permission-gated, never prompts).
+  // Reinstalls/new builds wipe the device's scheduled notifications while the
+  // account still says reminders are on — without this they'd never fire again.
+  useEffect(() => {
+    if (userData?.reminderEnabled && userData?.reminderTime) {
+      rearmDailyReminder(userData.reminderTime);
+    }
+  }, [userData?.reminderEnabled, userData?.reminderTime]);
 
   // New-task ping: when this device first sees a teacher task it hasn't seen
   // before, fire a local notification. Seeds silently on first run so existing
