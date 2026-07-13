@@ -186,6 +186,12 @@ service cloud.firestore {
       }
     }
 
+    // Admin panel organisations (grouping teachers under schools/studios).
+    // Admin-only for now; the in-app school hierarchy can adopt this later.
+    match /organisations/{orgId} {
+      allow read, write: if isAdmin();
+    }
+
     // Remote app switches (maintenance kill-switch, paywall toggle…). World-
     // readable — maintenance must be checkable before login — and written only
     // from the Firebase console / admin SDK, never by clients. NOTE: without
