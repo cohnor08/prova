@@ -493,13 +493,17 @@ exports.generateSetlist = onCall(
       .map(s => `- ${s.title}${s.artist ? ` — ${s.artist}` : ''}`)
       .join('\n');
 
+    // When inspiration artists are named, guarantee they actually appear:
+    // at least ~20% of the set must be songs BY those artists (min 1).
+    const artistQuota = artists ? Math.max(1, Math.round((Number(songCount) || 10) * 0.2)) : 0;
+
     const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
 
 THE GIG (this is what matters most — the setlist must clearly match it):
 - Setting: ${setting}
 - Audience: ${audience}
 - Desired genres / vibe: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
-- Inspiration artists (use as a STYLE reference for the genre, energy and song choices — you may include their songs where they fit, but don't limit the setlist to only them): ${artists || 'none given'}
+- Inspiration artists: ${artists || 'none given'}${artistQuota ? ` — you MUST include at least ${artistQuota} song${artistQuota === 1 ? '' : 's'} performed BY these exact artists (real, well-known tracks of theirs), and use their style to steer the rest` : ''}
 - Player skill level: ${level}
 - Number of songs wanted: ${songCount}
 
@@ -507,7 +511,7 @@ Songs already in the player's library:
 ${libList || '(library is empty)'}
 
 How to choose the songs:
-1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
+1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, AT LEAST ${artistQuota || 0} of the ${songCount} songs MUST be real songs performed by those named artists themselves — spread them through the set where they fit the energy curve — and the remaining songs should match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
 2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
 3. Only include a library song if it GENUINELY fits the gig's genre and vibe — never force-fit library songs just because they're in the library. If a library song doesn't suit the gig, leave it out. The library is a tiebreaker, not a constraint.
 4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
