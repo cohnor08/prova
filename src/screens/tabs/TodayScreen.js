@@ -16,6 +16,7 @@ import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
+import { track } from '../../lib/analytics';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
@@ -820,6 +821,7 @@ export default function TodayScreen({ navigation }) {
       const newScore = prevScore + earnedPoints;
       const rankedUp = scoreRank(newScore).index > scoreRank(prevScore).index;
       const nowIso = new Date().toISOString();
+      track('day_completed', { minutes: sessionMins, streak: newStreak });
       await Promise.all([
         updateDoc(doc(db, 'users', uid), {
           lastSessionRating: rating,
@@ -920,6 +922,7 @@ export default function TodayScreen({ navigation }) {
   // it keeps the streak alive even without a full session (the "streak-saver").
   const handleCompleteChallenge = async () => {
     if (challengeDoneToday) return;
+    track('challenge_completed');
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
@@ -988,6 +991,7 @@ export default function TodayScreen({ navigation }) {
     // teacher's Pulse see it (previously it awarded points only — a student
     // doing all their assigned work showed "0m practiced" with a dead streak).
     const mins = Math.round(lapSeconds / 60);
+    if (mins > 0) track('teacher_task_banked', { minutes: mins });
     const activity = mins > 0 ? practiceStreakUpdates(userData) : null;
     const newScore = displayScore(userData) + pts;
     setUserData((p) => ({
@@ -1230,7 +1234,7 @@ export default function TodayScreen({ navigation }) {
         proofVerified: t.proofVerified,
       })),
   ];
-  const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); };
+  const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); track('practice_started'); };
   const anyDoneToday = completedIds.length > 0;
 
   // Mid-run progress (each task's clock + which task was open) persists across

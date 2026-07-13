@@ -14,6 +14,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
+import { track } from '../../lib/analytics';
 import { COLORS, SPACING } from '../../constants/theme';
 
 const FIREBASE_ERRORS = {
@@ -64,6 +65,7 @@ export default function SignupScreen({ navigation, route }) {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      track('signed_up', { role });
       await setDoc(doc(db, 'users', user.uid), {
         email: normalizedEmail,
         username: username.trim(),

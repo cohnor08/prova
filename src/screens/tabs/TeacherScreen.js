@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow } from '../../lib/claude';
+import { track } from '../../lib/analytics';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
@@ -975,6 +976,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   };
 
   const handleAssign = async () => {
+    track('task_assigned');
     if (!title.trim()) return;
     if (DEMO_MODE) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');

@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { track } from './analytics';
 
 const FUNCTIONS_BASE = 'https://us-central1-prova-583c9.cloudfunctions.net';
 
@@ -48,6 +49,7 @@ async function callFunction(name, data, timeoutMs = 120000) {
 }
 
 export async function generatePracticePlan(userProfile) {
+  track('plan_generated');
   return callFunction('generatePracticePlan', userProfile, 240000);
 }
 
@@ -58,6 +60,7 @@ export async function adjustSessionFromRating(sessions, rating, feedback) {
 // Generate an ordered gig setlist. `gig` = { instrument, level, setting,
 // audience, vibe, songCount, library }. Returns { name, songs: [{title, artist, note}] }.
 export async function generateSetlist(gig) {
+  track('setlist_generated');
   return callFunction('generateSetlist', gig, 60000);
 }
 
@@ -66,18 +69,21 @@ export async function generateSetlist(gig) {
 // { key, title, artist, instrument, overview, steps: [{id,title,summary,tasks,targetBpm,yt}], cached }.
 // Cache hits are free and don't count against the weekly limit.
 export async function generateSongPlan(song) {
+  track('song_plan_generated');
   return callFunction('generateSongPlan', song, 120000);
 }
 
 // Weekly "week in review" re-plan. `profile` = the usual plan inputs, `feedback`
 // = this week's per-session ratings/notes. Returns { changeSummary, weeklyPlan }.
 export async function refreshWeeklyPlan(profile, feedback) {
+  track('weekly_replan');
   return callFunction('refreshWeeklyPlan', { profile, feedback }, 240000);
 }
 
 // Ask the AI coach a free-text playing question. `history` = prior
 // [{ role:'user'|'prova', text }] turns for context. Returns { answer }.
 export async function askProva({ question, instrument, level, history }) {
+  track('ask_prova_used');
   return callFunction('askProva', { question, instrument, level, history }, 60000);
 }
 
@@ -86,6 +92,7 @@ export async function askProva({ question, instrument, level, history }) {
 // opts: { studentUid? } to send just one, { testEmail? } to redirect all to one
 // address for testing. Returns { sent, skipped, failed, total }.
 export async function sendParentReportsNow(opts = {}) {
+  track('parent_reports_sent_now');
   return callFunction('sendParentReportsNow', {
     studentUid: opts.studentUid || null,
     testEmail: opts.testEmail || null,

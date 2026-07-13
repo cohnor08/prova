@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../lib/firebase';
+import { identifyUser, resetAnalytics } from '../lib/analytics';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
@@ -46,6 +47,8 @@ export function useAuth() {
           const isComplete = data.onboardingComplete === true;
           setOnboardingComplete(isComplete);
           setRole(data.role || null);
+          // Analytics identity: uid only (no email), plus a few traits.
+          identifyUser(firebaseUser.uid, data);
           if (isComplete) {
             await AsyncStorage.setItem(`onboarding_${firebaseUser.uid}`, 'true');
           }
@@ -65,6 +68,7 @@ export function useAuth() {
         setOnboardingComplete(false);
         setRole(null);
         setLoading(false);
+        resetAnalytics();
       }
     });
 
