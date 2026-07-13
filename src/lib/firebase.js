@@ -1,5 +1,6 @@
+import { Platform } from 'react-native';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence, browserLocalPersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -18,7 +19,8 @@ let app, auth;
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
+    // Web build uses the browser's own storage; native uses AsyncStorage.
+    persistence: Platform.OS === 'web' ? browserLocalPersistence : getReactNativePersistence(AsyncStorage),
   });
 } else {
   app = getApp();

@@ -84,6 +84,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/11cd202c-966d-4820-87c9-3d7a984a7026"
+    },
+    "experiments": {
+      "baseUrl": "/app"
     }
   }
 }
