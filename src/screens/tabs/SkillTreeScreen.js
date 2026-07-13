@@ -120,9 +120,10 @@ export default function SkillTreeScreen({ navigation }) {
                         {i > 0 && <View style={[styles.connector, lane.nodes[i - 1].unlocked && n.unlocked && styles.connectorOn]} />}
                         <View style={[
                           styles.node,
-                          n.unlocked && { borderColor: TIER_COLORS[n.tier], backgroundColor: TIER_COLORS[n.tier] + '14' },
+                          n.unlocked && { borderColor: TIER_COLORS[n.tier] },
                           isNext && styles.nodeNext,
                         ]}>
+                          {n.unlocked && <View style={[StyleSheet.absoluteFill, { backgroundColor: TIER_COLORS[n.tier] + '14', borderRadius: 26 }]} />}
                           <Ionicons
                             name={n.unlocked ? n.icon : 'lock-closed'}
                             size={n.unlocked ? 22 : 16}
