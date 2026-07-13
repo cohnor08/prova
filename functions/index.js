@@ -494,8 +494,8 @@ exports.generateSetlist = onCall(
       .join('\n');
 
     // When inspiration artists are named, guarantee they actually appear:
-    // at least ~20% of the set must be songs BY those artists (min 1).
-    const artistQuota = artists ? Math.max(1, Math.round((Number(songCount) || 10) * 0.2)) : 0;
+    // at least 25% of the set must be songs BY those artists (min 2).
+    const artistQuota = artists ? Math.max(2, Math.round((Number(songCount) || 10) * 0.25)) : 0;
 
     const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
 
@@ -513,7 +513,7 @@ ${libList || '(library is empty)'}
 How to choose the songs:
 1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, AT LEAST ${artistQuota || 0} of the ${songCount} songs MUST be real songs performed by those named artists themselves — spread them through the set where they fit the energy curve — and the remaining songs should match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
 2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
-3. Only include a library song if it GENUINELY fits the gig's genre and vibe — never force-fit library songs just because they're in the library. If a library song doesn't suit the gig, leave it out. The library is a tiebreaker, not a constraint.
+3. HARD GENRE GATE: every song must belong to the gig's genre. A song from the wrong genre must NOT appear — no exceptions for famous songs, crowd-pleasers, or songs from the player's library. Example: for a house/electronic gig, rock and acoustic classics like "Hotel California" or "Wonderwall" are WRONG answers. It is better to include zero library songs than one that breaks the genre. Only include a library song when it genuinely belongs to this gig's genre.
 4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
 
 Order them to shape the night: open with something that draws this audience in, build energy through the middle, and finish on a strong closer.
