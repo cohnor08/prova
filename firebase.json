@@ -10,11 +10,10 @@
     "rules": "storage.rules"
   },
   "hosting": {
-    "public": "public",
+    "public": "web",
     "ignore": [
       "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
+      "**/.*"
     ],
     "rewrites": [
       {
