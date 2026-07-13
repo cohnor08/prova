@@ -8,7 +8,7 @@ import { WebView } from 'react-native-webview';
 
 // Total runtime of the SVG's timeline (last element lands ~2.7s) + a good
 // hold on the finished logo before fading into the app.
-const INTRO_MS = 4100;
+const INTRO_MS = 3800;
 const FADE_MS = 420;
 
 const SVG = `
