@@ -1,105 +1,203 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>Request a song</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #08090C; color: #F5F7FA; padding: 20px; }
-    .wrap { max-width: 480px; margin: 0 auto; }
-    .kicker { color: #6366F1; font-size: 12px; font-weight: 800; letter-spacing: 2px; }
-    h1 { font-size: 26px; margin: 4px 0 2px; }
-    .sub { color: #9AA0AB; font-size: 14px; margin-bottom: 20px; }
-    .song { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      background: #14161B; border: 1px solid #23262E; border-radius: 14px; padding: 14px 16px;
-      margin-bottom: 10px; }
-    .song .info { min-width: 0; }
-    .song .t { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .song .a { color: #9AA0AB; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .req { flex-shrink: 0; background: #6366F1; color: #fff; border: none; border-radius: 999px;
-      padding: 10px 16px; font-size: 14px; font-weight: 700; }
-    .req:disabled { background: #2C3140; color: #9AA0AB; }
-    .tip { display: block; text-align: center; margin-top: 22px; background: #1DB954; color: #fff;
-      text-decoration: none; border-radius: 14px; padding: 14px; font-weight: 800; font-size: 16px; }
-    .state { text-align: center; color: #9AA0AB; padding: 60px 0; }
-    .toast { position: fixed; left: 0; right: 0; bottom: 24px; text-align: center; }
-    .toast span { background: #6366F1; color: #fff; padding: 10px 18px; border-radius: 999px;
-      font-weight: 700; font-size: 14px; opacity: 0; transition: opacity .2s; }
-    .toast span.show { opacity: 1; }
-  </style>
+<meta charset="utf-8">
+<script>
+  // Legacy: the app's live-gig QR codes point at the site root with ?g=…
+  // Those now live at /live.html — bounce them over before anything renders.
+  if (new URLSearchParams(location.search).get('g')) location.replace('/live.html' + location.search);
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prova — Practice & Progress | AI music practice coach for students, teachers and schools</title>
+<meta name="description" content="Prova is an AI practice coach for guitar and bass — daily practice plans for students, a full studio toolkit for teachers, and school-safe messaging built for classrooms.">
+<meta property="og:title" content="Prova — Practice & Progress">
+<meta property="og:description" content="AI practice plans for students. A studio toolkit for teachers. Built school-safe.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/png" href="/img/icon-192.png">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #050810; color: #F0F4FF; line-height: 1.6; }
+  a { color: #60A5FA; text-decoration: none; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: Georgia, serif; font-size: 19px;
+    letter-spacing: 5px; color: #F0F4FF; }
+  .logo img { width: 30px; height: 30px; border-radius: 8px; }
+  nav .links { display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { color: #8B9CC8; }
+  nav .links a:hover { color: #F0F4FF; }
+
+  .hero { display: flex; align-items: center; gap: 48px; padding: 60px 0 80px; flex-wrap: wrap; }
+  .hero .copy { flex: 1; min-width: 300px; }
+  .kicker { color: #3B82F6; font-size: 12px; font-weight: 800; letter-spacing: 3px; margin-bottom: 14px; }
+  h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.12; letter-spacing: -1px; margin-bottom: 18px; }
+  h1 .blue { color: #3B82F6; }
+  .hero p.sub { color: #8B9CC8; font-size: 17px; max-width: 460px; margin-bottom: 28px; }
+  .cta { display: inline-block; background: #3B82F6; color: #fff; font-weight: 700; padding: 14px 26px;
+    border-radius: 14px; font-size: 15px; }
+  .cta.ghost { background: transparent; border: 1px solid #1E2D4A; color: #C6CCDA; margin-left: 10px; }
+  .badge { display: block; color: #5E6E93; font-size: 12.5px; margin-top: 14px; }
+
+  .phone { width: 250px; border-radius: 34px; border: 2px solid #1E2D4A;
+    box-shadow: 0 30px 80px rgba(59,130,246,0.14); }
+  .heroGlow { position: relative; }
+  .heroGlow::before { content: ''; position: absolute; inset: -60px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(59,130,246,0.16), transparent 70%); z-index: -1; }
+
+  section { padding: 56px 0; }
+  h2 { font-size: 28px; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .lead { color: #8B9CC8; font-size: 15.5px; max-width: 620px; margin-bottom: 34px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: #0C1424; border: 1px solid #1E2D4A; border-radius: 20px; padding: 26px; }
+  .card .who { color: #3B82F6; font-size: 11.5px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
+  .card h3 { font-size: 19px; margin-bottom: 10px; }
+  .card ul { padding-left: 18px; color: #C6CCDA; font-size: 14.5px; }
+  .card li { margin: 7px 0; }
+
+  .feat { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .feat div { background: #0C1424; border: 1px solid #1E2D4A; border-radius: 16px; padding: 18px 20px; }
+  .feat b { display: block; font-size: 15px; margin-bottom: 5px; }
+  .feat span { color: #8B9CC8; font-size: 13.5px; }
+
+  .safe { background: #0C1424; border: 1px solid #1E2D4A; border-radius: 24px; padding: 40px; }
+  .safe h2 { color: #F0F4FF; }
+  .safe .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 22px; }
+  .safe .cols b { display: block; margin-bottom: 6px; font-size: 15px; }
+  .safe .cols p { color: #8B9CC8; font-size: 14px; }
+
+  .shots { display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; }
+
+  .contact { text-align: center; padding: 70px 0; }
+  .contact h2 { font-size: 30px; }
+  .contact p { color: #8B9CC8; margin: 12px auto 26px; max-width: 480px; }
+
+  footer { border-top: 1px solid #131C30; padding: 28px 0 48px; color: #5E6E93; font-size: 13px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  footer .links a { color: #5E6E93; margin-left: 18px; }
+  footer .links a:hover { color: #F0F4FF; }
+  @media (max-width: 720px) { .hero { padding-top: 30px; } .safe { padding: 28px 22px; } }
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="kicker">LIVE NOW</div>
-    <h1 id="title">Loading…</h1>
-    <div class="sub" id="sub">Request a song from tonight's set</div>
-    <div id="list"></div>
-    <div id="empty" class="state" style="display:none">This show isn't taking requests right now.</div>
-    <a id="tip" class="tip" style="display:none" target="_blank" rel="noopener">💸 Tip the artist</a>
+<div class="wrap">
+
+<nav>
+  <div class="logo"><img src="/img/icon-192.png" alt="">PROVA</div>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#schools">For schools</a>
+    <a href="/support.html">Support</a>
   </div>
-  <div class="toast"><span id="toast">Requested!</span></div>
+</nav>
 
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js';
-    import { getFirestore, doc, getDoc, collection, addDoc, serverTimestamp }
-      from 'https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js';
+<div class="hero">
+  <div class="copy">
+    <div class="kicker">PLAY. PRACTICE. PERFORM.</div>
+    <h1>Practice that <span class="blue">actually happens.</span></h1>
+    <p class="sub">Prova is an AI practice coach for guitar and bass — a personal daily plan for every student, a full studio toolkit for every teacher, and safety built in for every school.</p>
+    <a class="cta" href="mailto:cehthoanprova@gmail.com?subject=Prova%20early%20access">Get early access</a>
+    <a class="cta ghost" href="#teachers">For teachers →</a>
+    <span class="badge">📱 Coming soon to the App Store</span>
+  </div>
+  <div class="heroGlow"><img class="phone" src="/img/shot-today.png" alt="Prova Today screen — daily practice plan"></div>
+</div>
 
-    const app = initializeApp({
-      apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
-      authDomain: 'prova-583c9.firebaseapp.com',
-      projectId: 'prova-583c9',
-      storageBucket: 'prova-583c9.firebasestorage.app',
-      messagingSenderId: '1043852862211',
-      appId: '1:1043852862211:web:67435ca8660d6d5afd7f36',
-    });
-    const db = getFirestore(app);
+<section id="teachers">
+  <h2>Built for everyone in the music room</h2>
+  <p class="lead">One app connects the practice triangle — the student who practices, the teacher who guides, and the parents and schools who make it possible.</p>
+  <div class="cards">
+    <div class="card">
+      <div class="who">FOR STUDENTS</div>
+      <h3>A plan that fits you</h3>
+      <ul>
+        <li>AI-built daily practice plan for your level and goals</li>
+        <li>Guided practice player — one task at a time</li>
+        <li>Streaks, points and ranks that make practice stick</li>
+        <li>Tuner, metronome, chord &amp; scale library built in</li>
+        <li>Ask Prova — an AI coach for any playing question</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="who">FOR TEACHERS</div>
+      <h3>Your studio, organised</h3>
+      <ul>
+        <li>Connect students with a private join code</li>
+        <li>Assign tasks, songs and multi-week programs</li>
+        <li>Proof-of-practice videos from students</li>
+        <li>Lesson calendar with attendance and notes</li>
+        <li>Weekly practice reports emailed to parents — automatically</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="who">FOR SCHOOLS</div>
+      <h3>Safe by design</h3>
+      <ul>
+        <li>No student-to-student private messaging — enforced on our servers, not just hidden in the app</li>
+        <li>Teachers see practice, parents see progress</li>
+        <li>Clear privacy policy, in-app account deletion</li>
+        <li>Organisation-level management for music departments</li>
+      </ul>
+    </div>
+  </div>
+</section>
 
-    const gigId = new URLSearchParams(location.search).get('g');
-    const $ = (id) => document.getElementById(id);
+<section id="features">
+  <h2>Everything practice needs</h2>
+  <p class="lead">From the first open chord to the first gig.</p>
+  <div class="feat">
+    <div><b>AI practice plans</b><span>Exact exercises, tempos and frets — regenerated as you improve.</span></div>
+    <div><b>Guided player</b><span>Timers, points and celebrations that carry students task to task.</span></div>
+    <div><b>Teacher assignments</b><span>Tasks with due dates, video links and proof clips back from students.</span></div>
+    <div><b>Parent reports</b><span>A beautiful weekly practice summary, emailed automatically.</span></div>
+    <div><b>Chords &amp; scales</b><span>140+ chords and every scale that matters, in clear diagrams.</span></div>
+    <div><b>Songs &amp; setlists</b><span>Learn-a-song plans and AI gig setlists with live audience song requests.</span></div>
+    <div><b>Tuner &amp; metronome</b><span>Chromatic tuner and a speed-trainer metronome, no extra apps.</span></div>
+    <div><b>Progress that shows</b><span>Streaks, practice charts and class leaderboards students care about.</span></div>
+  </div>
+</section>
 
-    function toast(msg) {
-      const t = $('toast'); t.textContent = msg; t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 1500);
-    }
+<section id="schools">
+  <div class="safe">
+    <div class="kicker">SCHOOL-SAFE</div>
+    <h2>Made to be approved by your IT department</h2>
+    <div class="cols">
+      <div><b>🔒 Locked-down messaging</b><p>Students can only message their own teacher. Peer-to-peer DMs are blocked at the database level — there is no setting to get around it.</p></div>
+      <div><b>👨‍👩‍👧 Parents in the loop</b><p>Automatic weekly practice reports keep families informed without any teacher admin time.</p></div>
+      <div><b>🛡 Privacy first</b><p>No ads, no data selling, account deletion built in. Read our <a href="/privacy.html">privacy policy</a> — it's short and honest.</p></div>
+      <div><b>🏫 Department-ready</b><p>Group teachers under one organisation with visibility across the music department.</p></div>
+    </div>
+  </div>
+</section>
 
-    async function load() {
-      if (!gigId) { $('title').textContent = 'No show found'; $('sub').textContent = ''; return; }
-      let snap;
-      try { snap = await getDoc(doc(db, 'liveGigs', gigId)); }
-      catch (e) { $('title').textContent = 'Could not load'; return; }
-      if (!snap.exists() || snap.data().active === false) {
-        $('title').textContent = 'Show ended'; $('sub').textContent = '';
-        $('empty').style.display = 'block'; return;
-      }
-      const gig = snap.data();
-      $('title').textContent = gig.name || "Tonight's set";
-      const list = $('list');
-      (gig.songs || []).forEach((s) => {
-        const row = document.createElement('div');
-        row.className = 'song';
-        row.innerHTML = `<div class="info"><div class="t"></div><div class="a"></div></div>`;
-        row.querySelector('.t').textContent = s.title || '';
-        row.querySelector('.a').textContent = s.artist || '';
-        const btn = document.createElement('button');
-        btn.className = 'req'; btn.textContent = 'Request';
-        btn.onclick = async () => {
-          btn.disabled = true; btn.textContent = 'Sent ✓';
-          try {
-            await addDoc(collection(db, 'liveGigs', gigId, 'requests'),
-              { title: s.title || '', artist: s.artist || '', ts: serverTimestamp() });
-            toast('Requested!');
-          } catch (e) { btn.disabled = false; btn.textContent = 'Request'; toast('Try again'); }
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Request'; }, 2500);
-        };
-        row.appendChild(btn);
-        list.appendChild(row);
-      });
-      if (gig.tipLink) { const tip = $('tip'); tip.href = gig.tipLink; tip.style.display = 'block'; }
-    }
-    load();
-  </script>
+<section>
+  <h2 style="text-align:center">A look inside</h2>
+  <p class="lead" style="text-align:center;margin-left:auto;margin-right:auto">The student's day, the teacher's studio, and the AI coach.</p>
+  <div class="shots">
+    <img class="phone" src="/img/shot-today.png" alt="Student daily practice plan">
+    <img class="phone" src="/img/shot-teacher.png" alt="Teacher dashboard">
+    <img class="phone" src="/img/shot-ask.png" alt="Ask Prova AI coach">
+  </div>
+</section>
+
+<div class="contact">
+  <h2>Bring Prova to your students</h2>
+  <p>Launching soon on the App Store. Teachers and schools can get early access today — we'd love to hear from you.</p>
+  <a class="cta" href="mailto:cehthoanprova@gmail.com?subject=Prova%20for%20our%20school">Contact us</a>
+</div>
+
+<footer>
+  <div>© 2026 Prova · Play. Practice. Perform.</div>
+  <div class="links">
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+    <a href="/support.html">Support</a>
+  </div>
+</footer>
+
+</div>
 </body>
 </html>
