@@ -49,6 +49,7 @@ import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
 import SkillTreeScreen from './src/screens/tabs/SkillTreeScreen';
+import EarTrainingScreen from './src/screens/tabs/EarTrainingScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
 import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
@@ -89,6 +90,7 @@ function PracticeStackScreen() {
       <PracticeStack.Screen name="Schedule" component={ScheduleScreen} />
       <PracticeStack.Screen name="Library" component={LibraryScreen} />
       <PracticeStack.Screen name="ChordLibrary" component={ChordLibraryScreen} />
+      <PracticeStack.Screen name="EarTraining" component={EarTrainingScreen} />
       <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
       <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
     </PracticeStack.Navigator>
