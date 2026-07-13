@@ -2,7 +2,18 @@ import React, { useState } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+
+// Web: the app is phone-designed — pin every top-level layer (the app root AND
+// react-native-web's modal portals, which are direct children of <body>) to a
+// centred phone-width column. The translateZ makes each layer the containing
+// block for its position:fixed descendants, so sheets/modals stay in the
+// column instead of stretching across the whole browser.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = 'body{background:#02040a} body>div{max-width:480px;width:100%;margin:0 auto;transform:translateZ(0);box-shadow:0 0 60px rgba(59,130,246,0.08)}';
+  document.head.appendChild(style);
+}
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
