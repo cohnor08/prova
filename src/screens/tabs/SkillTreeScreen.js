@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { TIER_COLORS } from '../../constants/badges';
 import { track } from '../../lib/analytics';
 
 const fmtH = (m) => (m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`);
@@ -23,41 +24,41 @@ function buildLanes(u, catMins) {
     {
       name: 'CONSISTENCY', desc: 'Sessions completed',
       nodes: lane([
-        { icon: '🌱', title: 'First Steps', at: 1, req: '1 session' },
-        { icon: '🎯', title: 'Warmed Up', at: 5, req: '5 sessions' },
-        { icon: '🎼', title: 'Regular', at: 15, req: '15 sessions' },
-        { icon: '🚀', title: 'Devoted', at: 40, req: '40 sessions' },
-        { icon: '🏆', title: 'Relentless', at: 100, req: '100 sessions' },
+        { icon: 'musical-notes', tier: 1, title: 'First Steps', at: 1, req: '1 session' },
+        { icon: 'musical-notes', tier: 1, title: 'Warmed Up', at: 5, req: '5 sessions' },
+        { icon: 'musical-notes', tier: 2, title: 'Regular', at: 15, req: '15 sessions' },
+        { icon: 'musical-notes', tier: 3, title: 'Devoted', at: 40, req: '40 sessions' },
+        { icon: 'musical-notes', tier: 4, title: 'Relentless', at: 100, req: '100 sessions' },
       ], sessions),
     },
     {
       name: 'HOURS', desc: 'Total practice time',
       nodes: lane([
-        { icon: '⏱', title: 'Hour One', at: 60, req: '1 hour' },
-        { icon: '🕐', title: 'Grinder', at: 300, req: '5 hours' },
-        { icon: '🎧', title: 'Deep Work', at: 900, req: '15 hours' },
-        { icon: '🌙', title: 'Obsessed', at: 2400, req: '40 hours' },
-        { icon: '💎', title: 'Master Hours', at: 6000, req: '100 hours' },
+        { icon: 'time', tier: 1, title: 'Hour One', at: 60, req: '1 hour' },
+        { icon: 'time', tier: 1, title: 'Grinder', at: 300, req: '5 hours' },
+        { icon: 'time', tier: 2, title: 'Deep Work', at: 900, req: '15 hours' },
+        { icon: 'time', tier: 3, title: 'Obsessed', at: 2400, req: '40 hours' },
+        { icon: 'time', tier: 4, title: 'Master Hours', at: 6000, req: '100 hours' },
       ], mins),
     },
     {
       name: 'CRAFT', desc: 'Minutes by practice category',
       nodes: [
-        { icon: '🔧', title: 'Technician I', at: 60, req: '1h technique', unlocked: (catMins.technique || 0) >= 60, value: catMins.technique || 0 },
-        { icon: '⚙️', title: 'Technician II', at: 300, req: '5h technique', unlocked: (catMins.technique || 0) >= 300, value: catMins.technique || 0 },
-        { icon: '📖', title: 'Scholar I', at: 60, req: '1h theory', unlocked: (catMins.theory || 0) >= 60, value: catMins.theory || 0 },
-        { icon: '🎓', title: 'Scholar II', at: 300, req: '5h theory', unlocked: (catMins.theory || 0) >= 300, value: catMins.theory || 0 },
-        { icon: '🎭', title: 'Performer I', at: 60, req: '1h repertoire', unlocked: (catMins.repertoire || 0) >= 60, value: catMins.repertoire || 0 },
-        { icon: '🎤', title: 'Performer II', at: 300, req: '5h repertoire', unlocked: (catMins.repertoire || 0) >= 300, value: catMins.repertoire || 0 },
+        { icon: 'construct', tier: 2, title: 'Technician I', at: 60, req: '1h technique', unlocked: (catMins.technique || 0) >= 60, value: catMins.technique || 0 },
+        { icon: 'construct', tier: 3, title: 'Technician II', at: 300, req: '5h technique', unlocked: (catMins.technique || 0) >= 300, value: catMins.technique || 0 },
+        { icon: 'book', tier: 2, title: 'Scholar I', at: 60, req: '1h theory', unlocked: (catMins.theory || 0) >= 60, value: catMins.theory || 0 },
+        { icon: 'book', tier: 3, title: 'Scholar II', at: 300, req: '5h theory', unlocked: (catMins.theory || 0) >= 300, value: catMins.theory || 0 },
+        { icon: 'mic', tier: 2, title: 'Performer I', at: 60, req: '1h repertoire', unlocked: (catMins.repertoire || 0) >= 60, value: catMins.repertoire || 0 },
+        { icon: 'mic', tier: 3, title: 'Performer II', at: 300, req: '5h repertoire', unlocked: (catMins.repertoire || 0) >= 300, value: catMins.repertoire || 0 },
       ],
     },
     {
       name: 'MASTERY', desc: 'Prova Score',
       nodes: lane([
-        { icon: '🥉', title: 'Rising', at: 250, req: '250 pts' },
-        { icon: '🥈', title: 'Proven', at: 1000, req: '1,000 pts' },
-        { icon: '🥇', title: 'Elite', at: 5000, req: '5,000 pts' },
-        { icon: '👑', title: 'Legendary', at: 15000, req: '15,000 pts' },
+        { icon: 'trophy', tier: 1, title: 'Rising', at: 250, req: '250 pts' },
+        { icon: 'trophy', tier: 2, title: 'Proven', at: 1000, req: '1,000 pts' },
+        { icon: 'trophy', tier: 3, title: 'Elite', at: 5000, req: '5,000 pts' },
+        { icon: 'trophy', tier: 4, title: 'Legendary', at: 15000, req: '15,000 pts' },
       ], score),
     },
   ];
@@ -117,8 +118,16 @@ export default function SkillTreeScreen({ navigation }) {
                     return (
                       <View key={n.title} style={styles.nodeWrap}>
                         {i > 0 && <View style={[styles.connector, lane.nodes[i - 1].unlocked && n.unlocked && styles.connectorOn]} />}
-                        <View style={[styles.node, n.unlocked && styles.nodeOn, isNext && styles.nodeNext]}>
-                          <Text style={[styles.nodeIcon, !n.unlocked && styles.nodeIconLocked]}>{n.unlocked ? n.icon : '🔒'}</Text>
+                        <View style={[
+                          styles.node,
+                          n.unlocked && { borderColor: TIER_COLORS[n.tier], backgroundColor: TIER_COLORS[n.tier] + '14' },
+                          isNext && styles.nodeNext,
+                        ]}>
+                          <Ionicons
+                            name={n.unlocked ? n.icon : 'lock-closed'}
+                            size={n.unlocked ? 22 : 16}
+                            color={n.unlocked ? TIER_COLORS[n.tier] : COLORS.textMuted}
+                          />
                         </View>
                         <Text style={[styles.nodeTitle, !n.unlocked && styles.nodeTitleLocked]} numberOfLines={1}>{n.title}</Text>
                         <Text style={styles.nodeReq} numberOfLines={1}>{n.req}</Text>
