@@ -615,9 +615,15 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
   const recent = [...earnedList].sort((a, b) => (earned[b.id] || '').localeCompare(earned[a.id] || '')).slice(0, 4);
   const medal = (b, got) => {
     const color = got ? TIER_COLORS[b.tier] : COLORS.border;
+    const lockedElite = !got && b.tier === 4;
     return (
       <View style={[styles.badgeRing, { borderColor: color }, got && { backgroundColor: color + '14' }]}>
-        <Ionicons name={got ? b.icon : 'lock-closed'} size={got ? 19 : 14} color={got ? color : COLORS.textMuted} />
+        <Ionicons
+          name={lockedElite ? 'lock-closed' : b.icon}
+          size={lockedElite ? 14 : 19}
+          color={got ? color : COLORS.textMuted}
+          style={!got && !lockedElite ? { opacity: 0.55 } : null}
+        />
       </View>
     );
   };
@@ -641,15 +647,29 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
             ))}
         </View>
       ) : (
-        <View style={styles.milestoneGrid}>
-          {[...BADGES].sort((a, b) => a.tier - b.tier).map((b) => {
-            const got = !!earned[b.id];
+        <View>
+          {[
+            ['sess', 'SESSIONS'], ['streak', 'STREAKS'], ['hrs', 'HOURS'],
+            ['score', 'SCORE'], ['task', 'TEACHER TASKS'], ['song', 'SONGS'], ['goal', 'GOALS'],
+          ].map(([prefix, label]) => {
+            const group = BADGES.filter((b) => b.id.startsWith(prefix + '_')).sort((a, b) => a.tier - b.tier);
+            if (group.length === 0) return null;
             return (
-              <TouchableOpacity key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]} onPress={() => onBadgePress(b)} activeOpacity={0.7}>
-                {medal(b, got)}
-                <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
-                {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
-              </TouchableOpacity>
+              <View key={prefix}>
+                <Text style={styles.badgeGroupLabel}>{label}</Text>
+                <View style={styles.milestoneGrid}>
+                  {group.map((b) => {
+                    const got = !!earned[b.id];
+                    return (
+                      <TouchableOpacity key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]} onPress={() => onBadgePress(b)} activeOpacity={0.7}>
+                        {medal(b, got)}
+                        <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
+                        {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
             );
           })}
         </View>
@@ -1407,6 +1427,9 @@ export default function ProgressScreen({ navigation }) {
               <View style={[styles.badgeRing, styles.badgeRingBig, { borderColor: color }, got && { backgroundColor: color + '14' }]}>
                 <Ionicons name={got ? selBadge.icon : 'lock-closed'} size={got ? 30 : 22} color={got ? color : COLORS.textMuted} />
               </View>
+              <Text style={[styles.badgeTierKicker, { color: got ? TIER_COLORS[selBadge.tier] : COLORS.textMuted }]}>
+                {({ 1: 'STEEL', 2: 'BLUE', 3: 'CYAN', 4: 'GOLD' })[selBadge.tier]} TIER
+              </Text>
               <Text style={styles.badgeSheetTitle}>{selBadge.title}</Text>
               <Text style={styles.badgeSheetDesc}>{selBadge.desc}</Text>
               {got ? (
@@ -1634,6 +1657,8 @@ const styles = StyleSheet.create({
   badgeSheetTitle: { color: COLORS.text, fontSize: 19, fontWeight: '800', marginBottom: 6 },
   badgeSheetDesc: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: SPACING.md },
   badgeSheetStatus: { color: COLORS.textMuted, fontSize: 13.5, fontWeight: '700', marginBottom: SPACING.sm },
+  badgeGroupLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm, marginTop: SPACING.xs },
+  badgeTierKicker: { fontSize: 10.5, fontWeight: '800', letterSpacing: 2, marginBottom: 4 },
   showAllLink: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: SPACING.md },
   goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
   goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
