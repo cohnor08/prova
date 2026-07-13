@@ -623,15 +623,12 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
   };
   return (
     <View style={styles.section}>
-      <TouchableOpacity style={styles.badgeHead} onPress={onToggle} activeOpacity={0.7}>
+      <View style={styles.badgeHead}>
         <Text style={styles.sectionTitle}>BADGES · {earnedList.length}/{BADGES.length}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <TouchableOpacity onPress={onSkillTree} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.skillTreeLink}>Skill tree ›</Text>
-          </TouchableOpacity>
-          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} style={{ marginBottom: SPACING.md }} />
-        </View>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={onSkillTree} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.skillTreeLink}>Skill tree ›</Text>
+        </TouchableOpacity>
+      </View>
       {!open ? (
         <View style={styles.badgeStrip}>
           {recent.length === 0
@@ -657,6 +654,9 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
           })}
         </View>
       )}
+      <TouchableOpacity onPress={onToggle} hitSlop={{ top: 8, bottom: 8 }}>
+        <Text style={styles.showAllLink}>{open ? 'Show less' : `Show all (${BADGES.length})`}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -966,6 +966,15 @@ export default function ProgressScreen({ navigation }) {
   // Personal goals (the interactive kind — onboarding focus areas stay as chips)
   const [badgesOpen, setBadgesOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const goalInputRef = useRef(null);
+  // Focus once the sheet's slide-up finishes — focusing during the mount
+  // animation makes the keyboard race the KeyboardAvoidingView and cover the
+  // field until a second tap.
+  useEffect(() => {
+    if (!goalModalOpen) return;
+    const t = setTimeout(() => goalInputRef.current?.focus(), 380);
+    return () => clearTimeout(t);
+  }, [goalModalOpen]);
   const [goalText, setGoalText] = useState('');
 
   const persistGoals = (next) => {
@@ -1390,6 +1399,7 @@ export default function ProgressScreen({ navigation }) {
       <SheetModal visible={goalModalOpen} onRequestClose={() => setGoalModalOpen(false)} cardStyle={styles.goalSheet} keyboardAvoiding>
         <Text style={styles.goalSheetTitle}>New goal</Text>
         <TextInput
+          ref={goalInputRef}
           style={styles.goalInput}
           placeholder="e.g. Play the F barre chord cleanly"
           placeholderTextColor={COLORS.textMuted}
@@ -1597,6 +1607,7 @@ const styles = StyleSheet.create({
   badgeRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
   badgeStrip: { flexDirection: 'row', gap: SPACING.md },
   badgeStripItem: { alignItems: 'center', width: 70 },
+  showAllLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: SPACING.md },
   goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
   goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   focusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.md },
