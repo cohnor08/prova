@@ -544,7 +544,11 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardText}>Ear training</Text>
             <Text style={styles.learnCardSub}>Intervals & chords</Text>
           </TouchableOpacity>
-          <View style={[styles.learnCard, { backgroundColor: 'transparent', borderColor: 'transparent' }]} />
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('Progress', { screen: 'SkillTree' })} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="git-network-outline" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Skill tree</Text>
+            <Text style={styles.learnCardSub}>Your progression</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Pre-Gig Mode banner ── */}
