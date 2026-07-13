@@ -11,7 +11,7 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 // column instead of stretching across the whole browser.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
-  style.textContent = 'body{background:#02040a} body>div{max-width:480px;width:100%;margin:0 auto;transform:translateZ(0);box-shadow:0 0 60px rgba(59,130,246,0.08)}';
+  style.textContent = 'body{background:#02040a} body>div{max-width:1080px;width:94%;margin:0 auto;transform:translateZ(0)}';
   document.head.appendChild(style);
 }
 import { StatusBar } from 'expo-status-bar';
