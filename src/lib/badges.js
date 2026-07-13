@@ -16,6 +16,7 @@ export function badgeStats(u = {}) {
     provaScore: u.provaScore || 0,
     tasksCompleted: tasks.filter((t) => t.completed || (t.timesCompleted || 0) > 0).length,
     songSteps: songs.reduce((n, s) => n + ((s.steps || []).filter((st) => st.done).length), 0),
+    goalsCompleted: (Array.isArray(u.personalGoals) ? u.personalGoals : []).filter((g) => g.done).length,
   };
 }
 
