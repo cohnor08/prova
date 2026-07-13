@@ -57,8 +57,8 @@ const SVG = `
 </g>
 <circle class="burst" cx="200" cy="261" r="92"/>
 <rect x="75" y="408" width="250" height="1" fill="#3B82F6" opacity="0.8" class="theline"/>
-<text x="200" y="400" text-anchor="middle" fill="#F0F4FF" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
-<text x="200" y="432" text-anchor="middle" fill="#60A5FA" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
+<text x="200" y="400" text-anchor="middle" fill="#F0F4FF" font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="52" font-weight="800" letter-spacing="14" class="word">PROVA</text>
+<text x="200" y="432" text-anchor="middle" fill="#60A5FA" font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
 <g class="dots">
   <circle cx="160" cy="458" r="2" fill="#1E40AF"/>
   <circle cx="200" cy="458" r="2" fill="#3B82F6" class="dotmid"/>
