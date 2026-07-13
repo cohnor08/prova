@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Prova — Admin</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #050810; color: #F0F4FF; min-height: 100vh; }
+  a { color: #60A5FA; }
+  .hidden { display: none !important; }
+
+  /* login */
+  #login { max-width: 380px; margin: 14vh auto; padding: 0 20px; }
+  #login h1 { font-size: 26px; letter-spacing: 4px; color: #3B82F6; text-align: center; margin-bottom: 4px; }
+  #login p { color: #8B9CC8; text-align: center; font-size: 13px; margin-bottom: 26px; }
+  #login input { width: 100%; background: #0C1424; border: 1px solid #1E2D4A; border-radius: 12px;
+    color: #F0F4FF; padding: 13px 14px; font-size: 15px; margin-bottom: 12px; }
+  #login button { width: 100%; background: #3B82F6; border: 0; border-radius: 12px; color: #fff;
+    padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #loginErr { color: #F43F5E; font-size: 13px; text-align: center; margin-top: 12px; min-height: 18px; }
+
+  /* shell */
+  header { display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 22px; border-bottom: 1px solid #1E2D4A; position: sticky; top: 0; background: #050810; z-index: 5; }
+  header .logo { font-weight: 800; letter-spacing: 3px; color: #3B82F6; font-size: 15px; }
+  header .logo span { color: #22D3EE; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav button { background: transparent; border: 1px solid transparent; color: #8B9CC8; padding: 8px 14px;
+    border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  nav button.on { background: #0C1424; border-color: #1E2D4A; color: #F0F4FF; }
+  #signout { color: #F43F5E; background: none; border: none; font-size: 13px; cursor: pointer; }
+  main { max-width: 1080px; margin: 0 auto; padding: 26px 22px 80px; }
+  h2 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #8B9CC8; font-size: 13px; margin-bottom: 20px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 26px; }
+  .stat { background: #0C1424; border: 1px solid #1E2D4A; border-radius: 16px; padding: 16px 18px; }
+  .stat .v { font-size: 26px; font-weight: 800; }
+  .stat .l { color: #8B9CC8; font-size: 12.5px; margin-top: 4px; }
+
+  .card { background: #0C1424; border: 1px solid #1E2D4A; border-radius: 16px; padding: 18px 20px; margin-bottom: 14px; }
+  .card h3 { font-size: 15px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: #5E6E93; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    padding: 8px 10px; border-bottom: 1px solid #1E2D4A; }
+  td { padding: 10px; border-bottom: 1px solid #131C30; vertical-align: middle; }
+  tr:hover td { background: #0F1830; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+  .pill.teacher { background: #1E3A8A44; color: #93C5FD; }
+  .pill.student { background: #06403044; color: #6EE7B7; }
+  .pill.personal { background: #58151544; color: #FCA5A5; }
+  .pill.unknown { background: #1E2D4A; color: #8B9CC8; }
+  select, .search { background: #0A1120; border: 1px solid #1E2D4A; border-radius: 10px; color: #F0F4FF;
+    padding: 8px 10px; font-size: 13px; }
+  .search { width: 100%; max-width: 360px; margin-bottom: 14px; padding: 11px 14px; }
+
+  .switchRow { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #131C30; }
+  .switchRow:last-child { border-bottom: 0; }
+  .switchRow .t { font-weight: 700; font-size: 14.5px; }
+  .switchRow .d { color: #8B9CC8; font-size: 12.5px; margin-top: 3px; max-width: 640px; }
+  .toggle { width: 52px; height: 30px; border-radius: 999px; background: #1E2D4A; border: 0; cursor: pointer; position: relative; flex-shrink: 0; }
+  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+    background: #8B9CC8; transition: all .18s; }
+  .toggle.on { background: #3B82F6; }
+  .toggle.on::after { left: 25px; background: #fff; }
+  .muted { color: #5E6E93; font-size: 12.5px; }
+  .warn { color: #FBBF24; font-size: 12.5px; }
+  .expand { cursor: pointer; }
+  .roster { background: #0A1120; border-radius: 10px; margin: 6px 0 10px; padding: 10px 14px; font-size: 13px; color: #C6CCDA; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #0C1424;
+    border: 1px solid #3B82F6; color: #F0F4FF; padding: 12px 22px; border-radius: 12px; font-size: 13.5px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 50; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>PROVA<span style="color:#22D3EE">.</span></h1>
+  <p>Founders' admin panel</p>
+  <input id="em" type="email" placeholder="Email" autocomplete="username">
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="loginBtn">Sign in</button>
+  <div id="loginErr"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div class="logo">PROVA<span>.</span> ADMIN</div>
+    <nav>
+      <button data-page="dash" class="on">Dashboard</button>
+      <button data-page="users">Users</button>
+      <button data-page="orgs">Organisations</button>
+      <button data-page="pay">Payments</button>
+      <button data-page="mgmt">Management</button>
+    </nav>
+    <button id="signout">Sign out</button>
+  </header>
+  <main>
+
+    <section id="page-dash">
+      <h2>Dashboard</h2>
+      <div class="sub">Live from Firestore — refreshed on load.</div>
+      <div class="grid" id="dashStats"></div>
+      <div class="card"><h3>AI usage — last 7 days</h3>
+        <table id="aiTable"><thead><tr><th>Day</th><th>Requests</th><th>Tokens in</th><th>Tokens out</th><th>Errors</th></tr></thead><tbody></tbody></table>
+        <div class="muted" style="margin-top:8px">Token cost ≈ what the app spends on Claude. Revenue tracking arrives with real billing.</div>
+      </div>
+    </section>
+
+    <section id="page-users" class="hidden">
+      <h2>Users</h2>
+      <div class="sub">Every account. Change a role from the dropdown — it saves instantly.</div>
+      <input class="search" id="userSearch" placeholder="Search name or email…">
+      <div class="card">
+        <table id="userTable"><thead><tr><th>User</th><th>Role</th><th>Streak</th><th>Score</th><th>Joined</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="page-orgs" class="hidden">
+      <h2>Organisations</h2>
+      <div class="sub">v1: each teacher's studio. School/district structures plug in here later.</div>
+      <div class="card">
+        <table id="orgTable"><thead><tr><th>Teacher</th><th>Join code</th><th>Students</th><th>Classes</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="page-pay">
+      <h2 class="hidden">.</h2>
+    </section>
+
+    <section id="page-mgmt" class="hidden">
+      <h2>Management</h2>
+      <div class="sub">Remote switches — changes take effect in the app immediately, no update needed.</div>
+      <div class="card" id="switches"></div>
+    </section>
+
+  </main>
+</div>
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const ADMIN_UIDS = ['0ZC25xoENxWUcyLYAmDjSAiuCEQ2']; // Ethan — add Cohnor's UID here AND in firestore.rules
+
+const app = initializeApp({
+  apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
+  authDomain: 'prova-583c9.firebaseapp.com',
+  projectId: 'prova-583c9',
+});
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const $ = (s) => document.querySelector(s);
+const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); };
+const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+// ── auth gate ──
+$('#loginBtn').onclick = async () => {
+  $('#loginErr').textContent = '';
+  try { await signInWithEmailAndPassword(auth, $('#em').value.trim(), $('#pw').value); }
+  catch (e) { $('#loginErr').textContent = 'Sign-in failed — check email and password.'; }
+};
+$('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
+$('#signout').onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, (user) => {
+  if (user && ADMIN_UIDS.includes(user.uid)) {
+    $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+    loadAll();
+  } else {
+    if (user) { $('#loginErr').textContent = 'This account is not an admin.'; signOut(auth); }
+    $('#login').classList.remove('hidden'); $('#app').classList.add('hidden');
+  }
+});
+
+// ── nav ──
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.remove('on'));
+  b.classList.add('on');
+  ['dash','users','orgs','pay','mgmt'].forEach((p) => $('#page-' + p).classList.toggle('hidden', p !== b.dataset.page));
+});
+
+// ── data ──
+let allUsers = [];
+
+async function loadAll() {
+  const snap = await getDocs(collection(db, 'users'));
+  allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+  renderDash(); renderUsers(); renderOrgs(); renderSwitches(); renderPay();
+}
+
+function renderDash() {
+  const total = allUsers.length;
+  const teachers = allUsers.filter((u) => u.role === 'teacher').length;
+  const students = allUsers.filter((u) => u.role === 'student').length;
+  const personal = allUsers.filter((u) => u.role === 'personal').length;
+  const weekAgo = Date.now() - 7 * 86400000;
+  const active = allUsers.filter((u) => u.lastSessionDate && new Date(u.lastSessionDate).getTime() >= weekAgo).length;
+  $('#dashStats').innerHTML = [
+    [total, 'Total accounts'], [active, 'Active this week'],
+    [teachers, 'Teachers'], [students, 'Students (free)'], [personal, 'Personal (paid tier)'],
+  ].map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  loadAiStats();
+}
+
+async function loadAiStats() {
+  const tbody = $('#aiTable tbody'); tbody.innerHTML = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+    try {
+      const s = await getDoc(doc(db, 'adminStats', d));
+      const x = s.exists() ? s.data() : null;
+      tbody.innerHTML += `<tr><td>${d}</td><td>${x?.totalRequests ?? 0}</td><td>${(x?.totalTokensIn ?? 0).toLocaleString()}</td><td>${(x?.totalTokensOut ?? 0).toLocaleString()}</td><td>${x?.errorCount ?? 0}</td></tr>`;
+    } catch (e) { tbody.innerHTML += `<tr><td>${d}</td><td colspan="4" class="muted">no access</td></tr>`; break; }
+  }
+}
+
+function renderUsers() {
+  const q = ($('#userSearch').value || '').toLowerCase();
+  const rows = allUsers
+    .filter((u) => !q || (u.username || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  $('#userTable tbody').innerHTML = rows.map((u) => `
+    <tr>
+      <td><b>${esc(u.username || (u.email || '').split('@')[0])}</b><br><span class="muted">${esc(u.email || u.uid)}</span></td>
+      <td><select data-uid="${u.uid}" class="roleSel">
+        ${['student','personal','teacher'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+        ${['student','personal','teacher'].includes(u.role) ? '' : `<option selected value="${esc(u.role || '')}">${esc(u.role || 'none')}</option>`}
+      </select></td>
+      <td>${u.streak || 0}🔥</td>
+      <td>${(u.provaScore || 0).toLocaleString()}</td>
+      <td class="muted">${(u.createdAt || '').slice(0, 10)}</td>
+    </tr>`).join('');
+  document.querySelectorAll('.roleSel').forEach((sel) => sel.onchange = async () => {
+    try {
+      await updateDoc(doc(db, 'users', sel.dataset.uid), { role: sel.value });
+      const u = allUsers.find((x) => x.uid === sel.dataset.uid); if (u) u.role = sel.value;
+      toast(`Role updated to ${sel.value}`); renderDash();
+    } catch (e) { toast('Failed — are you signed in as an admin?'); }
+  });
+}
+$('#userSearch').oninput = () => renderUsers();
+
+function renderOrgs() {
+  const teachers = allUsers.filter((u) => u.role === 'teacher');
+  $('#orgTable tbody').innerHTML = teachers.map((t) => {
+    const students = allUsers.filter((u) => u.teacherUid === t.uid);
+    const classes = Array.isArray(t.classes) ? t.classes.length : 0;
+    const roster = students.map((s) => esc(s.username || (s.email || '').split('@')[0])).join(', ') || '<i>no students yet</i>';
+    return `<tr class="expand" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <td><b>${esc(t.username || (t.email || '').split('@')[0])}</b><br><span class="muted">${esc(t.email || '')}</span></td>
+        <td><code>${esc(t.teacherCode || '—')}</code></td>
+        <td>${students.length}</td><td>${classes}</td><td class="muted">tap for roster</td>
+      </tr>
+      <tr class="hidden"><td colspan="5"><div class="roster">${roster}</div></td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="muted">No teachers yet.</td></tr>';
+}
+
+// ── payments page (rendered into #page-pay) ──
+function renderPay() {
+  $('#page-pay').innerHTML = `
+    <h2>Payments</h2>
+    <div class="sub">What exists today. Revenue metrics land here when real billing (RevenueCat) ships.</div>
+    <div class="grid">
+      <div class="stat"><div class="v">$0</div><div class="l">Revenue (billing not live)</div></div>
+      <div class="stat"><div class="v">${allUsers.filter((u) => u.role === 'personal').length}</div><div class="l">Personal accounts (future subscribers)</div></div>
+      <div class="stat"><div class="v">${allUsers.filter((u) => u.planType === 'personal_trial').length}</div><div class="l">Mock-trial upgrades to date</div></div>
+    </div>
+    <div class="card"><h3>Paywall</h3><div id="paySwitch"></div>
+      <div class="muted" style="margin-top:6px">OFF = the app's upgrade button shows “Coming soon” (keep OFF while Apple reviews). ON = mock checkout grants the upgrade (demos only).</div>
+    </div>`;
+  renderConfigToggle('paySwitch', 'paywall', 'mockCheckout', 'Mock checkout enabled');
+}
+
+// ── management switches ──
+function renderSwitches() {
+  $('#switches').innerHTML = `
+    <div id="swMaint"></div>
+    <div id="swPay2"></div>`;
+  renderConfigToggle('swMaint', 'maintenance', 'enabled', 'Maintenance mode', 'Blocks the whole app with a maintenance screen for every user. Emergency use.');
+  renderConfigToggle('swPay2', 'paywall', 'mockCheckout', 'Paywall mock checkout', 'Same switch as the Payments page.');
+}
+
+async function renderConfigToggle(mountId, docId, field, title, desc = '') {
+  const mount = document.getElementById(mountId); if (!mount) return;
+  let val = false;
+  try { const s = await getDoc(doc(db, 'config', docId)); val = !!(s.exists() && s.data()[field]); } catch (e) {}
+  mount.innerHTML = `<div class="switchRow"><div><div class="t">${title}</div>${desc ? `<div class="d">${desc}</div>` : ''}</div>
+    <button class="toggle ${val ? 'on' : ''}"></button></div>`;
+  mount.querySelector('.toggle').onclick = async (ev) => {
+    const btn = ev.currentTarget; const next = !btn.classList.contains('on');
+    try {
+      await setDoc(doc(db, 'config', docId), { [field]: next }, { merge: true });
+      btn.classList.toggle('on', next);
+      toast(`${title}: ${next ? 'ON' : 'OFF'}`);
+      if (docId === 'paywall') { renderPay(); renderConfigToggle('swPay2', 'paywall', 'mockCheckout', 'Paywall mock checkout', 'Same switch as the Payments page.'); }
+    } catch (e) { toast('Failed to update — admin rules may not allow this account.'); }
+  };
+}
+</script>
+</body>
+</html>
