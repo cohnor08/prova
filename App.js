@@ -48,6 +48,7 @@ import ChordLibraryScreen from './src/screens/tabs/ChordLibraryScreen';
 import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
+import SkillTreeScreen from './src/screens/tabs/SkillTreeScreen';
 import PaywallScreen from './src/screens/tabs/PaywallScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
 import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
@@ -65,6 +66,7 @@ const Tab = createBottomTabNavigator();
 const PracticeStack = createNativeStackNavigator();
 const TeacherHomeStack = createNativeStackNavigator();
 const TodayStack = createNativeStackNavigator();
+const ProgressStack = createNativeStackNavigator();
 
 // The Practice tab is a small stack so it can push deeper pages (Gigs &
 // Setlists) without adding another bottom tab.
@@ -103,6 +105,16 @@ function TodayStackScreen() {
       <TodayStack.Screen name="Paywall" component={PaywallScreen} />
       <TodayStack.Screen name="Notifications" component={NotificationsScreen} />
     </TodayStack.Navigator>
+  );
+}
+
+// Progress wrapped in a stack so it can push the skill tree.
+function ProgressStackScreen() {
+  return (
+    <ProgressStack.Navigator screenOptions={{ headerShown: false }}>
+      <ProgressStack.Screen name="ProgressHome" component={ProgressScreen} />
+      <ProgressStack.Screen name="SkillTree" component={SkillTreeScreen} />
+    </ProgressStack.Navigator>
   );
 }
 
@@ -161,7 +173,7 @@ function MainTabs({ role }) {
         <>
           <Tab.Screen name="Today" component={TodayStackScreen} />
           <Tab.Screen name="Practice" component={PracticeStackScreen} />
-          <Tab.Screen name="Progress" component={ProgressScreen} />
+          <Tab.Screen name="Progress" component={ProgressStackScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
           <Tab.Screen name="Profile" component={ProfileScreen} />
         </>
