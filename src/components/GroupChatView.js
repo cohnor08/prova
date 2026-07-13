@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 70 },
   backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
   navCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
-  groupAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.accent || COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  groupAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   navName: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
   navMeta: { color: COLORS.textMuted, fontSize: 11 },
 

@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
   // Conversation item
   convoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.md },
   convoAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  convoAvatarTeacher: { backgroundColor: COLORS.accent || COLORS.primary },
+  convoAvatarTeacher: { backgroundColor: COLORS.primary },
   convoAvatarText: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   convoInfo: { flex: 1, minWidth: 0 },
   convoEmail: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 3 },
