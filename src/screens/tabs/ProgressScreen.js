@@ -608,7 +608,7 @@ function LevelProgress({ totalMins }) {
   );
 }
 
-function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
+function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
   const stats = badgeStats(userData || {});
   const earned = userData?.badges || {};
   const earnedList = BADGES.filter((b) => earned[b.id]);
@@ -634,10 +634,10 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
           {recent.length === 0
             ? <Text style={styles.goalEmpty}>Practice to earn your first badge.</Text>
             : recent.map((b) => (
-              <View key={b.id} style={styles.badgeStripItem}>
+              <TouchableOpacity key={b.id} style={styles.badgeStripItem} onPress={() => onBadgePress(b)} activeOpacity={0.7}>
                 {medal(b, true)}
                 <Text style={styles.milestoneLabel} numberOfLines={1}>{b.title}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
         </View>
       ) : (
@@ -645,11 +645,11 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
           {BADGES.map((b) => {
             const got = !!earned[b.id];
             return (
-              <View key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]}>
+              <TouchableOpacity key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]} onPress={() => onBadgePress(b)} activeOpacity={0.7}>
                 {medal(b, got)}
                 <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
                 {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -966,6 +966,7 @@ export default function ProgressScreen({ navigation }) {
   // Personal goals (the interactive kind — onboarding focus areas stay as chips)
   const [badgesOpen, setBadgesOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [selBadge, setSelBadge] = useState(null);   // badge detail sheet
   const goalInputRef = useRef(null);
   // Focus once the sheet's slide-up finishes — focusing during the mount
   // animation makes the keyboard race the KeyboardAvoidingView and cover the
@@ -1257,7 +1258,7 @@ export default function ProgressScreen({ navigation }) {
       case 'daily': return dailyData.some(d => d.mins > 0) ? <LineGraph data={dailyData} /> : null;
       case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
       case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
-      case 'milestones': return <BadgeGrid userData={userData} open={badgesOpen} onToggle={() => setBadgesOpen((v) => !v)} onSkillTree={() => navigation.navigate('SkillTree')} />;
+      case 'milestones': return <BadgeGrid userData={userData} open={badgesOpen} onToggle={() => setBadgesOpen((v) => !v)} onSkillTree={() => navigation.navigate('SkillTree')} onBadgePress={setSelBadge} />;
       case 'records': return <PersonalRecords logMap={logMap} totalSessions={totalSessions} />;
       case 'momentum': return <Momentum logMap={logMap} />;
       case 'calendar': return <PracticeCalendar logMap={logMap} />;
@@ -1396,6 +1397,28 @@ export default function ProgressScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <SheetModal visible={!!selBadge} onRequestClose={() => setSelBadge(null)} cardStyle={styles.goalSheet} dismissOnBackdrop>
+        {selBadge && (() => {
+          const got = !!(userData?.badges || {})[selBadge.id];
+          const color = got ? TIER_COLORS[selBadge.tier] : COLORS.border;
+          const when = got ? new Date((userData.badges || {})[selBadge.id]) : null;
+          return (
+            <View style={{ alignItems: 'center' }}>
+              <View style={[styles.badgeRing, styles.badgeRingBig, { borderColor: color }, got && { backgroundColor: color + '14' }]}>
+                <Ionicons name={got ? selBadge.icon : 'lock-closed'} size={got ? 30 : 22} color={got ? color : COLORS.textMuted} />
+              </View>
+              <Text style={styles.badgeSheetTitle}>{selBadge.title}</Text>
+              <Text style={styles.badgeSheetDesc}>{selBadge.desc}</Text>
+              {got ? (
+                <Text style={[styles.badgeSheetStatus, { color }]}>Earned {when ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}</Text>
+              ) : (
+                <Text style={styles.badgeSheetStatus}>Progress: {selBadge.hint(badgeStats(userData || {}))}</Text>
+              )}
+            </View>
+          );
+        })()}
+      </SheetModal>
+
       <SheetModal visible={goalModalOpen} onRequestClose={() => setGoalModalOpen(false)} cardStyle={styles.goalSheet} keyboardAvoiding>
         <Text style={styles.goalSheetTitle}>New goal</Text>
         <TextInput
@@ -1607,7 +1630,11 @@ const styles = StyleSheet.create({
   badgeRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
   badgeStrip: { flexDirection: 'row', gap: SPACING.md },
   badgeStripItem: { alignItems: 'center', width: 70 },
-  showAllLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: SPACING.md },
+  badgeRingBig: { width: 68, height: 68, borderRadius: 34, borderWidth: 3, marginBottom: SPACING.md },
+  badgeSheetTitle: { color: COLORS.text, fontSize: 19, fontWeight: '800', marginBottom: 6 },
+  badgeSheetDesc: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: SPACING.md },
+  badgeSheetStatus: { color: COLORS.textMuted, fontSize: 13.5, fontWeight: '700', marginBottom: SPACING.sm },
+  showAllLink: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: SPACING.md },
   goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
   goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   focusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.md },

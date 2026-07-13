@@ -11,3 +11,4 @@ android/
 
 # Apple keys — never commit
 *.p8
+.firebase/
