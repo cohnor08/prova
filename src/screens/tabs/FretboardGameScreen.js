@@ -46,6 +46,9 @@ export default function FretboardGameScreen({ navigation }) {
   const [picked, setPicked] = useState(null);     // tapped fret
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
+  const [fretRowW, setFretRowW] = useState(0);      // viewport width
+  const [fretContentW, setFretContentW] = useState(0); // content width
+  const canScroll = fretContentW > fretRowW + 2;
 
   useEffect(() => {
     (async () => {
@@ -191,7 +194,16 @@ export default function FretboardGameScreen({ navigation }) {
             Find <Text style={styles.promptNote}>{question.targetName}</Text> on the{' '}
             <Text style={styles.promptString}>{question.string.label}</Text> string
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fretRow}>
+          {canScroll && (
+            <Text style={styles.swipeHint}>← Swipe to see all frets →</Text>
+          )}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fretRow}
+            onLayout={(e) => setFretRowW(e.nativeEvent.layout.width)}
+            onContentSizeChange={(w) => setFretContentW(w)}
+          >
             {renderFretRow()}
           </ScrollView>
           <Text style={styles.fretHint}>Tap a fret — 0 is the open string</Text>
@@ -255,6 +267,7 @@ const styles = StyleSheet.create({
   fretNum: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   inlay: { position: 'absolute', bottom: 8, width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.textMuted },
   fretHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
+  swipeHint: { color: COLORS.textMuted, fontSize: 11.5, marginBottom: SPACING.sm },
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
   nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
