@@ -6,7 +6,7 @@ import { View, StyleSheet, Animated, TouchableWithoutFeedback } from 'react-nati
 const INTRO_MS = 3500;
 const FADE_MS = 420;
 
-export default function IntroSplash({ onDone }) {
+function IntroSplash({ onDone }) {
   const fade = useRef(new Animated.Value(1)).current;
   const doneRef = useRef(false);
   const finish = () => {
@@ -26,6 +26,10 @@ export default function IntroSplash({ onDone }) {
     </TouchableWithoutFeedback>
   );
 }
+
+// Freeze: the intro plays exactly once — parent re-renders (auth resolving,
+// role loading) must never rebuild its DOM or the animation restarts.
+export default React.memo(IntroSplash, () => true);
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#050810', zIndex: 9999 },
