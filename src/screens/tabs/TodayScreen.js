@@ -1082,15 +1082,20 @@ export default function TodayScreen({ navigation }) {
 
   const attachProof = (taskId) => {
     const task = (userData?.assignedTasks || []).find((x) => x.id === taskId);
-    const pickSource = (mode) => Alert.alert(
-      mode === 'replace' ? 'Replace your latest video' : 'Add proof of practice',
-      'Show your teacher you practiced this.',
-      [
-        { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode, true) },
-        { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, mode) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    const pickSource = (mode) => {
+      // Browsers can't hand us a camera recorder — go straight to the file
+      // picker on web (which offers the camera anyway on tablets/phones).
+      if (Platform.OS === 'web') { runProofUpload(taskId, pickMedia, mode); return; }
+      Alert.alert(
+        mode === 'replace' ? 'Replace your latest video' : 'Add proof of practice',
+        'Show your teacher you practiced this.',
+        [
+          { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode, true) },
+          { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, mode) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    };
     if (!task?.proofUrl) { pickSource('add'); return; }
     Alert.alert('Proof of practice', 'Add another video, or replace your latest one?', [
       { text: 'Add another', onPress: () => pickSource('add') },
