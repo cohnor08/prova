@@ -32,4 +32,15 @@ export const BADGES = [
   { id: 'task_25', icon: 'school', tier: 3, title: 'Star Student',      desc: 'Complete 25 teacher tasks',        check: (s) => s.tasksCompleted >= 25, hint: (s) => `${s.tasksCompleted}/25` },
   { id: 'song_1',  icon: 'mic',    tier: 1, title: 'Song Smith',        desc: 'Finish a learn-a-song step',       check: (s) => s.songSteps >= 1,       hint: (s) => `${s.songSteps}/1` },
   { id: 'song_20', icon: 'mic',    tier: 3, title: 'Repertoire Rising', desc: 'Finish 20 learn-a-song steps',     check: (s) => s.songSteps >= 20,      hint: (s) => `${s.songSteps}/20` },
+  // The long game — genuinely hard to earn
+  { id: 'sess_250',   icon: 'musical-notes', tier: 4, title: 'The Machine',      desc: 'Complete 250 practice sessions',      check: (s) => s.totalSessions >= 250,   hint: (s) => `${s.totalSessions}/250` },
+  { id: 'sess_500',   icon: 'musical-notes', tier: 4, title: 'Institution',      desc: 'Complete 500 practice sessions',      check: (s) => s.totalSessions >= 500,   hint: (s) => `${s.totalSessions}/500` },
+  { id: 'streak_180', icon: 'flame',         tier: 4, title: 'Half-Year Hero',   desc: 'Practice 180 days in a row',          check: (s) => s.streak >= 180,          hint: (s) => `${s.streak}/180 days` },
+  { id: 'streak_365', icon: 'flame',         tier: 4, title: 'Year of Fire',     desc: 'Practice 365 days in a row',          check: (s) => s.streak >= 365,          hint: (s) => `${s.streak}/365 days` },
+  { id: 'hrs_250',    icon: 'time',          tier: 4, title: 'Quarter Thousand', desc: 'Practice for 250 hours total',        check: (s) => s.totalMinutes >= 15000,  hint: (s) => `${Math.floor(s.totalMinutes / 60)}/250h` },
+  { id: 'hrs_500',    icon: 'time',          tier: 4, title: 'Five Hundred',     desc: 'Practice for 500 hours total',        check: (s) => s.totalMinutes >= 30000,  hint: (s) => `${Math.floor(s.totalMinutes / 60)}/500h` },
+  { id: 'score_25000',icon: 'trophy',        tier: 4, title: 'Point Overlord',   desc: 'Reach 25,000 Prova points',           check: (s) => s.provaScore >= 25000,    hint: (s) => `${s.provaScore}/25k` },
+  { id: 'score_50000',icon: 'trophy',        tier: 4, title: 'Untouchable',      desc: 'Reach 50,000 Prova points',           check: (s) => s.provaScore >= 50000,    hint: (s) => `${s.provaScore}/50k` },
+  { id: 'task_100',   icon: 'school',        tier: 4, title: 'Curriculum Crusher', desc: 'Complete 100 teacher tasks',        check: (s) => s.tasksCompleted >= 100,  hint: (s) => `${s.tasksCompleted}/100` },
+  { id: 'goal_10',    icon: 'flag',          tier: 3, title: 'Goal Getter',      desc: 'Achieve 10 of your own goals',        check: (s) => s.goalsCompleted >= 10,   hint: (s) => `${s.goalsCompleted}/10` },
 ];

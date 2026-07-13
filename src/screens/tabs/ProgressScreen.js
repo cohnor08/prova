@@ -1397,7 +1397,7 @@ export default function ProgressScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-      <SheetModal visible={!!selBadge} onRequestClose={() => setSelBadge(null)} cardStyle={styles.goalSheet} dismissOnBackdrop>
+      <SheetModal visible={!!selBadge} onRequestClose={() => setSelBadge(null)} cardStyle={styles.badgeSheet} dismissOnBackdrop>
         {selBadge && (() => {
           const got = !!(userData?.badges || {})[selBadge.id];
           const color = got ? TIER_COLORS[selBadge.tier] : COLORS.border;
@@ -1641,6 +1641,7 @@ const styles = StyleSheet.create({
   focusChip: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
   focusChipText: { color: COLORS.textSecondary, fontSize: 12 },
   goalSheet: { padding: SPACING.xl },
+  badgeSheet: { padding: SPACING.xl, marginBottom: 34, marginHorizontal: 14, borderRadius: 22 },
   goalSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.md, textAlign: 'center' },
   goalInput: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, color: COLORS.text, fontSize: 15, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   goalBtnRow: { flexDirection: 'row', gap: SPACING.md },
