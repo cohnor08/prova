@@ -135,7 +135,8 @@ Answer **"Yes, we collect data"**, no tracking, no third-party advertising. Data
 | User Content → Photos or Videos | Yes | Yes | No | App functionality (proof clips, chat media) |
 | User Content → Other User Content | Yes | Yes | No | App functionality (messages, practice data, profile) |
 | Identifiers → User ID | Yes | Yes | No | App functionality |
-| Everything else (location, contacts, browsing, purchases, diagnostics, usage analytics) | No | — | — | — |
+| Usage Data → Product Interaction | Yes | Yes | No | Analytics (PostHog — added after build 4; tick this when the analytics build/OTA ships) |
+| Everything else (location, contacts, browsing, purchases, diagnostics) | No | — | — | — |
 
 Notes: no analytics SDK, no ads, no ATT prompt needed. The parent email a teacher enters counts under Contact Info → Email Address (collected, linked, app functionality).
 
