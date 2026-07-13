@@ -284,7 +284,7 @@ function renderUsers() {
         ${['student','personal','teacher'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
         ${['student','personal','teacher'].includes(u.role) ? '' : `<option selected value="${esc(u.role || '')}">${esc(u.role || 'none')}</option>`}
       </select></td>
-      <td>${u.streak || 0}🔥</td>
+      <td>${u.streak || 0}</td>
       <td>${(u.provaScore || 0).toLocaleString()}</td>
       <td class="muted">${(u.createdAt || '').slice(0, 10)}</td>
     </tr>`).join('');
@@ -437,7 +437,7 @@ async function openDrawer(uid) {
     </div>
     <div class="muted" style="margin-bottom:16px">${esc(u.email || '')}<br><code style="font-size:11px">${u.uid}</code></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
-      <div class="stat"><div class="v">${u.streak || 0}🔥</div><div class="l">Streak</div></div>
+      <div class="stat"><div class="v">${u.streak || 0}</div><div class="l">Streak</div></div>
       <div class="stat"><div class="v">${(u.provaScore || 0).toLocaleString()}</div><div class="l">Prova Score</div></div>
       <div class="stat"><div class="v">${Math.floor((u.totalMinutes || 0) / 60)}h ${(u.totalMinutes || 0) % 60}m</div><div class="l">Total practice</div></div>
       <div class="stat"><div class="v">${esc(u.level || '—')}</div><div class="l">${esc(u.instrument || 'No instrument')}</div></div>
