@@ -538,6 +538,14 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Fretboard reference</Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.learnRow, { marginTop: SPACING.sm }]}>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('EarTraining')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="ear-outline" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Ear training</Text>
+            <Text style={styles.learnCardSub}>Intervals & chords</Text>
+          </TouchableOpacity>
+          <View style={[styles.learnCard, { backgroundColor: 'transparent', borderColor: 'transparent' }]} />
+        </View>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
