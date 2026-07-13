@@ -40,6 +40,13 @@ const CHORDS = [
   { name: 'Major',      offsets: [0, 4, 7] },
   { name: 'Minor',      offsets: [0, 3, 7] },
   { name: 'Diminished', offsets: [0, 3, 6] },
+  { name: 'Augmented',  offsets: [0, 4, 8] },
+  { name: 'Sus4',       offsets: [0, 5, 7] },
+];
+const CHORD_LEVELS = [
+  { id: 1, label: 'Starter',  names: ['Major', 'Minor'] },
+  { id: 2, label: 'Quality',  names: ['Major', 'Minor', 'Diminished'] },
+  { id: 3, label: 'Complete', names: ['Major', 'Minor', 'Diminished', 'Augmented', 'Sus4'] },
 ];
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -84,12 +91,15 @@ export default function EarTrainingScreen({ navigation }) {
         .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
       return { midis: [root, root + semis], gap: 650, answer: INTERVALS.find((iv) => iv.semis === semis).name, choices };
     }
-    const chord = pick(CHORDS);
-    const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 7 + 1));
+    const names = CHORD_LEVELS.find((l) => l.id === level).names;
+    const set = CHORDS.filter((c) => names.includes(c.name));
+    const chord = pick(set);
+    const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 8 + 1));
+    const wrong = set.filter((c) => c.name !== chord.name).sort(() => Math.random() - 0.5).slice(0, 3);
     return {
       midis: chord.offsets.map((o) => root + o), gap: 0,
       answer: chord.name,
-      choices: CHORDS.map((c) => c.name).sort(() => Math.random() - 0.5),
+      choices: [chord.name, ...wrong.map((c) => c.name)].sort(() => Math.random() - 0.5),
     };
   };
 
@@ -109,7 +119,7 @@ export default function EarTrainingScreen({ navigation }) {
   const next = async () => {
     if (qNum >= ROUND_LEN) {
       setPhase('done');
-      track('ear_round_completed', { mode, level: mode === 'intervals' ? level : undefined, score });
+      track('ear_round_completed', { mode, level, score });
       // Reward the first few rounds of the day + count it as real practice.
       try {
         const uid = auth.currentUser?.uid;
@@ -165,18 +175,14 @@ export default function EarTrainingScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {mode === 'intervals' && (
-            <>
-              <Text style={styles.menuLabel}>LEVEL</Text>
-              <View style={styles.segRow}>
-                {LEVELS.map((l) => (
-                  <TouchableOpacity key={l.id} style={[styles.seg, level === l.id && styles.segOn]} onPress={() => setLevel(l.id)}>
-                    <Text style={[styles.segText, level === l.id && styles.segTextOn]}>{l.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
+          <Text style={styles.menuLabel}>LEVEL</Text>
+          <View style={styles.segRow}>
+            {(mode === 'intervals' ? LEVELS : CHORD_LEVELS).map((l) => (
+              <TouchableOpacity key={l.id} style={[styles.seg, level === l.id && styles.segOn]} onPress={() => setLevel(l.id)}>
+                <Text style={[styles.segText, level === l.id && styles.segTextOn]}>{l.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color="#fff" />
