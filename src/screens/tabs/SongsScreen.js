@@ -334,6 +334,10 @@ export default function SongsScreen({ route, navigation }) {
   const [gigSongCount, setGigSongCount] = useState(10);
   const [generatingSetlist, setGeneratingSetlist] = useState(false);
   const [viewingSetlist, setViewingSetlist] = useState(null); // setlist shown in detail modal
+  // A freshly generated setlist waiting for the gig-form sheet to finish its
+  // exit animation. iOS freezes if the detail modal presents while the sheet
+  // is still dismissing — the detail opens from the sheet's onClosed instead.
+  const pendingSetlistRef = useRef(null);
   const [performingSetlist, setPerformingSetlist] = useState(null); // setlist in live performance mode
   const [tipLink, setTipLink] = useState(''); // performer's payment link, shown as a tip QR on stage
 
@@ -640,10 +644,12 @@ export default function SongsScreen({ route, navigation }) {
         .map((p) => ({ id: p.id, title: p.title, artist: p.artist, addedAt: new Date().toISOString() }));
       if (additions.length > 0) await saveSongs([...additions, ...songs]);
 
-      // Reset the form and jump straight into the new setlist.
+      // Reset the form; the detail modal opens from the sheet's onClosed once
+      // the exit animation finishes (opening it here freezes iOS — two modals
+      // can't present/dismiss in the same tick).
       setGigSetting(''); setGigAudience(''); setGigVibe(''); setGigArtists(''); setGigSongCount(10);
+      pendingSetlistRef.current = setlist;
       setShowGigForm(false);
-      setViewingSetlist(setlist);
     } catch (err) {
       console.warn('Setlist generation failed:', err);
       Alert.alert('Error', err.message?.includes('limit')
@@ -1569,6 +1575,13 @@ export default function SongsScreen({ route, navigation }) {
       <SheetModal
         visible={showGigForm}
         onRequestClose={() => !generatingSetlist && setShowGigForm(false)}
+        onClosed={() => {
+          if (pendingSetlistRef.current) {
+            const sl = pendingSetlistRef.current;
+            pendingSetlistRef.current = null;
+            setViewingSetlist(sl);
+          }
+        }}
         cardStyle={[styles.gigSheet, { maxHeight: '85%' }]}
         dismissOnBackdrop
       >
