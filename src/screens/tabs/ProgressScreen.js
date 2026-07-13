@@ -11,7 +11,7 @@ import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
 import { formatProgressReport } from '../../lib/progressReport';
-import { BADGES } from '../../constants/badges';
+import { BADGES, TIER_COLORS } from '../../constants/badges';
 import { badgeStats } from '../../lib/badges';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
@@ -608,30 +608,55 @@ function LevelProgress({ totalMins }) {
   );
 }
 
-function BadgeGrid({ userData, onSkillTree }) {
+function BadgeGrid({ userData, onSkillTree, open, onToggle }) {
   const stats = badgeStats(userData || {});
   const earned = userData?.badges || {};
-  const earnedCount = BADGES.filter((b) => earned[b.id]).length;
+  const earnedList = BADGES.filter((b) => earned[b.id]);
+  const recent = [...earnedList].sort((a, b) => (earned[b.id] || '').localeCompare(earned[a.id] || '')).slice(0, 4);
+  const medal = (b, got) => {
+    const color = got ? TIER_COLORS[b.tier] : COLORS.border;
+    return (
+      <View style={[styles.badgeRing, { borderColor: color }, got && { backgroundColor: color + '14' }]}>
+        <Ionicons name={got ? b.icon : 'lock-closed'} size={got ? 19 : 14} color={got ? color : COLORS.textMuted} />
+      </View>
+    );
+  };
   return (
     <View style={styles.section}>
-      <View style={styles.badgeHead}>
-        <Text style={styles.sectionTitle}>BADGES · {earnedCount}/{BADGES.length}</Text>
-        <TouchableOpacity onPress={onSkillTree} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.skillTreeLink}>Skill tree ›</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.milestoneGrid}>
-        {BADGES.map((b) => {
-          const got = !!earned[b.id];
-          return (
-            <View key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]}>
-              <Text style={styles.milestoneIcon}>{got ? b.icon : '🔒'}</Text>
-              <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
-              {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
-            </View>
-          );
-        })}
-      </View>
+      <TouchableOpacity style={styles.badgeHead} onPress={onToggle} activeOpacity={0.7}>
+        <Text style={styles.sectionTitle}>BADGES · {earnedList.length}/{BADGES.length}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <TouchableOpacity onPress={onSkillTree} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.skillTreeLink}>Skill tree ›</Text>
+          </TouchableOpacity>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} style={{ marginBottom: SPACING.md }} />
+        </View>
+      </TouchableOpacity>
+      {!open ? (
+        <View style={styles.badgeStrip}>
+          {recent.length === 0
+            ? <Text style={styles.goalEmpty}>Practice to earn your first badge.</Text>
+            : recent.map((b) => (
+              <View key={b.id} style={styles.badgeStripItem}>
+                {medal(b, true)}
+                <Text style={styles.milestoneLabel} numberOfLines={1}>{b.title}</Text>
+              </View>
+            ))}
+        </View>
+      ) : (
+        <View style={styles.milestoneGrid}>
+          {BADGES.map((b) => {
+            const got = !!earned[b.id];
+            return (
+              <View key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]}>
+                {medal(b, got)}
+                <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
+                {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -782,8 +807,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              autoFocus
-            />
+                />
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => { setShowAdd(false); setEmail(''); }}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -940,6 +964,7 @@ export default function ProgressScreen({ navigation }) {
   const [userData, setUserData] = useState(null);
   const celebrate = useCelebration();
   // Personal goals (the interactive kind — onboarding focus areas stay as chips)
+  const [badgesOpen, setBadgesOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalText, setGoalText] = useState('');
 
@@ -1223,7 +1248,7 @@ export default function ProgressScreen({ navigation }) {
       case 'daily': return dailyData.some(d => d.mins > 0) ? <LineGraph data={dailyData} /> : null;
       case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
       case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
-      case 'milestones': return <BadgeGrid userData={userData} onSkillTree={() => navigation.navigate('SkillTree')} />;
+      case 'milestones': return <BadgeGrid userData={userData} open={badgesOpen} onToggle={() => setBadgesOpen((v) => !v)} onSkillTree={() => navigation.navigate('SkillTree')} />;
       case 'records': return <PersonalRecords logMap={logMap} totalSessions={totalSessions} />;
       case 'momentum': return <Momentum logMap={logMap} />;
       case 'calendar': return <PracticeCalendar logMap={logMap} />;
@@ -1569,6 +1594,9 @@ const styles = StyleSheet.create({
   badgeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   skillTreeLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: SPACING.md },
   badgeHint: { color: COLORS.textMuted, fontSize: 9.5, marginTop: 2 },
+  badgeRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+  badgeStrip: { flexDirection: 'row', gap: SPACING.md },
+  badgeStripItem: { alignItems: 'center', width: 70 },
   goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
   goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   focusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.md },

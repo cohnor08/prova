@@ -600,7 +600,7 @@ export default function TodayScreen({ navigation }) {
         const first = fresh[0];
         celebrate({
           title: 'Badge earned!',
-          subtitle: `${first.icon} ${first.title}${fresh.length > 1 ? `  ·  +${fresh.length - 1} more` : ''}`,
+          subtitle: `${first.title}${fresh.length > 1 ? `  ·  +${fresh.length - 1} more` : ''}`,
           emoji: '🏅',
         });
       }
