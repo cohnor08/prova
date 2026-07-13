@@ -526,7 +526,7 @@ export default function PracticeScreen({ route, navigation }) {
 
         {/* ── LEARN: browse content ── */}
         <Text style={styles.sectionLabel}>LEARN</Text>
-        <View style={styles.learnRow}>
+        <View style={[styles.learnRow, { marginBottom: 0 }]}>
           <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('Library')} activeOpacity={0.85}>
             <View style={styles.learnIcon}><Ionicons name="book-outline" size={20} color={COLORS.primary} /></View>
             <Text style={styles.learnCardText}>Lesson library</Text>
@@ -538,16 +538,16 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Fretboard reference</Text>
           </TouchableOpacity>
         </View>
-        <View style={[styles.learnRow, { marginTop: SPACING.sm }]}>
+        <View style={[styles.learnRow, { marginTop: SPACING.md }]}>
           <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('EarTraining')} activeOpacity={0.85}>
             <View style={styles.learnIcon}><Ionicons name="ear-outline" size={20} color={COLORS.primary} /></View>
             <Text style={styles.learnCardText}>Ear training</Text>
             <Text style={styles.learnCardSub}>Intervals & chords</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('Progress', { screen: 'SkillTree' })} activeOpacity={0.85}>
-            <View style={styles.learnIcon}><Ionicons name="git-network-outline" size={20} color={COLORS.primary} /></View>
-            <Text style={styles.learnCardText}>Skill tree</Text>
-            <Text style={styles.learnCardSub}>Your progression</Text>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('FretboardGame')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="locate" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Fretboard game</Text>
+            <Text style={styles.learnCardSub}>Find the note</Text>
           </TouchableOpacity>
         </View>
 
