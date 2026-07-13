@@ -1296,3 +1296,57 @@ exports.sendParentReportsNow = onCall(
     return r;
   },
 );
+
+// ─── Admin: full account deletion ───────────────────────────────────────────────
+// Powers the admin panel's "Delete account & data" button — honours the privacy
+// policy's deletion promise in one shot: chats (both sides), history, limits,
+// logs, profile (incl. inbox subcollection), Storage uploads, and finally the
+// auth user. Locked to the founders' UIDs (mirror of the panel + firestore.rules).
+const ADMIN_UIDS = [
+  '0ZC25xoENxWUcyLYAmDjSAiuCEQ2', // Ethan
+];
+
+exports.adminDeleteUser = onCall({ timeoutSeconds: 300 }, async (request) => {
+  if (!request.auth || !ADMIN_UIDS.includes(request.auth.uid))
+    throw new HttpsError('permission-denied', 'Admins only.');
+  const uid = String(request.data?.uid || '').trim();
+  if (!uid) throw new HttpsError('invalid-argument', 'uid required.');
+  if (ADMIN_UIDS.includes(uid))
+    throw new HttpsError('failed-precondition', 'Refusing to delete an admin account.');
+
+  const report = { chatsDeleted: 0, collectionsDeleted: 0, storagePrefixes: 0 };
+
+  // 1-to-1 chats: find them via the user's conversation index, delete each
+  // thread (messages included) and the other participant's index entry.
+  try {
+    const convs = await db.collection('userChats').doc(uid).collection('conversations').get();
+    for (const c of convs.docs) {
+      const chatId = c.id;
+      try { await db.recursiveDelete(db.collection('chats').doc(chatId)); report.chatsDeleted++; } catch (e) { /* best effort */ }
+      const other = chatId.split('_').find((p) => p && p !== uid);
+      if (other) {
+        try { await db.collection('userChats').doc(other).collection('conversations').doc(chatId).delete(); } catch (e) { /* best effort */ }
+      }
+    }
+  } catch (e) { /* best effort */ }
+
+  // Root docs + all their subcollections (users/{uid} includes the inbox).
+  for (const col of ['userChats', 'sessionHistory', 'rateLimits', 'usageLogs', 'users']) {
+    try { await db.recursiveDelete(db.collection(col).doc(uid)); report.collectionsDeleted++; } catch (e) { /* best effort */ }
+  }
+
+  // Uploaded media (proof clips, resource photos).
+  const bucket = admin.storage().bucket('prova-583c9.firebasestorage.app');
+  for (const prefix of [`chatMedia/proof_${uid}/`, `chatMedia/resource_${uid}/`]) {
+    try { await bucket.deleteFiles({ prefix }); report.storagePrefixes++; } catch (e) { /* best effort */ }
+  }
+
+  // Finally the login itself.
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found')
+      throw new HttpsError('internal', 'Data removed but auth deletion failed: ' + e.message);
+  }
+  return { ok: true, ...report };
+});
