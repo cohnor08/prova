@@ -13,6 +13,7 @@ import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode } from '../../lib/teacher';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
+import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
@@ -540,6 +541,7 @@ export default function ProfileScreen({ navigation }) {
             const user = auth.currentUser;
             if (!user) return;
             try {
+              track('account_deleted');
               await cancelDailyReminder();
               await cancelStreakSaver();
               await deleteDoc(doc(db, 'users', user.uid));

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { loadSavedLogin, saveLogin } from '../../lib/savedLogin';
+import { track } from '../../lib/analytics';
 
 const FIREBASE_ERRORS = {
   'auth/invalid-email': 'Please enter a valid email address.',
@@ -52,6 +53,7 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      track('logged_in');
       saveLogin(email.trim().toLowerCase(), password, rememberMe);
     } catch (error) {
       const message = FIREBASE_ERRORS[error.code] || 'Login failed. Please try again.';

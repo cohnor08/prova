@@ -7,6 +7,7 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { generatePracticePlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
+import { track } from '../../lib/analytics';
 
 const PRICE = '$5.99';
 const PERKS = [
@@ -28,6 +29,8 @@ export default function PaywallScreen({ navigation }) {
       .then((s) => { if (s.exists()) setMockCheckout(s.data().mockCheckout !== false); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => { track('paywall_viewed'); }, []);
 
   const comingSoon = () => {
     Alert.alert('Coming soon', 'Upgrades aren’t open quite yet — hang tight, Personal is almost here!');
@@ -52,6 +55,7 @@ export default function PaywallScreen({ navigation }) {
       const uid = auth.currentUser.uid;
       const snap = await getDoc(doc(db, 'users', uid));
       const profile = snap.data() || {};
+      track('upgrade_started');
       await updateDoc(doc(db, 'users', uid), {
         role: 'personal',
         planType: 'personal_trial',
