@@ -16,6 +16,7 @@ import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
+import { awardNewBadges } from '../../lib/badges';
 import { track } from '../../lib/analytics';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
@@ -580,6 +581,31 @@ export default function TodayScreen({ navigation }) {
       cancelStreakSaver();
     }
   }, [userData, completedIds]);
+
+  // Award any newly earned badges whenever stats change (persisted so they
+  // never un-earn). Busy-ref stops concurrent runs from double-awarding.
+  const badgeBusyRef = useRef(false);
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !userData || badgeBusyRef.current) return;
+    badgeBusyRef.current = true;
+    awardNewBadges(uid, userData).then((fresh) => {
+      if (fresh.length > 0) {
+        const now = new Date().toISOString();
+        setUserData((p) => {
+          const merged = { ...(p?.badges || {}) };
+          fresh.forEach((b) => { merged[b.id] = now; });
+          return { ...p, badges: merged };
+        });
+        const first = fresh[0];
+        celebrate({
+          title: 'Badge earned!',
+          subtitle: `${first.icon} ${first.title}${fresh.length > 1 ? `  ·  +${fresh.length - 1} more` : ''}`,
+          emoji: '🏅',
+        });
+      }
+    }).finally(() => { badgeBusyRef.current = false; });
+  }, [userData]);
 
   // Re-arm the daily reminder on open (permission-gated, never prompts).
   // Reinstalls/new builds wipe the device's scheduled notifications while the

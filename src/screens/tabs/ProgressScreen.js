@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -11,6 +11,10 @@ import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
 import { formatProgressReport } from '../../lib/progressReport';
+import { BADGES } from '../../constants/badges';
+import { badgeStats } from '../../lib/badges';
+import { useCelebration } from '../../components/Celebration';
+import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -604,17 +608,29 @@ function LevelProgress({ totalMins }) {
   );
 }
 
-function Milestones({ data }) {
+function BadgeGrid({ userData, onSkillTree }) {
+  const stats = badgeStats(userData || {});
+  const earned = userData?.badges || {};
+  const earnedCount = BADGES.filter((b) => earned[b.id]).length;
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>MILESTONES</Text>
+      <View style={styles.badgeHead}>
+        <Text style={styles.sectionTitle}>BADGES · {earnedCount}/{BADGES.length}</Text>
+        <TouchableOpacity onPress={onSkillTree} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.skillTreeLink}>Skill tree ›</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.milestoneGrid}>
-        {data.map(m => (
-          <View key={m.label} style={[styles.milestoneBadge, !m.earned && styles.milestoneLocked]}>
-            <Text style={styles.milestoneIcon}>{m.earned ? m.icon : '🔒'}</Text>
-            <Text style={[styles.milestoneLabel, !m.earned && styles.milestoneLabelLocked]}>{m.label}</Text>
-          </View>
-        ))}
+        {BADGES.map((b) => {
+          const got = !!earned[b.id];
+          return (
+            <View key={b.id} style={[styles.milestoneBadge, !got && styles.milestoneLocked]}>
+              <Text style={styles.milestoneIcon}>{got ? b.icon : '🔒'}</Text>
+              <Text style={[styles.milestoneLabel, !got && styles.milestoneLabelLocked]} numberOfLines={1}>{b.title}</Text>
+              {!got && <Text style={styles.badgeHint} numberOfLines={1}>{b.hint(stats)}</Text>}
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -802,7 +818,7 @@ const DEFAULT_WIDGETS = [
 const WIDGET_LABELS = {
   stats: 'Stats', score: 'Prova Score', leaderboard: 'Leaderboard', level: 'Level',
   daily: 'Daily graph', heatmap: 'Activity graph',
-  categories: 'Categories', milestones: 'Milestones', goals: 'Goals',
+  categories: 'Categories', milestones: 'Badges', goals: 'Goals',
   records: 'Personal records', momentum: 'Weekly momentum', calendar: 'Practice calendar',
 };
 function mergeLayout(saved) {
@@ -920,8 +936,39 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
   );
 }
 
-export default function ProgressScreen() {
+export default function ProgressScreen({ navigation }) {
   const [userData, setUserData] = useState(null);
+  const celebrate = useCelebration();
+  // Personal goals (the interactive kind — onboarding focus areas stay as chips)
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [goalText, setGoalText] = useState('');
+
+  const persistGoals = (next) => {
+    setUserData((p) => ({ ...p, personalGoals: next }));
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { personalGoals: next }).catch(() => {});
+  };
+  const saveGoal = () => {
+    const title = goalText.trim();
+    if (!title) return;
+    persistGoals([...(userData?.personalGoals || []), {
+      id: `goal_${Date.now()}`, title: title.slice(0, 80), done: false, createdAt: new Date().toISOString(),
+    }]);
+    setGoalModalOpen(false);
+    track('goal_added');
+  };
+  const toggleGoal = (id) => {
+    const next = (userData?.personalGoals || []).map((g) => g.id === id
+      ? { ...g, done: !g.done, doneAt: !g.done ? new Date().toISOString() : null } : g);
+    const justDone = next.find((g) => g.id === id)?.done;
+    persistGoals(next);
+    if (justDone) {
+      const g = next.find((x) => x.id === id);
+      celebrate({ title: 'Goal achieved!', subtitle: g?.title || '', emoji: '🎯' });
+      track('goal_completed');
+    }
+  };
+  const removeGoal = (id) => persistGoals((userData?.personalGoals || []).filter((g) => g.id !== id));
   const [logMap, setLogMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [worldBoard, setWorldBoard] = useState([]);
@@ -1062,7 +1109,6 @@ export default function ProgressScreen() {
   const weeklyData   = buildWeeklyData(logMap);
   const weeklyTrend  = buildWeeklySeries(logMap);
   const categoryData = buildCategoryData(logMap);
-  const milestones   = computeMilestones(streak, totalMins, totalSessions);
 
   // This week's practice from the daily logs (last 7 calendar days).
   const wkCut = new Date(); wkCut.setDate(wkCut.getDate() - 6);
@@ -1177,22 +1223,42 @@ export default function ProgressScreen() {
       case 'daily': return dailyData.some(d => d.mins > 0) ? <LineGraph data={dailyData} /> : null;
       case 'heatmap': return weeklyTrend.some(d => d.hours > 0) ? <ActivityGraph data={weeklyTrend} streak={streak} /> : null;
       case 'categories': return categoryData.length ? <CategoryBreakdown data={categoryData} /> : null;
-      case 'milestones': return <Milestones data={milestones} />;
+      case 'milestones': return <BadgeGrid userData={userData} onSkillTree={() => navigation.navigate('SkillTree')} />;
       case 'records': return <PersonalRecords logMap={logMap} totalSessions={totalSessions} />;
       case 'momentum': return <Momentum logMap={logMap} />;
       case 'calendar': return <PracticeCalendar logMap={logMap} />;
       case 'goals':
-        return userData?.goals?.length > 0 ? (
+        return (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>YOUR GOALS</Text>
-            {userData.goals.map(goal => (
-              <View key={goal} style={styles.goalItem}>
-                <View style={styles.goalDot} />
-                <Text style={styles.goalText}>{goal}</Text>
+            <View style={styles.badgeHead}>
+              <Text style={styles.sectionTitle}>MY GOALS</Text>
+              <TouchableOpacity onPress={() => { setGoalText(''); setGoalModalOpen(true); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.skillTreeLink}>+ Add</Text>
+              </TouchableOpacity>
+            </View>
+            {(userData?.personalGoals || []).length === 0 && (
+              <Text style={styles.goalEmpty}>Set yourself a goal — "nail the F barre chord", "learn Wonderwall"…</Text>
+            )}
+            {(userData?.personalGoals || []).map((g) => (
+              <View key={g.id} style={styles.goalItem}>
+                <TouchableOpacity onPress={() => toggleGoal(g.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name={g.done ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={g.done ? COLORS.success : COLORS.textMuted} />
+                </TouchableOpacity>
+                <Text style={[styles.goalText, { flex: 1, marginLeft: 10 }, g.done && styles.goalDone]}>{g.title}</Text>
+                <TouchableOpacity onPress={() => removeGoal(g.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name="close" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </View>
             ))}
+            {userData?.goals?.length > 0 && (
+              <View style={styles.focusWrap}>
+                {userData.goals.map((goal) => (
+                  <View key={goal} style={styles.focusChip}><Text style={styles.focusChipText}>{goal}</Text></View>
+                ))}
+              </View>
+            )}
           </View>
-        ) : null;
+        );
       default: return null;
     }
   };
@@ -1296,6 +1362,28 @@ export default function ProgressScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <SheetModal visible={goalModalOpen} onRequestClose={() => setGoalModalOpen(false)} cardStyle={styles.goalSheet} keyboardAvoiding>
+        <Text style={styles.goalSheetTitle}>New goal</Text>
+        <TextInput
+          style={styles.goalInput}
+          placeholder="e.g. Play the F barre chord cleanly"
+          placeholderTextColor={COLORS.textMuted}
+          value={goalText}
+          onChangeText={setGoalText}
+          autoFocus
+          maxLength={80}
+          onSubmitEditing={saveGoal}
+          returnKeyType="done"
+        />
+        <View style={styles.goalBtnRow}>
+          <TouchableOpacity style={styles.goalCancel} onPress={() => setGoalModalOpen(false)}>
+            <Text style={styles.goalCancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.goalSave} onPress={saveGoal}>
+            <Text style={styles.goalSaveText}>Add goal</Text>
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -1478,6 +1566,22 @@ const styles = StyleSheet.create({
   milestoneLabelLocked: { color: COLORS.textMuted },
 
   goalItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  badgeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  skillTreeLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: SPACING.md },
+  badgeHint: { color: COLORS.textMuted, fontSize: 9.5, marginTop: 2 },
+  goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
+  goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
+  focusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.md },
+  focusChip: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  focusChipText: { color: COLORS.textSecondary, fontSize: 12 },
+  goalSheet: { padding: SPACING.xl },
+  goalSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.md, textAlign: 'center' },
+  goalInput: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, color: COLORS.text, fontSize: 15, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  goalBtnRow: { flexDirection: 'row', gap: SPACING.md },
+  goalCancel: { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  goalCancelText: { color: COLORS.textSecondary, fontWeight: '700' },
+  goalSave: { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.primary },
+  goalSaveText: { color: '#fff', fontWeight: '700' },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   goalText: { color: COLORS.text, fontSize: 15 },
 
