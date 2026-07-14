@@ -9,7 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
-import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder } from '../../lib/notifications';
+import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder, scheduleWrappedNudge } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
@@ -17,6 +17,7 @@ import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges'
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { awardNewBadges } from '../../lib/badges';
+import PracticeWrapped, { wrappedWeekKey } from '../../components/PracticeWrapped';
 import { track } from '../../lib/analytics';
 import { displayName } from '../../lib/displayName';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
@@ -607,12 +608,28 @@ export default function TodayScreen({ navigation }) {
     }).finally(() => { badgeBusyRef.current = false; });
   }, [userData]);
 
+  // Practice Wrapped: auto-show once per completed week (skips empty weeks —
+  // the component resolves silently and we mark the week seen either way).
+  const [wrappedCheck, setWrappedCheck] = useState(null);
+  useEffect(() => {
+    if (!userData) return;
+    const key = wrappedWeekKey();
+    if (userData.wrappedSeen !== key && !wrappedCheck) setWrappedCheck(key);
+  }, [userData]);
+  const resolveWrapped = ({ weekKey }) => {
+    setWrappedCheck(null);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { wrappedSeen: weekKey }).catch(() => {});
+    setUserData((p) => ({ ...p, wrappedSeen: weekKey }));
+  };
+
   // Re-arm the daily reminder on open (permission-gated, never prompts).
   // Reinstalls/new builds wipe the device's scheduled notifications while the
   // account still says reminders are on — without this they'd never fire again.
   useEffect(() => {
     if (userData?.reminderEnabled && userData?.reminderTime) {
       rearmDailyReminder(userData.reminderTime);
+      scheduleWrappedNudge();
     }
   }, [userData?.reminderEnabled, userData?.reminderTime]);
 
@@ -1831,6 +1848,12 @@ export default function TodayScreen({ navigation }) {
       />
 
       {/* Guided practice player — the one place practicing happens */}
+      <PracticeWrapped
+        visible={!!wrappedCheck}
+        uid={auth.currentUser?.uid}
+        onResolve={resolveWrapped}
+      />
+
       <PracticePlayer
         visible={playerVisible}
         queue={gigSongItem ? [gigSongItem, ...playerQueue] : playerQueue}

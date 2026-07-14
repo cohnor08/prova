@@ -15,6 +15,7 @@ import { BADGES, TIER_COLORS } from '../../constants/badges';
 import { badgeStats } from '../../lib/badges';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
+import PracticeWrapped from '../../components/PracticeWrapped';
 import SheetModal from '../../components/SheetModal';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -987,6 +988,7 @@ export default function ProgressScreen({ navigation }) {
   const [badgesOpen, setBadgesOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [selBadge, setSelBadge] = useState(null);   // badge detail sheet
+  const [wrappedOpen, setWrappedOpen] = useState(false); // view last week's Wrapped on demand
   const goalInputRef = useRef(null);
   // Focus once the sheet's slide-up finishes — focusing during the mount
   // animation makes the keyboard race the KeyboardAvoidingView and cover the
@@ -1338,11 +1340,16 @@ export default function ProgressScreen({ navigation }) {
         )}
 
         {!editMode && (
-          <TouchableOpacity style={styles.shareBtn} onPress={openShare} activeOpacity={0.85}>
-            <Ionicons name="share-outline" size={16} color="#fff" />
-            <Text style={styles.shareBtnText}>Share my progress</Text>
-            <Text style={styles.shareBtnPts}>+{formatScore(weekPoints)} pts this week</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.shareBtn} onPress={openShare} activeOpacity={0.85}>
+              <Ionicons name="share-outline" size={16} color="#fff" />
+              <Text style={styles.shareBtnText}>Share my progress</Text>
+              <Text style={styles.shareBtnPts}>+{formatScore(weekPoints)} pts this week</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setWrappedOpen(true)} hitSlop={{ top: 6, bottom: 6 }}>
+              <Text style={styles.wrappedLink}>See last week's Practice Wrapped ›</Text>
+            </TouchableOpacity>
+          </>
         )}
 
         <RanksModal visible={showRanks} score={provaScore} onClose={() => setShowRanks(false)} />
@@ -1417,6 +1424,8 @@ export default function ProgressScreen({ navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <PracticeWrapped visible={wrappedOpen} uid={auth.currentUser?.uid} forced onResolve={() => setWrappedOpen(false)} />
+
       <SheetModal visible={!!selBadge} onRequestClose={() => setSelBadge(null)} cardStyle={styles.badgeSheet} centered dismissOnBackdrop>
         {selBadge && (() => {
           const got = !!(userData?.badges || {})[selBadge.id];
@@ -1659,6 +1668,7 @@ const styles = StyleSheet.create({
   badgeSheetStatus: { color: COLORS.textMuted, fontSize: 13.5, fontWeight: '700', marginBottom: SPACING.sm },
   badgeGroupLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm, marginTop: SPACING.xs },
   badgeTierKicker: { fontSize: 10.5, fontWeight: '800', letterSpacing: 2, marginBottom: 4 },
+  wrappedLink: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm, marginBottom: SPACING.md },
   showAllLink: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: SPACING.md },
   goalEmpty: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm },
   goalDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
