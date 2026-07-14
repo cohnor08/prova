@@ -80,6 +80,23 @@ export async function rearmDailyReminder(timeStr) {
   } catch (e) { /* ignore */ }
 }
 
+// Weekly "your Wrapped is ready" nudge — Sunday evenings. Permission-gated by
+// the caller; idempotent (cancel + reschedule).
+const WRAPPED_ID = 'prova-wrapped';
+export async function scheduleWrappedNudge() {
+  try { await Notifications.cancelScheduledNotificationAsync(WRAPPED_ID); } catch (e) {}
+  try {
+    await Notifications.scheduleNotificationAsync({
+      identifier: WRAPPED_ID,
+      content: { title: 'Your Practice Wrapped is ready', body: "See what your week of practice added up to." },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 18, minute: 0 },
+    });
+  } catch (e) { /* ignore */ }
+}
+export async function cancelWrappedNudge() {
+  try { await Notifications.cancelScheduledNotificationAsync(WRAPPED_ID); } catch (e) {}
+}
+
 // Fire a test notification a few seconds from now so the user can verify
 // banners actually appear (lock the phone after tapping). Returns false when
 // permission is denied.
