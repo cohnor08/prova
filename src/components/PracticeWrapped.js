@@ -137,7 +137,6 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
         {!stats ? <ActivityIndicator color={COLORS.primary} /> : show && (
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
             <View ref={cardRef} collapsable={false} style={styles.card}>
-              <View style={styles.glowRing} />
               <Text style={styles.kicker}>{stats.soFar ? 'YOUR WEEK SO FAR' : 'YOUR WEEK IN MUSIC'}</Text>
               <Text style={styles.range}>{stats.range}</Text>
 
@@ -198,9 +197,8 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
 
 const styles = StyleSheet.create({
   dim: { flex: 1, backgroundColor: 'rgba(2,4,10,0.96)', alignItems: 'center', justifyContent: 'center' },
-  scroll: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 24 },
+  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 24 },
   card: { width: '100%', maxWidth: 360, backgroundColor: '#0A1120', borderRadius: 26, borderWidth: 1, borderColor: '#1E2D4A', padding: 28, alignItems: 'center', overflow: 'hidden' },
-  glowRing: { position: 'absolute', top: -90, width: 260, height: 260, borderRadius: 130, backgroundColor: COLORS.primary + '14' },
   kicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 3 },
   range: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: 22 },
   bigMins: { color: COLORS.text, fontSize: 74, fontWeight: '900', letterSpacing: -2, lineHeight: 78 },
