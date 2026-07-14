@@ -15,7 +15,8 @@ import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { sendNotification } from '../../lib/inbox';
 import { advancePrograms } from '../../lib/programs';
-import { studioUpsell } from '../../lib/entitlements';
+import { studioUpsell, TEACHER_FREE_STUDENT_LIMIT } from '../../lib/entitlements';
+import StudentKeeperModal from '../../components/StudentKeeperModal';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -238,7 +239,15 @@ export default function TeacherHomeScreen({ navigation }) {
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
   const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
   const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
+
+  // Free plan holding more students than it includes (e.g. after a Studio
+  // downgrade): the teacher picks who stays connected. Fires here because
+  // Home is the landing tab; the Students tab runs the same check.
+  useEffect(() => {
+    if (!DEMO_MODE && !teacherPro && students.length > TEACHER_FREE_STUDENT_LIMIT) setKeeperOpen(true);
+  }, [teacherPro, students.length]);
   const [teacherPro, setTeacherPro] = useState(true);    // optimistic — real value loads with the doc
+  const [keeperOpen, setKeeperOpen] = useState(false);   // free plan + over the student cap -> pick who stays
 
   // Live unread count for the teacher's bell (e.g. "parent reports sent").
   useEffect(() => {
@@ -659,6 +668,12 @@ export default function TeacherHomeScreen({ navigation }) {
           })
         )}
       </ScrollView>
+      <StudentKeeperModal
+        visible={keeperOpen}
+        students={students}
+        limit={TEACHER_FREE_STUDENT_LIMIT}
+        onDone={(kept) => { setStudents((prev) => prev.filter((s) => kept.includes(s.uid))); setKeeperOpen(false); }}
+      />
     </SafeAreaView>
   );
 }
