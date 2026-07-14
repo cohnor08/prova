@@ -550,6 +550,14 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Find the note</Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.learnRow, { marginTop: SPACING.md }]}>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('RhythmTapper')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="pulse" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Rhythm tapper</Text>
+            <Text style={styles.learnCardSub}>Train your timing</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+        </View>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
