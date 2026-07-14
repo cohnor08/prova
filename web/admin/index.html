@@ -186,7 +186,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, addDoc, deleteDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -299,6 +299,8 @@ function renderUsers() {
     openDrawer(tr.dataset.open);
   });
   document.querySelectorAll('.planSel').forEach((sel) => sel.onchange = async () => {
+    const prev = sel.value === 'pro' ? 'free' : 'pro';
+    if (!(await confirmPassword(`Change this teacher to ${sel.value === 'pro' ? 'Studio' : 'Free'}`))) { sel.value = prev; return; }
     try {
       await updateDoc(doc(db, 'users', sel.dataset.uid), { teacherPlan: sel.value });
       const u = allUsers.find((x) => x.uid === sel.dataset.uid); if (u) u.teacherPlan = sel.value;
@@ -367,6 +369,7 @@ function renderOrgs() {
     const members = allUsers.filter((u) => u.role === 'teacher' && u.orgId === b.dataset.org);
     if (!members.length) { toast('No teachers in this organisation.'); return; }
     if (!confirm(`Set ALL ${members.length} teacher${members.length === 1 ? '' : 's'} in "${org?.name}" to ${plan === 'pro' ? 'Studio (Pro)' : 'Free'}?`)) return;
+    if (!(await confirmPassword(`Set every teacher in "${org?.name}" to ${plan === 'pro' ? 'Studio' : 'Free'}`))) return;
     let ok = 0;
     for (const t of members) {
       try { await updateDoc(doc(db, 'users', t.uid), { teacherPlan: plan }); t.teacherPlan = plan; ok++; } catch (e) {}
@@ -375,6 +378,8 @@ function renderOrgs() {
     renderOrgs();
   });
   document.querySelectorAll('.planSelOrg').forEach((sel) => sel.onchange = async () => {
+    const prev = sel.value === 'pro' ? 'free' : 'pro';
+    if (!(await confirmPassword(`Change this teacher to ${sel.value === 'pro' ? 'Studio' : 'Free'}`))) { sel.value = prev; return; }
     try {
       await updateDoc(doc(db, 'users', sel.dataset.uid), { teacherPlan: sel.value });
       const t = allUsers.find((x) => x.uid === sel.dataset.uid); if (t) t.teacherPlan = sel.value;
@@ -463,6 +468,53 @@ async function renderConfigToggle(mountId, docId, field, title, desc = '') {
   };
 }
 
+// ── password confirmation for plan changes ──
+// Re-checks the signed-in admin's password with Firebase Auth (not a local
+// string), then holds for 5 minutes so bulk work isn't asked repeatedly.
+let lastPwConfirm = 0;
+function confirmPassword(actionLabel) {
+  if (Date.now() - lastPwConfirm < 5 * 60 * 1000) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:24px';
+    wrap.innerHTML = `
+      <div style="background:#0A1120;border:1px solid #1E2D4A;border-radius:16px;padding:22px;width:100%;max-width:340px">
+        <h3 style="margin:0 0 4px">Confirm it's you</h3>
+        <div class="muted" style="margin-bottom:12px">${actionLabel} — enter your admin password.</div>
+        <input id="pwConfirmInput" type="password" autocomplete="current-password" placeholder="Password"
+          style="width:100%;box-sizing:border-box;background:#0C1424;border:1px solid #1E2D4A;border-radius:10px;color:#F0F4FF;padding:11px 12px;font-size:14px">
+        <div id="pwConfirmErr" style="color:#FCA5A5;font-size:12px;min-height:16px;margin-top:6px"></div>
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <button id="pwConfirmCancel" class="orgBtn" style="flex:1;padding:11px">Cancel</button>
+          <button id="pwConfirmOk" style="flex:1;background:#3B82F6;border:none;color:#fff;border-radius:10px;padding:11px;font-weight:700;cursor:pointer">Confirm</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const input = wrap.querySelector('#pwConfirmInput');
+    input.focus();
+    const done = (ok) => { wrap.remove(); resolve(ok); };
+    wrap.querySelector('#pwConfirmCancel').onclick = () => done(false);
+    wrap.onclick = (e) => { if (e.target === wrap) done(false); };
+    const submit = async () => {
+      const pw = input.value;
+      if (!pw) return;
+      const btn = wrap.querySelector('#pwConfirmOk');
+      btn.disabled = true; btn.textContent = 'Checking…';
+      try {
+        await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, pw));
+        lastPwConfirm = Date.now();
+        done(true);
+      } catch (e) {
+        wrap.querySelector('#pwConfirmErr').textContent = 'Wrong password — try again.';
+        btn.disabled = false; btn.textContent = 'Confirm';
+        input.select();
+      }
+    };
+    wrap.querySelector('#pwConfirmOk').onclick = submit;
+    input.onkeydown = (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') done(false); };
+  });
+}
+
 // ── #3 user detail drawer ──
 async function openDrawer(uid) {
   const u = allUsers.find((x) => x.uid === uid); if (!u) return;
@@ -528,6 +580,7 @@ async function openDrawer(uid) {
   const planBtn = $('#drawerPlan');
   if (planBtn) planBtn.onclick = async () => {
     const next = u.teacherPlan === 'pro' ? 'free' : 'pro';
+    if (!(await confirmPassword(`Change ${u.username || u.email || 'this teacher'} to ${next === 'pro' ? 'Studio' : 'Free'}`))) return;
     planBtn.disabled = true;
     try { await updateDoc(doc(db, 'users', u.uid), { teacherPlan: next }); u.teacherPlan = next; openDrawer(uid); }
     catch (e) { alert('Failed: ' + e.message); planBtn.disabled = false; }
