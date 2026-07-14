@@ -14,6 +14,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
+import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
@@ -277,6 +278,8 @@ export default function MessagesScreen() {
   const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
   const [role, setRole] = useState(null); // 'teacher' | 'student' | 'personal'
+  const [loadErr, setLoadErr] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeChat, setActiveChat] = useState(null);
 
@@ -300,11 +303,12 @@ export default function MessagesScreen() {
       collection(db, 'userChats', myUid, 'conversations'),
       orderBy('lastMessageAt', 'desc')
     );
+    setLoadErr(false);
     return onSnapshot(q, snap => {
       setConversations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    }, () => setLoading(false));
-  }, [myUid]);
+    }, () => { setLoading(false); setLoadErr(true); });
+  }, [myUid, retryNonce]);
 
   // Class group chats I'm a member of (teacher-run announcements channels).
   useEffect(() => {
@@ -427,18 +431,36 @@ export default function MessagesScreen() {
 
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+      ) : loadErr && listData.length === 0 ? (
+        <EmptyState
+          variant="error"
+          title="Couldn't load your messages"
+          subtitle="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={() => { setLoading(true); setRetryNonce((n) => n + 1); }}
+        />
       ) : listData.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="chatbubbles-outline" size={40} color={COLORS.primary} />
-          </View>
-          <Text style={styles.emptyTitle}>No messages yet</Text>
-          <Text style={styles.emptySubtitle}>
-            {isTeacher
-              ? 'Messages with your students and class announcements will appear here.'
-              : 'Messages from your teacher and class announcements will appear here.'}
-          </Text>
-        </View>
+        isTeacher ? (
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No messages yet"
+            subtitle="Messages with your students and class announcements will appear here."
+          />
+        ) : teacher ? (
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No messages yet"
+            subtitle="Say hello to your teacher — messages and class announcements will appear here."
+          />
+        ) : (
+          <EmptyState
+            icon="school-outline"
+            title="Connect your teacher"
+            subtitle="Enter your teacher's join code to get their tasks and start chatting."
+            actionLabel="Add my teacher"
+            onAction={() => navigation.navigate('Profile')}
+          />
+        )
       ) : (
         <FlatList
           data={listData}

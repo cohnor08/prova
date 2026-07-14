@@ -16,6 +16,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
 import { isPersonal, personalUpsell } from '../../lib/entitlements';
+import EmptyState from '../../components/EmptyState';
 import PerformanceMode from '../../components/PerformanceMode';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -1289,7 +1290,12 @@ export default function SongsScreen({ route, navigation }) {
           </TouchableOpacity>
 
           {setlists.length === 0 ? (
-            <Text style={styles.gigEmpty}>No setlists yet — plan your first gig above.</Text>
+            <EmptyState
+              icon="list-outline"
+              title="No setlists yet"
+              subtitle="Plan your first gig above — Prova builds the set, or you can pick songs yourself."
+              style={{ paddingVertical: SPACING.lg }}
+            />
           ) : (
             <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
               {setlists.map((sl) => (
