@@ -25,6 +25,7 @@ import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { TEACHER_FREE_STUDENT_LIMIT, studioUpsell } from '../../lib/entitlements';
+import StudentKeeperModal from '../../components/StudentKeeperModal';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
@@ -1601,6 +1602,7 @@ function TeacherDashboard() {
   const [sendingReports, setSendingReports] = useState(false);
   const [reportCadence, setReportCadence] = useState('off');   // off | weekly | fortnightly | monthly
   const [teacherPlan, setTeacherPlan] = useState('pro');       // optimistic — real value loads with the doc
+  const [keeperOpen, setKeeperOpen] = useState(false);         // free plan + over the student cap -> pick who stays
   const [lastAutoReportAt, setLastAutoReportAt] = useState(null);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -1761,8 +1763,15 @@ function TeacherDashboard() {
         getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
         getDoc(doc(db, 'users', uid)),
       ]);
-      setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+      const roster = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+      setStudents(roster);
       setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
+      // Downgraded (or signed up free) with more students than the plan
+      // includes: they choose who stays. Nothing else about the account is
+      // touched by a plan change — this is the one consequence.
+      if ((meSnap.data()?.teacherPlan || 'free') !== 'pro' && roster.length > TEACHER_FREE_STUDENT_LIMIT) {
+        setKeeperOpen(true);
+      }
       // Mirror the roster onto my doc — the student-side join-by-code cap
       // reads students.length off the teacher doc.
       updateDoc(doc(db, 'users', uid), { students: snap.docs.map((d) => d.id) }).catch(() => {});
@@ -2847,6 +2856,13 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
         classes={classes}
         onClose={() => setShowCreateGroup(false)}
         onCreate={createGroup}
+      />
+
+      <StudentKeeperModal
+        visible={keeperOpen}
+        students={students}
+        limit={TEACHER_FREE_STUDENT_LIMIT}
+        onDone={(kept) => { setStudents((prev) => prev.filter((s) => kept.includes(s.uid))); setKeeperOpen(false); }}
       />
 
       {/* Parent Contacts — a private email book, saved on the teacher's own doc.
