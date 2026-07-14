@@ -15,6 +15,7 @@ import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminde
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
+import { replayTour } from '../../components/TourOverlay';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
 
@@ -800,6 +801,15 @@ export default function ProfileScreen({ navigation }) {
               {userData?.isTeacherPro ? 'Teacher Pro' : 'Free'}
             </Text>
           </View>
+        </View>
+
+        {/* Help */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>HELP</Text>
+          <TouchableOpacity style={styles.row} onPress={replayTour}>
+            <Text style={styles.rowLabel}>Show me around again</Text>
+            <Text style={styles.rowArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Legal */}

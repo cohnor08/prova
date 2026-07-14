@@ -32,6 +32,7 @@ import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE } from './src/constants/theme';
 import { CelebrationProvider } from './src/components/Celebration';
 import IntroSplash from './src/components/IntroSplash';
+import TourOverlay from './src/components/TourOverlay';
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -160,6 +161,7 @@ const TAB_ICONS = {
 function MainTabs({ role }) {
   const isTeacher = role === 'teacher';
   return (
+    <View style={{ flex: 1 }}>
     <Tab.Navigator
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
@@ -193,6 +195,8 @@ function MainTabs({ role }) {
         </>
       )}
     </Tab.Navigator>
+    <TourOverlay role={role} />
+    </View>
   );
 }
 
