@@ -3,7 +3,7 @@
 // theory concept sits on, and most self-taught players never learn it.
 // Instrument-aware (guitar 6 strings / bass 4), three levels widen the string
 // set and fret range. Rounds of 10; first 3 rounds a day bank +20 points.
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +43,8 @@ const LEVEL_HINTS = {
 };
 const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const INLAY_FRETS = [3, 5, 7, 9, 12, 15];
+const FRET_W = 52;                 // must match styles.fret width
+const FRET_PAD = 8;                // must match styles.fretRow paddingHorizontal (SPACING.sm)
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -60,6 +62,17 @@ export default function FretboardGameScreen({ navigation }) {
   const [fretRowW, setFretRowW] = useState(0);      // viewport width
   const [fretContentW, setFretContentW] = useState(0); // content width
   const canScroll = fretContentW > fretRowW + 2;
+  const neckScrollRef = useRef(null);
+
+  // In "Name the note" mode the target fret can be anywhere on the neck, so
+  // centre it in view on each new question — the player shouldn't have to hunt.
+  useEffect(() => {
+    if (phase !== 'playing' || mode !== 'name' || !question || !fretRowW) return;
+    const center = FRET_PAD + question.targetFret * FRET_W + FRET_W / 2;
+    const x = Math.max(0, center - fretRowW / 2);
+    const id = setTimeout(() => neckScrollRef.current?.scrollTo({ x, animated: true }), 60);
+    return () => clearTimeout(id);
+  }, [question, phase, mode, fretRowW]);
 
   useEffect(() => {
     (async () => {
@@ -256,6 +269,7 @@ export default function FretboardGameScreen({ navigation }) {
             <Text style={styles.swipeHint}>← Swipe to see all frets →</Text>
           )}
           <ScrollView
+            ref={neckScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.fretRow}
