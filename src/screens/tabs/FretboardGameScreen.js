@@ -33,7 +33,16 @@ const LEVELS = [
   { id: 1, label: 'Starter',  maxFret: 5,  naturalsOnly: true },
   { id: 2, label: 'Player',   maxFret: 7,  naturalsOnly: true },
   { id: 3, label: 'Complete', maxFret: 12, naturalsOnly: false },
+  { id: 4, label: 'Master',   maxFret: 15, naturalsOnly: false },
 ];
+const LEVEL_HINTS = {
+  1: 'Natural notes · frets 1–5',
+  2: 'Natural notes · frets 1–7',
+  3: 'All notes incl. sharps · frets 1–12',
+  4: 'All notes · the whole neck, frets 1–15',
+};
+const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const INLAY_FRETS = [3, 5, 7, 9, 12, 15];
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -41,9 +50,10 @@ export default function FretboardGameScreen({ navigation }) {
   const celebrate = useCelebration();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState(1);
+  const [mode, setMode] = useState('find');       // 'find' (tap the fret) | 'name' (pick the note)
   const [phase, setPhase] = useState('menu');
   const [qNum, setQNum] = useState(0);
-  const [question, setQuestion] = useState(null); // { string, targetName, targetFret }
+  const [question, setQuestion] = useState(null); // { string, targetName, targetFret, choices }
   const [picked, setPicked] = useState(null);     // tapped fret
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
@@ -86,7 +96,13 @@ export default function FretboardGameScreen({ navigation }) {
       }
       if (NOTE_NAMES[(string.midi + fret) % 12].includes('#')) fret = fret > 1 ? fret - 1 : fret + 1;
     }
-    return { string, targetFret: fret, targetName: NOTE_NAMES[(string.midi + fret) % 12], maxFret: lv.maxFret };
+    const targetName = NOTE_NAMES[(string.midi + fret) % 12];
+    // For "Name the note" mode: four answer choices (naturals-only when the
+    // level is naturals-only, so we never offer a sharp that can't be the answer).
+    const pool = lv.naturalsOnly ? NATURALS : NOTE_NAMES;
+    const wrong = pool.filter((n) => n !== targetName).sort(() => Math.random() - 0.5).slice(0, 3);
+    const choices = [targetName, ...wrong].sort(() => Math.random() - 0.5);
+    return { string, targetFret: fret, targetName, maxFret: lv.maxFret, choices };
   };
 
   const startRound = async () => {
@@ -104,6 +120,14 @@ export default function FretboardGameScreen({ navigation }) {
     const right = (question.string.midi + fret) % 12 === (question.string.midi + question.targetFret) % 12;
     if (right) setScore((s) => s + 1);
     playNote(question.string.midi + fret);
+  };
+
+  // "Name the note" mode: the target fret is shown; the student picks its name.
+  const answerName = (choice) => {
+    if (picked !== null) return;
+    setPicked(choice);
+    if (choice === question.targetName) setScore((s) => s + 1);
+    playNote(question.string.midi + question.targetFret);
   };
 
   const next = async () => {
@@ -151,8 +175,24 @@ export default function FretboardGameScreen({ navigation }) {
           activeOpacity={0.7}
         >
           <Text style={[styles.fretNum, (showRight || showWrong) && { color: '#fff' }]}>{f}</Text>
-          {[3, 5, 7, 9, 12].includes(f) && <View style={styles.inlay} />}
+          {INLAY_FRETS.includes(f) && <View style={styles.inlay} />}
         </TouchableOpacity>
+      );
+    }
+    return cells;
+  };
+
+  // Read-only neck for "Name the note": marks the fret the student must name.
+  const renderMarkedNeck = () => {
+    const cells = [];
+    for (let f = 0; f <= question.maxFret; f++) {
+      const isTarget = f === question.targetFret;
+      cells.push(
+        <View key={f} style={[styles.fret, f === 0 && styles.nut, isTarget && styles.fretMarked]}>
+          {isTarget && <View style={styles.marker} />}
+          <Text style={[styles.fretNum, isTarget && { color: '#fff', fontWeight: '900' }]}>{f}</Text>
+          {!isTarget && INLAY_FRETS.includes(f) && <View style={styles.inlay} />}
+        </View>
       );
     }
     return cells;
@@ -172,7 +212,15 @@ export default function FretboardGameScreen({ navigation }) {
         <ScrollView contentContainerStyle={styles.menu}>
           <View style={styles.heroIcon}><Ionicons name="locate" size={34} color={COLORS.primary} /></View>
           <Text style={styles.heroTitle}>Know every note</Text>
-          <Text style={styles.heroSub}>Prova names a note — you find it on the {instrument.toLowerCase()} neck. Ten questions a round; your first {REWARDED_ROUNDS_PER_DAY} rounds each day earn +{ROUND_POINTS} points.</Text>
+          <Text style={styles.heroSub}>Learn every note on the {instrument.toLowerCase()} neck. Ten questions a round; your first {REWARDED_ROUNDS_PER_DAY} rounds each day earn +{ROUND_POINTS} points.</Text>
+          <Text style={styles.menuLabel}>GAME</Text>
+          <View style={styles.segRow}>
+            {[['find', 'Find the note'], ['name', 'Name the note']].map(([m, label]) => (
+              <TouchableOpacity key={m} style={[styles.seg, mode === m && styles.segOn]} onPress={() => setMode(m)}>
+                <Text style={[styles.segText, mode === m && styles.segTextOn]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <Text style={styles.menuLabel}>LEVEL</Text>
           <View style={styles.segRow}>
             {LEVELS.map((l) => (
@@ -181,9 +229,7 @@ export default function FretboardGameScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.levelHint}>
-            {level === 1 ? 'Natural notes · frets 1–5' : level === 2 ? 'Natural notes · frets 1–7' : 'All notes incl. sharps · frets 1–12'}
-          </Text>
+          <Text style={styles.levelHint}>{LEVEL_HINTS[level]}</Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color="#fff" />
             <Text style={styles.startText}>Start round</Text>
@@ -195,10 +241,17 @@ export default function FretboardGameScreen({ navigation }) {
         <View style={styles.game}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
-          <Text style={styles.prompt}>
-            Find <Text style={styles.promptNote}>{question.targetName}</Text> on the{' '}
-            <Text style={styles.promptString}>{question.string.label}</Text> string
-          </Text>
+          {mode === 'find' ? (
+            <Text style={styles.prompt}>
+              Find <Text style={styles.promptNote}>{question.targetName}</Text> on the{' '}
+              <Text style={styles.promptString}>{question.string.label}</Text> string
+            </Text>
+          ) : (
+            <Text style={styles.prompt}>
+              What note is the marked fret on the{' '}
+              <Text style={styles.promptString}>{question.string.label}</Text> string?
+            </Text>
+          )}
           {canScroll && (
             <Text style={styles.swipeHint}>← Swipe to see all frets →</Text>
           )}
@@ -209,9 +262,30 @@ export default function FretboardGameScreen({ navigation }) {
             onLayout={(e) => setFretRowW(e.nativeEvent.layout.width)}
             onContentSizeChange={(w) => setFretContentW(w)}
           >
-            {renderFretRow()}
+            {mode === 'find' ? renderFretRow() : renderMarkedNeck()}
           </ScrollView>
-          <Text style={styles.fretHint}>Tap a fret — 0 is the open string</Text>
+          {mode === 'find' ? (
+            <Text style={styles.fretHint}>Tap a fret — 0 is the open string</Text>
+          ) : (
+            <View style={styles.choices}>
+              {question.choices.map((c) => {
+                const isPicked = picked === c;
+                const isRight = picked !== null && c === question.targetName;
+                const isWrongPick = isPicked && c !== question.targetName;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.choice, isRight && styles.choiceRight, isWrongPick && styles.choiceWrong]}
+                    onPress={() => answerName(c)}
+                    activeOpacity={0.8}
+                    disabled={picked !== null}
+                  >
+                    <Text style={[styles.choiceText, (isRight || isWrongPick) && { color: '#fff' }]}>{c}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
           {picked !== null && (
             <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
               <Text style={styles.nextText}>{qNum >= ROUND_LEN ? 'Finish' : 'Next ›'}</Text>
@@ -269,8 +343,15 @@ const styles = StyleSheet.create({
   nut: { backgroundColor: COLORS.background, borderRightWidth: 5, borderRightColor: COLORS.textMuted },
   fretRight: { backgroundColor: '#16a34a' },
   fretWrong: { backgroundColor: '#dc2626' },
+  fretMarked: { backgroundColor: COLORS.primary + '22' },
+  marker: { position: 'absolute', top: 29, left: 13, width: 26, height: 26, borderRadius: 13, backgroundColor: COLORS.primary },
   fretNum: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   inlay: { position: 'absolute', bottom: 8, width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.textMuted },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.lg },
+  choice: { width: '47%', paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
+  choiceRight: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  choiceWrong: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  choiceText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   fretHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
   swipeHint: { color: COLORS.textMuted, fontSize: 11.5, marginBottom: SPACING.sm },
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },

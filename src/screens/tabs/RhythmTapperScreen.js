@@ -23,15 +23,20 @@ const ROUND_POINTS = 20;
 const REWARDED_ROUNDS_PER_DAY = 3;
 const COUNT_IN = 4;          // unscored lead-in clicks
 const LEAD_MS = 550;         // delay before the first click so Start isn't instant
-const MISS_WINDOW = 260;     // a tap farther than this from any beat doesn't count
+const MAX_WINDOW = 260;      // widest a tap can miss a beat by and still count (slow levels)
 
 // Each level is really just an interval (ms between clicks) and a length. The
 // note-value labels are flavour; what changes is how fast the grid comes.
 const LEVELS = [
-  { id: 1, label: 'Steady',      bpm: 70, interval: Math.round(60000 / 70),     taps: 16, accentEvery: 4, note: 'Quarter notes' },
-  { id: 2, label: 'Groove',      bpm: 96, interval: Math.round(60000 / 96),     taps: 20, accentEvery: 4, note: 'Quarter notes' },
-  { id: 3, label: 'Double-time', bpm: 84, interval: Math.round(60000 / 84 / 2), taps: 24, accentEvery: 8, note: 'Eighth notes' },
+  { id: 1, label: 'Steady',     bpm: 70, interval: Math.round(60000 / 70),     taps: 16, accentEvery: 4, note: 'Quarter notes' },
+  { id: 2, label: 'Groove',     bpm: 96, interval: Math.round(60000 / 96),     taps: 20, accentEvery: 4, note: 'Quarter notes' },
+  { id: 3, label: 'Eighths',    bpm: 84, interval: Math.round(60000 / 84 / 2), taps: 24, accentEvery: 8, note: 'Eighth notes' },
+  { id: 4, label: '16ths',      bpm: 66, interval: Math.round(60000 / 66 / 4), taps: 32, accentEvery: 8, note: 'Sixteenth notes' },
 ];
+// Two ways to play: 'click' keeps the metronome the whole way; 'hold' plays one
+// bar of click then goes SILENT — you keep the time on your own (real internal-
+// clock training). The beats are scored the same either way.
+const MODES = [['click', 'With click'], ['hold', 'Hold the time']];
 
 // Distance (ms) between a tap and its beat → quality band.
 function quality(err) {
@@ -44,9 +49,11 @@ function quality(err) {
 export default function RhythmTapperScreen({ navigation }) {
   const celebrate = useCelebration();
   const [level, setLevel] = useState(1);
+  const [mode, setMode] = useState('click');         // 'click' | 'hold'
   const [phase, setPhase] = useState('menu');       // 'menu' | 'playing' | 'done'
   const [countIn, setCountIn] = useState(COUNT_IN);  // 4..1 during lead-in, 0 once scoring
-  const [beatNum, setBeatNum] = useState(0);         // scored beats elapsed
+  const [beatNum, setBeatNum] = useState(0);         // scored beats elapsed (shown while audible)
+  const [held, setHeld] = useState(false);           // hold mode: click has dropped out
   const [feedback, setFeedback] = useState(null);    // { label, color } flash on each tap
   const [accuracy, setAccuracy] = useState(0);
   const [tally, setTally] = useState(null);
@@ -60,6 +67,7 @@ export default function RhythmTapperScreen({ navigation }) {
   const startRef = useRef(0);        // absolute ms of click index 0
   const beatTimesRef = useRef([]);   // absolute ms of each scored beat
   const matchedRef = useRef([]);     // per scored beat: null | { pts, qkey }
+  const windowRef = useRef(MAX_WINDOW); // per-round match window (tightens on fast levels)
   const pulse = useRef(new Animated.Value(1)).current;
 
   const cfg = LEVELS.find((l) => l.id === level);
@@ -101,6 +109,7 @@ export default function RhythmTapperScreen({ navigation }) {
   // target time, so small timer jitter never accumulates over the round.
   const scheduleTick = useCallback((i) => {
     const total = COUNT_IN + cfg.taps;
+    const holdLead = cfg.accentEvery;                 // hold mode: one bar of click, then silence
     const target = startRef.current + i * cfg.interval;
     const delay = Math.max(0, target - Date.now());
     timeoutRef.current = setTimeout(() => {
@@ -108,15 +117,21 @@ export default function RhythmTapperScreen({ navigation }) {
       const isCountIn = i < COUNT_IN;
       const scoredIdx = i - COUNT_IN;
       const accent = isCountIn || scoredIdx % cfg.accentEvery === 0;
-      playClick(accent);
-      pulseOnce();
+      // In 'hold' mode the click and the beat pulse stop after the lead bar, so
+      // there's no external reference — you have to keep the time yourself.
+      const audible = isCountIn || mode === 'click' || scoredIdx < holdLead;
+      if (audible) { playClick(accent); pulseOnce(); }
       if (isCountIn) setCountIn(COUNT_IN - i);
-      else { setCountIn(0); setBeatNum(scoredIdx + 1); }
+      else {
+        setCountIn(0);
+        if (mode === 'hold' && scoredIdx === holdLead) setHeld(true);
+        if (audible) setBeatNum(scoredIdx + 1);        // hide the counter once the click drops
+      }
 
       if (i + 1 < total) scheduleTick(i + 1);
-      else timeoutRef.current = setTimeout(() => { if (mountedRef.current) finishRound(); }, MISS_WINDOW + 140);
+      else timeoutRef.current = setTimeout(() => { if (mountedRef.current) finishRound(); }, windowRef.current + 140);
     }, delay);
-  }, [cfg, pulseOnce]);
+  }, [cfg, mode, pulseOnce]);
 
   const startRound = async () => {
     if (!(await allowGameRound('rhythmTapper'))) {
@@ -126,7 +141,8 @@ export default function RhythmTapperScreen({ navigation }) {
     startRef.current = Date.now() + LEAD_MS;
     beatTimesRef.current = Array.from({ length: cfg.taps }, (_, k) => startRef.current + (COUNT_IN + k) * cfg.interval);
     matchedRef.current = new Array(cfg.taps).fill(null);
-    setBeatNum(0); setCountIn(COUNT_IN); setFeedback(null); setAccuracy(0); setTally(null); setRewarded(false);
+    windowRef.current = Math.min(MAX_WINDOW, Math.round(cfg.interval * 0.5)); // never overlap adjacent beats
+    setBeatNum(0); setCountIn(COUNT_IN); setHeld(false); setFeedback(null); setAccuracy(0); setTally(null); setRewarded(false);
     setPhase('playing');
     scheduleTick(0);
   };
@@ -144,7 +160,7 @@ export default function RhythmTapperScreen({ navigation }) {
       const e = Math.abs(t - times[k]);
       if (e < bestErr) { bestErr = e; best = k; }
     }
-    if (best === -1 || bestErr > MISS_WINDOW) { flash({ label: '·', color: COLORS.textMuted }); return; }
+    if (best === -1 || bestErr > windowRef.current) { flash({ label: '·', color: COLORS.textMuted }); return; }
     const q = quality(bestErr);
     matched[best] = { pts: q.pts, qkey: q.key };
     flash(q);
@@ -197,6 +213,14 @@ export default function RhythmTapperScreen({ navigation }) {
           <View style={styles.heroIcon}><Ionicons name="pulse" size={34} color={COLORS.primary} /></View>
           <Text style={styles.heroTitle}>Lock in your timing</Text>
           <Text style={styles.heroSub}>A click plays — you tap along. Prova scores how close each tap lands to the beat. Your first {REWARDED_ROUNDS_PER_DAY} rounds each day earn +{ROUND_POINTS} points.</Text>
+          <Text style={styles.menuLabel}>MODE</Text>
+          <View style={styles.segRow}>
+            {MODES.map(([m, label]) => (
+              <TouchableOpacity key={m} style={[styles.seg, mode === m && styles.segOn]} onPress={() => setMode(m)}>
+                <Text style={[styles.segText, mode === m && styles.segTextOn]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <Text style={styles.menuLabel}>LEVEL</Text>
           <View style={styles.segRow}>
             {LEVELS.map((l) => (
@@ -205,7 +229,9 @@ export default function RhythmTapperScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.levelHint}>{cfg.bpm} BPM · {cfg.note} · {cfg.taps} beats</Text>
+          <Text style={styles.levelHint}>
+            {cfg.bpm} BPM · {cfg.note} · {cfg.taps} beats{mode === 'hold' ? ' · click drops after one bar' : ''}
+          </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color="#fff" />
             <Text style={styles.startText}>Start round</Text>
@@ -215,8 +241,8 @@ export default function RhythmTapperScreen({ navigation }) {
 
       {phase === 'playing' && (
         <Pressable style={styles.game} onPressIn={onTap}>
-          <Text style={styles.qNum}>{countIn > 0 ? 'GET READY' : `BEAT ${beatNum} OF ${cfg.taps}`}</Text>
-          <Text style={styles.scoreLine}>{cfg.bpm} BPM · {cfg.note}</Text>
+          <Text style={styles.qNum}>{countIn > 0 ? 'GET READY' : held ? 'KEEP THE TIME' : `BEAT ${beatNum} OF ${cfg.taps}`}</Text>
+          <Text style={styles.scoreLine}>{cfg.bpm} BPM · {cfg.note}{mode === 'hold' && held ? ' · no click' : ''}</Text>
           <View style={styles.padWrap}>
             <Animated.View style={[styles.pad, { borderColor: ringColor, backgroundColor: ringColor + '14', transform: [{ scale: pulse }] }]}>
               {countIn > 0 ? (
