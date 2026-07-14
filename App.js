@@ -4,15 +4,24 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 
-// Web: the app is phone-designed — pin every top-level layer (the app root AND
-// react-native-web's modal portals, which are direct children of <body>) to a
-// centred phone-width column. The translateZ makes each layer the containing
-// block for its position:fixed descendants, so sheets/modals stay in the
-// column instead of stretching across the whole browser.
+// Web: the app is phone-designed — pin the app root to a centred column.
+// react-native-web modal portals are ALSO direct children of <body>, but they
+// sit at height 0 in normal flow, so constraining them the same way parks
+// every modal in a zero-height box below the page (= every modal invisible,
+// buttons that open them look dead). Instead each portal becomes its own
+// fixed, click-transparent viewport box the width of the column: its
+// position:fixed modal content then fills that box, so modals still respect
+// the column AND actually appear. Empty (closed) portals pass clicks through.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
-  style.textContent = 'body{background:#02040a} body>div{max-width:1080px;width:94%;margin:0 auto;transform:translateZ(0)}';
+  style.textContent = [
+    'body{background:#02040a}',
+    'body>#root{max-width:1080px;width:94%;margin:0 auto}',
+    'body>div:not(#root){position:fixed;inset:0;max-width:1080px;width:94%;margin:0 auto;transform:translateZ(0);pointer-events:none}',
+    'body>div:not(#root)>*{pointer-events:auto}',
+  ].join(' ');
   document.head.appendChild(style);
+  require('./src/lib/webAlert').installWebAlert();
 }
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
