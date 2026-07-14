@@ -25,11 +25,17 @@ export function lastCompletedWeekKey(now = new Date()) {
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export const wrappedWeekKey = (now = new Date()) => ymd(lastCompletedWeekKey(now));
 
+// Monday of the week in progress (for the on-demand 'week so far' fallback).
+function currentWeekMonday(now = new Date()) {
+  const d = new Date(now); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CAT_LABELS = { warmup: 'Warm-ups', technique: 'Technique', repertoire: 'Repertoire', improvisation: 'Improvisation', theory: 'Theory', teacher: 'Teacher tasks', song: 'Songs', ear: 'Ear training', fretboard: 'Fretboard' };
 
-async function buildStats(uid) {
-  const monday = lastCompletedWeekKey();
+async function buildStats(uid, monday = lastCompletedWeekKey()) {
   const days = [];
   for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setDate(d.getDate() + i); days.push(ymd(d)); }
   const prevDays = [];
@@ -84,12 +90,19 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
     if (!visible || !uid) return;
     let live = true;
     setStats(null); setShow(false);
-    buildStats(uid).then((st) => {
+    (async () => {
+      let st = await buildStats(uid);
+      if (st.mins === 0 && forced) {
+        // Nothing last week — show the week in progress instead so the
+        // on-demand link is never a dead all-zeros card.
+        const cur = await buildStats(uid, currentWeekMonday());
+        if (cur.mins > 0) st = { ...cur, soFar: true, delta: null };
+      }
       if (!live) return;
       setStats(st);
       if (st.mins > 0 || forced) { setShow(true); track('wrapped_viewed'); }
       else onResolve && onResolve({ shown: false, weekKey: st.weekKey });
-    }).catch(() => { onResolve && onResolve({ shown: false, weekKey: wrappedWeekKey() }); });
+    })().catch(() => { live && onResolve && onResolve({ shown: false, weekKey: wrappedWeekKey() }); });
     return () => { live = false; };
   }, [visible, uid]);
 
@@ -106,7 +119,7 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
       }
     } catch (e) { /* fall through to text */ }
     const lines = [
-      `🎸 My week in music (${s.range})`,
+      `${s.soFar ? 'My week so far' : 'My week in music'} (${s.range})`,
       `${s.mins} minutes · ${s.daysPracticed}/7 days practiced`,
       s.longest.day ? `Longest: ${s.longest.mins} min on ${s.longest.day}` : null,
       s.topCat ? `Top focus: ${s.topCat}` : null,
@@ -125,7 +138,7 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
             <View ref={cardRef} collapsable={false} style={styles.card}>
               <View style={styles.glowRing} />
-              <Text style={styles.kicker}>YOUR WEEK IN MUSIC</Text>
+              <Text style={styles.kicker}>{stats.soFar ? 'YOUR WEEK SO FAR' : 'YOUR WEEK IN MUSIC'}</Text>
               <Text style={styles.range}>{stats.range}</Text>
 
               <Text style={styles.bigMins}>{stats.mins}</Text>
