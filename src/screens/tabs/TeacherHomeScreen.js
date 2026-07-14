@@ -15,6 +15,7 @@ import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { sendNotification } from '../../lib/inbox';
 import { advancePrograms } from '../../lib/programs';
+import { studioUpsell } from '../../lib/entitlements';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -237,6 +238,7 @@ export default function TeacherHomeScreen({ navigation }) {
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
   const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
   const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
+  const [teacherPro, setTeacherPro] = useState(true);    // optimistic — real value loads with the doc
 
   // Live unread count for the teacher's bell (e.g. "parent reports sent").
   useEffect(() => {
@@ -250,6 +252,7 @@ export default function TeacherHomeScreen({ navigation }) {
   // (shows under their Today bell). Optimistic — flips to "Nudged" instantly.
   const nudgeStudent = async (s) => {
     if (!s?.uid || nudged.has(s.uid)) return;
+    if (!teacherPro) { studioUpsell('One-tap student nudges are part of Prova Studio.'); return; }
     setNudged((prev) => new Set(prev).add(s.uid));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
@@ -289,6 +292,7 @@ export default function TeacherHomeScreen({ navigation }) {
           updateDoc(doc(db, 'users', uid), { teacherWidgets: merged, widgetOrderFixed: true }).catch(() => {});
         }
         setLayout(merged);
+        setTeacherPro((s.data()?.teacherPlan || 'free') === 'pro');
         setNote(s.data()?.teacherNote || '');
         setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
       })
@@ -499,6 +503,20 @@ export default function TeacherHomeScreen({ navigation }) {
         );
       }
       case 'pulse': {
+        if (!teacherPro) {
+          return (
+            <View style={styles.card}>
+              <View style={styles.pulseHeader}>
+                <Text style={styles.cardTitle}>Practice Pulse</Text>
+                <Ionicons name="lock-closed" size={14} color={COLORS.textSecondary} />
+              </View>
+              <Text style={styles.emptyMini}>See who's on track and who needs a nudge, at a glance — part of Prova Studio.</Text>
+              <TouchableOpacity onPress={() => studioUpsell("Practice Pulse shows every student's practice health at a glance, with one-tap nudges.")} hitSlop={{ top: 6, bottom: 6 }}>
+                <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13, marginTop: 8 }}>Learn more</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
         const now = Date.now();
         const statusOf = (s) => {
           if (!s.lastSessionDate) return { rank: 0, color: COLORS.error, label: 'never practiced' };

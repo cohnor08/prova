@@ -15,6 +15,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
+import { isPersonal, personalUpsell } from '../../lib/entitlements';
 import PerformanceMode from '../../components/PerformanceMode';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -590,6 +591,15 @@ export default function SongsScreen({ route, navigation }) {
   // not already in the library is also copied in, so previews/covers light up and
   // the user can practice it.
   const handleGenerateSetlist = async () => {
+    // AI setlists are a Personal feature (each generation costs real API
+    // money) — also enforced server-side in the generateSetlist function.
+    try {
+      const me = (await getDoc(doc(db, 'users', auth.currentUser?.uid))).data() || {};
+      if (!isPersonal(me) && me.role !== 'teacher') {
+        personalUpsell(navigation, 'AI-built setlists are part of Prova Personal. You can still build setlists by hand for free.');
+        return;
+      }
+    } catch (e) { /* fail open — the server gate is the backstop */ }
     const setting = gigSetting.trim();
     const audience = gigAudience.trim();
     if (!setting || !audience) {

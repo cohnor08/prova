@@ -10,6 +10,7 @@ import {
 import { db, auth } from './firebase';
 import { track } from './analytics';
 import { ensureChatThread } from './chat';
+import { TEACHER_FREE_STUDENT_LIMIT } from './entitlements';
 
 // Avoid ambiguous characters (0/O, 1/I) so codes are easy to read out loud.
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -43,8 +44,14 @@ export async function linkTeacherByCode(studentUid, rawCode) {
   if (snap.empty) throw new Error('No teacher found with that code. Double-check it.');
   const teacher = snap.docs[0];
   if (teacher.id === studentUid) throw new Error("That's your own code.");
-  await updateDoc(doc(db, 'users', studentUid), { teacherUid: teacher.id });
   const d = teacher.data();
+  if (d.teacherPlan !== 'pro') {
+    const roster = Array.isArray(d.students) ? d.students : [];
+    if (!roster.includes(studentUid) && roster.length >= TEACHER_FREE_STUDENT_LIMIT) {
+      throw new Error("This teacher's student list is full on their current plan — ask them about Prova Studio.");
+    }
+  }
+  await updateDoc(doc(db, 'users', studentUid), { teacherUid: teacher.id });
   // Auto-create the chat thread so it appears in the student's Messages right away.
   try {
     await ensureChatThread({
