@@ -15,6 +15,7 @@ import { NOTE_FILES } from '../../constants/notes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
+import { allowGameRound, personalUpsell } from '../../lib/entitlements';
 
 const ROUND_LEN = 10;
 const ROUND_POINTS = 20;
@@ -103,7 +104,11 @@ export default function EarTrainingScreen({ navigation }) {
     };
   };
 
-  const startRound = () => {
+  const startRound = async () => {
+    if (!(await allowGameRound('earTraining'))) {
+      personalUpsell(navigation, "You've played today's free round — Prova Personal unlocks unlimited ear training.");
+      return;
+    }
     setScore(0); setQNum(1); setPicked(null); setRewarded(false);
     const q = makeQuestion();
     setQuestion(q); setPhase('playing');

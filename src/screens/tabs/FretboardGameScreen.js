@@ -15,6 +15,7 @@ import { NOTE_FILES, NOTE_NAMES } from '../../constants/notes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
+import { allowGameRound, personalUpsell } from '../../lib/entitlements';
 
 const ROUND_LEN = 10;
 const ROUND_POINTS = 20;
@@ -88,7 +89,11 @@ export default function FretboardGameScreen({ navigation }) {
     return { string, targetFret: fret, targetName: NOTE_NAMES[(string.midi + fret) % 12], maxFret: lv.maxFret };
   };
 
-  const startRound = () => {
+  const startRound = async () => {
+    if (!(await allowGameRound('fretGame'))) {
+      personalUpsell(navigation, "You've played today's free round — Prova Personal unlocks unlimited fretboard rounds.");
+      return;
+    }
     setScore(0); setQNum(1); setPicked(null); setRewarded(false);
     setQuestion(makeQuestion()); setPhase('playing');
   };

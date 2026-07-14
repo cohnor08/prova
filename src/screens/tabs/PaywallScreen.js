@@ -14,6 +14,8 @@ const PERKS = [
   { icon: 'sparkles', title: 'Your own AI practice plan', sub: 'A daily plan built around your instrument, level and goals.' },
   { icon: 'trending-up', title: 'Adapts as you improve', sub: 'Rate a session and the next day’s plan adjusts to match.' },
   { icon: 'school', title: 'Keep your teacher too', sub: 'Personal works right alongside any teacher you connect.' },
+  { icon: 'musical-notes', title: 'AI gig setlists', sub: 'Describe the gig — Prova builds the set from your library and taste.' },
+  { icon: 'ear', title: 'Unlimited practice games', sub: 'Ear training and the fretboard game, as many rounds as you like.' },
   { icon: 'infinite', title: 'Everything in Free', sub: 'Daily challenge, progress, songs and reminders — all included.' },
 ];
 

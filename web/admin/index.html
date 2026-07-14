@@ -448,6 +448,10 @@ async function openDrawer(uid) {
       Last practice: ${u.lastSessionDate ? new Date(u.lastSessionDate).toLocaleDateString() : 'never'}<br>
       Teacher: ${teacher ? '<b style="color:#F0F4FF">' + esc(teacher.username || teacher.email || '') + '</b>' : '—'}</div>
     </div>
+    ${u.role === 'teacher' ? `<div class="card"><h3>Teacher plan</h3>
+      <div class="muted" style="margin-bottom:8px">Current: <b style="color:#F0F4FF">${u.teacherPlan === 'pro' ? 'Studio (Pro) — unlimited students, parent reports, Pulse' : 'Free — 3-student cap, no reports/Pulse'}</b></div>
+      <button id="drawerPlan" class="orgBtn" style="width:100%">${u.teacherPlan === 'pro' ? 'Downgrade to Free' : 'Upgrade to Studio (Pro)'}</button>
+    </div>` : ''}
     <div class="card"><h3>Assigned tasks (${tasks.length})</h3>
       <div class="muted">${tasks.slice(0, 8).map((t) => `${t.completed ? '✅' : '⬜️'} ${esc(t.title || '')}`).join('<br>') || 'None'}</div>
     </div>
@@ -458,6 +462,13 @@ async function openDrawer(uid) {
       <div class="muted" style="margin-top:8px">Honours a privacy-policy deletion request: profile, history, chats, uploads and login — permanently.</div>
     </div>`;
   $('#drawerClose').onclick = () => $('#drawerWrap').classList.add('hidden');
+  const planBtn = $('#drawerPlan');
+  if (planBtn) planBtn.onclick = async () => {
+    const next = u.teacherPlan === 'pro' ? 'free' : 'pro';
+    planBtn.disabled = true;
+    try { await updateDoc(doc(db, 'users', u.uid), { teacherPlan: next }); u.teacherPlan = next; openDrawer(uid); }
+    catch (e) { alert('Failed: ' + e.message); planBtn.disabled = false; }
+  };
   $('#drawerDim').onclick = () => $('#drawerWrap').classList.add('hidden');
 
   try {

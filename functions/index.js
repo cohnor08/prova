@@ -468,6 +468,14 @@ exports.generateSetlist = onCall(
 
     await checkRateLimit(uid, 'generateSetlist');
 
+    // Personal feature — each generation costs real API money, so the plan
+    // check lives here, not just in the UI.
+    const callerSnap = await db.collection('users').doc(uid).get();
+    const caller = callerSnap.data() || {};
+    const hasPersonal = caller.role === 'personal' || caller.role === 'teacher'
+      || String(caller.planType || '').startsWith('personal');
+    if (!hasPersonal) throw new HttpsError('permission-denied', 'AI setlists are part of Prova Personal.');
+
     const { instrument, level, setting, audience, vibe, artists, songCount, library } = request.data;
 
     // ── Validate input ──
@@ -1245,6 +1253,7 @@ exports.sendWeeklyParentReports = onSchedule(
     for (const t of teachersSnap.docs) {
       const teacher = { uid: t.id, ...t.data() };
       if (!teacher.parentEmails || Object.keys(teacher.parentEmails).length === 0) continue;
+      if (teacher.teacherPlan !== 'pro') continue;      // Studio feature
       const cadence = teacher.reportCadence || 'off';   // opt-in: unset = off
       if (!autoReportDue(cadence, teacher.lastAutoReportAt)) continue;
       teachers++;
@@ -1282,6 +1291,7 @@ exports.sendParentReportsNow = onCall(
     const meSnap = await db.collection('users').doc(uid).get();
     const teacher = { uid, ...(meSnap.data() || {}) };
     if (teacher.role !== 'teacher') throw new HttpsError('permission-denied', 'Teachers only.');
+    if (teacher.teacherPlan !== 'pro') throw new HttpsError('permission-denied', 'Parent reports are part of Prova Studio.');
 
     // Cap manual sends per teacher per day so the button can't be used to spam.
     await checkRateLimit(uid, 'sendParentReportsNow');

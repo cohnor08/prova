@@ -104,6 +104,7 @@ function PracticeStackScreen() {
       <PracticeStack.Screen name="FretboardGame" component={FretboardGameScreen} />
       <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
       <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
+      <PracticeStack.Screen name="Paywall" component={PaywallScreen} />
     </PracticeStack.Navigator>
   );
 }

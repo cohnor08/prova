@@ -24,6 +24,7 @@ import { liveStreak } from '../../lib/score';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
+import { TEACHER_FREE_STUDENT_LIMIT, studioUpsell } from '../../lib/entitlements';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
@@ -1599,6 +1600,7 @@ function TeacherDashboard() {
   const [emailDraft, setEmailDraft] = useState({});
   const [sendingReports, setSendingReports] = useState(false);
   const [reportCadence, setReportCadence] = useState('off');   // off | weekly | fortnightly | monthly
+  const [teacherPlan, setTeacherPlan] = useState('pro');       // optimistic — real value loads with the doc
   const [lastAutoReportAt, setLastAutoReportAt] = useState(null);
   const [showCreateClass, setShowCreateClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -1664,6 +1666,7 @@ function TeacherDashboard() {
         setMyName(displayName({ uid: myUid, ...d }));
         setParentEmails(d.parentEmails && typeof d.parentEmails === 'object' ? d.parentEmails : {});
         setReportCadence(d.reportCadence || 'off');
+        setTeacherPlan(d.teacherPlan || 'free');
         setLastAutoReportAt(d.lastAutoReportAt || null);
       })
       .catch(() => {});
@@ -1672,6 +1675,10 @@ function TeacherDashboard() {
   // Auto-report cadence. Off by default (opt-in) so a new teacher never emails
   // parents by accident — they pick a schedule here to turn it on. Optimistic.
   const changeCadence = (c) => {
+    if (c !== 'off' && teacherPlan !== 'pro') {
+      studioUpsell('Automated parent report emails are part of Prova Studio.');
+      return;
+    }
     setReportCadence(c);
     if (myUid) updateDoc(doc(db, 'users', myUid), { reportCadence: c }).catch(() => {});
   };
@@ -1756,6 +1763,9 @@ function TeacherDashboard() {
       ]);
       setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
       setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
+      // Mirror the roster onto my doc — the student-side join-by-code cap
+      // reads students.length off the teacher doc.
+      updateDoc(doc(db, 'users', uid), { students: snap.docs.map((d) => d.id) }).catch(() => {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -1889,6 +1899,10 @@ function TeacherDashboard() {
 
   const addStudent = async () => {
     if (DEMO_MODE) { Alert.alert('Demo mode', 'Adding students is disabled in demo mode.'); return; }
+    if (teacherPlan !== 'pro' && students.length >= TEACHER_FREE_STUDENT_LIMIT) {
+      studioUpsell(`The free teacher plan includes up to ${TEACHER_FREE_STUDENT_LIMIT} students — Studio removes the cap.`);
+      return;
+    }
     const email = inviteEmail.trim().toLowerCase();
     if (!email) return;
     setInviting(true);
