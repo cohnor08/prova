@@ -5,6 +5,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Keyboard,
+  Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -32,6 +33,9 @@ export default function JournalScreen({ navigation }) {
   const [text, setText] = useState('');
   const [mood, setMood] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(null);   // entry being viewed/edited, or null
+  const [editText, setEditText] = useState('');
+  const [editMood, setEditMood] = useState(null);
   const prompt = PROMPTS[new Date().getDate() % PROMPTS.length];
 
   const load = useCallback(async () => {
@@ -64,6 +68,20 @@ export default function JournalScreen({ navigation }) {
     setSaving(false);
   };
 
+  const openEntry = (e) => { setEditing(e); setEditText(e.text); setEditMood(e.mood || null); };
+  const closeEntry = () => { Keyboard.dismiss(); setEditing(null); };
+
+  const saveEdit = async () => {
+    const body = editText.trim();
+    if (!body || !editing) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    Keyboard.dismiss();
+    const nextEntries = entries.map((e) => (e.id === editing.id ? { ...e, text: body, mood: editMood, editedAt: new Date().toISOString() } : e));
+    setEntries(nextEntries); setEditing(null);   // optimistic
+    try { await updateDoc(doc(db, 'users', uid), { journalEntries: nextEntries }); track('journal_entry_edited', {}); } catch (e) { load(); }
+  };
+
   const remove = (id) => {
     Alert.alert('Delete entry?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -72,7 +90,7 @@ export default function JournalScreen({ navigation }) {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
           const nextEntries = entries.filter((e) => e.id !== id);
-          setEntries(nextEntries);
+          setEntries(nextEntries); setEditing(null);
           try { await updateDoc(doc(db, 'users', uid), { journalEntries: nextEntries }); } catch (e) { load(); }
         },
       },
@@ -132,21 +150,67 @@ export default function JournalScreen({ navigation }) {
           </View>
         ) : (
           entries.map((e) => (
-            <View key={e.id} style={styles.entry}>
+            <TouchableOpacity key={e.id} style={styles.entry} onPress={() => openEntry(e)} activeOpacity={0.7}>
               <View style={styles.entryHead}>
                 <Text style={styles.entryDate}>{dateLabel(e.date)}</Text>
                 {!!e.mood && <Text style={[styles.entryMood, { color: MOOD_COLOR[e.mood] || COLORS.textSecondary }]}>{e.mood}</Text>}
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={() => remove(e.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
+                {!!e.editedAt && <Text style={styles.editedTag}>edited</Text>}
+                <Ionicons name="create-outline" size={16} color={COLORS.textMuted} />
               </View>
               <Text style={styles.entryText}>{e.text}</Text>
-            </View>
+            </TouchableOpacity>
           ))
         )}
         <View style={{ height: SPACING.xxl || 40 }} />
       </ScrollView>
+
+      <Modal visible={!!editing} transparent animationType="fade" onRequestClose={closeEntry}>
+        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalDate}>{editing ? dateLabel(editing.date) : ''}</Text>
+              <TouchableOpacity onPress={closeEntry} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.input}
+              value={editText}
+              onChangeText={setEditText}
+              placeholder="Your reflection…"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              textAlignVertical="top"
+            />
+            <View style={styles.moodRow}>
+              {MOODS.map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.moodChip, editMood === m && { backgroundColor: MOOD_COLOR[m], borderColor: MOOD_COLOR[m] }]}
+                  onPress={() => setEditMood(editMood === m ? null : m)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.moodText, editMood === m && { color: '#fff' }]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={[styles.saveBtn, !editText.trim() && styles.saveBtnOff]}
+              onPress={saveEdit}
+              disabled={!editText.trim()}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="checkmark" size={18} color="#fff" />
+              <Text style={styles.saveText}>Save changes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => editing && remove(editing.id)} style={styles.deleteRow} hitSlop={{ top: 8, bottom: 8 }}>
+              <Ionicons name="trash-outline" size={15} color="#dc2626" />
+              <Text style={styles.deleteText}>Delete entry</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -173,5 +237,12 @@ const styles = StyleSheet.create({
   entryHead: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 6 },
   entryDate: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
   entryMood: { fontSize: 12, fontWeight: '700' },
+  editedTag: { color: COLORS.textMuted, fontSize: 11, fontStyle: 'italic', marginRight: 6 },
   entryText: { color: COLORS.textSecondary, fontSize: 14.5, lineHeight: 21 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.lg },
+  modalCard: { backgroundColor: COLORS.card, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  modalDate: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  deleteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.md },
+  deleteText: { color: '#dc2626', fontSize: 14, fontWeight: '700' },
 });

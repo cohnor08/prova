@@ -11,7 +11,7 @@ import { Audio } from 'expo-av';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { NOTE_FILES } from '../../constants/notes';
+import { PIANO_FILES as NOTE_FILES } from '../../constants/pianoNotes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
