@@ -133,7 +133,7 @@
         <button class="orgBtn" id="csvTeach" style="border:1px solid #1E2D4A;border-radius:10px;padding:10px 14px">📋 Teachers only</button>
       </div>
       <div class="card">
-        <table id="userTable"><thead><tr><th>User</th><th>Role</th><th>Streak</th><th>Score</th><th>Joined</th></tr></thead><tbody></tbody></table>
+        <table id="userTable"><thead><tr><th>User</th><th>Role</th><th>Plan</th><th>Streak</th><th>Score</th><th>Joined</th></tr></thead><tbody></tbody></table>
       </div>
     </section>
 
@@ -284,6 +284,12 @@ function renderUsers() {
         ${['student','personal','teacher'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
         ${['student','personal','teacher'].includes(u.role) ? '' : `<option selected value="${esc(u.role || '')}">${esc(u.role || 'none')}</option>`}
       </select></td>
+      <td>${u.role === 'teacher'
+        ? `<select data-uid="${u.uid}" class="planSel">
+             <option value="free" ${u.teacherPlan === 'pro' ? '' : 'selected'}>Free</option>
+             <option value="pro" ${u.teacherPlan === 'pro' ? 'selected' : ''}>Studio</option>
+           </select>`
+        : `<span class="muted">${u.role === 'personal' ? 'Personal' : 'Free'}</span>`}</td>
       <td>${u.streak || 0}</td>
       <td>${(u.provaScore || 0).toLocaleString()}</td>
       <td class="muted">${(u.createdAt || '').slice(0, 10)}</td>
@@ -291,6 +297,13 @@ function renderUsers() {
   document.querySelectorAll('#userTable tr[data-open]').forEach((tr) => tr.onclick = (ev) => {
     if (ev.target.tagName === 'SELECT' || ev.target.tagName === 'OPTION') return;
     openDrawer(tr.dataset.open);
+  });
+  document.querySelectorAll('.planSel').forEach((sel) => sel.onchange = async () => {
+    try {
+      await updateDoc(doc(db, 'users', sel.dataset.uid), { teacherPlan: sel.value });
+      const u = allUsers.find((x) => x.uid === sel.dataset.uid); if (u) u.teacherPlan = sel.value;
+      toast(sel.value === 'pro' ? 'Upgraded to Studio' : 'Downgraded to Free');
+    } catch (e) { toast('Failed — are you signed in as an admin?'); }
   });
   document.querySelectorAll('.roleSel').forEach((sel) => sel.onchange = async () => {
     try {
@@ -304,7 +317,7 @@ $('#userSearch').oninput = () => renderUsers();
 
 function teacherRows(teachers) {
   if (!teachers.length) return '<div class="muted" style="padding:8px 0">No teachers in this group.</div>';
-  return `<table><thead><tr><th>Teacher</th><th>Join code</th><th>Students</th><th>Organisation</th></tr></thead><tbody>` +
+  return `<table><thead><tr><th>Teacher</th><th>Join code</th><th>Students</th><th>Plan</th><th>Organisation</th></tr></thead><tbody>` +
     teachers.map((t) => {
       const students = allUsers.filter((u) => u.teacherUid === t.uid);
       const roster = students.map((s) => esc(s.username || (s.email || '').split('@')[0])).join(', ') || '<i>no students yet</i>';
@@ -314,9 +327,13 @@ function teacherRows(teachers) {
           <td><b>${esc(t.username || (t.email || '').split('@')[0])}</b><br><span class="muted">${esc(t.email || '')}</span></td>
           <td><code>${esc(t.teacherCode || '—')}</code></td>
           <td>${students.length}</td>
+          <td><select class="planSelOrg" data-uid="${t.uid}">
+            <option value="free" ${t.teacherPlan === 'pro' ? '' : 'selected'}>Free</option>
+            <option value="pro" ${t.teacherPlan === 'pro' ? 'selected' : ''}>Studio</option>
+          </select></td>
           <td><select class="orgSel" data-uid="${t.uid}">${opts}</select></td>
         </tr>
-        <tr class="hidden"><td colspan="4"><div class="roster">${roster}</div></td></tr>`;
+        <tr class="hidden"><td colspan="5"><div class="roster">${roster}</div></td></tr>`;
     }).join('') + '</tbody></table>';
 }
 
@@ -328,6 +345,8 @@ function renderOrgs() {
     return `<details class="orgCard">
       <summary><span>🏫 ${esc(o.name)}</span>
         <span class="meta">${members.length} teacher${members.length === 1 ? '' : 's'} · ${studentCount} student${studentCount === 1 ? '' : 's'}
+          <button class="orgBtn" data-allplan="pro" data-org="${o.id}" onclick="event.preventDefault();event.stopPropagation()" title="Upgrade every teacher in this organisation">All → Studio</button>
+          <button class="orgBtn" data-allplan="free" data-org="${o.id}" onclick="event.preventDefault();event.stopPropagation()" title="Downgrade every teacher in this organisation">All → Free</button>
           <button class="orgBtn" data-rename="${o.id}" onclick="event.preventDefault();event.stopPropagation()">✎</button>
           <button class="orgBtn" data-del="${o.id}" onclick="event.preventDefault();event.stopPropagation()">🗑</button>
         </span></summary>
@@ -341,6 +360,27 @@ function renderOrgs() {
     </details>`;
   $('#orgGroups').innerHTML = groups + indep;
 
+  document.querySelectorAll('[data-allplan]').forEach((b) => b.onclick = async (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    const plan = b.dataset.allplan;
+    const org = allOrgs.find((x) => x.id === b.dataset.org);
+    const members = allUsers.filter((u) => u.role === 'teacher' && u.orgId === b.dataset.org);
+    if (!members.length) { toast('No teachers in this organisation.'); return; }
+    if (!confirm(`Set ALL ${members.length} teacher${members.length === 1 ? '' : 's'} in "${org?.name}" to ${plan === 'pro' ? 'Studio (Pro)' : 'Free'}?`)) return;
+    let ok = 0;
+    for (const t of members) {
+      try { await updateDoc(doc(db, 'users', t.uid), { teacherPlan: plan }); t.teacherPlan = plan; ok++; } catch (e) {}
+    }
+    toast(`${ok}/${members.length} teachers set to ${plan === 'pro' ? 'Studio' : 'Free'}`);
+    renderOrgs();
+  });
+  document.querySelectorAll('.planSelOrg').forEach((sel) => sel.onchange = async () => {
+    try {
+      await updateDoc(doc(db, 'users', sel.dataset.uid), { teacherPlan: sel.value });
+      const t = allUsers.find((x) => x.uid === sel.dataset.uid); if (t) t.teacherPlan = sel.value;
+      toast(sel.value === 'pro' ? 'Upgraded to Studio' : 'Downgraded to Free');
+    } catch (e) { toast('Failed to change plan'); }
+  });
   document.querySelectorAll('.orgSel').forEach((sel) => sel.onchange = async () => {
     try {
       await updateDoc(doc(db, 'users', sel.dataset.uid), { orgId: sel.value || null });
@@ -452,6 +492,10 @@ async function openDrawer(uid) {
       <div class="muted" style="margin-bottom:8px">Current: <b style="color:#F0F4FF">${u.teacherPlan === 'pro' ? 'Studio (Pro) — unlimited students, parent reports, Pulse' : 'Free — 3-student cap, no reports/Pulse'}</b></div>
       <button id="drawerPlan" class="orgBtn" style="width:100%">${u.teacherPlan === 'pro' ? 'Downgrade to Free' : 'Upgrade to Studio (Pro)'}</button>
     </div>` : ''}
+    ${u.role === 'teacher' ? `<div class="card"><h3>Students</h3>
+      <input id="drawerStuSearch" placeholder="Search students…" style="width:100%;box-sizing:border-box;background:#0C1424;border:1px solid #1E2D4A;border-radius:10px;color:#F0F4FF;padding:9px 12px;font-size:13px;margin-bottom:8px">
+      <div id="drawerStuList"></div>
+    </div>` : ''}
     <div class="card"><h3>Assigned tasks (${tasks.length})</h3>
       <div class="muted">${tasks.slice(0, 8).map((t) => `${t.completed ? '✅' : '⬜️'} ${esc(t.title || '')}`).join('<br>') || 'None'}</div>
     </div>
@@ -462,6 +506,25 @@ async function openDrawer(uid) {
       <div class="muted" style="margin-top:8px">Honours a privacy-policy deletion request: profile, history, chats, uploads and login — permanently.</div>
     </div>`;
   $('#drawerClose').onclick = () => $('#drawerWrap').classList.add('hidden');
+  if (u.role === 'teacher') {
+    const roster = allUsers
+      .filter((x) => x.teacherUid === u.uid)
+      .sort((a, b) => (a.username || a.email || '').localeCompare(b.username || b.email || ''));
+    const renderRoster = (q) => {
+      const f = roster.filter((st) => !q || (st.username || '').toLowerCase().includes(q) || (st.email || '').toLowerCase().includes(q));
+      $('#drawerStuList').innerHTML = f.map((st, i) => `
+        <div class="stuRow" data-uid="${st.uid}" style="display:flex;align-items:baseline;gap:8px;padding:8px 2px;border-bottom:1px solid #131C31;cursor:pointer">
+          <span class="muted" style="min-width:24px;text-align:right">${i + 1}.</span>
+          <span><b style="color:#F0F4FF">${esc(st.username || (st.email || '').split('@')[0])}</b><br><span class="muted" style="font-size:11px">${esc(st.email || '')}</span></span>
+          <span class="muted" style="margin-left:auto;font-size:11px;white-space:nowrap">${(st.provaScore || 0).toLocaleString()} pts · ${st.streak || 0}d streak</span>
+        </div>`).join('') || '<div class="muted">No students yet.</div>';
+      document.querySelectorAll('.stuRow').forEach((r) => r.onclick = () => openDrawer(r.dataset.uid));
+    };
+    renderRoster('');
+    $('#drawerStuSearch').oninput = (e) => renderRoster(e.target.value.trim().toLowerCase());
+    const h = [...document.querySelectorAll('#drawer .card h3')].find((x) => x.textContent === 'Students');
+    if (h) h.textContent = `Students (${roster.length})`;
+  }
   const planBtn = $('#drawerPlan');
   if (planBtn) planBtn.onclick = async () => {
     const next = u.teacherPlan === 'pro' ? 'free' : 'pro';
