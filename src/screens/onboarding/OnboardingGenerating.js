@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 const STEPS = [
   'Analyzing your profile...',
@@ -14,6 +15,7 @@ const STEPS = [
 const STEP_DELAY = 1800;
 
 export default function OnboardingGenerating() {
+  useThemeSync();
   const [activeStep, setActiveStep] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -79,7 +81,7 @@ export default function OnboardingGenerating() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -132,4 +134,4 @@ const styles = StyleSheet.create({
   stepText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 20 },
   stepTextDone: { color: COLORS.textSecondary, textDecorationLine: 'line-through' },
   stepTextActive: { color: COLORS.text, fontWeight: '600' },
-});
+}));

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, DAYS, PRACTICE_DURATIONS } from '../../constants/theme';
+import { COLORS, SPACING, DAYS, PRACTICE_DURATIONS, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 export default function OnboardingSchedule({ onNext, onBack, data }) {
+  useThemeSync();
   const [selectedDays, setSelectedDays] = useState(data?.availableDays || []);
   const [selectedDuration, setSelectedDuration] = useState(data?.dailyDuration || null);
 
@@ -75,7 +77,7 @@ export default function OnboardingSchedule({ onNext, onBack, data }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl, paddingTop: 56 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
   stepPills: { flexDirection: 'row', gap: 6 },
@@ -131,4 +133,4 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
-});
+}));

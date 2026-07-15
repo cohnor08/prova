@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // The reward for completing the first-session warm-up. Kept here so the
 // celebration screen and the Firestore write (OnboardingFlow) stay in sync.
@@ -28,6 +29,7 @@ function firstSessionFrom(plan) {
 // First-win onboarding: a quick guided warm-up so the new user finishes their
 // very first minute with a streak + points before they ever reach the app.
 export default function OnboardingFirstWin({ profile, plan, onFinish }) {
+  useThemeSync();
   const [phase, setPhase] = useState('reveal'); // reveal → timer → done
   const [secondsLeft, setSecondsLeft] = useState(WARMUP_SECONDS);
   const fade = useRef(new Animated.Value(0)).current;
@@ -161,7 +163,7 @@ export default function OnboardingFirstWin({ profile, plan, onFinish }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1, backgroundColor: COLORS.background,
     alignItems: 'center', justifyContent: 'center', padding: SPACING.xl,
@@ -212,4 +214,4 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   skipBtn: { paddingVertical: SPACING.md, marginTop: SPACING.sm },
   skipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
-});
+}));

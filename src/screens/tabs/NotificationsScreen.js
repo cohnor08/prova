@@ -8,7 +8,8 @@ import {
   collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, arrayUnion,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // The bell on Today opens this: everything that happened while the student was
 // away — gig invites (accept/decline), new teacher tasks, etc. Notes live in
@@ -44,6 +45,7 @@ function prettyGigDate(ymd, time) {
 }
 
 export default function NotificationsScreen({ navigation }) {
+  useThemeSync();
   const uid = auth.currentUser?.uid;
   const [notes, setNotes] = useState([]);
   const [actingId, setActingId] = useState(null);
@@ -182,7 +184,7 @@ export default function NotificationsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 72 },
@@ -209,4 +211,4 @@ const styles = StyleSheet.create({
   declineText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   acceptBtn: { flex: 1.3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10, backgroundColor: COLORS.primary },
   acceptText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
-});
+}));

@@ -9,7 +9,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { ensureTeacherCode } from '../../lib/teacher';
 import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
@@ -227,6 +228,7 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
 }
 
 export default function TeacherHomeScreen({ navigation }) {
+  useThemeSync();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
   const [students, setStudents] = useState([]);
@@ -678,7 +680,7 @@ export default function TeacherHomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg },
   kicker: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
@@ -779,4 +781,4 @@ const styles = StyleSheet.create({
   },
   askTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
   askSub: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 1 },
-});
+}));

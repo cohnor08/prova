@@ -17,9 +17,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { useAuthContext } from '../../contexts/AuthContext';
-import { COLORS, SPACING, INSTRUMENTS } from '../../constants/theme';
+import { COLORS, SPACING, INSTRUMENTS, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 export default function TeacherOnboarding() {
+  useThemeSync();
   const { setOnboardingComplete } = useAuthContext();
   const [name, setName] = useState('');
   const [teaches, setTeaches] = useState([]);
@@ -129,7 +131,7 @@ export default function TeacherOnboarding() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 },
   iconWrap: {
@@ -189,4 +191,4 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
-});
+}));

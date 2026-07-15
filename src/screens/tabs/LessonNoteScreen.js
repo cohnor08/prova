@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 const parseYmd = (s) => { const [y, m, d] = (s || '').split('-').map(Number); return new Date(y, m - 1, d); };
 function prettyDate(s) {
@@ -24,6 +25,7 @@ function timeLabel(v) {
 // Notes live in the teacher's `attendance` map alongside that lesson's
 // status/mark, keyed by `${lessonId}__${date}`.
 export default function LessonNoteScreen({ navigation, route }) {
+  useThemeSync();
   const { lessonId, dateStr, studentName, studentUid, time, note: initialNote } = route.params || {};
   const key = `${lessonId}__${dateStr}`;
   const [text, setText] = useState(initialNote || '');
@@ -82,7 +84,7 @@ export default function LessonNoteScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 64 },
@@ -97,4 +99,4 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
     color: COLORS.text, fontSize: 15, lineHeight: 22, padding: SPACING.md, minHeight: 240,
   },
-});
+}));
