@@ -1689,7 +1689,6 @@ export default function TodayScreen({ navigation }) {
         {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
         {isToday && teacherGroups.map((g) => {
           const open = !closedTeachers.has(g.tid);
-          const label = (g.name || (g.isPrimary ? 'your teacher' : 'a teacher')).toUpperCase();
           const toggle = () => setClosedTeachers((prev) => {
             const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
           });
@@ -1697,11 +1696,17 @@ export default function TodayScreen({ navigation }) {
             <View key={g.tid} style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>FROM {label}</Text>
+                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>FROM YOUR TEACHER</Text>
                 {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
                 {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
                 <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
+              {open && !!g.name && (
+                <View style={styles.teacherNameRow}>
+                  <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
+                  <Text style={styles.teacherNameText}>{g.name}</Text>
+                </View>
+              )}
               {open && g.isPrimary && nextLesson && (
                 <TouchableOpacity
                   style={styles.lessonRow}
@@ -2272,6 +2277,8 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   classGroupKicker: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  teacherNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
+  teacherNameText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.
