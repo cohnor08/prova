@@ -3,10 +3,10 @@
 // keys, labels, icons and routes. `route` is the screen name inside PracticeStack;
 // `counter` is the per-game daily counter field on the user doc.
 export const DRILLS = [
-  { key: 'ear',    title: 'Ear training',  sub: 'Name what you hear',  icon: 'ear-outline',    route: 'EarTraining',   counter: 'earTraining' },
-  { key: 'rhythm', title: 'Rhythm tapper', sub: 'Lock in your timing', icon: 'pulse',          route: 'RhythmTapper',  counter: 'rhythmTapper' },
-  { key: 'fret',   title: 'Fretboard',     sub: 'Find the note',       icon: 'locate',         route: 'FretboardGame', counter: 'fretGame' },
-  { key: 'theory', title: 'Theory quiz',   sub: 'Test your knowledge', icon: 'school-outline', route: 'TheoryQuiz',    counter: 'theoryQuiz' },
+  { key: 'ear',    title: 'Ear training',  sub: 'Name what you hear',  icon: 'ear-outline',    route: 'EarTraining',   counter: 'earTraining',  levels: 3 },
+  { key: 'rhythm', title: 'Rhythm tapper', sub: 'Lock in your timing', icon: 'pulse',          route: 'RhythmTapper',  counter: 'rhythmTapper', levels: 4 },
+  { key: 'fret',   title: 'Fretboard',     sub: 'Find the note',       icon: 'locate',         route: 'FretboardGame', counter: 'fretGame',     levels: 4 },
+  { key: 'theory', title: 'Theory quiz',   sub: 'Test your knowledge', icon: 'school-outline', route: 'TheoryQuiz',    counter: 'theoryQuiz',   levels: 3 },
 ];
 
 export const getDrill = (key) => DRILLS.find((d) => d.key === key) || null;

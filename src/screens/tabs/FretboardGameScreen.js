@@ -49,11 +49,11 @@ const FRET_PAD = 8;                // must match styles.fretRow paddingHorizonta
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-export default function FretboardGameScreen({ navigation }) {
+export default function FretboardGameScreen({ navigation, route }) {
   useThemeSync();
   const celebrate = useCelebration();
   const [instrument, setInstrument] = useState('Guitar');
-  const [level, setLevel] = useState(1);
+  const [level, setLevel] = useState(route?.params?.level || 1);
   const [mode, setMode] = useState('find');       // 'find' (tap the fret) | 'name' (pick the note)
   const [phase, setPhase] = useState('menu');
   const [qNum, setQNum] = useState(0);
