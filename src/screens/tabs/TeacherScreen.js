@@ -889,11 +889,13 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
   );
 }
 
-function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onClose, onAssigned }) {
+function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTask, onSaveClass, visible, onClose, onAssigned }) {
   // The modal assigns to one student, or to every student in a class at once —
-  // or, when editTask is passed, edits one student's existing task in place.
+  // or edits an existing task: editTask = one student's task, editClassTask = a
+  // whole class-task batch (saved via onSaveClass, which updates every member).
   const isClass = !!klass;
   const isEdit = !!editTask;
+  const isClassEdit = !!editClassTask;
   const recipients = isClass ? (recipientUids || []) : (student ? [student.uid] : []);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -940,17 +942,18 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   // Pre-fill the fields when opening to edit an existing task.
   useEffect(() => {
-    if (visible && editTask) {
-      setTitle(editTask.title || '');
-      setDescription(editTask.description || '');
-      setYoutube(editTask.youtube || '');
-      setSong(editTask.song || '');
-      setDrill(editTask.drill || null);
-      setDueDate(editTask.dueDate || null);
-      setDurationMin(editTask.durationMin || 0);
-      setFeedback(editTask.feedback || '');
+    const src = editTask || editClassTask;
+    if (visible && src) {
+      setTitle(src.title || '');
+      setDescription(src.description || '');
+      setYoutube(src.youtube || '');
+      setSong(src.song || '');
+      setDrill(src.drill || null);
+      setDueDate(src.dueDate || null);
+      setDurationMin(src.durationMin || 0);
+      setFeedback(src.feedback || '');
     }
-  }, [visible, editTask]);
+  }, [visible, editTask, editClassTask]);
 
   const saveTemplates = (next) => {
     setTemplates(next);
@@ -986,6 +989,24 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
     if (!title.trim()) return;
     if (DEMO_MODE) {
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
+      return;
+    }
+    // Class-edit mode: hand the edited fields back to the teacher screen, which
+    // updates the whole batch across every class member.
+    if (isClassEdit) {
+      Keyboard.dismiss();
+      setLoading(true);
+      try {
+        await onSaveClass({
+          title: title.trim(), description: description.trim(), youtube: youtube.trim(),
+          song: song.trim(), drill: drill || null, dueDate, durationMin: durationMin || 0,
+        });
+        close();
+      } catch (err) {
+        Alert.alert('Error', err.message);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     // Edit mode: update the one existing task on this student's doc.
@@ -1081,7 +1102,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 automaticallyAdjustKeyboardInsets
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
               >
-              <Text style={styles.modalTitle}>{isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
+              <Text style={styles.modalTitle}>{isClassEdit ? 'Edit Class Task' : isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
@@ -1237,7 +1258,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 >
                   {loading
                     ? <ActivityIndicator color={COLORS.text} size="small" />
-                    : <Text style={styles.modalAssignText}>{isEdit ? 'Save changes' : 'Assign task'}</Text>}
+                    : <Text style={styles.modalAssignText}>{(isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
               </ScrollView>
@@ -1636,6 +1657,7 @@ function TeacherDashboard() {
   const [addToClass, setAddToClass] = useState(null); // class we're adding students to
   const [studentSearch, setStudentSearch] = useState('');
   const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
+  const [editClassCtx, setEditClassCtx] = useState(null); // { klass, group, task } class-task batch being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
   const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
@@ -2038,6 +2060,36 @@ function TeacherDashboard() {
         },
       ]
     );
+  };
+
+  // Tap a CLASS TASKS batch → edit it for the whole class. Find a representative
+  // copy to prefill the editor.
+  const openClassTaskEdit = (klass, group) => {
+    let sample = null;
+    for (const uid of (klass.studentUids || [])) {
+      const s = students.find((x) => x.uid === uid);
+      const t = (s?.assignedTasks || []).find((tt) => tt.classId === klass.id && tt.assignedAt === group.assignedAt && tt.title === group.title);
+      if (t) { sample = t; break; }
+    }
+    if (sample) setEditClassCtx({ klass, group, task: sample });
+  };
+
+  // Apply the edited fields to every member's copy of the batch (matched by the
+  // ORIGINAL classId + assignedAt + title, so a title change still lands).
+  const saveClassTask = async (fields) => {
+    const { klass, group } = editClassCtx;
+    const memberUids = (klass.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+    const matches = (t) => t.classId === klass.id && t.assignedAt === group.assignedAt && t.title === group.title;
+    const patch = (t) => ({ ...t, ...fields });
+    await Promise.all(memberUids.map((uid) => {
+      const s = students.find((x) => x.uid === uid);
+      const next = (s?.assignedTasks || []).map((t) => (matches(t) ? patch(t) : t));
+      return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    }));
+    setStudents((prev) => prev.map((x) =>
+      memberUids.includes(x.uid) ? { ...x, assignedTasks: (x.assignedTasks || []).map((t) => (matches(t) ? patch(t) : t)) } : x
+    ));
+    loadStudents();
   };
 
   // One-tap parent report: compile this week's practice + share it.
@@ -2577,7 +2629,10 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                     <Text style={styles.classGroupLabel}>CLASS TASKS</Text>
                                     {classGroups.map((g) => (
                                       <View key={g.key} style={styles.classGroupRow}>
-                                        <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        {/* Tap the batch to edit it for the whole class. */}
+                                        <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }} onPress={() => openClassTaskEdit(c, g)} activeOpacity={0.7}>
+                                          <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        </TouchableOpacity>
                                         <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
                                         <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                           <Ionicons name="trash-outline" size={16} color={COLORS.error} />
@@ -2983,6 +3038,16 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
         editTask={editTaskCtx?.task}
         visible={!!editTaskCtx}
         onClose={() => setEditTaskCtx(null)}
+        onAssigned={loadStudents}
+      />
+
+      <AssignTaskModal
+        klass={editClassCtx?.klass}
+        recipientUids={editClassCtx?.klass?.studentUids}
+        editClassTask={editClassCtx?.task}
+        onSaveClass={saveClassTask}
+        visible={!!editClassCtx}
+        onClose={() => setEditClassCtx(null)}
         onAssigned={loadStudents}
       />
 
