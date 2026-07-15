@@ -1748,34 +1748,7 @@ export default function TodayScreen({ navigation }) {
           );
         })}
 
-        {/* Song to practice — matched to the player's level */}
-        {isToday && songOfTheDay && (
-          <TouchableOpacity
-            style={styles.songCard}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('Practice', {
-              screen: 'Songs',
-              params: { focusSong: songOfTheDay },
-              initial: false,
-            })}
-          >
-            <View style={styles.songIcon}>
-              <Ionicons name="musical-notes" size={20} color={COLORS.primary} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.songLabel}>
-                SONG TO PRACTICE{userData?.level ? ` · ${userData.level.toUpperCase()}` : ''}
-              </Text>
-              <Text style={styles.songTitle} numberOfLines={1}>{songOfTheDay.title}</Text>
-              {!!songOfTheDay.artist && (
-                <Text style={styles.songArtist} numberOfLines={1}>{songOfTheDay.artist}</Text>
-              )}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        )}
-
-        {/* Today's drills — optional mini-games, kept at the bottom (low priority) */}
+        {/* Today's drills — optional mini-games, above the song (low priority) */}
         {isToday && (
           <>
             <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
@@ -1801,6 +1774,33 @@ export default function TodayScreen({ navigation }) {
               })}
             </View>
           </>
+        )}
+
+        {/* Song to practice — matched to the player's level */}
+        {isToday && songOfTheDay && (
+          <TouchableOpacity
+            style={styles.songCard}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Practice', {
+              screen: 'Songs',
+              params: { focusSong: songOfTheDay },
+              initial: false,
+            })}
+          >
+            <View style={styles.songIcon}>
+              <Ionicons name="musical-notes" size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.songLabel}>
+                SONG TO PRACTICE{userData?.level ? ` · ${userData.level.toUpperCase()}` : ''}
+              </Text>
+              <Text style={styles.songTitle} numberOfLines={1}>{songOfTheDay.title}</Text>
+              {!!songOfTheDay.artist && (
+                <Text style={styles.songArtist} numberOfLines={1}>{songOfTheDay.artist}</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
         )}
 
         {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
