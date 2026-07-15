@@ -15,7 +15,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow } from '../../lib/claude';
 import { track } from '../../lib/analytics';
-import { ensureTeacherCode } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
@@ -1784,11 +1784,10 @@ function TeacherDashboard() {
       const uid = auth.currentUser.uid;
       // Students who connected (via my join code, or an accepted request) carry
       // teacherUid === my uid.
-      const [snap, meSnap] = await Promise.all([
-        getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+      const [roster, meSnap] = await Promise.all([
+        queryMyStudents(uid),
         getDoc(doc(db, 'users', uid)),
       ]);
-      const roster = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
       setStudents(roster);
       setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
       // Downgraded (or signed up free) with more students than the plan

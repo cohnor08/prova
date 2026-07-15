@@ -34,8 +34,17 @@ export async function ensureTeacherCode(uid) {
   return code;
 }
 
-// Student links to a teacher by their join code. Writes the student's own
-// `teacherUid` (owner write — always allowed). Returns the teacher's name.
+// A student's teachers, as an array (migrates the legacy single teacherUid).
+export function teacherIdsOf(userData = {}) {
+  const arr = Array.isArray(userData.teacherUids) ? userData.teacherUids : [];
+  if (userData.teacherUid && !arr.includes(userData.teacherUid)) return [userData.teacherUid, ...arr];
+  return arr;
+}
+
+// Student links to a teacher by their join code. A student can be connected to
+// MULTIPLE teachers: the link is added to `teacherUids` (and `teacherUid` stays
+// as the "primary"/first teacher for backward compatibility). Owner write —
+// always allowed. Returns the teacher's name.
 export async function linkTeacherByCode(studentUid, rawCode) {
   track('student_linked');
   const code = (rawCode || '').trim().toUpperCase();
@@ -45,13 +54,19 @@ export async function linkTeacherByCode(studentUid, rawCode) {
   const teacher = snap.docs[0];
   if (teacher.id === studentUid) throw new Error("That's your own code.");
   const d = teacher.data();
+  const cur = (await getDoc(doc(db, 'users', studentUid))).data() || {};
+  const already = teacherIdsOf(cur);
+  if (already.includes(teacher.id)) throw new Error("You're already connected to this teacher.");
   if (d.teacherPlan !== 'pro') {
     const roster = Array.isArray(d.students) ? d.students : [];
     if (!roster.includes(studentUid) && roster.length >= TEACHER_FREE_STUDENT_LIMIT) {
       throw new Error("This teacher's student list is full on their current plan — ask them about Prova Studio.");
     }
   }
-  await updateDoc(doc(db, 'users', studentUid), { teacherUid: teacher.id });
+  const nextUids = [...already, teacher.id];
+  const update = { teacherUids: nextUids };
+  if (!cur.teacherUid) update.teacherUid = teacher.id; // first teacher = primary
+  await updateDoc(doc(db, 'users', studentUid), update);
   // Auto-create the chat thread so it appears in the student's Messages right away.
   try {
     await ensureChatThread({
@@ -62,4 +77,29 @@ export async function linkTeacherByCode(studentUid, rawCode) {
     });
   } catch (e) { /* non-fatal — chat just won't be pre-seeded */ }
   return { uid: teacher.id, name: d.username || d.email?.split('@')[0] || 'your teacher' };
+}
+
+// Disconnect ONE teacher. Removes them from teacherUids and, if they were the
+// primary, promotes another (or clears it). Owner write.
+export async function unlinkTeacher(studentUid, teacherId) {
+  const ref = doc(db, 'users', studentUid);
+  const cur = (await getDoc(ref)).data() || {};
+  const nextUids = teacherIdsOf(cur).filter((x) => x !== teacherId);
+  const update = { teacherUids: nextUids };
+  if (cur.teacherUid === teacherId) update.teacherUid = nextUids[0] || null;
+  await updateDoc(ref, update);
+  return nextUids;
+}
+
+// Every student connected to this teacher — via the legacy `teacherUid` OR the
+// `teacherUids` array — merged and de-duplicated. Returns an array of
+// { uid, ...data }.
+export async function queryMyStudents(uid) {
+  const [a, b] = await Promise.all([
+    getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+    getDocs(query(collection(db, 'users'), where('teacherUids', 'array-contains', uid))),
+  ]);
+  const map = new Map();
+  for (const d of [...a.docs, ...b.docs]) map.set(d.id, { uid: d.id, ...d.data() });
+  return [...map.values()];
 }

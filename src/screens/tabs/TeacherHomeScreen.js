@@ -11,7 +11,7 @@ import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, 
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
-import { ensureTeacherCode } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
 import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { sendNotification } from '../../lib/inbox';
@@ -356,12 +356,11 @@ export default function TeacherHomeScreen({ navigation }) {
           if (!uid) return;
           // Release any program weeks that have come due since last open.
           advancePrograms(uid).catch(() => {});
-          // Students who connected carry teacherUid === my uid.
-          const [snap, meSnap] = await Promise.all([
-            getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+          // Students who connected carry my uid in teacherUid or teacherUids.
+          const [list, meSnap] = await Promise.all([
+            queryMyStudents(uid),
             getDoc(doc(db, 'users', uid)),
           ]);
-          const list = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
           if (!cancelled) {
             setStats(computeStats(list));
             setStudents(list);
