@@ -186,6 +186,8 @@ export default function LearnSongScreen({ navigation }) {
   // ── Per-step practice timer ───────────────────────────────────────────────
   const startStep = (songKey, stepId) => {
     clearInterval(tickRef.current);
+    setOpenSteps((prev) => new Set(prev).add(`${songKey}_${stepId}`)); // keep it open while working
+
     // Practicing (again) un-completes the step so it lights up while you work on it.
     const next = songs.map((s) =>
       s.songKey === songKey
@@ -369,10 +371,10 @@ export default function LearnSongScreen({ navigation }) {
                         {s.steps.map((st, i) => {
                           const isActive = active && active.songKey === s.songKey && active.stepId === st.id;
                           const stepKey = `${s.songKey}_${st.id}`;
-                          const stepOpen = openSteps.has(stepKey) || isActive; // a running timer forces it open
+                          const stepOpen = openSteps.has(stepKey); // fully controlled by the toggle
                           return (
                             <View key={st.id} style={[styles.step, st.done && styles.stepDone]}>
-                              <TouchableOpacity style={styles.stepHeadRow} onPress={() => toggleStepOpen(stepKey)} activeOpacity={0.7}>
+                              <View style={styles.stepHeadRow}>
                                 <TouchableOpacity onPress={() => toggleStepDone(s.songKey, st.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                   <Ionicons
                                     name={st.done ? 'checkmark-circle' : 'ellipse-outline'}
@@ -380,11 +382,13 @@ export default function LearnSongScreen({ navigation }) {
                                     color={st.done ? COLORS.success : COLORS.textMuted}
                                   />
                                 </TouchableOpacity>
-                                <Text style={[styles.stepTitle, { flex: 1 }, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
-                                  {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
-                                </Text>
-                                <Ionicons name={stepOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
-                              </TouchableOpacity>
+                                <TouchableOpacity style={styles.stepHeadMain} onPress={() => toggleStepOpen(stepKey)} activeOpacity={0.7}>
+                                  <Text style={[styles.stepTitle, { flex: 1 }, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
+                                    {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
+                                  </Text>
+                                  <Ionicons name={stepOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+                                </TouchableOpacity>
+                              </View>
 
                               {stepOpen && (
                                 <>
