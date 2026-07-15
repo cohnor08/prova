@@ -1701,12 +1701,6 @@ export default function TodayScreen({ navigation }) {
                 {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
                 <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
-              {open && !!g.name && (
-                <View style={styles.teacherNameRow}>
-                  <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
-                  <Text style={styles.teacherNameText}>{g.name}</Text>
-                </View>
-              )}
               {open && g.isPrimary && nextLesson && (
                 <TouchableOpacity
                   style={styles.lessonRow}
