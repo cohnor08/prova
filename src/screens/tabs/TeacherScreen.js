@@ -29,6 +29,7 @@ import StudentKeeperModal from '../../components/StudentKeeperModal';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
+import { DRILLS } from '../../constants/drills';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 import SheetModal from '../../components/SheetModal';
@@ -897,6 +898,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   const [description, setDescription] = useState('');
   const [youtube, setYoutube] = useState('');
   const [song, setSong] = useState('');
+  const [drill, setDrill] = useState(null); // optional skill-drill mini-game key
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [durationMin, setDurationMin] = useState(10); // default 10-min timer; clear it for an open-ended (no-limit) task
@@ -911,7 +913,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   const [showResources, setShowResources] = useState(false);
 
   const close = () => {
-    setTitle(''); setDescription(''); setYoutube(''); setSong('');
+    setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null);
     setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false); setFeedback('');
     onClose();
   };
@@ -942,6 +944,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
       setDescription(editTask.description || '');
       setYoutube(editTask.youtube || '');
       setSong(editTask.song || '');
+      setDrill(editTask.drill || null);
       setDueDate(editTask.dueDate || null);
       setDurationMin(editTask.durationMin || 0);
       setFeedback(editTask.feedback || '');
@@ -994,6 +997,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
             ? {
                 ...t,
                 title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(),
+                drill: drill || null,
                 dueDate, durationMin: durationMin || 0,
                 feedback: feedback.trim(),
                 // Stamp when the feedback text actually changes, so the student's
@@ -1024,6 +1028,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
         description: description.trim(),
         youtube: youtube.trim(),
         song: song.trim(),
+        drill: drill || null,
         dueDate,
         durationMin: durationMin || 0,
         completed: false,
@@ -1049,7 +1054,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
         }).catch(() => {});
       });
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDueDate(null); setDurationMin(10);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDueDate(null); setDurationMin(10);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -1136,6 +1141,25 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 value={song}
                 onChangeText={setSong}
               />
+
+              <Text style={styles.dueLabel}>SKILL DRILL</Text>
+              <Text style={styles.timerHint}>Optionally attach a mini-game the student launches straight from the task.</Text>
+              <View style={styles.drillPickRow}>
+                {DRILLS.map((d) => {
+                  const on = drill === d.key;
+                  return (
+                    <TouchableOpacity
+                      key={d.key}
+                      style={[styles.drillPick, on && styles.drillPickOn]}
+                      onPress={() => setDrill(on ? null : d.key)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={d.icon} size={16} color={on ? '#fff' : COLORS.primary} />
+                      <Text style={[styles.drillPickText, on && { color: '#fff' }]} numberOfLines={1}>{d.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               <Text style={styles.dueLabel}>DUE</Text>
               <TouchableOpacity style={styles.dueField} onPress={() => { Keyboard.dismiss(); setShowDuePicker(true); }} activeOpacity={0.8}>
@@ -3565,6 +3589,10 @@ const styles = StyleSheet.create({
   tplSheetRowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
+  drillPickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg },
+  drillPick: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '47%', flexGrow: 1, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillPickOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  drillPickText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
   durInputRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },

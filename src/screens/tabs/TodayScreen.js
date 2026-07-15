@@ -14,6 +14,7 @@ import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
+import { getDrill, pickTodaysDrills } from '../../constants/drills';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { awardNewBadges } from '../../lib/badges';
@@ -29,21 +30,6 @@ import SheetModal from '../../components/SheetModal';
 import { useCelebration } from '../../components/Celebration';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-// Skill drills woven into the daily flow: the mini-games become part of practice
-// instead of a side arcade. Two are surfaced each day (rotating), and each reads
-// its own daily counter so the card can show "done today".
-const DRILLS = [
-  { key: 'ear',    title: 'Ear training',  sub: 'Name what you hear',  icon: 'ear-outline',    route: 'EarTraining',   counter: 'earTraining' },
-  { key: 'rhythm', title: 'Rhythm tapper', sub: 'Lock in your timing', icon: 'pulse',          route: 'RhythmTapper',  counter: 'rhythmTapper' },
-  { key: 'fret',   title: 'Fretboard',     sub: 'Find the note',       icon: 'locate',         route: 'FretboardGame', counter: 'fretGame' },
-  { key: 'theory', title: 'Theory quiz',   sub: 'Test your knowledge', icon: 'school-outline', route: 'TheoryQuiz',    counter: 'theoryQuiz' },
-];
-// Two drills for today, rotating by day so it varies but is stable within a day.
-function pickTodaysDrills() {
-  const dayIdx = Math.floor(Date.now() / 86400000);
-  return [DRILLS[dayIdx % DRILLS.length], DRILLS[(dayIdx + 1) % DRILLS.length]];
-}
 
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
@@ -177,7 +163,7 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
   const uploadingLabel = proofPct != null
     ? `Uploading… ${proofPct}%`
     : (proofStep || 'Uploading…');
@@ -261,6 +247,13 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
           <Ionicons name="musical-notes" size={15} color={COLORS.primary} style={styles.taskLineIcon} />
           <Text style={[styles.teacherTaskLinkText, styles.teacherTaskSongText]} numberOfLines={1}>{task.song}</Text>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+      {expanded && !!task.drill && getDrill(task.drill) && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill)} activeOpacity={0.7}>
+          <Ionicons name={getDrill(task.drill).icon} size={15} color={COLORS.primary} style={styles.taskLineIcon} />
+          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>Practice: {getDrill(task.drill).title}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -1196,6 +1189,12 @@ export default function TodayScreen({ navigation }) {
     navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
+  // Open a teacher-assigned drill in its mini-game.
+  const openDrill = (key) => {
+    const d = getDrill(key);
+    if (d) navigation.navigate('Practice', { screen: d.route });
+  };
+
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
   // activity marker so practicing today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
@@ -1583,34 +1582,6 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
 
-        {/* Today's drills — a couple of mini-games woven into the daily flow */}
-        {isToday && (
-          <>
-            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
-            <View style={styles.drillRow}>
-              {todaysDrills.map((d) => {
-                const c = userData?.[d.counter];
-                const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;
-                return (
-                  <TouchableOpacity
-                    key={d.key}
-                    style={styles.drillCard}
-                    onPress={() => navigation.navigate('Practice', { screen: d.route })}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.drillTop}>
-                      <View style={styles.drillIcon}><Ionicons name={d.icon} size={18} color={COLORS.primary} /></View>
-                      {doneToday && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
-                    </View>
-                    <Text style={styles.drillTitle}>{d.title}</Text>
-                    <Text style={styles.drillSub}>{doneToday ? 'Done today · play again' : d.sub}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
-
         {/* Sessions — the actual practice for the day */}
         {selectedSessions.length > 0 && (
           <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
@@ -1720,6 +1691,7 @@ export default function TodayScreen({ navigation }) {
                     onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                     openTaskLink={openTaskLink}
                     onOpenSong={openSongInLibrary}
+                    onOpenDrill={openDrill}
                     onAttachProof={attachProof}
                     onViewProof={viewProof}
                     proofBusy={proofBusyId === t.id}
@@ -1755,6 +1727,7 @@ export default function TodayScreen({ navigation }) {
                       onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
+                      onOpenDrill={openDrill}
                       onAttachProof={attachProof}
                       onViewProof={viewProof}
                       proofBusy={proofBusyId === t.id}
@@ -1800,6 +1773,34 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
+        )}
+
+        {/* Today's drills — optional mini-games, kept at the bottom (low priority) */}
+        {isToday && (
+          <>
+            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
+            <View style={styles.drillRow}>
+              {todaysDrills.map((d) => {
+                const c = userData?.[d.counter];
+                const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;
+                return (
+                  <TouchableOpacity
+                    key={d.key}
+                    style={styles.drillCard}
+                    onPress={() => navigation.navigate('Practice', { screen: d.route })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.drillTop}>
+                      <View style={styles.drillIcon}><Ionicons name={d.icon} size={18} color={COLORS.primary} /></View>
+                      {doneToday && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
+                    </View>
+                    <Text style={styles.drillTitle}>{d.title}</Text>
+                    <Text style={styles.drillSub}>{doneToday ? 'Done today · play again' : d.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
 
         {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
