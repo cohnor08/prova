@@ -1696,11 +1696,17 @@ export default function TodayScreen({ navigation }) {
             <View key={g.tid} style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>FROM YOUR TEACHER</Text>
+                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
                 {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
                 {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
                 <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
+              {open && !!g.name && (
+                <View style={styles.teacherNameRow}>
+                  <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
+                  <Text style={styles.teacherNameText}>{g.name}</Text>
+                </View>
+              )}
               {open && g.isPrimary && nextLesson && (
                 <TouchableOpacity
                   style={styles.lessonRow}
