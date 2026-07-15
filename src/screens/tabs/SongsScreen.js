@@ -380,6 +380,7 @@ export default function SongsScreen({ route, navigation }) {
   const songSoundRef = useRef(null);
   const [openInSong, setOpenInSong] = useState(null); // song shown in the "Open in…" sheet
   const [artwork, setArtwork] = useState({}); // "title|artist" → cover URL (null once fetched, none found)
+  const [playable, setPlayable] = useState({}); // "title|artist" → true/false once known (has a 30s preview)
 
   // Which tool is visible: 'metronome' | 'tuner' | 'songs'
   // (the practice timer now lives inline on the task card above)
@@ -1111,6 +1112,10 @@ export default function SongsScreen({ route, navigation }) {
   // Keyed by title|artist so a song shared across the library, recommendations,
   // and "song of the day" only fetches its cover once.
   const artKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
+  // Hide songs with no playable 30s preview (they'd just sit there not playing).
+  // Teacher-assigned + today's song are always kept; unknown-yet (still loading)
+  // songs stay visible until confirmed unplayable. Playable songs all have a cover.
+  const playOK = (s) => s.fromTeacher || (songOfTheDay && s.id === songOfTheDay.id) || playable[artKey(s)] !== false;
 
   // Lazily pull cover art for every song currently on screen (iTunes Search).
   // The `undefined` guard means each unique song is fetched at most once.
@@ -1128,11 +1133,24 @@ export default function SongsScreen({ route, navigation }) {
 
     let cancelled = false;
     (async () => {
-      const updates = {};
+      const artUpdates = {};
+      const playUpdates = {};
       await Promise.all(
-        missing.map(async (s) => { updates[artKey(s)] = await fetchSongArtwork(s.title, s.artist); })
+        // Both hit the same cached iTunes lookup — one network call per song gives
+        // us the cover AND whether it has a playable 30s preview.
+        missing.map(async (s) => {
+          const [art, prev] = await Promise.all([
+            fetchSongArtwork(s.title, s.artist),
+            fetchSongPreview(s.title, s.artist),
+          ]);
+          artUpdates[artKey(s)] = art;
+          playUpdates[artKey(s)] = !!prev;
+        })
       );
-      if (!cancelled) setArtwork((prev) => ({ ...prev, ...updates }));
+      if (!cancelled) {
+        setArtwork((prev) => ({ ...prev, ...artUpdates }));
+        setPlayable((prev) => ({ ...prev, ...playUpdates }));
+      }
     })();
     return () => { cancelled = true; };
   }, [songs, instrument, level, viewingSetlist]);
@@ -1420,7 +1438,7 @@ export default function SongsScreen({ route, navigation }) {
             </View>
           ) : (
             <View style={styles.songList}>
-              {shownSongs.map((s) => {
+              {shownSongs.filter(playOK).map((s) => {
                 const isToday = songOfTheDay && s.id === songOfTheDay.id;
                 const isFocus = focusKey && songKey(s) === focusKey;
                 const isExpanded = expandedSongId === s.id;
@@ -1527,7 +1545,7 @@ export default function SongsScreen({ route, navigation }) {
             style={styles.recScrollOuter}
             contentContainerStyle={styles.recScroll}
           >
-            {recommendedSongs.map((rec) => {
+            {recommendedSongs.filter(playOK).map((rec) => {
               const added = recommendedIds.has(artKey(rec));
               const isLoading = loadingSongId === rec.id;
               const isThisPlaying = playingSongId === rec.id;
