@@ -31,13 +31,16 @@ const LIGHT_BASE = {
 };
 
 // Accent presets — the user's pick sets primary + primaryDark everywhere.
+// `companion` is a close-but-distinct neighbour (used for the secondary accent,
+// e.g. the class section) so it harmonises with the chosen colour without
+// matching it exactly: blue→teal, purple→indigo, and so on.
 export const ACCENTS = {
-  blue:   { label: 'Blue',   primary: '#3B82F6', primaryDark: '#1D4ED8' },
-  purple: { label: 'Purple', primary: '#8B5CF6', primaryDark: '#6D28D9' },
-  green:  { label: 'Green',  primary: '#10B981', primaryDark: '#059669' },
-  orange: { label: 'Orange', primary: '#F59E0B', primaryDark: '#D97706' },
-  pink:   { label: 'Pink',   primary: '#EC4899', primaryDark: '#BE185D' },
-  teal:   { label: 'Teal',   primary: '#06B6D4', primaryDark: '#0E7490' },
+  blue:   { label: 'Blue',   primary: '#3B82F6', primaryDark: '#1D4ED8', companion: '#06B6D4' },
+  purple: { label: 'Purple', primary: '#8B5CF6', primaryDark: '#6D28D9', companion: '#6366F1' },
+  green:  { label: 'Green',  primary: '#10B981', primaryDark: '#059669', companion: '#14B8A6' },
+  orange: { label: 'Orange', primary: '#F59E0B', primaryDark: '#D97706', companion: '#F97316' },
+  pink:   { label: 'Pink',   primary: '#EC4899', primaryDark: '#BE185D', companion: '#F43F5E' },
+  teal:   { label: 'Teal',   primary: '#06B6D4', primaryDark: '#0E7490', companion: '#0EA5E9' },
 };
 export const ACCENT_KEYS = ['blue', 'purple', 'green', 'orange', 'pink', 'teal'];
 export const THEME_MODES = ['dark', 'light'];
@@ -46,7 +49,8 @@ export const THEME_MODES = ['dark', 'light'];
 export function buildColors(mode = 'dark', accentKey = 'blue') {
   const base = mode === 'light' ? LIGHT_BASE : DARK_BASE;
   const a = ACCENTS[accentKey] || ACCENTS.blue;
-  return { ...base, primary: a.primary, primaryDark: a.primaryDark };
+  // accent = the companion, so the secondary-accent UI tracks the chosen colour.
+  return { ...base, primary: a.primary, primaryDark: a.primaryDark, accent: a.companion || a.primary };
 }
 
 // Default = dark + blue = exactly the original palette.

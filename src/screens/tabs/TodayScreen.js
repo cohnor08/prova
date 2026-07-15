@@ -1727,7 +1727,7 @@ export default function TodayScreen({ navigation }) {
           return (
             <View key={g.key} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
-                <Ionicons name="people" size={16} color={COLORS.primary} />
+                <Ionicons name="people" size={16} color={COLORS.accent} />
                 <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
                 <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
                 <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
@@ -2229,7 +2229,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
-  classGroupKicker: { color: COLORS.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  classGroupKicker: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.
