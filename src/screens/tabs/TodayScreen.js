@@ -257,9 +257,11 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         </TouchableOpacity>
       )}
       {expanded && !!task.drill && getDrill(task.drill) && (
-        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill, task.drillLevel)} activeOpacity={0.7}>
           <Ionicons name={getDrill(task.drill).icon} size={15} color={COLORS.primary} style={styles.taskLineIcon} />
-          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>Practice: {getDrill(task.drill).title}</Text>
+          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>
+            Practice: {getDrill(task.drill).title}{task.drillLevel ? ` · Level ${task.drillLevel}` : ''}
+          </Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -1225,10 +1227,10 @@ export default function TodayScreen({ navigation }) {
     navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
-  // Open a teacher-assigned drill in its mini-game.
-  const openDrill = (key) => {
+  // Open a teacher-assigned drill in its mini-game, at the assigned level.
+  const openDrill = (key, level) => {
     const d = getDrill(key);
-    if (d) navigation.navigate('Practice', { screen: d.route });
+    if (d) navigation.navigate('Practice', { screen: d.route, params: level ? { level } : undefined });
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's

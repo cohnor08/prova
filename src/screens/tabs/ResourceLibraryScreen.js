@@ -16,6 +16,7 @@ import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
 import { sendNotification } from '../../lib/inbox';
 import { queryMyStudents } from '../../lib/teacher';
+import { DRILLS, getDrill } from '../../constants/drills';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
@@ -92,6 +93,7 @@ export default function ResourceLibraryScreen() {
   const [assignInstructions, setAssignInstructions] = useState('');
   const [assignDueDate, setAssignDueDate] = useState(null); // ISO datetime or null
   const [assignDuration, setAssignDuration] = useState(10); // timer minutes (default 10; clear for no limit)
+  const [assignDrillLevel, setAssignDrillLevel] = useState(1); // level for an assigned drill
   const [showAssignDuePicker, setShowAssignDuePicker] = useState(false);
   const [selClasses, setSelClasses] = useState(() => new Set());  // multi-select: chosen class ids
   const [selStudents, setSelStudents] = useState(() => new Set()); // multi-select: chosen student uids
@@ -103,6 +105,7 @@ export default function ResourceLibraryScreen() {
       setAssignInstructions(assignTarget.description || '');
       setAssignDueDate(null);
       setAssignDuration(10);
+      setAssignDrillLevel(1);
       setSelClasses(new Set());
       setSelStudents(new Set());
     }
@@ -159,9 +162,11 @@ export default function ResourceLibraryScreen() {
     const base = {
       title: assignTarget.title,
       description: assignInstructions.trim(),
-      youtube: assignTarget.url,
+      youtube: assignTarget.url || '',
       photo: assignTarget.photo || '',
       song: '',
+      drill: assignTarget.drill || null,
+      drillLevel: assignTarget.drill ? assignDrillLevel : null,
       dueDate: assignDueDate,
       durationMin: assignDuration || 0,
       completed: false,
@@ -435,6 +440,34 @@ export default function ResourceLibraryScreen() {
           )}
         </View>
 
+        {/* ── Skill drills (assignable mini-games, pick a level) ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="game-controller" size={16} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Skill drills</Text>
+          </View>
+          <Text style={styles.drillHint}>Assign a mini-game at a chosen level — the student launches it straight from the task.</Text>
+          {DRILLS.map((d) => (
+            <View key={d.key} style={styles.item}>
+              <View style={styles.customRow}>
+                <Ionicons name={d.icon} size={16} color={COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
+                  <Text style={styles.itemDetail} numberOfLines={1}>{d.levels} levels · {d.sub}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.assignRow}
+                onPress={() => setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` })}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.assignRowText}>Assign to student</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
         {/* ── Lesson library (searchable bank, assign any task) ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -632,6 +665,20 @@ export default function ResourceLibraryScreen() {
               onChangeText={setAssignInstructions}
               multiline
             />
+            {!!assignTarget?.drill && getDrill(assignTarget.drill) && (
+              <View style={styles.drillLevelRow}>
+                {Array.from({ length: getDrill(assignTarget.drill).levels }, (_, i) => i + 1).map((lv) => (
+                  <TouchableOpacity
+                    key={lv}
+                    style={[styles.drillLevelChip, assignDrillLevel === lv && styles.drillLevelChipOn]}
+                    onPress={() => setAssignDrillLevel(lv)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.drillLevelText, assignDrillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             <TouchableOpacity style={styles.assignDueRow} onPress={() => setShowAssignDuePicker(true)} activeOpacity={0.7}>
               <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
               <Text style={styles.assignDueLabel}>Due date</Text>
@@ -756,6 +803,11 @@ const styles = themedStyles(() => StyleSheet.create({
   pillTextActive: { color: COLORS.text },
   section: { marginTop: SPACING.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACING.sm },
+  drillHint: { color: COLORS.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: SPACING.sm },
+  drillLevelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  drillLevelChip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillLevelChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  drillLevelText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
