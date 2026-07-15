@@ -1127,7 +1127,10 @@ export default function SongsScreen({ route, navigation }) {
       const k = artKey(s);
       if (seen.has(k)) continue;
       seen.add(k);
-      if (artwork[k] === undefined) missing.push(s);
+      // Retry nulls too (== null covers undefined): a null may be a stale cached
+      // miss, but the shared iTunes cache could since have the real cover (e.g.
+      // fetched by Learn-a-Song). Genuine misses just re-hit the cache — cheap.
+      if (artwork[k] == null) missing.push(s);
     }
     if (missing.length === 0) return;
 
