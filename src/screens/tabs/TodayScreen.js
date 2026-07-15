@@ -30,6 +30,21 @@ import { useCelebration } from '../../components/Celebration';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
+// Skill drills woven into the daily flow: the mini-games become part of practice
+// instead of a side arcade. Two are surfaced each day (rotating), and each reads
+// its own daily counter so the card can show "done today".
+const DRILLS = [
+  { key: 'ear',    title: 'Ear training',  sub: 'Name what you hear',  icon: 'ear-outline',    route: 'EarTraining',   counter: 'earTraining' },
+  { key: 'rhythm', title: 'Rhythm tapper', sub: 'Lock in your timing', icon: 'pulse',          route: 'RhythmTapper',  counter: 'rhythmTapper' },
+  { key: 'fret',   title: 'Fretboard',     sub: 'Find the note',       icon: 'locate',         route: 'FretboardGame', counter: 'fretGame' },
+  { key: 'theory', title: 'Theory quiz',   sub: 'Test your knowledge', icon: 'school-outline', route: 'TheoryQuiz',    counter: 'theoryQuiz' },
+];
+// Two drills for today, rotating by day so it varies but is stable within a day.
+function pickTodaysDrills() {
+  const dayIdx = Math.floor(Date.now() / 86400000);
+  return [DRILLS[dayIdx % DRILLS.length], DRILLS[(dayIdx + 1) % DRILLS.length]];
+}
+
 const CATEGORY_COLORS = {
   warmup: '#06B6D4',
   technique: '#3B82F6',
@@ -1390,6 +1405,8 @@ export default function TodayScreen({ navigation }) {
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
+  const todaysDrills = pickTodaysDrills();
+  const drillDateKey = new Date().toISOString().split('T')[0];
 
   // Restore balance for the modal (detection of "missed a day" is in the effect).
   const restore = restoreState(userData || {});
@@ -1564,6 +1581,34 @@ export default function TodayScreen({ navigation }) {
               </>
             )}
           </View>
+        )}
+
+        {/* Today's drills — a couple of mini-games woven into the daily flow */}
+        {isToday && (
+          <>
+            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
+            <View style={styles.drillRow}>
+              {todaysDrills.map((d) => {
+                const c = userData?.[d.counter];
+                const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;
+                return (
+                  <TouchableOpacity
+                    key={d.key}
+                    style={styles.drillCard}
+                    onPress={() => navigation.navigate('Practice', { screen: d.route })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.drillTop}>
+                      <View style={styles.drillIcon}><Ionicons name={d.icon} size={18} color={COLORS.primary} /></View>
+                      {doneToday && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
+                    </View>
+                    <Text style={styles.drillTitle}>{d.title}</Text>
+                    <Text style={styles.drillSub}>{doneToday ? 'Done today · play again' : d.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
 
         {/* Sessions — the actual practice for the day */}
@@ -2132,6 +2177,12 @@ const styles = StyleSheet.create({
   progressLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
 
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm },
+  drillRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.lg },
+  drillCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
+  drillTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  drillIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' },
+  drillTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  drillSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Streak-lost pop-up
   restoreModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center', padding: SPACING.xl },
