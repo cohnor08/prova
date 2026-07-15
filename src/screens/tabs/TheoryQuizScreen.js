@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { CATEGORIES, makeTheoryQuestion } from '../../constants/theory';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
@@ -22,6 +23,7 @@ const REWARDED_ROUNDS_PER_DAY = 3;
 const LEVELS = [{ id: 1, label: 'Basics' }, { id: 2, label: 'Player' }, { id: 3, label: 'Advanced' }];
 
 export default function TheoryQuizScreen({ navigation }) {
+  useThemeSync();
   const celebrate = useCelebration();
   const [category, setCategory] = useState('intervals');
   const [level, setLevel] = useState(1);
@@ -175,7 +177,7 @@ export default function TheoryQuizScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
@@ -206,4 +208,4 @@ const styles = StyleSheet.create({
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
   nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
-});
+}));

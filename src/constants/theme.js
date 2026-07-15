@@ -53,8 +53,37 @@ export function buildColors(mode = 'dark', accentKey = 'blue') {
   return { ...base, primary: a.primary, primaryDark: a.primaryDark, accent: a.companion || a.primary };
 }
 
-// Default = dark + blue = exactly the original palette.
+// Default = dark + blue = exactly the original palette. This object is MUTATED
+// in place by applyTheme() so every `import { COLORS }` reference (inline colours
+// in JSX) reflects the current theme after the consuming component re-renders.
 export const COLORS = buildColors('dark', 'blue');
+
+let THEME_VERSION = 0;
+// Swap the whole app's colours to a mode + accent (mutates COLORS in place and
+// bumps a version so themedStyles() rebuilds).
+export function applyTheme(mode, accentKey) {
+  Object.assign(COLORS, buildColors(mode, accentKey));
+  THEME_VERSION += 1;
+}
+// A drop-in replacement for a module-level `StyleSheet.create({...})` that
+// rebuilds from the live COLORS whenever the theme changes. Usage:
+//   const styles = themedStyles(() => StyleSheet.create({ ... COLORS.x ... }));
+// The consuming component must re-render on theme change (call useThemeSync) for
+// the new styles to show; cached per theme version so it's cheap.
+export function themedStyles(factory) {
+  let cache = null;
+  let ver = -1;
+  const build = () => {
+    if (ver !== THEME_VERSION) { cache = factory(); ver = THEME_VERSION; }
+    return cache;
+  };
+  return new Proxy({}, {
+    get: (_, key) => build()[key],
+    has: (_, key) => key in build(),
+    ownKeys: () => Reflect.ownKeys(build()),
+    getOwnPropertyDescriptor: (_, key) => Object.getOwnPropertyDescriptor(build(), key),
+  });
+}
 
 export const FONTS = {
   regular: 'System',

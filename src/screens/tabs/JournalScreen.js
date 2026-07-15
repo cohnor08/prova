@@ -15,7 +15,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { track } from '../../lib/analytics';
 
 const MOODS = ['Tough', 'Okay', 'Good', 'Great'];
@@ -90,6 +91,7 @@ function MoodPicker({ value, onSet }) {
 }
 
 export default function JournalScreen({ navigation }) {
+  useThemeSync();
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [mood, setMood] = useState(null);
@@ -307,7 +309,7 @@ export default function JournalScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
@@ -350,4 +352,4 @@ const styles = StyleSheet.create({
   modalDate: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   deleteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.md },
   deleteText: { color: '#dc2626', fontSize: 14, fontWeight: '700' },
-});
+}));

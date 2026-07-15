@@ -13,7 +13,8 @@ import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
@@ -47,6 +48,7 @@ function quality(err) {
 }
 
 export default function RhythmTapperScreen({ navigation }) {
+  useThemeSync();
   const celebrate = useCelebration();
   const [level, setLevel] = useState(1);
   const [mode, setMode] = useState('click');         // 'click' | 'hold'
@@ -295,7 +297,7 @@ export default function RhythmTapperScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
@@ -325,4 +327,4 @@ const styles = StyleSheet.create({
   tallyNum: { fontSize: 22, fontWeight: '900' },
   tallyLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginTop: 2, letterSpacing: 0.5 },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
-});
+}));

@@ -6,7 +6,8 @@ import ChordDiagram from '../../components/ChordDiagram';
 import ScaleDiagram from '../../components/ScaleDiagram';
 import { GUITAR_CHORDS, ROOTS, CHORD_TYPES } from '../../constants/chords';
 import { SCALES, SCALE_ROOTS, NOTE_NAMES } from '../../constants/scales';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // Every card is the same fixed height (the diagram is always 4 frets), so we can
 // give FlatList an exact row height via getItemLayout — that keeps the scroll
@@ -15,6 +16,7 @@ const CARD_H = 186;
 const ROW_H = CARD_H + SPACING.md;
 
 const ChordCard = React.memo(function ChordCard({ chord }) {
+  useThemeSync();
   return (
     <View style={styles.card}>
       <Text style={styles.chordName}>{chord.name}</Text>
@@ -32,6 +34,7 @@ function Chip({ label, active, onPress }) {
 }
 
 export default function ChordLibraryScreen({ navigation }) {
+  useThemeSync();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState('chords');
 
@@ -141,7 +144,7 @@ export default function ChordLibraryScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -190,4 +193,4 @@ const styles = StyleSheet.create({
   notePillTextRoot: { color: '#fff' },
   boardScroll: { marginHorizontal: -4 },
   scaleHint: { color: COLORS.textMuted, fontSize: 11, marginTop: SPACING.sm },
-});
+}));

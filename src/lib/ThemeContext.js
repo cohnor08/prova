@@ -12,7 +12,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { buildColors, COLORS as DEFAULT_COLORS } from '../constants/theme';
+import { buildColors, applyTheme, COLORS as DEFAULT_COLORS } from '../constants/theme';
 
 const STORE_KEY = 'prova_theme';
 
@@ -68,6 +68,11 @@ export function ThemeProvider({ children }) {
   const setMode = useCallback((m) => { setModeState(m); persist({ mode: m, accent }); }, [accent, persist]);
   const setAccent = useCallback((a) => { setAccentState(a); persist({ mode, accent: a }); }, [mode, persist]);
 
+  // Mutate the shared COLORS + bump the theme version synchronously (during
+  // render, before children re-render) so themedStyles() and inline COLORS refs
+  // pick up the new palette in the same pass.
+  useMemo(() => { applyTheme(mode, accent); }, [mode, accent]);
+
   const colors = useMemo(() => buildColors(mode, accent), [mode, accent]);
   const value = useMemo(() => ({ colors, mode, accent, setMode, setAccent, ready }), [colors, mode, accent, setMode, setAccent, ready]);
 
@@ -76,3 +81,6 @@ export function ThemeProvider({ children }) {
 
 export const useTheme = () => useContext(ThemeContext);
 export const useThemeColors = () => useContext(ThemeContext).colors;
+// Subscribe a component to theme changes so it re-renders (and its themedStyles
+// + inline COLORS refresh) — for screens converted with the themedStyles helper.
+export const useThemeSync = () => { useContext(ThemeContext); };

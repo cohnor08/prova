@@ -6,7 +6,8 @@ import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateD
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
 import { displayName } from '../../lib/displayName';
@@ -982,6 +983,7 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
 }
 
 export default function ProgressScreen({ navigation }) {
+  useThemeSync();
   const [userData, setUserData] = useState(null);
   const celebrate = useCelebration();
   // Personal goals (the interactive kind — onboarding focus areas stay as chips)
@@ -1480,7 +1482,7 @@ export default function ProgressScreen({ navigation }) {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   center: { flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center' },
@@ -1726,4 +1728,4 @@ const styles = StyleSheet.create({
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },
   modalConfirm: { flex: 1, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
   modalConfirmText: { color: COLORS.text, fontWeight: '700' },
-});
+}));

@@ -10,7 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { PIANO_FILES as NOTE_FILES } from '../../constants/pianoNotes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
@@ -79,6 +80,7 @@ const LEVEL_SETS = { intervals: LEVELS, chords: CHORD_LEVELS, scales: SCALE_LEVE
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export default function EarTrainingScreen({ navigation }) {
+  useThemeSync();
   const celebrate = useCelebration();
   const [mode, setMode] = useState('intervals');       // intervals | chords
   const [level, setLevel] = useState(1);
@@ -292,7 +294,7 @@ export default function EarTrainingScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
@@ -321,4 +323,4 @@ const styles = StyleSheet.create({
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
   nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
-});
+}));

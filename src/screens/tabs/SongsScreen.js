@@ -12,7 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
 import { isPersonal, personalUpsell } from '../../lib/entitlements';
@@ -302,6 +303,7 @@ const TUNER_RECORDING_OPTIONS = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SongsScreen({ route, navigation }) {
+  useThemeSync();
   // Tasks
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -1905,7 +1907,7 @@ export default function SongsScreen({ route, navigation }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
@@ -2266,4 +2268,4 @@ const styles = StyleSheet.create({
   songRowArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   songRowTodayTag: { color: COLORS.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1, marginRight: 4 },
   songExpTeacherTag: { color: COLORS.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm },
-});
+}));
