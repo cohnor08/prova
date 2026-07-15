@@ -18,16 +18,16 @@ const DARK_BASE = {
   border: '#1E2D4A',
 };
 const LIGHT_BASE = {
-  background: '#D7DEEA',   // deeper grey-blue — calmer, less glare
-  surface: '#EEF1F8',      // soft off-white cards (not stark #FFF)
-  card: '#EEF1F8',
-  accent: '#0891B2',
-  text: '#1A2331',
-  textSecondary: '#485770',
-  textMuted: '#7E8DA6',
-  success: '#059669',
-  error: '#E11D48',
-  border: '#C2CCDD',       // defined edges so cards still read as panels
+  background: '#C6CFDD',   // muted grey-blue, distinctly not bright
+  surface: '#DAE0EC',      // soft grey cards, clearly off-white
+  card: '#DAE0EC',
+  accent: '#0E7490',
+  text: '#161D29',
+  textSecondary: '#41506A',
+  textMuted: '#6E7C95',
+  success: '#047857',
+  error: '#BE123C',
+  border: '#AEBACE',       // defined edges so cards still read as panels
 };
 
 // Accent presets — the user's pick sets primary + primaryDark everywhere.
