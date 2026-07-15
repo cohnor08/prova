@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { generatePracticePlan } from '../../lib/claude';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { track } from '../../lib/analytics';
 
 const PRICE = '$5.99';
@@ -20,6 +21,7 @@ const PERKS = [
 ];
 
 export default function PaywallScreen({ navigation }) {
+  useThemeSync();
   const [busy, setBusy] = useState(false);
   // Remote switch (config/paywall.mockCheckout in Firestore): while checkout
   // is a mock, this controls whether "Start free trial" actually grants the
@@ -125,7 +127,7 @@ export default function PaywallScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
   content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xl },
@@ -148,4 +150,4 @@ const styles = StyleSheet.create({
   cta: { backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   busyNote: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.sm },
-});
+}));

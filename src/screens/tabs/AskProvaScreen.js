@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { askProva } from '../../lib/claude';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // A few one-tap starter questions shown before the conversation begins.
 const STARTERS = [
@@ -29,6 +30,7 @@ let _seq = 0;
 const nextId = () => `m${Date.now()}_${_seq++}`;
 
 export default function AskProvaScreen({ navigation }) {
+  useThemeSync();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -220,7 +222,7 @@ export default function AskProvaScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -279,4 +281,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnOff: { backgroundColor: COLORS.border },
-});
+}));

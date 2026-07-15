@@ -5,7 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // Read-only view of the lesson notes + attendance the teacher recorded for this
 // student. The numeric mark is intentionally never shown — only status + note.
@@ -22,6 +23,7 @@ function prettyDate(ymdStr) {
 }
 
 export default function StudentLessonNoteScreen({ navigation, route }) {
+  useThemeSync();
   const focusDate = route?.params?.date || null;
   const [entries, setEntries] = useState([]);
   const [taskNotes, setTaskNotes] = useState([]); // per-task feedback the teacher left
@@ -195,7 +197,7 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 64 },
@@ -222,4 +224,4 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 12, fontWeight: '800' },
   note: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20 },
   noNote: { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic' },
-});
+}));

@@ -7,7 +7,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 const ROLES = [
   {
@@ -31,6 +32,7 @@ const ROLES = [
 ];
 
 export default function WelcomeScreen({ navigation }) {
+  useThemeSync();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
@@ -75,7 +77,7 @@ export default function WelcomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
   logoArea: { alignItems: 'center', marginBottom: SPACING.xxl },
@@ -132,4 +134,4 @@ const styles = StyleSheet.create({
   roleSubtitle: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   linkText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14 },
   linkAccent: { color: COLORS.primary, fontWeight: '600' },
-});
+}));

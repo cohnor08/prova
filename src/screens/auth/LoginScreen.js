@@ -13,7 +13,8 @@ import {
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { loadSavedLogin, saveLogin } from '../../lib/savedLogin';
 import { track } from '../../lib/analytics';
 
@@ -28,6 +29,7 @@ const FIREBASE_ERRORS = {
 };
 
 export default function LoginScreen({ navigation }) {
+  useThemeSync();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -162,7 +164,7 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   backButton: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10 },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
@@ -231,4 +233,4 @@ const styles = StyleSheet.create({
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   linkText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14 },
   linkAccent: { color: COLORS.primary, fontWeight: '600' },
-});
+}));
