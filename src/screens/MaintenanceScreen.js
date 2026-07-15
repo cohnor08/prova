@@ -1,8 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, themedStyles } from '../constants/theme';
+import { useThemeSync } from '../lib/ThemeContext';
 
 export default function MaintenanceScreen({ message }) {
+  useThemeSync();
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Maintenance</Text>
@@ -11,7 +13,7 @@ export default function MaintenanceScreen({ message }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -32,4 +34,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-});
+}));

@@ -9,7 +9,8 @@ import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion }
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import { sendNotification } from '../../lib/inbox';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import SheetModal from '../../components/SheetModal';
 import { advancePrograms } from '../../lib/programs';
 
@@ -27,6 +28,7 @@ const emptyTask = () => ({ title: '', description: '', youtube: '', durationMin:
 const emptyProg = () => ({ id: null, name: '', packIds: [] });
 
 export default function PacksScreen({ navigation }) {
+  useThemeSync();
   const [loading, setLoading] = useState(true);
   const [packs, setPacks] = useState([]);
   const [students, setStudents] = useState([]);
@@ -446,7 +448,7 @@ export default function PacksScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 64 },
@@ -498,4 +500,4 @@ const styles = StyleSheet.create({
   cancelText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   saveBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary },
   saveText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
-});
+}));
