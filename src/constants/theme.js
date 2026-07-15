@@ -1,9 +1,14 @@
-export const COLORS = {
+// ── Theming ──────────────────────────────────────────────────────────────
+// The app supports a Dark (default) and Light mode plus a user-chosen accent
+// colour. Screens read their colours at render time via useThemeColors()
+// (src/lib/ThemeContext). The static COLORS export below stays = the default
+// (dark + blue) so any screen not yet converted still renders correctly.
+
+// Everything EXCEPT the accent (primary/primaryDark stay from the accent preset).
+const DARK_BASE = {
   background: '#050810',
   surface: '#0C1022',
   card: '#111827',
-  primary: '#3B82F6',
-  primaryDark: '#1D4ED8',
   accent: '#06B6D4',
   text: '#F0F4FF',
   textSecondary: '#8B9CC8',
@@ -12,6 +17,40 @@ export const COLORS = {
   error: '#F43F5E',
   border: '#1E2D4A',
 };
+const LIGHT_BASE = {
+  background: '#F3F5FB',
+  surface: '#FFFFFF',
+  card: '#FFFFFF',
+  accent: '#0891B2',
+  text: '#0F172A',
+  textSecondary: '#51607A',
+  textMuted: '#94A3B8',
+  success: '#059669',
+  error: '#E11D48',
+  border: '#E3E8F2',
+};
+
+// Accent presets — the user's pick sets primary + primaryDark everywhere.
+export const ACCENTS = {
+  blue:   { label: 'Blue',   primary: '#3B82F6', primaryDark: '#1D4ED8' },
+  purple: { label: 'Purple', primary: '#8B5CF6', primaryDark: '#6D28D9' },
+  green:  { label: 'Green',  primary: '#10B981', primaryDark: '#059669' },
+  orange: { label: 'Orange', primary: '#F59E0B', primaryDark: '#D97706' },
+  pink:   { label: 'Pink',   primary: '#EC4899', primaryDark: '#BE185D' },
+  teal:   { label: 'Teal',   primary: '#06B6D4', primaryDark: '#0E7490' },
+};
+export const ACCENT_KEYS = ['blue', 'purple', 'green', 'orange', 'pink', 'teal'];
+export const THEME_MODES = ['dark', 'light'];
+
+// Build a full colour palette for a mode + accent key.
+export function buildColors(mode = 'dark', accentKey = 'blue') {
+  const base = mode === 'light' ? LIGHT_BASE : DARK_BASE;
+  const a = ACCENTS[accentKey] || ACCENTS.blue;
+  return { ...base, primary: a.primary, primaryDark: a.primaryDark };
+}
+
+// Default = dark + blue = exactly the original palette.
+export const COLORS = buildColors('dark', 'blue');
 
 export const FONTS = {
   regular: 'System',
@@ -29,14 +68,15 @@ export const SPACING = {
 
 // Shared bottom-tab bar style. Exported so screens can hide it (e.g. when a
 // chat is open) and restore it to the exact same look afterwards.
-export const TAB_BAR_STYLE = {
-  backgroundColor: COLORS.surface,
-  borderTopColor: COLORS.border,
+export const makeTabBarStyle = (colors = COLORS) => ({
+  backgroundColor: colors.surface,
+  borderTopColor: colors.border,
   borderTopWidth: 1,
   height: 84,
   paddingBottom: 20,
   paddingTop: 10,
-};
+});
+export const TAB_BAR_STYLE = makeTabBarStyle();
 
 export const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 
