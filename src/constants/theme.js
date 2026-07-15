@@ -18,16 +18,16 @@ const DARK_BASE = {
   border: '#1E2D4A',
 };
 const LIGHT_BASE = {
-  background: '#F3F5FB',
+  background: '#E4E9F2',   // clearly grey-blue so white cards read as raised panels
   surface: '#FFFFFF',
   card: '#FFFFFF',
   accent: '#0891B2',
   text: '#0F172A',
-  textSecondary: '#51607A',
-  textMuted: '#94A3B8',
+  textSecondary: '#4A5A75',
+  textMuted: '#8391A8',
   success: '#059669',
   error: '#E11D48',
-  border: '#E3E8F2',
+  border: '#C9D3E3',       // stronger so card edges are defined, not floating
 };
 
 // Accent presets — the user's pick sets primary + primaryDark everywhere.
