@@ -27,6 +27,7 @@ function dueLabel(iso) {
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
+import { DRILLS } from '../../constants/drills';
 import SheetModal from '../../components/SheetModal';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
@@ -156,9 +157,10 @@ export default function ResourceLibraryScreen() {
     const base = {
       title: assignTarget.title,
       description: assignInstructions.trim(),
-      youtube: assignTarget.url,
+      youtube: assignTarget.url || '',
       photo: assignTarget.photo || '',
       song: '',
+      drill: assignTarget.drill || null,
       dueDate: assignDueDate,
       durationMin: assignDuration || 0,
       completed: false,
@@ -430,6 +432,34 @@ export default function ResourceLibraryScreen() {
               <Ionicons name={showAllRes ? 'chevron-up' : 'chevron-down'} size={15} color={COLORS.primary} />
             </TouchableOpacity>
           )}
+        </View>
+
+        {/* ── Skill drills (assignable mini-games) ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="game-controller" size={16} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Skill drills</Text>
+          </View>
+          <Text style={styles.drillHint}>Assign a mini-game — the student launches it straight from the task.</Text>
+          {DRILLS.map((d) => (
+            <View key={d.key} style={styles.item}>
+              <View style={styles.customRow}>
+                <Ionicons name={d.icon} size={16} color={COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
+                  <Text style={styles.itemDetail} numberOfLines={1}>{d.sub}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.assignRow}
+                onPress={() => setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` })}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.assignRowText}>Assign to student</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
         </View>
 
         {/* ── Lesson library (searchable bank, assign any task) ── */}
@@ -754,6 +784,7 @@ const styles = StyleSheet.create({
   section: { marginTop: SPACING.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACING.sm },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+  drillHint: { color: COLORS.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: SPACING.sm },
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   itemDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
