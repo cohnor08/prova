@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
+import { useThemeColors } from '../../lib/ThemeContext';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ const REC_ART = 130; // cover-tile size for "Picked for your level" carousel car
 // ─── BPM Slider ───────────────────────────────────────────────────────────────
 
 function BpmSlider({ bpm, onChange }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
   const bpmRef = useRef(bpm);
@@ -126,6 +129,8 @@ const sliderStyles = StyleSheet.create({
 // ─── Stepper (−/+ number control) ───────────────────────────────────────────
 
 function Stepper({ value, min, max, step, suffix, onChange }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   return (
     <View style={stepperStyles.row}>
       <TouchableOpacity
@@ -234,6 +239,8 @@ function hzToNote(hz) {
 // The tuning needle. Animates toward the target position so it glides smoothly
 // instead of snapping with every (slightly noisy) pitch reading.
 function TunerNeedle({ ratio, color, visible }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const anim = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: ratio, duration: 260, useNativeDriver: false }).start();
@@ -282,6 +289,8 @@ const TUNER_RECORDING_OPTIONS = {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PracticeScreen({ route, navigation }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   // Gig setlists — AI-built playlists saved inside the library
   const [setlists, setSetlists] = useState([]);
 
@@ -820,7 +829,7 @@ export default function PracticeScreen({ route, navigation }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.lg },
