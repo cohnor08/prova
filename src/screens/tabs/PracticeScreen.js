@@ -41,7 +41,7 @@ const REC_ART = 130; // cover-tile size for "Picked for your level" carousel car
 
 function BpmSlider({ bpm, onChange }) {
   const COLORS = useThemeColors();
-  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
+  const sliderStyles = React.useMemo(() => makeSliderStyles(COLORS), [COLORS]);
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
   const bpmRef = useRef(bpm);
@@ -96,7 +96,7 @@ function BpmSlider({ bpm, onChange }) {
   );
 }
 
-const sliderStyles = StyleSheet.create({
+const makeSliderStyles = (COLORS) => StyleSheet.create({
   container: {
     height: THUMB_SIZE + 16,
     justifyContent: 'center',
