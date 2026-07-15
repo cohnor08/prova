@@ -14,6 +14,7 @@ import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
+import { getDrill, pickTodaysDrills } from '../../constants/drills';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { awardNewBadges } from '../../lib/badges';
@@ -162,7 +163,7 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
   const uploadingLabel = proofPct != null
     ? `Uploading… ${proofPct}%`
     : (proofStep || 'Uploading…');
@@ -246,6 +247,13 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenSong(task.song)} activeOpacity={0.7}>
           <Ionicons name="musical-notes" size={15} color={COLORS.primary} style={styles.taskLineIcon} />
           <Text style={[styles.teacherTaskLinkText, styles.teacherTaskSongText]} numberOfLines={1}>{task.song}</Text>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+      {expanded && !!task.drill && getDrill(task.drill) && (
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill)} activeOpacity={0.7}>
+          <Ionicons name={getDrill(task.drill).icon} size={15} color={COLORS.primary} style={styles.taskLineIcon} />
+          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>Practice: {getDrill(task.drill).title}</Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -1181,6 +1189,12 @@ export default function TodayScreen({ navigation }) {
     navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
+  // Open a teacher-assigned drill in its mini-game.
+  const openDrill = (key) => {
+    const d = getDrill(key);
+    if (d) navigation.navigate('Practice', { screen: d.route });
+  };
+
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
   // activity marker so practicing today continues the chain instead of resetting.
   const handleRestoreStreak = async () => {
@@ -1390,6 +1404,8 @@ export default function TodayScreen({ navigation }) {
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
     && new Date(userData.lastChallengeDate).toDateString() === new Date().toDateString();
+  const todaysDrills = pickTodaysDrills();
+  const drillDateKey = new Date().toISOString().split('T')[0];
 
   // Restore balance for the modal (detection of "missed a day" is in the effect).
   const restore = restoreState(userData || {});
@@ -1675,6 +1691,7 @@ export default function TodayScreen({ navigation }) {
                     onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                     openTaskLink={openTaskLink}
                     onOpenSong={openSongInLibrary}
+                    onOpenDrill={openDrill}
                     onAttachProof={attachProof}
                     onViewProof={viewProof}
                     proofBusy={proofBusyId === t.id}
@@ -1710,6 +1727,7 @@ export default function TodayScreen({ navigation }) {
                       onPractice={(t) => openPlayerAt(`t_${t.id}`)}
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
+                      onOpenDrill={openDrill}
                       onAttachProof={attachProof}
                       onViewProof={viewProof}
                       proofBusy={proofBusyId === t.id}
@@ -1729,6 +1747,34 @@ export default function TodayScreen({ navigation }) {
             </View>
           );
         })}
+
+        {/* Today's drills — optional mini-games, above the song (low priority) */}
+        {isToday && (
+          <>
+            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
+            <View style={styles.drillRow}>
+              {todaysDrills.map((d) => {
+                const c = userData?.[d.counter];
+                const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;
+                return (
+                  <TouchableOpacity
+                    key={d.key}
+                    style={styles.drillCard}
+                    onPress={() => navigation.navigate('Practice', { screen: d.route })}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.drillTop}>
+                      <View style={styles.drillIcon}><Ionicons name={d.icon} size={18} color={COLORS.primary} /></View>
+                      {doneToday && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
+                    </View>
+                    <Text style={styles.drillTitle}>{d.title}</Text>
+                    <Text style={styles.drillSub}>{doneToday ? 'Done today · play again' : d.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
 
         {/* Song to practice — matched to the player's level */}
         {isToday && songOfTheDay && (
@@ -2132,6 +2178,12 @@ const styles = StyleSheet.create({
   progressLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'center' },
 
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: SPACING.sm },
+  drillRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.lg },
+  drillCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
+  drillTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  drillIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' },
+  drillTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  drillSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Streak-lost pop-up
   restoreModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center', padding: SPACING.xl },

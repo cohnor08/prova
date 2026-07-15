@@ -520,7 +520,7 @@ export default function PracticeScreen({ route, navigation }) {
   const nextGigSetlist = nextGig?.setlistId ? setlists.find((s) => s.id === nextGig.setlistId) : null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
 
@@ -538,7 +538,7 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Fretboard reference</Text>
           </TouchableOpacity>
         </View>
-        <View style={[styles.learnRow, { marginTop: SPACING.md }]}>
+        <View style={[styles.learnRow, { marginTop: SPACING.md, marginBottom: 0 }]}>
           <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('EarTraining')} activeOpacity={0.85}>
             <View style={styles.learnIcon}><Ionicons name="ear-outline" size={20} color={COLORS.primary} /></View>
             <Text style={styles.learnCardText}>Ear training</Text>
@@ -550,6 +550,26 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Find the note</Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.learnRow, { marginTop: SPACING.md, marginBottom: 0 }]}>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('RhythmTapper')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="pulse" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Rhythm tapper</Text>
+            <Text style={styles.learnCardSub}>Train your timing</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('TheoryQuiz')} activeOpacity={0.85}>
+            <View style={styles.learnIcon}><Ionicons name="school-outline" size={20} color={COLORS.primary} /></View>
+            <Text style={styles.learnCardText}>Theory quiz</Text>
+            <Text style={styles.learnCardSub}>Intervals, keys & more</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.journalCard} onPress={() => navigation.navigate('Journal')} activeOpacity={0.85}>
+          <View style={styles.learnIcon}><Ionicons name="book-outline" size={20} color={COLORS.primary} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.learnCardText}>Practice journal</Text>
+            <Text style={styles.learnCardSub}>Reflect on your practice</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
@@ -817,6 +837,7 @@ const styles = StyleSheet.create({
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm, marginTop: SPACING.xs },
   learnRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.lg },
   learnCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
+  journalCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginTop: SPACING.md, marginBottom: SPACING.lg },
   learnIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm },
   learnCardText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   learnCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },

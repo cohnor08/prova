@@ -1,0 +1,30 @@
+// Static require map for synthesized PIANO note samples (MIDI 48-72 = C3-C5).
+// Piano-ish tones (hammer attack + inharmonic decaying partials) — see
+// assets/notes/piano/. Used by the ear-training game for a keyboard sound.
+export const PIANO_FILES = {
+  48: require('../../assets/notes/piano/p48.wav'),
+  49: require('../../assets/notes/piano/p49.wav'),
+  50: require('../../assets/notes/piano/p50.wav'),
+  51: require('../../assets/notes/piano/p51.wav'),
+  52: require('../../assets/notes/piano/p52.wav'),
+  53: require('../../assets/notes/piano/p53.wav'),
+  54: require('../../assets/notes/piano/p54.wav'),
+  55: require('../../assets/notes/piano/p55.wav'),
+  56: require('../../assets/notes/piano/p56.wav'),
+  57: require('../../assets/notes/piano/p57.wav'),
+  58: require('../../assets/notes/piano/p58.wav'),
+  59: require('../../assets/notes/piano/p59.wav'),
+  60: require('../../assets/notes/piano/p60.wav'),
+  61: require('../../assets/notes/piano/p61.wav'),
+  62: require('../../assets/notes/piano/p62.wav'),
+  63: require('../../assets/notes/piano/p63.wav'),
+  64: require('../../assets/notes/piano/p64.wav'),
+  65: require('../../assets/notes/piano/p65.wav'),
+  66: require('../../assets/notes/piano/p66.wav'),
+  67: require('../../assets/notes/piano/p67.wav'),
+  68: require('../../assets/notes/piano/p68.wav'),
+  69: require('../../assets/notes/piano/p69.wav'),
+  70: require('../../assets/notes/piano/p70.wav'),
+  71: require('../../assets/notes/piano/p71.wav'),
+  72: require('../../assets/notes/piano/p72.wav'),
+};

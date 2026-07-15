@@ -11,7 +11,7 @@ import { Audio } from 'expo-av';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
-import { NOTE_FILES } from '../../constants/notes';
+import { PIANO_FILES as NOTE_FILES } from '../../constants/pianoNotes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
@@ -23,19 +23,24 @@ const REWARDED_ROUNDS_PER_DAY = 3;
 const LOW = 48, HIGH = 72; // available sample range (C3–C5)
 
 const INTERVALS = [
+  { semis: 1,  name: 'Minor 2nd' },
   { semis: 2,  name: 'Major 2nd' },
   { semis: 3,  name: 'Minor 3rd' },
   { semis: 4,  name: 'Major 3rd' },
   { semis: 5,  name: 'Perfect 4th' },
+  { semis: 6,  name: 'Tritone' },
   { semis: 7,  name: 'Perfect 5th' },
+  { semis: 8,  name: 'Minor 6th' },
   { semis: 9,  name: 'Major 6th' },
+  { semis: 10, name: 'Minor 7th' },
   { semis: 11, name: 'Major 7th' },
   { semis: 12, name: 'Octave' },
 ];
 const LEVELS = [
-  { id: 1, label: 'Starter',  semis: [4, 5, 7, 12] },
-  { id: 2, label: 'Melodic',  semis: [2, 3, 4, 5, 7, 9] },
-  { id: 3, label: 'Complete', semis: [2, 3, 4, 5, 7, 9, 11, 12] },
+  { id: 1, label: 'Starter',   semis: [4, 5, 7, 12] },
+  { id: 2, label: 'Melodic',   semis: [2, 3, 4, 5, 7, 9] },
+  { id: 3, label: 'Complete',  semis: [2, 3, 4, 5, 7, 9, 11, 12] },
+  { id: 4, label: 'Chromatic', semis: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
 ];
 const CHORDS = [
   { name: 'Major',      offsets: [0, 4, 7] },
@@ -43,12 +48,33 @@ const CHORDS = [
   { name: 'Diminished', offsets: [0, 3, 6] },
   { name: 'Augmented',  offsets: [0, 4, 8] },
   { name: 'Sus4',       offsets: [0, 5, 7] },
+  { name: 'Major 7th',  offsets: [0, 4, 7, 11] },
+  { name: 'Minor 7th',  offsets: [0, 3, 7, 10] },
+  { name: 'Dom 7th',    offsets: [0, 4, 7, 10] },
 ];
 const CHORD_LEVELS = [
   { id: 1, label: 'Starter',  names: ['Major', 'Minor'] },
   { id: 2, label: 'Quality',  names: ['Major', 'Minor', 'Diminished'] },
   { id: 3, label: 'Complete', names: ['Major', 'Minor', 'Diminished', 'Augmented', 'Sus4'] },
+  { id: 4, label: 'Sevenths', names: ['Major 7th', 'Minor 7th', 'Dom 7th', 'Major', 'Minor'] },
 ];
+// Scales are played one note at a time, ascending; name what you heard.
+const SCALES = [
+  { name: 'Major',           steps: [0, 2, 4, 5, 7, 9, 11, 12] },
+  { name: 'Natural Minor',   steps: [0, 2, 3, 5, 7, 8, 10, 12] },
+  { name: 'Dorian',          steps: [0, 2, 3, 5, 7, 9, 10, 12] },
+  { name: 'Mixolydian',      steps: [0, 2, 4, 5, 7, 9, 10, 12] },
+  { name: 'Harmonic Minor',  steps: [0, 2, 3, 5, 7, 8, 11, 12] },
+  { name: 'Major Pentatonic',steps: [0, 2, 4, 7, 9, 12] },
+  { name: 'Minor Pentatonic',steps: [0, 3, 5, 7, 10, 12] },
+  { name: 'Blues',           steps: [0, 3, 5, 6, 7, 10, 12] },
+];
+const SCALE_LEVELS = [
+  { id: 1, label: 'Starter', names: ['Major', 'Natural Minor'] },
+  { id: 2, label: 'Modes',   names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian'] },
+  { id: 3, label: 'Complete', names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian', 'Harmonic Minor', 'Major Pentatonic', 'Minor Pentatonic', 'Blues'] },
+];
+const LEVEL_SETS = { intervals: LEVELS, chords: CHORD_LEVELS, scales: SCALE_LEVELS };
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -92,10 +118,23 @@ export default function EarTrainingScreen({ navigation }) {
         .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
       return { midis: [root, root + semis], gap: 650, answer: INTERVALS.find((iv) => iv.semis === semis).name, choices };
     }
+    if (mode === 'scales') {
+      const names = SCALE_LEVELS.find((l) => l.id === level).names;
+      const set = SCALES.filter((s) => names.includes(s.name));
+      const scale = pick(set);
+      const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 12 + 1));
+      const wrong = set.filter((s) => s.name !== scale.name).sort(() => Math.random() - 0.5).slice(0, 3);
+      return {
+        midis: scale.steps.map((s) => root + s), gap: 300,
+        answer: scale.name,
+        choices: [scale.name, ...wrong.map((s) => s.name)].sort(() => Math.random() - 0.5),
+      };
+    }
     const names = CHORD_LEVELS.find((l) => l.id === level).names;
     const set = CHORDS.filter((c) => names.includes(c.name));
     const chord = pick(set);
-    const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 8 + 1));
+    const maxOff = Math.max(...chord.offsets);
+    const root = LOW + Math.floor(Math.random() * (HIGH - LOW - maxOff + 1));
     const wrong = set.filter((c) => c.name !== chord.name).sort(() => Math.random() - 0.5).slice(0, 3);
     return {
       midis: chord.offsets.map((o) => root + o), gap: 0,
@@ -172,17 +211,16 @@ export default function EarTrainingScreen({ navigation }) {
 
           <Text style={styles.menuLabel}>GAME</Text>
           <View style={styles.segRow}>
-            <TouchableOpacity style={[styles.seg, mode === 'intervals' && styles.segOn]} onPress={() => setMode('intervals')}>
-              <Text style={[styles.segText, mode === 'intervals' && styles.segTextOn]}>Intervals</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.seg, mode === 'chords' && styles.segOn]} onPress={() => setMode('chords')}>
-              <Text style={[styles.segText, mode === 'chords' && styles.segTextOn]}>Chords</Text>
-            </TouchableOpacity>
+            {[['intervals', 'Intervals'], ['chords', 'Chords'], ['scales', 'Scales']].map(([m, label]) => (
+              <TouchableOpacity key={m} style={[styles.seg, mode === m && styles.segOn]} onPress={() => { setMode(m); setLevel(1); }}>
+                <Text style={[styles.segText, mode === m && styles.segTextOn]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           <Text style={styles.menuLabel}>LEVEL</Text>
           <View style={styles.segRow}>
-            {(mode === 'intervals' ? LEVELS : CHORD_LEVELS).map((l) => (
+            {LEVEL_SETS[mode].map((l) => (
               <TouchableOpacity key={l.id} style={[styles.seg, level === l.id && styles.segOn]} onPress={() => setLevel(l.id)}>
                 <Text style={[styles.segText, level === l.id && styles.segTextOn]}>{l.label}</Text>
               </TouchableOpacity>
