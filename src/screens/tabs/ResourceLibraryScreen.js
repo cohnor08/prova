@@ -15,6 +15,7 @@ import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
 import { sendNotification } from '../../lib/inbox';
+import { queryMyStudents } from '../../lib/teacher';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
@@ -116,8 +117,8 @@ export default function ResourceLibraryScreen() {
         setResCategories(Array.isArray(s.data()?.resourceCategories) ? s.data().resourceCategories : []);
       })
       .catch(() => {});
-    getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid)))
-      .then((snap) => setStudents(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))))
+    queryMyStudents(uid)
+      .then((list) => setStudents(list))
       .catch(() => {});
   };
 
