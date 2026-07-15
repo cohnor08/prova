@@ -163,9 +163,11 @@ async function _lookupSong(title, artist) {
   const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
   const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
   let result = { artwork: null, preview: null };
+  let ok = false; // only a real response (even "no results") is cacheable
   try {
     const res = await fetch(url);
     const json = await res.json();
+    ok = true;
     const hit = json?.results?.[0];
     if (hit) {
       // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
@@ -178,7 +180,9 @@ async function _lookupSong(title, artist) {
   } catch (e) {
     console.warn('iTunes lookup failed:', e);
   }
-  _itunesCache.set(key, result);
+  // Don't cache a network failure — that would poison the song's cover/preview
+  // for the whole session. Cache only real responses so failures retry later.
+  if (ok) _itunesCache.set(key, result);
   return result;
 }
 
