@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db, ignorePermissionDenied } from '../lib/firebase';
 import { GROUP_REACTIONS, sendGroupMessage, toggleReaction } from '../lib/groupChat';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 
 // A class group chat = an announcements channel. Only the owning teacher can
 // post; everyone else can only react. `isTeacher` flips the input row between a
@@ -187,7 +187,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   navHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 70 },
   backText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
@@ -221,4 +221,4 @@ const styles = StyleSheet.create({
 
   readOnlyBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
   readOnlyText: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center' },
-});
+}));

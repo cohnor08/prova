@@ -5,7 +5,7 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import YouTubePlayerModal from './YouTubePlayerModal';
 import Celebration from './Celebration';
 
@@ -413,7 +413,7 @@ export default function PracticePlayer({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
   closeBtn: {
@@ -464,4 +464,4 @@ const styles = StyleSheet.create({
   reviewBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   finishBtn: { paddingVertical: 12 },
   finishText: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600' },
-});
+}));

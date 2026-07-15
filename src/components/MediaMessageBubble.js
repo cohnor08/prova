@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 
 // Renders a chat message that carries a photo or video inline (mediaUrl +
 // mediaType). Images show as a thumbnail; videos play inline with controls.
@@ -33,7 +33,7 @@ export default function MediaMessageBubble({ item, isMe }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   wrap: { maxWidth: '78%', marginVertical: 4 },
   wrapMe: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   wrapThem: { alignSelf: 'flex-start', alignItems: 'flex-start' },
@@ -44,4 +44,4 @@ const styles = StyleSheet.create({
   caption: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, paddingHorizontal: 4 },
   captionMe: { textAlign: 'right' },
   captionThem: { textAlign: 'left' },
-});
+}));

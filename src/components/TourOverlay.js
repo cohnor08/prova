@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { COLORS } from '../constants/theme';
+import { COLORS, themedStyles } from '../constants/theme';
 import { track } from '../lib/analytics';
 
 const TAB_H = 84;        // TAB_BAR_STYLE.height — bar is fixed, no insets
@@ -140,7 +140,7 @@ export default function TourOverlay({ role }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   dimFull: { flex: 1, backgroundColor: DIM, alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: {
     backgroundColor: COLORS.surface, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border,
@@ -159,4 +159,4 @@ const styles = StyleSheet.create({
     borderRightWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border,
     transform: [{ rotate: '45deg' }],
   },
-});
+}));

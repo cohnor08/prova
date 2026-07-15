@@ -2,11 +2,13 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Line, Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { COLORS } from '../constants/theme';
+import { useThemeSync } from '../lib/ThemeContext';
 import { NOTE_NAMES, OPEN_STRINGS } from '../constants/scales';
 
 // Maps a scale (root + intervals) across the whole neck: a dot on every fret
 // whose note is in the scale, with the root note highlighted.
 function ScaleDiagram({ rootIndex, intervals }) {
+  useThemeSync();
   const FRETS = 12;
   const FW = 24;   // fret-space width
   const SH = 20;   // string spacing

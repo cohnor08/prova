@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 
 // A single, tasteful celebration moment — used at the emotional peaks of the
 // app (finishing a task, completing the daily challenge, saving a streak).
@@ -102,7 +102,7 @@ export default function Celebration({ data, onDone }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -157,4 +157,4 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   streakText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
-});
+}));

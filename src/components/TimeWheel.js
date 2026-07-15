@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, themedStyles } from '../constants/theme';
 
 // A rollable hour / minute / AM-PM time picker that reads and emits a 24-hour
 // "HH:MM" string. No native dependency — just snapping ScrollViews.
@@ -74,7 +74,7 @@ export default function TimeWheel({ value, onChange }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   colon: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   wheel: { width: 58, height: ITEM_H * 3, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
@@ -82,4 +82,4 @@ const styles = StyleSheet.create({
   wheelItem: { color: COLORS.textMuted, fontSize: 17, fontWeight: '600' },
   wheelItemSel: { color: COLORS.text, fontWeight: '800' },
   wheelHighlight: { position: 'absolute', left: 6, right: 6, top: ITEM_H, height: ITEM_H, borderRadius: 8, backgroundColor: COLORS.primary + '1A' },
-});
+}));

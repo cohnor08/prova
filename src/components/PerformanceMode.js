@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
 import QRCode from 'react-native-qrcode-svg';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { startLiveGig, endLiveGig, watchGigRequests, gigRequestUrl } from '../lib/livegig';
 import YouTubePlayerModal from './YouTubePlayerModal';
 
@@ -296,7 +296,7 @@ export default function PerformanceMode({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#08090C' },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
   setTimer: { alignItems: 'center' },
@@ -357,4 +357,4 @@ const styles = StyleSheet.create({
   endStat: { color: COLORS.textSecondary, fontSize: 17, marginTop: SPACING.sm, fontVariant: ['tabular-nums'] },
   endBtn: { backgroundColor: COLORS.primary, borderRadius: 14, paddingHorizontal: SPACING.xl * 1.5, paddingVertical: SPACING.md, marginTop: SPACING.xl },
   endBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
-});
+}));
