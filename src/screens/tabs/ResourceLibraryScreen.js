@@ -155,6 +155,14 @@ export default function ResourceLibraryScreen({ navigation }) {
     return set;
   };
 
+  // Play a drill from inside the assign popup — close it, then open the game.
+  const playDrill = (drillKey, modeKey) => {
+    const d = getDrill(drillKey);
+    if (!d) return;
+    setAssignTarget(null);
+    navigation.navigate(d.route, modeKey ? { mode: modeKey } : {});
+  };
+
   // Assign the chosen resource to every selected class + student at once. A
   // class pick tags the task with classId/className so it groups on the student's
   // Today; an individual pick sends it as a solo task.
@@ -450,13 +458,21 @@ export default function ResourceLibraryScreen({ navigation }) {
             <Ionicons name="game-controller" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Skill drills</Text>
           </View>
-          <Text style={styles.drillHint}>Play a drill yourself to see what it asks, then assign it at the mode and level you want.</Text>
+          <Text style={styles.drillHint}>Tap a drill to try it yourself or assign it to a student.</Text>
           {DRILLS.map((d) => {
             const modes = drillModes(d.key);
-            // Modeless drills (theory quiz) get one plain "Play" chip.
-            const playable = modes.length ? modes : [{ key: null, label: 'Play' }];
             return (
-              <View key={d.key} style={styles.item}>
+              <TouchableOpacity
+                key={d.key}
+                style={styles.item}
+                activeOpacity={0.7}
+                // The whole card opens one popup with everything — play + assign.
+                onPress={() => {
+                  setAssignDrillMode(modes.length ? modes[0].key : null);
+                  setAssignDrillLevel(1);
+                  setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
+                }}
+              >
                 <View style={styles.customRow}>
                   <Ionicons name={d.icon} size={16} color={COLORS.primary} />
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -465,38 +481,9 @@ export default function ResourceLibraryScreen({ navigation }) {
                       {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
                     </Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
                 </View>
-
-                {/* Try it — tap a mode to play that exact drill yourself. */}
-                <View style={styles.drillTryRow}>
-                  {playable.map((m) => (
-                    <TouchableOpacity
-                      key={m.key || 'play'}
-                      style={styles.drillTryChip}
-                      onPress={() => navigation.navigate(d.route, m.key ? { mode: m.key } : {})}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="play" size={11} color={COLORS.primary} />
-                      <Text style={styles.drillTryText}>{m.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <TouchableOpacity
-                  style={styles.assignRow}
-                  onPress={() => {
-                    setAssignDrillMode(modes.length ? modes[0].key : null);
-                    setAssignDrillLevel(1);
-                    setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.rowIcon}>
-                    <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
-                  </View>
-                  <Text style={styles.assignRowText}>Assign to student</Text>
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -704,9 +691,28 @@ export default function ResourceLibraryScreen({ navigation }) {
             />
             {!!assignTarget?.drill && getDrill(assignTarget.drill) && (
               <>
+                {/* Play it yourself — tap a mode to launch the game right now. */}
+                <Text style={styles.drillPickLabel}>Try it yourself</Text>
+                <View style={styles.drillTryRow}>
+                  {(drillModes(assignTarget.drill).length
+                    ? drillModes(assignTarget.drill)
+                    : [{ key: null, label: 'Play' }]
+                  ).map((m) => (
+                    <TouchableOpacity
+                      key={m.key || 'play'}
+                      style={styles.drillTryChip}
+                      onPress={() => playDrill(assignTarget.drill, m.key)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="play" size={11} color={COLORS.primary} />
+                      <Text style={styles.drillTryText}>{m.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
                 {drillModes(assignTarget.drill).length > 0 && (
                   <>
-                    <Text style={styles.drillPickLabel}>Which drill?</Text>
+                    <Text style={styles.drillPickLabel}>Which drill to assign?</Text>
                     <View style={styles.drillLevelRow}>
                       {drillModes(assignTarget.drill).map((m) => (
                         <TouchableOpacity
@@ -824,7 +830,8 @@ export default function ResourceLibraryScreen({ navigation }) {
                   disabled={n === 0}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="paper-plane" size={16} color={COLORS.text} />
+                  {/* No kite for drills — Ethan wants that row clean. */}
+                  {!assignTarget?.drill && <Ionicons name="paper-plane" size={16} color={COLORS.text} />}
                   <Text style={styles.assignSendText}>{n > 0 ? `Assign to ${n} student${n === 1 ? '' : 's'}` : 'Assign'}</Text>
                 </TouchableOpacity>
               );
