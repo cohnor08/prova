@@ -13,7 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
-import { useThemeSync } from '../../lib/ThemeContext';
+import { useThemeSync, useThemeColors } from '../../lib/ThemeContext';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
 import { isPersonal, personalUpsell } from '../../lib/entitlements';
@@ -86,6 +86,8 @@ function hashString(str) {
 // ─── BPM Slider ───────────────────────────────────────────────────────────────
 
 function BpmSlider({ bpm, onChange }) {
+  const COLORS = useThemeColors();
+  const sliderStyles = React.useMemo(() => makeSliderStyles(COLORS), [COLORS]);
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
   const bpmRef = useRef(bpm);
@@ -140,7 +142,7 @@ function BpmSlider({ bpm, onChange }) {
   );
 }
 
-const sliderStyles = StyleSheet.create({
+const makeSliderStyles = (COLORS) => StyleSheet.create({
   container: {
     height: THUMB_SIZE + 16,
     justifyContent: 'center',
@@ -173,6 +175,8 @@ const sliderStyles = StyleSheet.create({
 // ─── Stepper (−/+ number control) ───────────────────────────────────────────
 
 function Stepper({ value, min, max, step, suffix, onChange }) {
+  const COLORS = useThemeColors();
+  const stepperStyles = React.useMemo(() => makeStepperStyles(COLORS), [COLORS]);
   return (
     <View style={stepperStyles.row}>
       <TouchableOpacity
@@ -196,7 +200,7 @@ function Stepper({ value, min, max, step, suffix, onChange }) {
   );
 }
 
-const stepperStyles = StyleSheet.create({
+const makeStepperStyles = (COLORS) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   btn: {
     width: 30, height: 30, borderRadius: 8,

@@ -206,7 +206,7 @@ For questions about these Terms: cehthoanprova@gmail.com`;
 
 function LegalModal({ visible, title, content, onClose }) {
   const COLORS = useThemeColors();
-  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
+  const legalStyles = React.useMemo(() => makeLegalStyles(COLORS), [COLORS]);
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={legalStyles.container}>
@@ -225,7 +225,7 @@ function LegalModal({ visible, title, content, onClose }) {
   );
 }
 
-const legalStyles = StyleSheet.create({
+const makeLegalStyles = (COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
