@@ -648,9 +648,22 @@ export default function ProfileScreen({ navigation }) {
           ))}
           {(teachers.length === 0 || showAddTeacher) ? (
             <View style={styles.teacherConnect}>
-              <Text style={styles.teacherConnectHint}>
-                {teachers.length === 0 ? 'Got a code from your teacher? Enter it to connect.' : 'Enter another teacher’s code to connect.'}
-              </Text>
+              <View style={styles.teacherConnectHead}>
+                <Text style={[styles.teacherConnectHint, { flex: 1 }]}>
+                  {teachers.length === 0 ? 'Got a code from your teacher? Enter it to connect.' : 'Enter another teacher’s code to connect.'}
+                </Text>
+                {/* Only offer a way out when there's something to go back to —
+                    a student with no teacher yet needs the form to stay put. */}
+                {showAddTeacher && teachers.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => { setShowAddTeacher(false); setTeacherCodeInput(''); }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={18} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.teacherConnectRow}>
                 <TextInput
                   style={styles.teacherCodeInput}
@@ -1043,6 +1056,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
 
   // Connect-to-teacher (student)
   teacherConnect: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.sm },
+  teacherConnectHead: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm },
   teacherConnectHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   teacherConnectRow: { flexDirection: 'row', gap: SPACING.sm },
   teacherCodeInput: {

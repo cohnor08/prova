@@ -16,7 +16,7 @@ import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
 import { sendNotification } from '../../lib/inbox';
 import { queryMyStudents } from '../../lib/teacher';
-import { DRILLS, getDrill } from '../../constants/drills';
+import { DRILLS, getDrill, drillModes, drillLevelCount } from '../../constants/drills';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
@@ -55,7 +55,7 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-export default function ResourceLibraryScreen() {
+export default function ResourceLibraryScreen({ navigation }) {
   useThemeSync();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
@@ -94,6 +94,7 @@ export default function ResourceLibraryScreen() {
   const [assignDueDate, setAssignDueDate] = useState(null); // ISO datetime or null
   const [assignDuration, setAssignDuration] = useState(10); // timer minutes (default 10; clear for no limit)
   const [assignDrillLevel, setAssignDrillLevel] = useState(1); // level for an assigned drill
+  const [assignDrillMode, setAssignDrillMode] = useState(null); // which mode of that drill (null = it has none)
   const [showAssignDuePicker, setShowAssignDuePicker] = useState(false);
   const [selClasses, setSelClasses] = useState(() => new Set());  // multi-select: chosen class ids
   const [selStudents, setSelStudents] = useState(() => new Set()); // multi-select: chosen student uids
@@ -167,6 +168,7 @@ export default function ResourceLibraryScreen() {
       song: '',
       drill: assignTarget.drill || null,
       drillLevel: assignTarget.drill ? assignDrillLevel : null,
+      drillMode: assignTarget.drill ? assignDrillMode : null,
       dueDate: assignDueDate,
       durationMin: assignDuration || 0,
       completed: false,
@@ -408,7 +410,9 @@ export default function ResourceLibraryScreen() {
                     <>
                       {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
                       <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.8}>
-                        <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                        <View style={styles.rowIcon}>
+                          <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                        </View>
                         <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
                         <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                       </TouchableOpacity>
@@ -446,26 +450,55 @@ export default function ResourceLibraryScreen() {
             <Ionicons name="game-controller" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Skill drills</Text>
           </View>
-          <Text style={styles.drillHint}>Assign a mini-game at a chosen level — the student launches it straight from the task.</Text>
-          {DRILLS.map((d) => (
-            <View key={d.key} style={styles.item}>
-              <View style={styles.customRow}>
-                <Ionicons name={d.icon} size={16} color={COLORS.primary} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
-                  <Text style={styles.itemDetail} numberOfLines={1}>{d.levels} levels · {d.sub}</Text>
+          <Text style={styles.drillHint}>Play a drill yourself to see what it asks, then assign it at the mode and level you want.</Text>
+          {DRILLS.map((d) => {
+            const modes = drillModes(d.key);
+            // Modeless drills (theory quiz) get one plain "Play" chip.
+            const playable = modes.length ? modes : [{ key: null, label: 'Play' }];
+            return (
+              <View key={d.key} style={styles.item}>
+                <View style={styles.customRow}>
+                  <Ionicons name={d.icon} size={16} color={COLORS.primary} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
+                    <Text style={styles.itemDetail} numberOfLines={1}>
+                      {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
+                    </Text>
+                  </View>
                 </View>
+
+                {/* Try it — tap a mode to play that exact drill yourself. */}
+                <View style={styles.drillTryRow}>
+                  {playable.map((m) => (
+                    <TouchableOpacity
+                      key={m.key || 'play'}
+                      style={styles.drillTryChip}
+                      onPress={() => navigation.navigate(d.route, m.key ? { mode: m.key } : {})}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="play" size={11} color={COLORS.primary} />
+                      <Text style={styles.drillTryText}>{m.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.assignRow}
+                  onPress={() => {
+                    setAssignDrillMode(modes.length ? modes[0].key : null);
+                    setAssignDrillLevel(1);
+                    setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.assignRowText}>Assign to student</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.assignRow}
-                onPress={() => setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` })}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.assignRowText}>Assign to student</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* ── Lesson library (searchable bank, assign any task) ── */}
@@ -525,7 +558,9 @@ export default function ResourceLibraryScreen() {
                           <Text style={styles.itemDetail}>{task.text}</Text>
                           {!!task.yt && (
                             <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: task.yt, title: t.title })} activeOpacity={0.8}>
-                              <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                              <View style={styles.rowIcon}>
+                                <Ionicons name="play-circle" size={18} color={COLORS.error} />
+                              </View>
                               <Text style={styles.ytText} numberOfLines={1}>Watch a tutorial</Text>
                               <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                             </TouchableOpacity>
@@ -535,7 +570,9 @@ export default function ResourceLibraryScreen() {
                             onPress={() => setAssignTarget({ title: t.title, url: task.yt || t.title, description: task.text })}
                             activeOpacity={0.7}
                           >
-                            <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                            <View style={styles.rowIcon}>
+                              <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
+                            </View>
                             <Text style={styles.assignRowText}>Assign to student</Text>
                           </TouchableOpacity>
                         </View>
@@ -666,18 +703,39 @@ export default function ResourceLibraryScreen() {
               multiline
             />
             {!!assignTarget?.drill && getDrill(assignTarget.drill) && (
-              <View style={styles.drillLevelRow}>
-                {Array.from({ length: getDrill(assignTarget.drill).levels }, (_, i) => i + 1).map((lv) => (
-                  <TouchableOpacity
-                    key={lv}
-                    style={[styles.drillLevelChip, assignDrillLevel === lv && styles.drillLevelChipOn]}
-                    onPress={() => setAssignDrillLevel(lv)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.drillLevelText, assignDrillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <>
+                {drillModes(assignTarget.drill).length > 0 && (
+                  <>
+                    <Text style={styles.drillPickLabel}>Which drill?</Text>
+                    <View style={styles.drillLevelRow}>
+                      {drillModes(assignTarget.drill).map((m) => (
+                        <TouchableOpacity
+                          key={m.key}
+                          style={[styles.drillModeChip, assignDrillMode === m.key && styles.drillLevelChipOn]}
+                          // Levels differ per mode, so a mode switch resets the level.
+                          onPress={() => { setAssignDrillMode(m.key); setAssignDrillLevel(1); }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.drillLevelText, assignDrillMode === m.key && { color: '#fff' }]}>{m.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+                <Text style={styles.drillPickLabel}>Level</Text>
+                <View style={styles.drillLevelRow}>
+                  {Array.from({ length: drillLevelCount(assignTarget.drill, assignDrillMode) }, (_, i) => i + 1).map((lv) => (
+                    <TouchableOpacity
+                      key={lv}
+                      style={[styles.drillLevelChip, assignDrillLevel === lv && styles.drillLevelChipOn]}
+                      onPress={() => setAssignDrillLevel(lv)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.drillLevelText, assignDrillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
             )}
             <TouchableOpacity style={styles.assignDueRow} onPress={() => setShowAssignDuePicker(true)} activeOpacity={0.7}>
               <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
@@ -806,12 +864,20 @@ const styles = themedStyles(() => StyleSheet.create({
   drillHint: { color: COLORS.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: SPACING.sm },
   drillLevelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
   drillLevelChip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillModeChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
   drillLevelChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   drillLevelText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  drillPickLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: SPACING.sm },
+  drillTryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm },
+  drillTryChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillTryText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   itemDetail: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
+  // "Watch a tutorial" and "Assign to student" sit under each other, so both
+  // put their icon in the same fixed slot and their text starts at one column.
+  rowIcon: { width: 18, alignItems: 'center' },
   ytRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm },
   ytText: { flex: 1, color: COLORS.error, fontSize: 13, fontWeight: '600' },
   addResBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.primary },
@@ -832,7 +898,7 @@ const styles = themedStyles(() => StyleSheet.create({
   accessoryBar: { backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: 8, paddingHorizontal: SPACING.md, alignItems: 'flex-end' },
   accessoryDone: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   customRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
-  assignRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  assignRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   assignRowText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   libTask: { marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border },
   catScroll: { gap: SPACING.sm, paddingRight: SPACING.lg },

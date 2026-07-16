@@ -82,7 +82,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 export default function EarTrainingScreen({ navigation, route }) {
   useThemeSync();
   const celebrate = useCelebration();
-  const [mode, setMode] = useState('intervals');       // intervals | chords
+  // A teacher can assign this drill at a mode + level, which arrive as params.
+  const [mode, setMode] = useState(route?.params?.mode || 'intervals'); // intervals | chords | scales
   const [level, setLevel] = useState(route?.params?.level || 1);
   const [phase, setPhase] = useState('menu');          // menu | playing | done
   const [qNum, setQNum] = useState(0);

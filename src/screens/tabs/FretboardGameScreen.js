@@ -54,7 +54,8 @@ export default function FretboardGameScreen({ navigation, route }) {
   const celebrate = useCelebration();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState(route?.params?.level || 1);
-  const [mode, setMode] = useState('find');       // 'find' (tap the fret) | 'name' (pick the note)
+  // A teacher can assign this drill at a mode + level, which arrive as params.
+  const [mode, setMode] = useState(route?.params?.mode || 'find'); // 'find' (tap the fret) | 'name' (pick the note)
   const [phase, setPhase] = useState('menu');
   const [qNum, setQNum] = useState(0);
   const [question, setQuestion] = useState(null); // { string, targetName, targetFret, choices }

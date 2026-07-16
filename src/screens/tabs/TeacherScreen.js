@@ -30,7 +30,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
-import { DRILLS, getDrill } from '../../constants/drills';
+import { DRILLS, getDrill, drillModes, drillLevelCount } from '../../constants/drills';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 import SheetModal from '../../components/SheetModal';
@@ -903,6 +903,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
   const [song, setSong] = useState('');
   const [drill, setDrill] = useState(null); // optional skill-drill mini-game key
   const [drillLevel, setDrillLevel] = useState(1); // level to launch the drill at
+  const [drillMode, setDrillMode] = useState(null); // which mode of that drill (null = it has none)
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [durationMin, setDurationMin] = useState(10); // default 10-min timer; clear it for an open-ended (no-limit) task
@@ -951,6 +952,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
       setSong(src.song || '');
       setDrill(src.drill || null);
       setDrillLevel(src.drillLevel || 1);
+      // Tasks assigned before drills had modes fall back to the drill's first.
+      setDrillMode(src.drill ? (src.drillMode || drillModes(src.drill)[0]?.key || null) : null);
       setDueDate(src.dueDate || null);
       setDurationMin(src.durationMin || 0);
       setFeedback(src.feedback || '');
@@ -1001,7 +1004,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
       try {
         await onSaveClass({
           title: title.trim(), description: description.trim(), youtube: youtube.trim(),
-          song: song.trim(), drill: drill || null, drillLevel: drill ? drillLevel : null, dueDate, durationMin: durationMin || 0,
+          song: song.trim(), drill: drill || null, drillLevel: drill ? drillLevel : null,
+          drillMode: drill ? drillMode : null, dueDate, durationMin: durationMin || 0,
         });
         close();
       } catch (err) {
@@ -1022,6 +1026,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                 ...t,
                 title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(),
                 drill: drill || null, drillLevel: drill ? drillLevel : null,
+                drillMode: drill ? drillMode : null,
                 dueDate, durationMin: durationMin || 0,
                 feedback: feedback.trim(),
                 // Stamp when the feedback text actually changes, so the student's
@@ -1054,6 +1059,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
         song: song.trim(),
         drill: drill || null,
         drillLevel: drill ? drillLevel : null,
+        drillMode: drill ? drillMode : null,
         dueDate,
         durationMin: durationMin || 0,
         completed: false,
@@ -1176,7 +1182,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                     <TouchableOpacity
                       key={d.key}
                       style={[styles.drillPick, on && styles.drillPickOn]}
-                      onPress={() => { setDrill(on ? null : d.key); setDrillLevel(1); }}
+                      onPress={() => {
+                        const next = on ? null : d.key;
+                        setDrill(next);
+                        setDrillMode(next ? (drillModes(next)[0]?.key || null) : null);
+                        setDrillLevel(1);
+                      }}
                       activeOpacity={0.8}
                     >
                       <Ionicons name={d.icon} size={16} color={on ? '#fff' : COLORS.primary} />
@@ -1186,18 +1197,35 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                 })}
               </View>
               {!!drill && getDrill(drill) && (
-                <View style={styles.drillLevelRow}>
-                  {Array.from({ length: getDrill(drill).levels }, (_, i) => i + 1).map((lv) => (
-                    <TouchableOpacity
-                      key={lv}
-                      style={[styles.drillLevelChip, drillLevel === lv && styles.drillLevelChipOn]}
-                      onPress={() => setDrillLevel(lv)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.drillLevelText, drillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <>
+                  {drillModes(drill).length > 0 && (
+                    <View style={styles.drillLevelRow}>
+                      {drillModes(drill).map((m) => (
+                        <TouchableOpacity
+                          key={m.key}
+                          style={[styles.drillModeChip, drillMode === m.key && styles.drillLevelChipOn]}
+                          // Levels differ per mode, so a mode switch resets the level.
+                          onPress={() => { setDrillMode(m.key); setDrillLevel(1); }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.drillLevelText, drillMode === m.key && { color: '#fff' }]}>{m.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <View style={styles.drillLevelRow}>
+                    {Array.from({ length: drillLevelCount(drill, drillMode) }, (_, i) => i + 1).map((lv) => (
+                      <TouchableOpacity
+                        key={lv}
+                        style={[styles.drillLevelChip, drillLevel === lv && styles.drillLevelChipOn]}
+                        onPress={() => setDrillLevel(lv)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.drillLevelText, drillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
               )}
 
               <Text style={styles.dueLabel}>DUE</Text>
@@ -3678,6 +3706,7 @@ const styles = themedStyles(() => StyleSheet.create({
   drillPickText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   drillLevelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm, marginBottom: SPACING.lg },
   drillLevelChip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillModeChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
   drillLevelChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   drillLevelText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },

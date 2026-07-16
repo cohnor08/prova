@@ -15,7 +15,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { getDrill, pickTodaysDrills } from '../../constants/drills';
+import { getDrill, pickTodaysDrills, drillAssignmentLabel } from '../../constants/drills';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { awardNewBadges } from '../../lib/badges';
@@ -257,10 +257,13 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         </TouchableOpacity>
       )}
       {expanded && !!task.drill && getDrill(task.drill) && (
-        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill, task.drillLevel)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill, task.drillLevel, task.drillMode)} activeOpacity={0.7}>
           <Ionicons name={getDrill(task.drill).icon} size={15} color={COLORS.primary} style={styles.taskLineIcon} />
           <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>
-            Practice: {getDrill(task.drill).title}{task.drillLevel ? ` · Level ${task.drillLevel}` : ''}
+            Practice: {getDrill(task.drill).title}
+            {drillAssignmentLabel(task.drill, task.drillMode, task.drillLevel)
+              ? ` · ${drillAssignmentLabel(task.drill, task.drillMode, task.drillLevel)}`
+              : ''}
           </Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
@@ -1227,10 +1230,14 @@ export default function TodayScreen({ navigation }) {
     navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
-  // Open a teacher-assigned drill in its mini-game, at the assigned level.
-  const openDrill = (key, level) => {
+  // Open a teacher-assigned drill in its mini-game, at the assigned mode + level.
+  const openDrill = (key, level, mode) => {
     const d = getDrill(key);
-    if (d) navigation.navigate('Practice', { screen: d.route, params: level ? { level } : undefined });
+    if (!d) return;
+    const params = {};
+    if (level) params.level = level;
+    if (mode) params.mode = mode;
+    navigation.navigate('Practice', { screen: d.route, params: Object.keys(params).length ? params : undefined });
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's

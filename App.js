@@ -83,6 +83,7 @@ const PracticeStack = createNativeStackNavigator();
 const TeacherHomeStack = createNativeStackNavigator();
 const TodayStack = createNativeStackNavigator();
 const ProgressStack = createNativeStackNavigator();
+const ResourcesStack = createNativeStackNavigator();
 
 // The Practice tab is a small stack so it can push deeper pages (Gigs &
 // Setlists) without adding another bottom tab.
@@ -154,6 +155,21 @@ function TeacherHomeStackScreen() {
   );
 }
 
+// The teacher's Resources tab is a stack so it can push the skill-drill games —
+// a teacher needs to play a drill to know what they're assigning. Same screens
+// as the student's Practice tab, which owns its own copies.
+function ResourcesStackScreen() {
+  return (
+    <ResourcesStack.Navigator screenOptions={{ headerShown: false }}>
+      <ResourcesStack.Screen name="ResourcesHome" component={ResourceLibraryScreen} />
+      <ResourcesStack.Screen name="EarTraining" component={EarTrainingScreen} />
+      <ResourcesStack.Screen name="FretboardGame" component={FretboardGameScreen} />
+      <ResourcesStack.Screen name="RhythmTapper" component={RhythmTapperScreen} />
+      <ResourcesStack.Screen name="TheoryQuiz" component={TheoryQuizScreen} />
+    </ResourcesStack.Navigator>
+  );
+}
+
 const TAB_ICONS = {
   Today: ['musical-notes', 'musical-notes-outline'],
   Practice: ['options', 'options-outline'],
@@ -189,7 +205,7 @@ function MainTabs({ role }) {
         <>
           <Tab.Screen name="Home" component={TeacherHomeStackScreen} />
           <Tab.Screen name="Teacher" component={TeacherScreen} options={{ tabBarLabel: 'Students' }} />
-          <Tab.Screen name="Resources" component={ResourceLibraryScreen} />
+          <Tab.Screen name="Resources" component={ResourcesStackScreen} />
           <Tab.Screen name="Messages" component={MessagesScreen} />
           <Tab.Screen name="Profile" component={ProfileScreen} />
         </>
