@@ -469,7 +469,6 @@ export default function ResourceLibraryScreen({ navigation }) {
                       {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
                     </Text>
                   </View>
-                  <Ionicons name="play-circle-outline" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
 
                 {/* Assign to student — no kite. Opens the assign flow (mode/level/etc). */}
