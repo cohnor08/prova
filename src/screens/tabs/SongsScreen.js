@@ -13,7 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
-import { useThemeSync } from '../../lib/ThemeContext';
+import { useThemeSync, useThemeColors } from '../../lib/ThemeContext';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
 import { isPersonal, personalUpsell } from '../../lib/entitlements';
@@ -86,6 +86,8 @@ function hashString(str) {
 // ─── BPM Slider ───────────────────────────────────────────────────────────────
 
 function BpmSlider({ bpm, onChange }) {
+  const COLORS = useThemeColors();
+  const sliderStyles = React.useMemo(() => makeSliderStyles(COLORS), [COLORS]);
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
   const bpmRef = useRef(bpm);
@@ -140,7 +142,7 @@ function BpmSlider({ bpm, onChange }) {
   );
 }
 
-const sliderStyles = StyleSheet.create({
+const makeSliderStyles = (COLORS) => StyleSheet.create({
   container: {
     height: THUMB_SIZE + 16,
     justifyContent: 'center',
@@ -173,6 +175,8 @@ const sliderStyles = StyleSheet.create({
 // ─── Stepper (−/+ number control) ───────────────────────────────────────────
 
 function Stepper({ value, min, max, step, suffix, onChange }) {
+  const COLORS = useThemeColors();
+  const stepperStyles = React.useMemo(() => makeStepperStyles(COLORS), [COLORS]);
   return (
     <View style={stepperStyles.row}>
       <TouchableOpacity
@@ -196,7 +200,7 @@ function Stepper({ value, min, max, step, suffix, onChange }) {
   );
 }
 
-const stepperStyles = StyleSheet.create({
+const makeStepperStyles = (COLORS) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   btn: {
     width: 30, height: 30, borderRadius: 8,
@@ -380,6 +384,7 @@ export default function SongsScreen({ route, navigation }) {
   const songSoundRef = useRef(null);
   const [openInSong, setOpenInSong] = useState(null); // song shown in the "Open in…" sheet
   const [artwork, setArtwork] = useState({}); // "title|artist" → cover URL (null once fetched, none found)
+  const [playable, setPlayable] = useState({}); // "title|artist" → true/false once known (has a 30s preview)
 
   // Which tool is visible: 'metronome' | 'tuner' | 'songs'
   // (the practice timer now lives inline on the task card above)
@@ -1111,6 +1116,10 @@ export default function SongsScreen({ route, navigation }) {
   // Keyed by title|artist so a song shared across the library, recommendations,
   // and "song of the day" only fetches its cover once.
   const artKey = (s) => `${(s.title || '').toLowerCase()}|${(s.artist || '').toLowerCase()}`;
+  // Hide songs with no playable 30s preview (they'd just sit there not playing).
+  // Teacher-assigned + today's song are always kept; unknown-yet (still loading)
+  // songs stay visible until confirmed unplayable. Playable songs all have a cover.
+  const playOK = (s) => s.fromTeacher || (songOfTheDay && s.id === songOfTheDay.id) || playable[artKey(s)] !== false;
 
   // Lazily pull cover art for every song currently on screen (iTunes Search).
   // The `undefined` guard means each unique song is fetched at most once.
@@ -1122,17 +1131,33 @@ export default function SongsScreen({ route, navigation }) {
       const k = artKey(s);
       if (seen.has(k)) continue;
       seen.add(k);
-      if (artwork[k] === undefined) missing.push(s);
+      // Retry nulls too (== null covers undefined): a null may be a stale cached
+      // miss, but the shared iTunes cache could since have the real cover (e.g.
+      // fetched by Learn-a-Song). Genuine misses just re-hit the cache — cheap.
+      if (artwork[k] == null) missing.push(s);
     }
     if (missing.length === 0) return;
 
     let cancelled = false;
     (async () => {
-      const updates = {};
+      const artUpdates = {};
+      const playUpdates = {};
       await Promise.all(
-        missing.map(async (s) => { updates[artKey(s)] = await fetchSongArtwork(s.title, s.artist); })
+        // Both hit the same cached iTunes lookup — one network call per song gives
+        // us the cover AND whether it has a playable 30s preview.
+        missing.map(async (s) => {
+          const [art, prev] = await Promise.all([
+            fetchSongArtwork(s.title, s.artist),
+            fetchSongPreview(s.title, s.artist),
+          ]);
+          artUpdates[artKey(s)] = art;
+          playUpdates[artKey(s)] = !!prev;
+        })
       );
-      if (!cancelled) setArtwork((prev) => ({ ...prev, ...updates }));
+      if (!cancelled) {
+        setArtwork((prev) => ({ ...prev, ...artUpdates }));
+        setPlayable((prev) => ({ ...prev, ...playUpdates }));
+      }
     })();
     return () => { cancelled = true; };
   }, [songs, instrument, level, viewingSetlist]);
@@ -1420,7 +1445,7 @@ export default function SongsScreen({ route, navigation }) {
             </View>
           ) : (
             <View style={styles.songList}>
-              {shownSongs.map((s) => {
+              {shownSongs.filter(playOK).map((s) => {
                 const isToday = songOfTheDay && s.id === songOfTheDay.id;
                 const isFocus = focusKey && songKey(s) === focusKey;
                 const isExpanded = expandedSongId === s.id;
@@ -1527,7 +1552,7 @@ export default function SongsScreen({ route, navigation }) {
             style={styles.recScrollOuter}
             contentContainerStyle={styles.recScroll}
           >
-            {recommendedSongs.map((rec) => {
+            {recommendedSongs.filter(playOK).map((rec) => {
               const added = recommendedIds.has(artKey(rec));
               const isLoading = loadingSongId === rec.id;
               const isThisPlaying = playingSongId === rec.id;

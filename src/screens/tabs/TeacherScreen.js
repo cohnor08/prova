@@ -15,7 +15,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow } from '../../lib/claude';
 import { track } from '../../lib/analytics';
-import { ensureTeacherCode } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
@@ -30,7 +30,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
-import { DRILLS } from '../../constants/drills';
+import { DRILLS, getDrill, drillModes, drillLevelCount, drillAssignmentLabel } from '../../constants/drills';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 import SheetModal from '../../components/SheetModal';
@@ -889,17 +889,21 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
   );
 }
 
-function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onClose, onAssigned }) {
+function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTask, onSaveClass, visible, onClose, onAssigned }) {
   // The modal assigns to one student, or to every student in a class at once —
-  // or, when editTask is passed, edits one student's existing task in place.
+  // or edits an existing task: editTask = one student's task, editClassTask = a
+  // whole class-task batch (saved via onSaveClass, which updates every member).
   const isClass = !!klass;
   const isEdit = !!editTask;
+  const isClassEdit = !!editClassTask;
   const recipients = isClass ? (recipientUids || []) : (student ? [student.uid] : []);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [youtube, setYoutube] = useState('');
   const [song, setSong] = useState('');
   const [drill, setDrill] = useState(null); // optional skill-drill mini-game key
+  const [drillLevel, setDrillLevel] = useState(1); // level to launch the drill at
+  const [drillMode, setDrillMode] = useState(null); // which mode of that drill (null = it has none)
   const [dueDate, setDueDate] = useState(null); // ISO datetime or null
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [durationMin, setDurationMin] = useState(10); // default 10-min timer; clear it for an open-ended (no-limit) task
@@ -914,7 +918,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
   const [showResources, setShowResources] = useState(false);
 
   const close = () => {
-    setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null);
+    setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1);
     setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false); setFeedback('');
     onClose();
   };
@@ -940,17 +944,21 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
 
   // Pre-fill the fields when opening to edit an existing task.
   useEffect(() => {
-    if (visible && editTask) {
-      setTitle(editTask.title || '');
-      setDescription(editTask.description || '');
-      setYoutube(editTask.youtube || '');
-      setSong(editTask.song || '');
-      setDrill(editTask.drill || null);
-      setDueDate(editTask.dueDate || null);
-      setDurationMin(editTask.durationMin || 0);
-      setFeedback(editTask.feedback || '');
+    const src = editTask || editClassTask;
+    if (visible && src) {
+      setTitle(src.title || '');
+      setDescription(src.description || '');
+      setYoutube(src.youtube || '');
+      setSong(src.song || '');
+      setDrill(src.drill || null);
+      setDrillLevel(src.drillLevel || 1);
+      // Tasks assigned before drills had modes fall back to the drill's first.
+      setDrillMode(src.drill ? (src.drillMode || drillModes(src.drill)[0]?.key || null) : null);
+      setDueDate(src.dueDate || null);
+      setDurationMin(src.durationMin || 0);
+      setFeedback(src.feedback || '');
     }
-  }, [visible, editTask]);
+  }, [visible, editTask, editClassTask]);
 
   const saveTemplates = (next) => {
     setTemplates(next);
@@ -988,6 +996,25 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
       Alert.alert('Demo mode', 'Task assignment is disabled in demo mode.');
       return;
     }
+    // Class-edit mode: hand the edited fields back to the teacher screen, which
+    // updates the whole batch across every class member.
+    if (isClassEdit) {
+      Keyboard.dismiss();
+      setLoading(true);
+      try {
+        await onSaveClass({
+          title: title.trim(), description: description.trim(), youtube: youtube.trim(),
+          song: song.trim(), drill: drill || null, drillLevel: drill ? drillLevel : null,
+          drillMode: drill ? drillMode : null, dueDate, durationMin: durationMin || 0,
+        });
+        close();
+      } catch (err) {
+        Alert.alert('Error', err.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     // Edit mode: update the one existing task on this student's doc.
     if (isEdit) {
       Keyboard.dismiss();
@@ -998,7 +1025,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
             ? {
                 ...t,
                 title: title.trim(), description: description.trim(), youtube: youtube.trim(), song: song.trim(),
-                drill: drill || null,
+                drill: drill || null, drillLevel: drill ? drillLevel : null,
+                drillMode: drill ? drillMode : null,
                 dueDate, durationMin: durationMin || 0,
                 feedback: feedback.trim(),
                 // Stamp when the feedback text actually changes, so the student's
@@ -1030,6 +1058,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
         youtube: youtube.trim(),
         song: song.trim(),
         drill: drill || null,
+        drillLevel: drill ? drillLevel : null,
+        drillMode: drill ? drillMode : null,
         dueDate,
         durationMin: durationMin || 0,
         completed: false,
@@ -1055,7 +1085,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
         }).catch(() => {});
       });
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDueDate(null); setDurationMin(10);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1); setDueDate(null); setDurationMin(10);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -1081,7 +1111,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 automaticallyAdjustKeyboardInsets
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
               >
-              <Text style={styles.modalTitle}>{isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
+              <Text style={styles.modalTitle}>{isClassEdit ? 'Edit Class Task' : isEdit ? 'Edit Task' : isClass ? 'Assign to Class' : 'Assign Task'}</Text>
               <Text style={styles.modalSubtitle}>
                 {isClass
                   ? `${klass.name}  ·  ${recipients.length} student${recipients.length === 1 ? '' : 's'}`
@@ -1152,7 +1182,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                     <TouchableOpacity
                       key={d.key}
                       style={[styles.drillPick, on && styles.drillPickOn]}
-                      onPress={() => setDrill(on ? null : d.key)}
+                      onPress={() => {
+                        const next = on ? null : d.key;
+                        setDrill(next);
+                        setDrillMode(next ? (drillModes(next)[0]?.key || null) : null);
+                        setDrillLevel(1);
+                      }}
                       activeOpacity={0.8}
                     >
                       <Ionicons name={d.icon} size={16} color={on ? '#fff' : COLORS.primary} />
@@ -1161,6 +1196,37 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                   );
                 })}
               </View>
+              {!!drill && getDrill(drill) && (
+                <>
+                  {drillModes(drill).length > 0 && (
+                    <View style={styles.drillLevelRow}>
+                      {drillModes(drill).map((m) => (
+                        <TouchableOpacity
+                          key={m.key}
+                          style={[styles.drillModeChip, drillMode === m.key && styles.drillLevelChipOn]}
+                          // Levels differ per mode, so a mode switch resets the level.
+                          onPress={() => { setDrillMode(m.key); setDrillLevel(1); }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.drillLevelText, drillMode === m.key && { color: '#fff' }]}>{m.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <View style={styles.drillLevelRow}>
+                    {Array.from({ length: drillLevelCount(drill, drillMode) }, (_, i) => i + 1).map((lv) => (
+                      <TouchableOpacity
+                        key={lv}
+                        style={[styles.drillLevelChip, drillLevel === lv && styles.drillLevelChipOn]}
+                        onPress={() => setDrillLevel(lv)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.drillLevelText, drillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               <Text style={styles.dueLabel}>DUE</Text>
               <TouchableOpacity style={styles.dueField} onPress={() => { Keyboard.dismiss(); setShowDuePicker(true); }} activeOpacity={0.8}>
@@ -1237,7 +1303,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, visible, onC
                 >
                   {loading
                     ? <ActivityIndicator color={COLORS.text} size="small" />
-                    : <Text style={styles.modalAssignText}>{isEdit ? 'Save changes' : 'Assign task'}</Text>}
+                    : <Text style={styles.modalAssignText}>{(isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
               </ScrollView>
@@ -1636,6 +1702,8 @@ function TeacherDashboard() {
   const [addToClass, setAddToClass] = useState(null); // class we're adding students to
   const [studentSearch, setStudentSearch] = useState('');
   const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
+  const [taskOverview, setTaskOverview] = useState(null); // { student, task } read-only overview
+  const [editClassCtx, setEditClassCtx] = useState(null); // { klass, group, task } class-task batch being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
   const [openStudents, setOpenStudents] = useState(() => new Set()); // `${classId}_${uid}`
@@ -1784,11 +1852,10 @@ function TeacherDashboard() {
       const uid = auth.currentUser.uid;
       // Students who connected (via my join code, or an accepted request) carry
       // teacherUid === my uid.
-      const [snap, meSnap] = await Promise.all([
-        getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+      const [roster, meSnap] = await Promise.all([
+        queryMyStudents(uid),
         getDoc(doc(db, 'users', uid)),
       ]);
-      const roster = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
       setStudents(roster);
       setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
       // Downgraded (or signed up free) with more students than the plan
@@ -1799,7 +1866,7 @@ function TeacherDashboard() {
       }
       // Mirror the roster onto my doc — the student-side join-by-code cap
       // reads students.length off the teacher doc.
-      updateDoc(doc(db, 'users', uid), { students: snap.docs.map((d) => d.id) }).catch(() => {});
+      updateDoc(doc(db, 'users', uid), { students: roster.map((s) => s.uid) }).catch(() => {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -1997,6 +2064,18 @@ function TeacherDashboard() {
     ]);
   };
 
+  // Tapping a task offers a choice instead of jumping straight to edit: see a
+  // clean read-only overview of how the student's doing on it, edit it, or
+  // remove it. Keeps the row itself uncluttered.
+  const openTaskMenu = (student, task) => {
+    Alert.alert(task.title, undefined, [
+      { text: 'See overview', onPress: () => setTaskOverview({ student, task }) },
+      { text: 'Edit task', onPress: () => setEditTaskCtx({ student, task }) },
+      { text: 'Remove task', style: 'destructive', onPress: () => removeAssignedTask(student.uid, task.id, task.title) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   // Mark a student's practice-proof clip as verified (writes the student's
   // assignedTasks — allowed for the linked teacher).
   const verifyProof = async (studentUid, taskId) => {
@@ -2039,6 +2118,36 @@ function TeacherDashboard() {
         },
       ]
     );
+  };
+
+  // Tap a CLASS TASKS batch → edit it for the whole class. Find a representative
+  // copy to prefill the editor.
+  const openClassTaskEdit = (klass, group) => {
+    let sample = null;
+    for (const uid of (klass.studentUids || [])) {
+      const s = students.find((x) => x.uid === uid);
+      const t = (s?.assignedTasks || []).find((tt) => tt.classId === klass.id && tt.assignedAt === group.assignedAt && tt.title === group.title);
+      if (t) { sample = t; break; }
+    }
+    if (sample) setEditClassCtx({ klass, group, task: sample });
+  };
+
+  // Apply the edited fields to every member's copy of the batch (matched by the
+  // ORIGINAL classId + assignedAt + title, so a title change still lands).
+  const saveClassTask = async (fields) => {
+    const { klass, group } = editClassCtx;
+    const memberUids = (klass.studentUids || []).filter((uid) => students.some((s) => s.uid === uid));
+    const matches = (t) => t.classId === klass.id && t.assignedAt === group.assignedAt && t.title === group.title;
+    const patch = (t) => ({ ...t, ...fields });
+    await Promise.all(memberUids.map((uid) => {
+      const s = students.find((x) => x.uid === uid);
+      const next = (s?.assignedTasks || []).map((t) => (matches(t) ? patch(t) : t));
+      return updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    }));
+    setStudents((prev) => prev.map((x) =>
+      memberUids.includes(x.uid) ? { ...x, assignedTasks: (x.assignedTasks || []).map((t) => (matches(t) ? patch(t) : t)) } : x
+    ));
+    loadStudents();
   };
 
   // One-tap parent report: compile this week's practice + share it.
@@ -2401,47 +2510,40 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                           {student.assignedTasks.filter((t) => !t.completed).length === 0 && (
                             <Text style={styles.tplSheetEmpty}>All caught up — everything's completed.</Text>
                           )}
-                          {student.assignedTasks.filter((t) => !t.completed).map((t) => (
-                            <View key={t.id} style={styles.miniTask}>
-                              <TouchableOpacity style={styles.miniTaskMain} onPress={() => setEditTaskCtx({ student, task: t })} activeOpacity={0.7}>
-                                <Ionicons
-                                  name={t.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                  size={15}
-                                  color={t.completed ? COLORS.success : COLORS.textMuted}
-                                  style={{ marginRight: 8 }}
-                                />
-                                <Text
-                                  style={[styles.miniTaskText, t.completed && styles.miniTaskDone]}
-                                  numberOfLines={1}
-                                >
-                                  {t.title}
-                                </Text>
-                              </TouchableOpacity>
-                              {fmtPractised(t.practicedSec) && (
-                                <Text style={styles.miniPractised}>{fmtPractised(t.practicedSec)}</Text>
-                              )}
-                              {!t.completed && (() => {
-                                const d = taskDueLabel(t.dueDate);
-                                return d ? <Text style={[styles.miniDue, d.overdue && styles.miniDueOverdue]}>{d.text}</Text> : null;
-                              })()}
-                              {t.proofUrl && (
-                                <TouchableOpacity
-                                  onPress={() => setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: student.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title })}
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                  style={{ marginLeft: 8 }}
-                                >
-                                  <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
-                                </TouchableOpacity>
-                              )}
+                          {student.assignedTasks.filter((t) => !t.completed).map((t) => {
+                            // One trailing status only, so the row stays clean:
+                            // overdue wins, else time practiced, else the due date.
+                            const due = taskDueLabel(t.dueDate);
+                            const practised = fmtPractised(t.practicedSec);
+                            return (
                               <TouchableOpacity
-                                onPress={() => removeAssignedTask(student.uid, t.id, t.title)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                style={{ marginLeft: 8 }}
+                                key={t.id}
+                                style={styles.miniTask}
+                                onPress={() => openTaskMenu(student, t)}
+                                activeOpacity={0.7}
                               >
-                                <Ionicons name="close" size={16} color={COLORS.textMuted} />
+                                <Ionicons name="ellipse-outline" size={15} color={COLORS.textMuted} style={{ marginRight: 8 }} />
+                                <Text style={styles.miniTaskText} numberOfLines={1}>{t.title}</Text>
+                                {due?.overdue ? (
+                                  <Text style={[styles.miniDue, styles.miniDueOverdue]}>Overdue</Text>
+                                ) : practised ? (
+                                  <Text style={styles.miniPractised}>{practised}</Text>
+                                ) : due ? (
+                                  <Text style={styles.miniDue}>{due.text}</Text>
+                                ) : null}
+                                {/* Proof-submitted signal only — watch it from the overview. */}
+                                {t.proofUrl && (
+                                  <Ionicons
+                                    name={t.proofVerified ? 'checkmark-circle' : 'videocam'}
+                                    size={16}
+                                    color={t.proofVerified ? COLORS.success : COLORS.primary}
+                                    style={{ marginLeft: 8 }}
+                                  />
+                                )}
+                                <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
                               </TouchableOpacity>
-                            </View>
-                          ))}
+                            );
+                          })}
                         </View>
                       )}
 
@@ -2578,7 +2680,10 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                     <Text style={styles.classGroupLabel}>CLASS TASKS</Text>
                                     {classGroups.map((g) => (
                                       <View key={g.key} style={styles.classGroupRow}>
-                                        <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        {/* Tap the batch to edit it for the whole class. */}
+                                        <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }} onPress={() => openClassTaskEdit(c, g)} activeOpacity={0.7}>
+                                          <Text style={styles.classGroupTitle} numberOfLines={1}>{g.title}</Text>
+                                        </TouchableOpacity>
                                         <Text style={styles.classGroupMeta}>{g.done}/{g.count}</Text>
                                         <TouchableOpacity onPress={() => removeClassTask(c, g)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                           <Ionicons name="trash-outline" size={16} color={COLORS.error} />
@@ -2987,6 +3092,16 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
         onAssigned={loadStudents}
       />
 
+      <AssignTaskModal
+        klass={editClassCtx?.klass}
+        recipientUids={editClassCtx?.klass?.studentUids}
+        editClassTask={editClassCtx?.task}
+        onSaveClass={saveClassTask}
+        visible={!!editClassCtx}
+        onClose={() => setEditClassCtx(null)}
+        onAssigned={loadStudents}
+      />
+
       <AssignSongModal
         student={songStudent}
         klass={songClass}
@@ -3057,6 +3172,106 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     </ScrollView>
                   )}
                 </>
+              );
+            })()}
+      </SheetModal>
+
+      {/* Read-only overview of a student's task (opened from the task menu). */}
+      <SheetModal visible={!!taskOverview} onRequestClose={() => setTaskOverview(null)} cardStyle={styles.modalCard}>
+            {(() => {
+              if (!taskOverview) return null;
+              // Read the live copy so the overview reflects the latest state.
+              const live = students.find((s) => s.uid === taskOverview.student?.uid) || taskOverview.student;
+              const t = (live?.assignedTasks || []).find((x) => x.id === taskOverview.task.id) || taskOverview.task;
+              const due = taskDueLabel(t.dueDate);
+              const practised = fmtPractised(t.practicedSec);
+              const drill = t.drill && getDrill(t.drill);
+              const drillLabel = drill ? (drillAssignmentLabel(t.drill, t.drillMode, t.drillLevel) || '') : '';
+              const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null);
+              const lines = [
+                t.song && { icon: 'musical-notes-outline', label: 'Song', value: t.song },
+                drill && { icon: drill.icon, label: 'Skill drill', value: `${drill.title}${drillLabel ? ` · ${drillLabel}` : ''}` },
+                t.youtube && { icon: 'logo-youtube', label: 'Tutorial', value: 'Attached' },
+                t.photo && { icon: 'image-outline', label: 'Photo', value: 'Attached' },
+                t.durationMin && { icon: 'timer-outline', label: 'Timer', value: `${t.durationMin} min` },
+                t.assignedAt && { icon: 'calendar-outline', label: 'Assigned', value: fmtDate(t.assignedAt) },
+                t.className && { icon: 'people-outline', label: 'Class', value: t.className },
+              ].filter(Boolean);
+              return (
+                <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 }}>
+                    <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>{t.title}</Text>
+                    <TouchableOpacity onPress={() => setTaskOverview(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.ovSub}>{displayName(live)}</Text>
+
+                  <View style={styles.ovStatusRow}>
+                    {t.completed ? (
+                      <View style={[styles.ovBadge, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+                        <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                        <Text style={[styles.ovBadgeText, { color: COLORS.success }]}>Completed{fmtDate(t.completedAt) ? ` · ${fmtDate(t.completedAt)}` : ''}</Text>
+                      </View>
+                    ) : due?.overdue ? (
+                      <View style={[styles.ovBadge, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                        <Text style={[styles.ovBadgeText, { color: COLORS.error }]}>Overdue</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.ovBadge}>
+                        <Text style={styles.ovBadgeText}>{due ? `Due ${due.text}` : 'No due date'}</Text>
+                      </View>
+                    )}
+                    <View style={styles.ovBadge}>
+                      <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
+                      <Text style={styles.ovBadgeText}>{practised ? `${practised} practised` : 'Not practised yet'}</Text>
+                    </View>
+                  </View>
+
+                  {!!t.description && <Text style={styles.ovBody}>{t.description}</Text>}
+
+                  {lines.length > 0 && (
+                    <View style={styles.ovMetaBlock}>
+                      {lines.map((row, i) => (
+                        <View key={i} style={styles.ovLine}>
+                          <Ionicons name={row.icon} size={15} color={COLORS.textSecondary} style={{ width: 20 }} />
+                          <Text style={styles.ovLineLabel}>{row.label}</Text>
+                          <Text style={styles.ovLineValue} numberOfLines={2}>{row.value}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {!!t.feedback && (
+                    <View style={styles.ovFeedback}>
+                      <Text style={styles.ovFeedbackLabel}>YOUR NOTE</Text>
+                      <Text style={styles.ovBody}>{t.feedback}</Text>
+                    </View>
+                  )}
+
+                  {t.proofUrl && (
+                    <TouchableOpacity
+                      style={styles.ovProofBtn}
+                      // iOS won't stack two Modals — close this before the proof viewer.
+                      onPress={() => { setTaskOverview(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={18} color={t.proofVerified ? COLORS.success : COLORS.primary} />
+                      <Text style={styles.ovProofText}>{t.proofVerified ? 'Watch proof (verified)' : "Watch student's proof"}</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <View style={styles.ovActions}>
+                    <TouchableOpacity style={styles.ovEditBtn} onPress={() => { setTaskOverview(null); setEditTaskCtx({ student: live, task: t }); }} activeOpacity={0.85}>
+                      <Ionicons name="create-outline" size={16} color={COLORS.text} />
+                      <Text style={styles.ovEditText}>Edit task</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.ovRemoveBtn} onPress={() => { setTaskOverview(null); removeAssignedTask(live.uid, t.id, t.title); }} activeOpacity={0.85}>
+                      <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+                      <Text style={styles.ovRemoveText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
               );
             })()}
       </SheetModal>
@@ -3517,6 +3732,26 @@ const styles = themedStyles(() => StyleSheet.create({
   miniPractised: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '700', marginLeft: 6, fontVariant: ['tabular-nums'] },
   miniDueOverdue: { color: COLORS.error },
 
+  // Task overview sheet
+  ovSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.md },
+  ovStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+  ovBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: COLORS.surface },
+  ovBadgeText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  ovBody: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: SPACING.md },
+  ovMetaBlock: { backgroundColor: COLORS.surface, borderRadius: 12, padding: SPACING.md, gap: SPACING.sm, marginBottom: SPACING.md },
+  ovLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ovLineLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', width: 78 },
+  ovLineValue: { color: COLORS.text, fontSize: 13, fontWeight: '600', flex: 1 },
+  ovFeedback: { borderLeftWidth: 2, borderLeftColor: COLORS.primary, paddingLeft: SPACING.md, marginBottom: SPACING.md },
+  ovFeedbackLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 0.6, marginBottom: 4 },
+  ovProofBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
+  ovProofText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  ovActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+  ovEditBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.primary },
+  ovEditText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  ovRemoveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: COLORS.error },
+  ovRemoveText: { color: COLORS.error, fontSize: 14, fontWeight: '800' },
+
   // Action row
   actionRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
   actionBtnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 10 },
@@ -3595,6 +3830,11 @@ const styles = themedStyles(() => StyleSheet.create({
   drillPick: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '47%', flexGrow: 1, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
   drillPickOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   drillPickText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  drillLevelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm, marginBottom: SPACING.lg },
+  drillLevelChip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillModeChip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  drillLevelChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  drillLevelText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   dueField: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   timerHint: { color: COLORS.textMuted, fontSize: 11, marginBottom: SPACING.sm, marginTop: -4 },
   durInputRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },

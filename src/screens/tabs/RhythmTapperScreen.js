@@ -47,11 +47,12 @@ function quality(err) {
   return            { key: 'off',     label: 'Off',     color: '#F5C044',       pts: 15 };
 }
 
-export default function RhythmTapperScreen({ navigation }) {
+export default function RhythmTapperScreen({ navigation, route }) {
   useThemeSync();
   const celebrate = useCelebration();
-  const [level, setLevel] = useState(1);
-  const [mode, setMode] = useState('click');         // 'click' | 'hold'
+  const [level, setLevel] = useState(route?.params?.level || 1);
+  // A teacher can assign this drill at a mode + level, which arrive as params.
+  const [mode, setMode] = useState(route?.params?.mode || 'click'); // 'click' | 'hold'
   const [phase, setPhase] = useState('menu');       // 'menu' | 'playing' | 'done'
   const [countIn, setCountIn] = useState(COUNT_IN);  // 4..1 during lead-in, 0 once scoring
   const [beatNum, setBeatNum] = useState(0);         // scored beats elapsed (shown while audible)

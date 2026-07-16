@@ -15,13 +15,14 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
-import { getDrill, pickTodaysDrills } from '../../constants/drills';
+import { getDrill, pickTodaysDrills, drillAssignmentLabel } from '../../constants/drills';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { awardNewBadges } from '../../lib/badges';
 import PracticeWrapped, { wrappedWeekKey } from '../../components/PracticeWrapped';
 import { track } from '../../lib/analytics';
 import { displayName } from '../../lib/displayName';
+import { teacherIdsOf } from '../../lib/teacher';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
 import ProofMedia from '../../components/ProofMedia';
@@ -256,9 +257,14 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         </TouchableOpacity>
       )}
       {expanded && !!task.drill && getDrill(task.drill) && (
-        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.teacherTaskLink} onPress={() => onOpenDrill(task.drill, task.drillLevel, task.drillMode)} activeOpacity={0.7}>
           <Ionicons name={getDrill(task.drill).icon} size={15} color={COLORS.primary} style={styles.taskLineIcon} />
-          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>Practice: {getDrill(task.drill).title}</Text>
+          <Text style={[styles.teacherTaskLinkText, styles.teacherTaskWatchText]} numberOfLines={1}>
+            Practice: {getDrill(task.drill).title}
+            {drillAssignmentLabel(task.drill, task.drillMode, task.drillLevel)
+              ? ` · ${drillAssignmentLabel(task.drill, task.drillMode, task.drillLevel)}`
+              : ''}
+          </Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
       )}
@@ -547,6 +553,24 @@ export default function TodayScreen({ navigation }) {
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
   const [soloOpen, setSoloOpen] = useState(true);
+  const [closedTeachers, setClosedTeachers] = useState(() => new Set()); // collapsed per-teacher solo cards
+  const [teacherNames, setTeacherNames] = useState({}); // teacherUid -> display name
+  const teacherIdsKey = teacherIdsOf(userData || {}).join(',');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const ids = teacherIdsOf(userData || {});
+      if (ids.length === 0) return;
+      const entries = await Promise.all(ids.map(async (tid) => {
+        try {
+          const d = (await getDoc(doc(db, 'users', tid))).data() || {};
+          return [tid, d.username || d.email?.split('@')[0] || 'your teacher'];
+        } catch (e) { return [tid, 'your teacher']; }
+      }));
+      if (alive) setTeacherNames(Object.fromEntries(entries));
+    })();
+    return () => { alive = false; };
+  }, [teacherIdsKey]);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set()); // class section keys collapsed
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
     const n = new Set(prev);
@@ -1206,10 +1230,14 @@ export default function TodayScreen({ navigation }) {
     navigation.navigate('Practice', { screen: 'Songs', params: { focusSong }, initial: false });
   };
 
-  // Open a teacher-assigned drill in its mini-game.
-  const openDrill = (key) => {
+  // Open a teacher-assigned drill in its mini-game, at the assigned mode + level.
+  const openDrill = (key, level, mode) => {
     const d = getDrill(key);
-    if (d) navigation.navigate('Practice', { screen: d.route });
+    if (!d) return;
+    const params = {};
+    if (level) params.level = level;
+    if (mode) params.mode = mode;
+    navigation.navigate('Practice', { screen: d.route, params: Object.keys(params).length ? params : undefined });
   };
 
   // Spend a restore to save a streak after one missed day. Backfills yesterday's
@@ -1417,6 +1445,22 @@ export default function TodayScreen({ navigation }) {
     .filter((x) => x.rec && x.rec.status && x.rec.studentUid === myUid && x.date && x.date <= todayYmd && ATT_META[x.rec.status])
     .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
   // Whether there's any lesson feedback to open in the notes window.
+
+  // Group the 1-to-1 (non-class) teacher tasks by which teacher assigned them, so
+  // a student connected to several teachers gets a "FROM <name>" card each. The
+  // primary teacher (userData.teacherUid) leads and carries the lesson/attendance
+  // rows; tasks with no teacherUid fall under the primary.
+  const allTeacherIds = teacherIdsOf(userData || {});
+  const primaryTeacher = userData?.teacherUid || allTeacherIds[0] || null;
+  const soloByTeacher = {};
+  soloTasks.forEach((t) => {
+    const tid = t.teacherUid || primaryTeacher || 'unknown';
+    (soloByTeacher[tid] = soloByTeacher[tid] || []).push(t);
+  });
+  const teacherOrder = [...new Set([primaryTeacher, ...allTeacherIds, ...Object.keys(soloByTeacher)].filter(Boolean))];
+  const teacherGroups = teacherOrder
+    .map((tid) => ({ tid, isPrimary: tid === primaryTeacher, name: teacherNames[tid], tasks: soloByTeacher[tid] || [] }))
+    .filter((g) => g.tasks.length > 0 || (g.isPrimary && (nextLesson || lastAttended || userData?.teacherUid)));
 
   const dailyChallenge = getDailyChallenge(userData?.instrument, userData?.level);
   const challengeDoneToday = !!userData?.lastChallengeDate
@@ -1651,75 +1695,87 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
-        {/* One-to-one tasks from the teacher (collapsible, like the class cards) */}
-        {isToday && (soloTasks.length > 0 || nextLesson || lastAttended || userData?.teacherUid) && (
-          <View style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
-            <TouchableOpacity style={[styles.teacherHeader, !soloOpen && { marginBottom: 0 }]} onPress={() => setSoloOpen((o) => !o)} activeOpacity={0.7}>
-              <Ionicons name="school" size={16} color={COLORS.primary} />
-              <Text style={[styles.teacherKicker, { flex: 1 }]}>FROM YOUR TEACHER</Text>
-              {userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-              {soloTasks.length > 0 && <Text style={styles.classGroupSub}>{soloTasks.length} to do</Text>}
-              <Ionicons name={soloOpen ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
-            </TouchableOpacity>
-            {soloOpen && nextLesson && (
-              <TouchableOpacity
-                style={styles.lessonRow}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('Practice', {
-                  screen: 'Schedule',
-                  params: { date: ymdLocal(nextLesson.when) },
-                  initial: false,
-                })}
-              >
-                <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
-                <Text style={styles.lessonRowText} numberOfLines={1}>
-                  {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
-                </Text>
-                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+        {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
+        {isToday && teacherGroups.map((g) => {
+          const open = !closedTeachers.has(g.tid);
+          const toggle = () => setClosedTeachers((prev) => {
+            const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
+          });
+          return (
+            <View key={g.tid} style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
+              <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
+                <Ionicons name="school" size={16} color={COLORS.primary} />
+                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
+                {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
+                {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
-            )}
-            {soloOpen && lastAttended && (
-              <TouchableOpacity
-                style={styles.lessonRow}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
-              >
-                <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.lessonRowText} numberOfLines={1}>
-                    Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
-                  </Text>
-                  {lastAttended.rec.note ? (
-                    <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
-                  ) : null}
+              {open && !!g.name && (
+                <View style={styles.teacherNameRow}>
+                  <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
+                  <Text style={styles.teacherNameText}>{g.name}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            )}
-            {soloOpen && soloTasks.length > 0 && (
-              <View style={styles.taskGroup}>
-                {soloTasks.map((t, i) => (
-                  <TeacherTaskCard
-                    key={t.id}
-                    task={t}
-                    topDivider={i > 0}
-                    expanded={expandedTask === t.id}
-                    onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                    onPractice={(t) => openPlayerAt(`t_${t.id}`)}
-                    openTaskLink={openTaskLink}
-                    onOpenSong={openSongInLibrary}
-                    onOpenDrill={openDrill}
-                    onAttachProof={attachProof}
-                    onViewProof={viewProof}
-                    proofBusy={proofBusyId === t.id}
-                    proofPct={proofBusyId === t.id ? proofPct : null}
-                    proofStep={proofBusyId === t.id ? proofStep : null}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        )}
+              )}
+              {open && g.isPrimary && nextLesson && (
+                <TouchableOpacity
+                  style={styles.lessonRow}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Practice', {
+                    screen: 'Schedule',
+                    params: { date: ymdLocal(nextLesson.when) },
+                    initial: false,
+                  })}
+                >
+                  <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
+                  <Text style={styles.lessonRowText} numberOfLines={1}>
+                    {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+              {open && g.isPrimary && lastAttended && (
+                <TouchableOpacity
+                  style={styles.lessonRow}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
+                >
+                  <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.lessonRowText} numberOfLines={1}>
+                      Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
+                    </Text>
+                    {lastAttended.rec.note ? (
+                      <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+              {open && g.tasks.length > 0 && (
+                <View style={styles.taskGroup}>
+                  {g.tasks.map((t, i) => (
+                    <TeacherTaskCard
+                      key={t.id}
+                      task={t}
+                      topDivider={i > 0}
+                      expanded={expandedTask === t.id}
+                      onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                      onPractice={(t) => openPlayerAt(`t_${t.id}`)}
+                      openTaskLink={openTaskLink}
+                      onOpenSong={openSongInLibrary}
+                      onOpenDrill={openDrill}
+                      onAttachProof={attachProof}
+                      onViewProof={viewProof}
+                      proofBusy={proofBusyId === t.id}
+                      proofPct={proofBusyId === t.id ? proofPct : null}
+                      proofStep={proofBusyId === t.id ? proofStep : null}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
 
         {/* Class-assigned tasks, grouped per class with a collapsible header */}
         {isToday && classGroups.map((g) => {
@@ -2230,6 +2286,8 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   classGroupKicker: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  teacherNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
+  teacherNameText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.

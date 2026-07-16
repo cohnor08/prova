@@ -10,7 +10,7 @@ import { doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
-import { linkTeacherByCode } from '../../lib/teacher';
+import { linkTeacherByCode, unlinkTeacher, teacherIdsOf } from '../../lib/teacher';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { track } from '../../lib/analytics';
@@ -206,7 +206,7 @@ For questions about these Terms: cehthoanprova@gmail.com`;
 
 function LegalModal({ visible, title, content, onClose }) {
   const COLORS = useThemeColors();
-  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
+  const legalStyles = React.useMemo(() => makeLegalStyles(COLORS), [COLORS]);
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={legalStyles.container}>
@@ -225,7 +225,7 @@ function LegalModal({ visible, title, content, onClose }) {
   );
 }
 
-const legalStyles = StyleSheet.create({
+const makeLegalStyles = (COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -274,8 +274,27 @@ export default function ProfileScreen({ navigation }) {
   const [savingTip, setSavingTip] = useState(false);
   const [teacherCodeInput, setTeacherCodeInput] = useState('');
   const [linkingTeacher, setLinkingTeacher] = useState(false);
-  const [teacherName, setTeacherName] = useState(null);
+  const [showAddTeacher, setShowAddTeacher] = useState(false);
+  const [teachers, setTeachers] = useState([]); // [{ uid, name }] — all connected teachers
   useEffect(() => { loadUser(); }, []);
+
+  // Resolve names for every connected teacher whenever the link list changes.
+  const teacherIdsKey = teacherIdsOf(userData || {}).join(',');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const ids = teacherIdsOf(userData || {});
+      if (ids.length === 0) { setTeachers([]); return; }
+      const resolved = await Promise.all(ids.map(async (tUid) => {
+        try {
+          const d = (await getDoc(doc(db, 'users', tUid))).data() || {};
+          return { uid: tUid, name: d.username || d.email?.split('@')[0] || 'your teacher' };
+        } catch (e) { return { uid: tUid, name: 'your teacher' }; }
+      }));
+      if (alive) setTeachers(resolved);
+    })();
+    return () => { alive = false; };
+  }, [teacherIdsKey]);
 
   const handleLinkTeacher = async () => {
     const uid = auth.currentUser?.uid;
@@ -283,9 +302,9 @@ export default function ProfileScreen({ navigation }) {
     setLinkingTeacher(true);
     try {
       const { uid: tUid, name } = await linkTeacherByCode(uid, teacherCodeInput);
-      setUserData((p) => ({ ...p, teacherUid: tUid }));
-      setTeacherName(name);
+      setUserData((p) => ({ ...p, teacherUids: [...teacherIdsOf(p || {}), tUid], teacherUid: p?.teacherUid || tUid }));
       setTeacherCodeInput('');
+      setShowAddTeacher(false);
       Alert.alert('Connected! 🎉', `You're now linked with ${name}. They can assign you practice tasks.`);
     } catch (e) {
       Alert.alert('Could not connect', e.message);
@@ -294,17 +313,16 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleDisconnectTeacher = () => {
-    Alert.alert('Disconnect from teacher?', 'They will no longer see your progress or assign you tasks. You can reconnect anytime with their code.', [
+  const handleDisconnectTeacher = (teacherId, name) => {
+    Alert.alert(`Disconnect from ${name || 'this teacher'}?`, 'They will no longer see your progress or assign you tasks. You can reconnect anytime with their code.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Disconnect', style: 'destructive', onPress: async () => {
           const uid = auth.currentUser?.uid;
           if (!uid) return;
           try {
-            await updateDoc(doc(db, 'users', uid), { teacherUid: null });
-            setUserData((p) => ({ ...p, teacherUid: null }));
-            setTeacherName(null);
+            const nextUids = await unlinkTeacher(uid, teacherId);
+            setUserData((p) => ({ ...p, teacherUids: nextUids, teacherUid: p?.teacherUid === teacherId ? (nextUids[0] || null) : p?.teacherUid }));
           } catch (e) {
             Alert.alert('Error', "Couldn't disconnect. Please try again.");
           }
@@ -620,16 +638,32 @@ export default function ProfileScreen({ navigation }) {
         {/* My Teacher — students AND personal accounts can connect a teacher,
             which adds the teacher's tasks/lessons on top of their account. */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>MY TEACHER</Text>
-          {userData?.teacherUid ? (
-            <TouchableOpacity style={styles.row} onPress={handleDisconnectTeacher} activeOpacity={0.7}>
+          <Text style={styles.sectionTitle}>MY TEACHER{teachers.length > 1 ? 'S' : ''}</Text>
+          {teachers.map((t) => (
+            <TouchableOpacity key={t.uid} style={styles.row} onPress={() => handleDisconnectTeacher(t.uid, t.name)} activeOpacity={0.7}>
               <Ionicons name="school" size={18} color={COLORS.primary} style={styles.rowIcon} />
-              <Text style={styles.rowLabel}>Connected{teacherName ? ` to ${teacherName}` : ' to a teacher'}</Text>
+              <Text style={styles.rowLabel}>{t.name}</Text>
               <Text style={[styles.rowValue, { color: COLORS.error }]}>Disconnect</Text>
             </TouchableOpacity>
-          ) : (
+          ))}
+          {(teachers.length === 0 || showAddTeacher) ? (
             <View style={styles.teacherConnect}>
-              <Text style={styles.teacherConnectHint}>Got a code from your teacher? Enter it to connect.</Text>
+              <View style={styles.teacherConnectHead}>
+                <Text style={[styles.teacherConnectHint, { flex: 1 }]}>
+                  {teachers.length === 0 ? 'Got a code from your teacher? Enter it to connect.' : 'Enter another teacher’s code to connect.'}
+                </Text>
+                {/* Only offer a way out when there's something to go back to —
+                    a student with no teacher yet needs the form to stay put. */}
+                {showAddTeacher && teachers.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => { setShowAddTeacher(false); setTeacherCodeInput(''); }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={18} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.teacherConnectRow}>
                 <TextInput
                   style={styles.teacherCodeInput}
@@ -653,6 +687,11 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
+          ) : (
+            <TouchableOpacity style={styles.row} onPress={() => setShowAddTeacher(true)} activeOpacity={0.7}>
+              <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} style={styles.rowIcon} />
+              <Text style={[styles.rowLabel, { color: COLORS.primary }]}>Add another teacher</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1017,6 +1056,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
 
   // Connect-to-teacher (student)
   teacherConnect: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.sm },
+  teacherConnectHead: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm },
   teacherConnectHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   teacherConnectRow: { flexDirection: 'row', gap: SPACING.sm },
   teacherCodeInput: {

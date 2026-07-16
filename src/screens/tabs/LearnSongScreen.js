@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
   TextInput, Modal, Alert, ActivityIndicator, Linking, Keyboard, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { Audio } from 'expo-av';
+import { fetchSongArtwork, fetchSongPreview, spotifySearchUrl } from '../../constants/songs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
@@ -16,7 +18,8 @@ import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import SheetModal from '../../components/SheetModal';
 
 const ytUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
-const stepPoints = (seconds) => Math.round((seconds / 60) * POINTS_PER_MIN);
+const STEP_BONUS = 15; // banked for finishing a timed step, on top of the practice-time points
+const stepPoints = (seconds) => STEP_BONUS + Math.round((seconds / 60) * POINTS_PER_MIN);
 const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 // Build a deduped list of {title, artist} the user already has, to power search.
@@ -54,6 +57,45 @@ export default function LearnSongScreen({ navigation }) {
   const [active, setActive] = useState(null); // { songKey, stepId, seconds }
   const tickRef = useRef(null);
   const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
+  const [media, setMedia] = useState({});   // songKey -> { artwork, preview } (fetched lazily)
+  const [playing, setPlaying] = useState(null); // songKey of the preview currently playing
+  const soundRef = useRef(null);
+
+  // Fetch album art + 30s preview for whichever song is open (iTunes), once each.
+  useEffect(() => {
+    const s = songs.find((x) => x.songKey === expandedSong);
+    if (!s || media[s.songKey] !== undefined) return;
+    let alive = true;
+    setMedia((m) => ({ ...m, [s.songKey]: null })); // mark in-flight
+    (async () => {
+      const [artwork, preview] = await Promise.all([
+        fetchSongArtwork(s.title, s.artist).catch(() => null),
+        fetchSongPreview(s.title, s.artist).catch(() => null),
+      ]);
+      if (alive) setMedia((m) => ({ ...m, [s.songKey]: { artwork, preview } }));
+    })();
+    return () => { alive = false; };
+  }, [expandedSong]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => { soundRef.current?.unloadAsync?.(); }, []);
+
+  const togglePreview = async (song) => {
+    const m = media[song.songKey];
+    if (!m || !m.preview) return;
+    if (playing === song.songKey) {
+      await soundRef.current?.stopAsync?.().catch(() => {});
+      await soundRef.current?.unloadAsync?.().catch(() => {});
+      soundRef.current = null; setPlaying(null);
+      return;
+    }
+    try {
+      await soundRef.current?.unloadAsync?.().catch(() => {});
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync({ uri: m.preview }, { shouldPlay: true });
+      soundRef.current = sound; setPlaying(song.songKey);
+      sound.setOnPlaybackStatusUpdate((st) => { if (st.didJustFinish) { setPlaying(null); sound.unloadAsync().catch(() => {}); } });
+    } catch (e) { setPlaying(null); }
+  };
 
   const load = useCallback(async () => {
     const uid = auth.currentUser?.uid;
@@ -144,6 +186,8 @@ export default function LearnSongScreen({ navigation }) {
   // ── Per-step practice timer ───────────────────────────────────────────────
   const startStep = (songKey, stepId) => {
     clearInterval(tickRef.current);
+    setOpenSteps((prev) => new Set(prev).add(`${songKey}_${stepId}`)); // keep it open while working
+
     // Practicing (again) un-completes the step so it lights up while you work on it.
     const next = songs.map((s) =>
       s.songKey === songKey
@@ -286,11 +330,48 @@ export default function LearnSongScreen({ navigation }) {
 
                     {open && (
                       <View style={styles.songBody}>
+                        {(() => {
+                          const m = media[s.songKey];
+                          const art = m && m.artwork;
+                          return (
+                            <View style={styles.mediaCard}>
+                              {art ? (
+                                <Image source={{ uri: art }} style={styles.mediaArt} />
+                              ) : (
+                                <View style={[styles.mediaArt, styles.mediaArtEmpty]}>
+                                  <Ionicons name="musical-notes" size={26} color={COLORS.textMuted} />
+                                </View>
+                              )}
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={styles.mediaTitle} numberOfLines={1}>{s.title}</Text>
+                                {!!s.artist && <Text style={styles.mediaArtist} numberOfLines={1}>{s.artist}</Text>}
+                                <View style={styles.mediaBtns}>
+                                  {!m ? (
+                                    <ActivityIndicator size="small" color={COLORS.primary} />
+                                  ) : (
+                                    <>
+                                      {!!m.preview && (
+                                        <TouchableOpacity style={styles.mediaPlay} onPress={() => togglePreview(s)} activeOpacity={0.85}>
+                                          <Ionicons name={playing === s.songKey ? 'pause' : 'play'} size={13} color="#fff" />
+                                          <Text style={styles.mediaPlayText}>{playing === s.songKey ? 'Pause' : 'Preview'}</Text>
+                                        </TouchableOpacity>
+                                      )}
+                                      <TouchableOpacity style={styles.mediaSpotify} onPress={() => Linking.openURL(spotifySearchUrl(s.title, s.artist)).catch(() => {})} activeOpacity={0.85}>
+                                        <Ionicons name="musical-note" size={13} color="#1DB954" />
+                                        <Text style={styles.mediaSpotifyText}>Spotify</Text>
+                                      </TouchableOpacity>
+                                    </>
+                                  )}
+                                </View>
+                              </View>
+                            </View>
+                          );
+                        })()}
                         {!!s.overview && <Text style={styles.overview}>{s.overview}</Text>}
                         {s.steps.map((st, i) => {
                           const isActive = active && active.songKey === s.songKey && active.stepId === st.id;
                           const stepKey = `${s.songKey}_${st.id}`;
-                          const stepOpen = openSteps.has(stepKey) || isActive; // a running timer forces it open
+                          const stepOpen = openSteps.has(stepKey); // fully controlled by the toggle
                           return (
                             <View key={st.id} style={[styles.step, st.done && styles.stepDone]}>
                               <View style={styles.stepHeadRow}>
@@ -302,7 +383,7 @@ export default function LearnSongScreen({ navigation }) {
                                   />
                                 </TouchableOpacity>
                                 <TouchableOpacity style={styles.stepHeadMain} onPress={() => toggleStepOpen(stepKey)} activeOpacity={0.7}>
-                                  <Text style={[styles.stepTitle, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
+                                  <Text style={[styles.stepTitle, { flex: 1 }, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
                                     {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
                                   </Text>
                                   <Ionicons name={stepOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
@@ -328,6 +409,7 @@ export default function LearnSongScreen({ navigation }) {
 
                                   <View style={styles.stepTimerRow}>
                                     <Text style={styles.stepTimerText}>{fmtClock(isActive ? active.seconds : 0)}</Text>
+                                    <Text style={styles.stepPtsHint}>+{isActive ? stepPoints(active.seconds) : STEP_BONUS} pts</Text>
                                     {isActive ? (
                                       <TouchableOpacity style={[styles.stepStartBtn, styles.stepStartBtnActive]} onPress={toggleStepTimer} activeOpacity={0.85}>
                                         <Ionicons name={active.paused ? 'play' : 'pause'} size={14} color={COLORS.text} />
@@ -473,7 +555,17 @@ const styles = themedStyles(() => StyleSheet.create({
   songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
   songProgress: { color: COLORS.accent, fontSize: 12, marginTop: 4, fontWeight: '600' },
   songBody: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md },
-  overview: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.sm, fontStyle: 'italic' },
+  overview: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md, fontStyle: 'italic' },
+  mediaCard: { flexDirection: 'row', gap: SPACING.md, backgroundColor: COLORS.background, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, marginBottom: SPACING.md, alignItems: 'center' },
+  mediaArt: { width: 66, height: 66, borderRadius: 10, backgroundColor: COLORS.card },
+  mediaArtEmpty: { alignItems: 'center', justifyContent: 'center' },
+  mediaTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  mediaArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  mediaBtns: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm, minHeight: 30 },
+  mediaPlay: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
+  mediaPlayText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
+  mediaSpotify: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 6, paddingHorizontal: 12 },
+  mediaSpotifyText: { color: COLORS.text, fontSize: 12.5, fontWeight: '700' },
 
   step: { backgroundColor: COLORS.surface, borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   stepDone: { opacity: 0.7 },
@@ -491,6 +583,7 @@ const styles = themedStyles(() => StyleSheet.create({
   // Step practice control — matches the Today session timer (time · Start/Pause · Done).
   stepTimerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 10 },
   stepTimerText: { color: COLORS.text, fontSize: 18, fontWeight: '700', minWidth: 56, fontVariant: ['tabular-nums'] },
+  stepPtsHint: { color: COLORS.primary, fontSize: 12, fontWeight: '800', flex: 1 },
   stepStartBtn: { backgroundColor: COLORS.border, borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
   stepStartBtnActive: { backgroundColor: COLORS.primaryDark },
   stepStartText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },

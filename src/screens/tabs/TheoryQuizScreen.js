@@ -22,11 +22,11 @@ const ROUND_POINTS = 20;
 const REWARDED_ROUNDS_PER_DAY = 3;
 const LEVELS = [{ id: 1, label: 'Basics' }, { id: 2, label: 'Player' }, { id: 3, label: 'Advanced' }];
 
-export default function TheoryQuizScreen({ navigation }) {
+export default function TheoryQuizScreen({ navigation, route }) {
   useThemeSync();
   const celebrate = useCelebration();
   const [category, setCategory] = useState('intervals');
-  const [level, setLevel] = useState(1);
+  const [level, setLevel] = useState(route?.params?.level || 1);
   const [phase, setPhase] = useState('menu');          // menu | playing | done
   const [qNum, setQNum] = useState(0);
   const [question, setQuestion] = useState(null);      // { prompt, answer, choices }
