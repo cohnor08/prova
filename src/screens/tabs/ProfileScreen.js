@@ -17,7 +17,8 @@ import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
 import { replayTour } from '../../components/TourOverlay';
 import { AuthContext } from '../../contexts/AuthContext';
-import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS } from '../../constants/theme';
+import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS, ACCENTS, ACCENT_KEYS } from '../../constants/theme';
+import { useThemeColors, useTheme } from '../../lib/ThemeContext';
 
 function reminderTimeLabel(value) {
   return formatTime12(value || '19:00');
@@ -26,6 +27,8 @@ function reminderTimeLabel(value) {
 // ─── Picker Modal ─────────────────────────────────────────────────────────────
 
 function PickerModal({ visible, title, options, selected, multi, onSave, onClose }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const [current, setCurrent] = useState(selected);
 
   useEffect(() => {
@@ -202,6 +205,8 @@ We may update these Terms periodically. We will give at least 14 days' notice of
 For questions about these Terms: cehthoanprova@gmail.com`;
 
 function LegalModal({ visible, title, content, onClose }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={legalStyles.container}>
@@ -235,6 +240,8 @@ const legalStyles = StyleSheet.create({
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 function Row({ icon, label, value, valueColor }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   return (
     <View style={styles.row}>
       <Ionicons name={icon} size={18} color={COLORS.textMuted} style={styles.rowIcon} />
@@ -246,6 +253,9 @@ function Row({ icon, label, value, valueColor }) {
 
 export default function ProfileScreen({ navigation }) {
   const { setOnboardingComplete } = useContext(AuthContext);
+  const { mode, accent, setMode, setAccent } = useTheme();
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const [userData, setUserData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -774,6 +784,37 @@ export default function ProfileScreen({ navigation }) {
         </View>
         </>)}
 
+        {/* Appearance — light/dark + accent colour, saved to the account */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>APPEARANCE</Text>
+          <View style={styles.appModeRow}>
+            {[['dark', 'Dark', 'moon'], ['light', 'Light', 'sunny']].map(([m, label, icon]) => (
+              <TouchableOpacity
+                key={m}
+                style={[styles.appModeBtn, mode === m && styles.appModeBtnOn]}
+                onPress={() => setMode(m)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name={icon} size={16} color={mode === m ? '#fff' : COLORS.textSecondary} />
+                <Text style={[styles.appModeText, mode === m && { color: '#fff' }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.appAccentLabel}>Accent colour</Text>
+          <View style={styles.appAccentRow}>
+            {ACCENT_KEYS.map((k) => (
+              <TouchableOpacity
+                key={k}
+                style={[styles.appSwatch, { backgroundColor: ACCENTS[k].primary }, accent === k && styles.appSwatchOn]}
+                onPress={() => setAccent(k)}
+                activeOpacity={0.8}
+              >
+                {accent === k && <Ionicons name="checkmark" size={16} color="#fff" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
@@ -946,7 +987,7 @@ export default function ProfileScreen({ navigation }) {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.xl },
@@ -965,6 +1006,14 @@ const styles = StyleSheet.create({
 
   section: { marginBottom: SPACING.xl },
   sectionTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.sm },
+  appModeRow: { flexDirection: 'row', gap: SPACING.sm },
+  appModeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  appModeBtnOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  appModeText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
+  appAccentLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.sm },
+  appAccentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
+  appSwatch: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  appSwatchOn: { borderColor: COLORS.text },
 
   // Connect-to-teacher (student)
   teacherConnect: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.sm },

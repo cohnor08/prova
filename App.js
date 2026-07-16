@@ -29,7 +29,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './src/hooks/useAuth';
 import { useMaintenance } from './src/hooks/useMaintenance';
 import { AuthContext } from './src/contexts/AuthContext';
-import { COLORS, TAB_BAR_STYLE } from './src/constants/theme';
+import { COLORS, TAB_BAR_STYLE, makeTabBarStyle } from './src/constants/theme';
+import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { CelebrationProvider } from './src/components/Celebration';
 import IntroSplash from './src/components/IntroSplash';
 import TourOverlay from './src/components/TourOverlay';
@@ -166,16 +167,17 @@ const TAB_ICONS = {
 
 function MainTabs({ role }) {
   const isTeacher = role === 'teacher';
+  const { colors } = useTheme();
   return (
     <View style={{ flex: 1 }}>
     <Tab.Navigator
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: TAB_BAR_STYLE,
+        tabBarStyle: makeTabBarStyle(colors),
         tabBarShowLabel: true,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
         tabBarIcon: ({ focused, color }) => {
           const [active, inactive] = TAB_ICONS[route.name] || ['ellipse', 'ellipse-outline'];
@@ -217,8 +219,19 @@ function AuthStack() {
 }
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
+}
+
+function AppInner() {
   const { user, onboardingComplete, setOnboardingComplete, role, loading } = useAuth();
   const { isUnderMaintenance, message, loading: maintenanceLoading } = useMaintenance();
+  const { colors, mode } = useTheme();
+  const statusBarStyle = mode === 'light' ? 'dark' : 'light';
+  const navTheme = { ...NAV_THEME, colors: { ...NAV_THEME.colors, background: colors.background, card: colors.background } };
   // Animated brand intro on cold start — overlays every app state (auth and
   // data keep loading underneath it), then fades into whatever is ready.
   const [introDone, setIntroDone] = useState(false);
@@ -247,8 +260,8 @@ export default function App() {
     body = (
       <AuthContext.Provider value={{ setOnboardingComplete, role }}>
         <CelebrationProvider>
-        <NavigationContainer theme={NAV_THEME}>
-          <StatusBar style="light" />
+        <NavigationContainer theme={navTheme}>
+          <StatusBar style={statusBarStyle} />
           {!user ? (
             <AuthStack />
           ) : !onboardingComplete ? (
@@ -268,7 +281,7 @@ export default function App() {
               <Stack.Screen
                 name="AskProva"
                 component={AskProvaScreen}
-                options={{ contentStyle: { backgroundColor: COLORS.background } }}
+                options={{ contentStyle: { backgroundColor: colors.background } }}
               />
             </Stack.Navigator>
           )}

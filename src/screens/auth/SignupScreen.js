@@ -15,7 +15,8 @@ import { doc, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { track } from '../../lib/analytics';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 const FIREBASE_ERRORS = {
   'auth/email-already-in-use': 'An account with this email already exists.',
@@ -27,6 +28,7 @@ const FIREBASE_ERRORS = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen({ navigation, route }) {
+  useThemeSync();
   const paramRole = route?.params?.role;
   const role = ['teacher', 'personal'].includes(paramRole) ? paramRole : 'student';
   const isTeacher = role === 'teacher';
@@ -222,7 +224,7 @@ export default function SignupScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
   logoArea: { alignItems: 'center', marginBottom: SPACING.lg },
@@ -308,4 +310,4 @@ const styles = StyleSheet.create({
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   linkText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14 },
   linkAccent: { color: COLORS.primary, fontWeight: '600' },
-});
+}));

@@ -4,7 +4,7 @@
 // and plays the top result, with the other results listed below.
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Linking } from 'react-native';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { searchYouTube } from '../lib/youtube';
 import SheetModal from './SheetModal';
 
@@ -62,7 +62,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheet: { padding: SPACING.lg, maxHeight: '90%' },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   title: { color: COLORS.text, fontSize: 16, fontWeight: '800', flex: 1, marginRight: SPACING.md },
@@ -72,4 +72,4 @@ const styles = StyleSheet.create({
   rowOn: { backgroundColor: COLORS.primary + '14' },
   rowText: { color: COLORS.textSecondary, fontSize: 13.5 },
   link: { color: COLORS.primary, fontSize: 13.5, textAlign: 'center', paddingVertical: 12 },
-});
+}));

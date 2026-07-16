@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -52,6 +53,7 @@ function pctColor(pct) {
 }
 
 export default function TeacherOverviewScreen({ navigation }) {
+  useThemeSync();
   const [lessons, setLessons] = useState([]);
   const [attendance, setAttendance] = useState({});
   const [students, setStudents] = useState([]);
@@ -236,7 +238,7 @@ export default function TeacherOverviewScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 72 },
@@ -276,4 +278,4 @@ const styles = StyleSheet.create({
   occNote: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, fontStyle: 'italic', marginLeft: 70, marginBottom: 6 },
   showMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8 },
   showMoreText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-});
+}));

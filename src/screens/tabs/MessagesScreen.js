@@ -17,7 +17,8 @@ import { displayName } from '../../lib/displayName';
 import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
-import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
+import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
 
@@ -272,6 +273,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
 // ─── Messages Screen ──────────────────────────────────────────────────────────
 
 export default function MessagesScreen() {
+  useThemeSync();
   const [conversations, setConversations] = useState([]);
   const [groupChats, setGroupChats] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
@@ -530,7 +532,7 @@ export default function MessagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   title: { color: COLORS.text, fontSize: 26, fontWeight: '800' },
@@ -592,4 +594,4 @@ const styles = StyleSheet.create({
   searchInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   startBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.md, alignItems: 'center' },
   startBtnText: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
-});
+}));

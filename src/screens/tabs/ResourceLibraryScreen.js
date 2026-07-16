@@ -16,7 +16,8 @@ import { displayName } from '../../lib/displayName';
 import DueDatePicker from '../../components/DueDatePicker';
 import { sendNotification } from '../../lib/inbox';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 // Friendly label for a stored ISO due date.
 function dueLabel(iso) {
@@ -53,6 +54,7 @@ function Pill({ label, active, onPress }) {
 }
 
 export default function ResourceLibraryScreen() {
+  useThemeSync();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
 
@@ -740,7 +742,7 @@ export default function ResourceLibraryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg },
   kicker: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
@@ -811,4 +813,4 @@ const styles = StyleSheet.create({
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   saveBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
   saveText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
-});
+}));

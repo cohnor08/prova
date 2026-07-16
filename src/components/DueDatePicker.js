@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 
 // Calendar + time picker for a task due date (no external dependency). Rendered
 // as an in-place overlay so it can sit over another sheet (iOS won't reliably
@@ -95,7 +95,7 @@ export default function DueDatePicker({ initial, onClose, onSet }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   dpBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
   dpCard: { width: '100%', maxWidth: 340, backgroundColor: COLORS.surface, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
   dpHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
@@ -122,4 +122,4 @@ const styles = StyleSheet.create({
   dpClearText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   dpSet: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
   dpSetText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-});
+}));

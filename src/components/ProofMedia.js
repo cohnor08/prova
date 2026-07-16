@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Image, Text } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { COLORS } from '../constants/theme';
+import { COLORS, themedStyles } from '../constants/theme';
 
 // Renders a proof clip/photo with a visible loading state, so opening a proof
 // doesn't look frozen while the media buffers from Storage.
@@ -44,7 +44,7 @@ export default function ProofMedia({ url, type, style }) {
   );
 }
 
-const local = StyleSheet.create({
+const local = themedStyles(() => StyleSheet.create({
   loading: { alignItems: 'center', gap: 8 },
   loadingText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
-});
+}));

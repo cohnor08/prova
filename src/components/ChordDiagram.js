@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Line, Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { COLORS } from '../constants/theme';
+import { useThemeSync } from '../lib/ThemeContext';
 
 // Renders a guitar chord as a fretboard diagram.
 // `frets` = [low E … high E], -1 muted / 0 open / n fret. `fingers` optional.
@@ -9,6 +10,7 @@ import { COLORS } from '../constants/theme';
 // The base fret (where the drawn window starts) is derived from the shape so
 // barre chords further up the neck render correctly with a "3fr"-style label.
 function ChordDiagram({ frets, fingers, scale = 1 }) {
+  useThemeSync();
   const STR = 6;        // strings
   const FRETS = 4;      // fret rows drawn
   const CW = 18 * scale; // gap between strings

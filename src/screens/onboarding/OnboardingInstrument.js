@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, INSTRUMENTS } from '../../constants/theme';
+import { COLORS, SPACING, INSTRUMENTS, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 
 export default function OnboardingInstrument({ onNext, onBack, data, steps = 4 }) {
+  useThemeSync();
   const [selected, setSelected] = useState(data?.instrument || null);
 
   return (
@@ -61,7 +63,7 @@ export default function OnboardingInstrument({ onNext, onBack, data, steps = 4 }
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.xl, paddingTop: 56 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xl },
   stepPills: { flexDirection: 'row', gap: 6 },
@@ -94,4 +96,4 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
-});
+}));

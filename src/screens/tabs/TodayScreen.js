@@ -12,6 +12,7 @@ import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder, scheduleWrappedNudge } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING } from '../../constants/theme';
+import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
 import { getDrill, pickTodaysDrills } from '../../constants/drills';
@@ -152,6 +153,8 @@ const ATT_META = {
 // Small "Notes" pill in the FROM YOUR TEACHER header that opens the read-only
 // lesson-notes window.
 function NotesChip({ onPress }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   return (
     <TouchableOpacity style={styles.notesChip} onPress={onPress} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
       <Ionicons name="document-text-outline" size={13} color={COLORS.primary} />
@@ -164,6 +167,8 @@ function NotesChip({ onPress }) {
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
 function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const uploadingLabel = proofPct != null
     ? `Uploading… ${proofPct}%`
     : (proofStep || 'Uploading…');
@@ -302,6 +307,8 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
 // Reads the teacher doc → class members → each member's assignedTasks (the same
 // reads the class leaderboard already does, so Firestore rules allow it).
 function ClassScoreboard({ classId, teacherUid, myUid }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState(null);
@@ -371,6 +378,8 @@ function ClassScoreboard({ classId, teacherUid, myUid }) {
 }
 
 function SkeletonBlock({ width, height, style }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
     Animated.loop(
@@ -386,6 +395,8 @@ function SkeletonBlock({ width, height, style }) {
 // Opens a YouTube search for the exercise. We build a search URL (never a
 // hard-coded video link) so it always resolves to real, current results.
 function ReferenceLink({ reference, label }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const [open, setOpen] = useState(false);
   if (!reference) return null;
   const cta = label ? `Watch videos on ${label}` : 'Watch lesson videos';
@@ -404,6 +415,8 @@ function ReferenceLink({ reference, label }) {
 // A plan session on Today. The timer lives ONLY in the practice player now —
 // this card is a readable preview; "Practice" opens the player at this task.
 function SessionCard({ session, completed, onPractice }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const [expanded, setExpanded] = useState(false);
   const categoryColor = CATEGORY_COLORS[session.category] || COLORS.primary;
 
@@ -452,6 +465,8 @@ function SessionCard({ session, completed, onPractice }) {
 }
 
 function PlanCard({ session }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const color = CATEGORY_COLORS[session.category] || COLORS.primary;
   return (
     <View style={styles.planCard}>
@@ -474,6 +489,8 @@ function PlanCard({ session }) {
 }
 
 export default function TodayScreen({ navigation }) {
+  const COLORS = useThemeColors();
+  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const celebrate = useCelebration();
   const [plan, setPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -1710,7 +1727,7 @@ export default function TodayScreen({ navigation }) {
           return (
             <View key={g.key} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
-                <Ionicons name="people" size={16} color={COLORS.accent || COLORS.primary} />
+                <Ionicons name="people" size={16} color={COLORS.accent} />
                 <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
                 <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
                 <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
@@ -2112,7 +2129,7 @@ export default function TodayScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   date: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: SPACING.xs },
@@ -2212,7 +2229,7 @@ const styles = StyleSheet.create({
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
-  classGroupKicker: { color: COLORS.accent || COLORS.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  classGroupKicker: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.

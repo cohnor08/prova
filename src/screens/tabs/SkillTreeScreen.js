@@ -9,7 +9,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { TIER_COLORS } from '../../constants/badges';
 import { track } from '../../lib/analytics';
 
@@ -65,6 +66,7 @@ function buildLanes(u, catMins) {
 }
 
 export default function SkillTreeScreen({ navigation }) {
+  useThemeSync();
   const [lanes, setLanes] = useState(null);
 
   useFocusEffect(useCallback(() => {
@@ -146,7 +148,7 @@ export default function SkillTreeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   navTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800' },
@@ -169,4 +171,4 @@ const styles = StyleSheet.create({
   nodeTitle: { color: COLORS.text, fontSize: 11.5, fontWeight: '700', marginTop: 6 },
   nodeTitleLocked: { color: COLORS.textMuted },
   nodeReq: { color: COLORS.textMuted, fontSize: 10, marginTop: 1 },
-});
+}));

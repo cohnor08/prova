@@ -5,7 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
-import { COLORS } from '../../constants/theme';
+import { COLORS, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { generatePracticePlan } from '../../lib/claude';
 import { useAuthContext } from '../../contexts/AuthContext';
 import OnboardingInstrument from './OnboardingInstrument';
@@ -16,6 +17,7 @@ import OnboardingGenerating from './OnboardingGenerating';
 import OnboardingFirstWin, { FIRST_WIN_POINTS, FIRST_WIN_MINUTES } from './OnboardingFirstWin';
 
 export default function OnboardingFlow() {
+  useThemeSync();
   const { setOnboardingComplete, role } = useAuthContext();
   // A "student" learns through a teacher, so their account is free and skips the
   // AI personalised plan — they only pick instrument + level. A "personal"
@@ -157,8 +159,8 @@ export default function OnboardingFlow() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   logoutWrap: { position: 'absolute', top: 0, right: 0, alignItems: 'flex-end' },
   logoutBtn: { marginTop: 6, marginRight: 16, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: (COLORS.card || '#1a1a1a') + 'cc' },
   logoutText: { color: COLORS.textSecondary || '#aaa', fontSize: 13, fontWeight: '700' },
-});
+}));

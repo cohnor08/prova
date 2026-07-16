@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import SheetModal from '../../components/SheetModal';
@@ -40,6 +41,7 @@ function FilterRow({ label, options, value, onSelect }) {
 }
 
 export default function LibraryScreen({ navigation }) {
+  useThemeSync();
   const [instrument, setInstrument] = useState(null); // 'Guitar' | 'Bass' | null
   const [levelFilter, setLevelFilter] = useState('All'); // defaults to the user's level once loaded
   const [query, setQuery] = useState('');
@@ -180,7 +182,7 @@ export default function LibraryScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
   navBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
@@ -219,4 +221,4 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: SPACING.xl },
   emptyText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   emptySub: { color: COLORS.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' },
-});
+}));

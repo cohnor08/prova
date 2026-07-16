@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import SheetModal from '../../components/SheetModal';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -93,6 +94,7 @@ const STATUSES = [
 ];
 
 export default function TeacherCalendarScreen({ navigation }) {
+  useThemeSync();
   const todayStr = ymd(new Date());
   const [lessons, setLessons] = useState([]);
   const [students, setStudents] = useState([]);
@@ -437,7 +439,7 @@ export default function TeacherCalendarScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 64 },
@@ -513,4 +515,4 @@ const styles = StyleSheet.create({
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   saveBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
   saveText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-});
+}));

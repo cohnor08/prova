@@ -8,7 +8,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import TimeWheel from '../../components/TimeWheel';
 import { sendNotification } from '../../lib/inbox';
 import { displayName } from '../../lib/displayName';
@@ -59,6 +60,7 @@ const ATT_META = {
 };
 
 export default function ScheduleScreen({ navigation, route }) {
+  useThemeSync();
   const todayStr = ymd(new Date());
   const [lessons, setLessons] = useState([]);
   const [attendance, setAttendance] = useState({}); // `${lessonId}__${ymd}` -> { status, note } from teacher
@@ -715,7 +717,7 @@ export default function ScheduleScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { flexDirection: 'row', alignItems: 'center', width: 72 },
@@ -803,4 +805,4 @@ const styles = StyleSheet.create({
   attPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   attPillText: { fontSize: 11, fontWeight: '800' },
   attNoteHint: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-});
+}));

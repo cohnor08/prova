@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 
 export default function EmptyState({
   icon = 'sparkles-outline',
@@ -37,7 +37,7 @@ export default function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.xl * 1.5, paddingHorizontal: SPACING.xl },
   ring: {
     width: 80, height: 80, borderRadius: 40, borderWidth: 2,
@@ -50,4 +50,4 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 13, paddingVertical: 13, paddingHorizontal: 26, marginTop: SPACING.lg,
   },
   btnText: { color: '#fff', fontSize: 14.5, fontWeight: '800' },
-});
+}));

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubePlayer from 'react-native-youtube-iframe';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { searchYouTube } from '../lib/youtube';
 import SheetModal from './SheetModal';
 
@@ -135,7 +135,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, maxHeight: '88%' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   headerTitle: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: '800', marginRight: SPACING.md },
@@ -157,4 +157,4 @@ const styles = StyleSheet.create({
 
   openYt: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: SPACING.md, marginTop: SPACING.xs },
   openYtText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-});
+}));

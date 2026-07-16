@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { generateSongPlan } from '../../lib/claude';
 import { POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
@@ -36,6 +37,7 @@ function ownedSongs(userData) {
 }
 
 export default function LearnSongScreen({ navigation }) {
+  useThemeSync();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedSong, setExpandedSong] = useState(null);
@@ -441,7 +443,7 @@ export default function LearnSongScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   navBar: {
@@ -517,4 +519,4 @@ const styles = StyleSheet.create({
   genBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
   genText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
   genHint: { color: COLORS.textMuted, fontSize: 13 },
-});
+}));

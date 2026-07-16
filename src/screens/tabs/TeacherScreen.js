@@ -28,7 +28,8 @@ import { TEACHER_FREE_STUDENT_LIMIT, studioUpsell } from '../../lib/entitlements
 import StudentKeeperModal from '../../components/StudentKeeperModal';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { COLORS, SPACING, TAB_BAR_STYLE } from '../../constants/theme';
+import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
+import { useThemeSync } from '../../lib/ThemeContext';
 import { DRILLS } from '../../constants/drills';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
 import GroupChatView from '../../components/GroupChatView';
@@ -3224,6 +3225,7 @@ function StudentTasksView({ assignedTasks, teacherUid }) {
 // ─── Root Screen ──────────────────────────────────────────────────────────────
 
 export default function TeacherScreen() {
+  useThemeSync();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -3277,7 +3279,7 @@ export default function TeacherScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.xs },
@@ -3686,4 +3688,4 @@ const styles = StyleSheet.create({
   // Empty
   emptyState: { alignItems: 'center', paddingTop: SPACING.xxl },
   emptyText: { color: COLORS.textSecondary, fontSize: 15 },
-});
+}));

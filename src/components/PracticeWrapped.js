@@ -8,7 +8,7 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, Share, ActivityIndicat
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { BADGES, TIER_COLORS } from '../constants/badges';
 import { track } from '../lib/analytics';
 
@@ -195,7 +195,7 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   dim: { flex: 1, backgroundColor: 'rgba(2,4,10,0.96)', alignItems: 'center', justifyContent: 'center' },
   scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 24 },
   card: { width: '100%', maxWidth: 360, backgroundColor: '#0A1120', borderRadius: 26, borderWidth: 1, borderColor: '#1E2D4A', padding: 28, alignItems: 'center', overflow: 'hidden' },
@@ -217,4 +217,4 @@ const styles = StyleSheet.create({
   shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 44, marginTop: 22 },
   shareText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   doneLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: 16 },
-});
+}));

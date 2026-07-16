@@ -9,7 +9,7 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIn
 import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { displayName } from '../lib/displayName';
 import { track } from '../lib/analytics';
 
@@ -79,7 +79,7 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   dim: { flex: 1, backgroundColor: 'rgba(2,4,10,0.85)', alignItems: 'center', justifyContent: 'center' },
   card: {
     backgroundColor: COLORS.surface, borderRadius: 22, borderWidth: 1, borderColor: COLORS.border,
@@ -100,4 +100,4 @@ const styles = StyleSheet.create({
   },
   btnOff: { opacity: 0.4 },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-});
+}));
