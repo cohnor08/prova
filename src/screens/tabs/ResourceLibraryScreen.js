@@ -155,14 +155,6 @@ export default function ResourceLibraryScreen({ navigation }) {
     return set;
   };
 
-  // Play a drill from inside the assign popup — close it, then open the game.
-  const playDrill = (drillKey, modeKey) => {
-    const d = getDrill(drillKey);
-    if (!d) return;
-    setAssignTarget(null);
-    navigation.navigate(d.route, modeKey ? { mode: modeKey } : {});
-  };
-
   // Assign the chosen resource to every selected class + student at once. A
   // class pick tags the task with classId/className so it groups on the student's
   // Today; an individual pick sends it as a solo task.
@@ -458,22 +450,18 @@ export default function ResourceLibraryScreen({ navigation }) {
             <Ionicons name="game-controller" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Skill drills</Text>
           </View>
-          <Text style={styles.drillHint}>Tap a drill to try it yourself or assign it to a student.</Text>
+          <Text style={styles.drillHint}>Tap a drill to preview it exactly as your student sees it, or assign it below.</Text>
           {DRILLS.map((d) => {
             const modes = drillModes(d.key);
             return (
-              <TouchableOpacity
-                key={d.key}
-                style={styles.item}
-                activeOpacity={0.7}
-                // The whole card opens one popup with everything — play + assign.
-                onPress={() => {
-                  setAssignDrillMode(modes.length ? modes[0].key : null);
-                  setAssignDrillLevel(1);
-                  setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
-                }}
-              >
-                <View style={styles.customRow}>
+              <View key={d.key} style={styles.item}>
+                {/* Tap the card body to open the game itself — the same screen,
+                    menu and levels the student gets. */}
+                <TouchableOpacity
+                  style={styles.customRow}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate(d.route)}
+                >
                   <Ionicons name={d.icon} size={16} color={COLORS.primary} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
@@ -481,9 +469,22 @@ export default function ResourceLibraryScreen({ navigation }) {
                       {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-                </View>
-              </TouchableOpacity>
+                  <Ionicons name="play-circle-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+
+                {/* Assign to student — no kite. Opens the assign flow (mode/level/etc). */}
+                <TouchableOpacity
+                  style={styles.assignRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setAssignDrillMode(modes.length ? modes[0].key : null);
+                    setAssignDrillLevel(1);
+                    setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
+                  }}
+                >
+                  <Text style={styles.assignRowText}>Assign to student</Text>
+                </TouchableOpacity>
+              </View>
             );
           })}
         </View>
@@ -691,25 +692,6 @@ export default function ResourceLibraryScreen({ navigation }) {
             />
             {!!assignTarget?.drill && getDrill(assignTarget.drill) && (
               <>
-                {/* Play it yourself — tap a mode to launch the game right now. */}
-                <Text style={styles.drillPickLabel}>Try it yourself</Text>
-                <View style={styles.drillTryRow}>
-                  {(drillModes(assignTarget.drill).length
-                    ? drillModes(assignTarget.drill)
-                    : [{ key: null, label: 'Play' }]
-                  ).map((m) => (
-                    <TouchableOpacity
-                      key={m.key || 'play'}
-                      style={styles.drillTryChip}
-                      onPress={() => playDrill(assignTarget.drill, m.key)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="play" size={11} color={COLORS.primary} />
-                      <Text style={styles.drillTryText}>{m.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
                 {drillModes(assignTarget.drill).length > 0 && (
                   <>
                     <Text style={styles.drillPickLabel}>Which drill to assign?</Text>
@@ -875,9 +857,6 @@ const styles = themedStyles(() => StyleSheet.create({
   drillLevelChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   drillLevelText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   drillPickLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: SPACING.sm },
-  drillTryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm },
-  drillTryChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
-  drillTryText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   item: { backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
   itemTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
