@@ -130,7 +130,7 @@ const makeSliderStyles = (COLORS) => StyleSheet.create({
 
 function Stepper({ value, min, max, step, suffix, onChange }) {
   const COLORS = useThemeColors();
-  const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
+  const stepperStyles = React.useMemo(() => makeStepperStyles(COLORS), [COLORS]);
   return (
     <View style={stepperStyles.row}>
       <TouchableOpacity
@@ -154,7 +154,7 @@ function Stepper({ value, min, max, step, suffix, onChange }) {
   );
 }
 
-const stepperStyles = StyleSheet.create({
+const makeStepperStyles = (COLORS) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   btn: {
     width: 30, height: 30, borderRadius: 8,
