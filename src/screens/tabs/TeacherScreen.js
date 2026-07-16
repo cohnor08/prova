@@ -1865,7 +1865,7 @@ function TeacherDashboard() {
       }
       // Mirror the roster onto my doc — the student-side join-by-code cap
       // reads students.length off the teacher doc.
-      updateDoc(doc(db, 'users', uid), { students: snap.docs.map((d) => d.id) }).catch(() => {});
+      updateDoc(doc(db, 'users', uid), { students: roster.map((s) => s.uid) }).catch(() => {});
     } catch (err) {
       console.error(err);
     } finally {
