@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
+  TextInput, Alert, ActivityIndicator, Animated,
   Platform, Modal, Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import { displayName } from '../../lib/displayName';
 import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -47,6 +48,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const [otherReadAt, setOtherReadAt] = useState(null);
   const flatRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const kbInset = useKeyboardInset();
   const otherUid = otherUidFromChatId(chatId, myUid);
 
   // Watch the other participant's read marker.
@@ -160,10 +162,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   };
 
   return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={{ flex: 1 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
@@ -230,7 +229,9 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
             );
           }}
         />
-        <View style={[styles.inputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
+        {/* The bar owns its bottom padding (surface colour), driven by the
+            keyboard's own animation — no dark gap can show under the field. */}
+        <Animated.View style={[styles.inputRow, { paddingBottom: kbInset }]}>
           <TouchableOpacity
             style={styles.attachBtn}
             onPress={() => handleMedia(captureMedia)}
@@ -265,8 +266,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
               ? <ActivityIndicator color={COLORS.text} size="small" />
               : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
           </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
   );
 }
 

@@ -3,8 +3,10 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
+  Animated,
 } from 'react-native';
 import ProofMedia from '../../components/ProofMedia';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -1411,6 +1413,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   // student's actual lastRead marker.
   const [otherReadAt, setOtherReadAt] = useState(isDemo ? Date.now() : null);
   const flatRef = useRef(null);
+  const kbInset = useKeyboardInset();
 
   // After the teacher sends in a demo chat, flip the receipt to "Read" shortly
   // after, so it behaves like a real conversation.
@@ -1502,10 +1505,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={{ flex: 1 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.chatNavBackBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
@@ -1554,7 +1554,9 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           </View>
         }
       />
-      <View style={[styles.chatInputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
+      {/* The bar owns its bottom padding (surface colour), driven by the
+          keyboard's own animation — no dark gap can show under the field. */}
+      <Animated.View style={[styles.chatInputRow, { paddingBottom: kbInset }]}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
           onPress={() => handleMedia(captureMedia)}
@@ -1589,8 +1591,8 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
             ? <ActivityIndicator color={COLORS.text} size="small" />
             : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
         </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </Animated.View>
+    </View>
   );
 }
 
