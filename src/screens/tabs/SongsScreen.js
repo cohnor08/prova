@@ -130,7 +130,8 @@ function BpmSlider({ bpm, onChange }) {
     <View
       onLayout={(e) => {
         trackWidth.current = e.nativeEvent.layout.width;
-        e.target.measure((_, __, ___, ____, pageX) => { trackPageX.current = pageX; });
+        // e.target is undefined on react-native-web (native has .measure); guard it.
+        e.target?.measure?.((_, __, ___, ____, pageX) => { trackPageX.current = pageX; });
       }}
       {...pan.panHandlers}
       style={sliderStyles.container}

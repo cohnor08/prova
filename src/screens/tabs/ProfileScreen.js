@@ -1060,7 +1060,9 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherConnectHint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   teacherConnectRow: { flexDirection: 'row', gap: SPACING.sm },
   teacherCodeInput: {
-    flex: 1, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 10,
+    // minWidth:0 lets the input shrink so the Connect button never clips on
+    // react-native-web (harmless on native, which already shrinks flex kids).
+    flex: 1, minWidth: 0, backgroundColor: COLORS.surface, color: COLORS.text, borderRadius: 10,
     paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 18, fontWeight: '800',
     letterSpacing: 3, borderWidth: 1, borderColor: COLORS.border,
   },
