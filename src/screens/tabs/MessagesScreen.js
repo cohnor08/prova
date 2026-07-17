@@ -12,7 +12,9 @@ import {
   onSnapshot, orderBy, doc, getDoc, deleteDoc, setDoc,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
-import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread } from '../../lib/chat';
+import { makeChatId, otherUidFromChatId, sendChatMessage, markChatRead, receiptStatus, ensureChatThread, toggleChatReaction } from '../../lib/chat';
+import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
+import { ReactionChips, ReactionPicker } from '../../components/Reactions';
 import { displayName } from '../../lib/displayName';
 import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
@@ -38,7 +40,7 @@ function formatTime(ts) {
 
 // ─── Chat View ────────────────────────────────────────────────────────────────
 
-function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
+function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress, onBack }) {
   const headerName = otherName || (otherEmail ? otherEmail.split('@')[0] : '');
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -46,6 +48,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
   const [uploading, setUploading] = useState(false);
   const [sendingProgress, setSendingProgress] = useState(false);
   const [otherReadAt, setOtherReadAt] = useState(null);
+  const [reactTarget, setReactTarget] = useState(null); // message the reaction picker is open for
   const flatRef = useRef(null);
   const insets = useSafeAreaInsets();
   const kbInset = useKeyboardInset();
@@ -90,6 +93,17 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, ignorePermissionDenied);
   }, [chatId]);
+
+  const react = (item, emoji) => {
+    // Use the live copy of the message so a concurrent reaction isn't dropped.
+    const live = messages.find((m) => m.id === item.id) || item;
+    toggleChatReaction({ chatId, messageId: live.id, emoji, uid: myUid, current: live.reactions })
+      .catch(() => Alert.alert('Error', "Couldn't add your reaction. Please try again."));
+  };
+  const pickReaction = (emoji) => {
+    if (reactTarget) react(reactTarget, emoji);
+    setReactTarget(null);
+  };
 
   // (No scroll bookkeeping needed — the inverted list is bottom-anchored.)
 
@@ -161,6 +175,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
     ]);
   };
 
+  const revMessages = [...messages].reverse();
+
   return (
       <View style={{ flex: 1 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
@@ -172,14 +188,19 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           <View style={styles.chatAvatar}>
             <Text style={styles.chatAvatarText}>{(headerName || '?')[0].toUpperCase()}</Text>
           </View>
-          <Text style={styles.chatNavEmail} numberOfLines={1}>{headerName}</Text>
+          <Text style={styles.chatNavEmail} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{headerName}</Text>
         </View>
-        <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          {sendingProgress
-            ? <ActivityIndicator size="small" color={COLORS.primary} />
-            : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
-          <Text style={styles.progressBtnText}>Progress</Text>
-        </TouchableOpacity>
+        {/* "Send my progress" is a student feature — teachers have no progress. */}
+        {hideProgress ? (
+          <View style={styles.progressBtn} />
+        ) : (
+          <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            {sendingProgress
+              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
+            <Text style={styles.progressBtnText}>Progress</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
         {/* Inverted list = bottom-anchored, the real chat-app pattern: the
@@ -187,7 +208,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
             keyboard does. Dragging the list tucks the keyboard away. */}
         <FlatList
           ref={flatRef}
-          data={[...messages].reverse()}
+          data={revMessages}
           inverted={messages.length > 0}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
@@ -202,29 +223,45 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
           renderItem={({ item, index }) => {
             const isMe = item.senderUid === myUid;
             const showReceipt = isMe && index === 0; // inverted: index 0 = newest
+            const ms = msgMs(item);
+            // Inverted list: the chronologically-older neighbour is index+1;
+            // a day separator goes above the first message of each day.
+            const olderMs = index < revMessages.length - 1 ? msgMs(revMessages[index + 1]) : null;
+            const showDay = !!ms && (!olderMs || !sameDay(ms, olderMs));
             const body = item.mediaUrl
-              ? <MediaMessageBubble item={item} isMe={isMe} />
-              : (
+              ? (
+                <>
+                  <MediaMessageBubble item={item} isMe={isMe} />
+                  {!!ms && <Text style={[styles.msgTimeUnder, isMe && styles.msgTimeUnderMine]}>{timeLabel(ms)}</Text>}
+                </>
+              ) : (
                 <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
                   <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
                     {item.text}
                   </Text>
+                  {!!ms && <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeMine]}>{timeLabel(ms)}</Text>}
                 </View>
               );
-            const wrapped = (
-              <TouchableOpacity
-                activeOpacity={isMe ? 0.7 : 1}
-                onLongPress={isMe ? () => deleteMessage(item) : undefined}
-                delayLongPress={300}
-              >
-                {body}
-              </TouchableOpacity>
-            );
-            if (!showReceipt) return wrapped;
             return (
               <View>
-                {wrapped}
-                <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>
+                {showDay && (
+                  <View style={styles.dayRow}><Text style={styles.dayText}>{dayLabel(ms)}</Text></View>
+                )}
+                <TouchableOpacity
+                  activeOpacity={isMe ? 0.7 : 1}
+                  onLongPress={isMe ? () => deleteMessage(item) : undefined}
+                  delayLongPress={300}
+                >
+                  {body}
+                </TouchableOpacity>
+                <ReactionChips
+                  reactions={item.reactions}
+                  myUid={myUid}
+                  onToggle={(emoji) => react(item, emoji)}
+                  onAdd={() => setReactTarget(item)}
+                  alignRight={isMe}
+                />
+                {showReceipt && <Text style={styles.receipt}>{receiptStatus(item, otherReadAt)}</Text>}
               </View>
             );
           }}
@@ -267,6 +304,11 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, onBack }) {
               : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
           </TouchableOpacity>
         </Animated.View>
+        <ReactionPicker
+          visible={!!reactTarget}
+          onPick={pickReaction}
+          onClose={() => setReactTarget(null)}
+        />
       </View>
   );
 }
@@ -281,6 +323,9 @@ export default function MessagesScreen() {
   const [nameMap, setNameMap] = useState({}); // uid -> display name
   const [teacher, setTeacher] = useState(null); // { uid, email } — the linked teacher
   const [role, setRole] = useState(null); // 'teacher' | 'student' | 'personal'
+  // The "Connect your teacher" empty state must wait for the profile lookup —
+  // otherwise it flashes for a beat before the teacher/conversations resolve.
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [loadErr, setLoadErr] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -350,18 +395,19 @@ export default function MessagesScreen() {
         const md = meSnap.data() || {};
         setRole(md.role || null);
         const teacherUid = md.teacherUid;
-        if (!teacherUid) return;
+        if (!teacherUid) { setProfileLoaded(true); return; }
         const teacherSnap = await getDoc(doc(db, 'users', teacherUid));
         const td = teacherSnap.data() || {};
         setTeacher({ uid: teacherUid, email: td.email || '' });
         setNameMap((m) => ({ ...m, [teacherUid]: displayName({ uid: teacherUid, ...td }) }));
+        setProfileLoaded(true);
         await ensureChatThread({
           aUid: myUid,
           aEmail: myEmail,
           bUid: teacherUid,
           bEmail: td.email || '',
         });
-      } catch (e) { /* non-fatal */ }
+      } catch (e) { setProfileLoaded(true); /* non-fatal */ }
     })();
   }, [myUid]);
 
@@ -388,6 +434,7 @@ export default function MessagesScreen() {
           myEmail={myEmail}
           otherEmail={activeChat.otherEmail}
           otherName={activeChat.otherName}
+          hideProgress={isTeacher}
           onBack={() => setActiveChat(null)}
         />
       </View>
@@ -432,7 +479,7 @@ export default function MessagesScreen() {
         <Text style={styles.title}>Messages</Text>
       </View>
 
-      {loading ? (
+      {loading || !profileLoaded ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
       ) : loadErr && listData.length === 0 ? (
         <EmptyState
@@ -569,7 +616,14 @@ const styles = themedStyles(() => StyleSheet.create({
   chatNavCenter: { flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm },
   chatAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   chatAvatarText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
-  chatNavEmail: { color: COLORS.text, fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  chatNavEmail: { color: COLORS.text, fontSize: 14, fontWeight: '800', flexShrink: 1 },
+
+  dayRow: { alignItems: 'center', marginVertical: SPACING.sm },
+  dayText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3, overflow: 'hidden' },
+  bubbleTime: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', alignSelf: 'flex-end', marginTop: 3 },
+  bubbleTimeMine: { color: 'rgba(255,255,255,0.75)' },
+  msgTimeUnder: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 3, marginLeft: 4 },
+  msgTimeUnderMine: { alignSelf: 'flex-end', marginLeft: 0, marginRight: 4 },
 
   // Messages
   messageList: { padding: SPACING.md, gap: SPACING.xs, flexGrow: 1 },

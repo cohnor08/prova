@@ -99,10 +99,22 @@ export default function EarTrainingScreen({ navigation, route }) {
   };
   useEffect(() => () => { unloadAll(); }, []);
 
+  // Activate the audio session ONCE on mount and warm the pipeline with a
+  // silent note — iOS pops audibly if the session spins up right as the first
+  // real note starts (the "click" at the start of a scale).
+  useEffect(() => {
+    (async () => {
+      try {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+        const { sound } = await Audio.Sound.createAsync(NOTE_FILES[60], { shouldPlay: true, volume: 0 });
+        setTimeout(() => { sound.unloadAsync().catch(() => {}); }, 400);
+      } catch (e) { /* best effort */ }
+    })();
+  }, []);
+
   const playMidi = async (midis, gapMs) => {
     await unloadAll();
     try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
       for (let i = 0; i < midis.length; i++) {
         const { sound } = await Audio.Sound.createAsync(NOTE_FILES[midis[i]], { shouldPlay: true });
         soundsRef.current.push(sound);

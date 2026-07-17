@@ -52,20 +52,23 @@ export async function deleteGroupChat(groupId) {
   await deleteDoc(doc(db, 'groupChats', groupId));
 }
 
-// Teacher posts a message. senderName is stored so the bubble can be labelled
-// without a per-uid lookup, and the preview fields bump the thread to the top.
-export async function sendGroupMessage({ groupId, senderUid, senderName, text }) {
+// Teacher posts a message (text and/or a photo/video, same as the DMs).
+// senderName is stored so the bubble can be labelled without a per-uid lookup,
+// and the preview fields bump the thread to the top.
+export async function sendGroupMessage({ groupId, senderUid, senderName, text, media }) {
   const trimmed = (text || '').trim();
-  if (!trimmed) return;
+  const hasMedia = !!(media && media.url);
+  if (!trimmed && !hasMedia) return;
   await addDoc(collection(db, 'groupChats', groupId, 'messages'), {
     senderUid,
     senderName: senderName || '',
     text: trimmed,
+    ...(hasMedia ? { mediaUrl: media.url, mediaType: media.type || 'image' } : {}),
     reactions: {},
     timestamp: serverTimestamp(),
   });
   await updateDoc(doc(db, 'groupChats', groupId), {
-    lastMessage: trimmed,
+    lastMessage: hasMedia ? (media.type === 'video' ? '🎥 Video' : '📷 Photo') : trimmed,
     lastMessageAt: serverTimestamp(),
     lastSenderUid: senderUid,
   });

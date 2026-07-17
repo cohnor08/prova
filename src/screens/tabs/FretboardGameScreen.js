@@ -99,13 +99,17 @@ export default function FretboardGameScreen({ navigation, route }) {
   };
   useEffect(() => () => { unloadNote(); }, []);
 
+  // Activate the audio session once on mount — spinning it up per note can pop.
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(() => {});
+  }, []);
+
   const playNote = async (midi) => {
     let m = midi;
     while (m < 48) m += 12;   // samples span C3–C5; octave-up keeps the pitch class
     while (m > 72) m -= 12;
     try {
       await unloadNote(); // stop the previous note first
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync(NOTE_FILES[m], { shouldPlay: true });
       soundRef.current = sound;
     } catch (e) { /* best effort */ }
