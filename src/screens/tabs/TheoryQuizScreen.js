@@ -58,18 +58,22 @@ export default function TheoryQuizScreen({ navigation, route }) {
         if (uid) {
           const today = new Date().toISOString().split('T')[0];
           const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
-          const tq = cur.theoryQuiz || {};
-          const rounds = tq.date === today ? (tq.rounds || 0) : 0;
-          if (rounds < REWARDED_ROUNDS_PER_DAY) {
-            await updateDoc(doc(db, 'users', uid), {
-              theoryQuiz: { date: today, rounds: rounds + 1 },
-              provaScore: increment(ROUND_POINTS),
-              totalMinutes: increment(2),
-              ...practiceStreakUpdates(cur),
-            });
-            logPracticeMinutes(uid, 2, 'theory');
-            setRewarded(true);
-            celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🧠' });
+          if (cur.role === 'teacher') {
+            celebrate({ title: 'Round complete!', subtitle: `Worth ${ROUND_POINTS} pts for students`, emoji: '🧠' });
+          } else {
+            const tq = cur.theoryQuiz || {};
+            const rounds = tq.date === today ? (tq.rounds || 0) : 0;
+            if (rounds < REWARDED_ROUNDS_PER_DAY) {
+              await updateDoc(doc(db, 'users', uid), {
+                theoryQuiz: { date: today, rounds: rounds + 1 },
+                provaScore: increment(ROUND_POINTS),
+                totalMinutes: increment(2),
+                ...practiceStreakUpdates(cur),
+              });
+              logPracticeMinutes(uid, 2, 'theory');
+              setRewarded(true);
+              celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🧠' });
+            }
           }
         }
       } catch (e) { /* reward is best-effort */ }

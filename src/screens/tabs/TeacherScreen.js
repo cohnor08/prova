@@ -1703,6 +1703,9 @@ function TeacherDashboard() {
   const [studentSearch, setStudentSearch] = useState('');
   const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
   const [taskOverview, setTaskOverview] = useState(null); // { student, task } read-only overview
+  // iOS won't present a Modal while a SheetModal is still animating out, so we
+  // stash the proof to open and fire it from the sheet's onClosed.
+  const pendingProofRef = useRef(null);
   const [editClassCtx, setEditClassCtx] = useState(null); // { klass, group, task } class-task batch being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
@@ -2305,7 +2308,11 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         <Text style={styles.title}>My Students</Text>
 
         {/* Tab switcher */}
@@ -2443,7 +2450,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     </View>
                     <View style={styles.studentInfo}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.studentName}>{nm}</Text>
+                        <Text style={styles.studentName} numberOfLines={1}>{nm}</Text>
                       </View>
                       <Text style={styles.studentMeta}>{student.level} · {student.instrument}</Text>
                       <View style={styles.statusRow}>
@@ -3116,7 +3123,12 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       />
 
       {/* Everything this student has finished, in its own window. */}
-      <SheetModal visible={!!completedView} onRequestClose={() => setCompletedView(null)} cardStyle={styles.modalCard}>
+      <SheetModal
+        visible={!!completedView}
+        onRequestClose={() => setCompletedView(null)}
+        cardStyle={styles.modalCard}
+        onClosed={() => { if (pendingProofRef.current) { setProofView(pendingProofRef.current); pendingProofRef.current = null; } }}
+      >
             {(() => {
               const live = students.find((s) => s.uid === completedView?.uid) || completedView;
               const done = (live?.assignedTasks || [])
@@ -3158,7 +3170,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                           {t.proofUrl && (
                             <TouchableOpacity
                               // Close this window first — iOS won't stack two Modals.
-                              onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                              onPress={() => { pendingProofRef.current = { url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }; setCompletedView(null); }}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
                               <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
@@ -3177,7 +3189,12 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       </SheetModal>
 
       {/* Read-only overview of a student's task (opened from the task menu). */}
-      <SheetModal visible={!!taskOverview} onRequestClose={() => setTaskOverview(null)} cardStyle={styles.modalCard}>
+      <SheetModal
+        visible={!!taskOverview}
+        onRequestClose={() => setTaskOverview(null)}
+        cardStyle={styles.modalCard}
+        onClosed={() => { if (pendingProofRef.current) { setProofView(pendingProofRef.current); pendingProofRef.current = null; } }}
+      >
             {(() => {
               if (!taskOverview) return null;
               // Read the live copy so the overview reflects the latest state.
@@ -3253,7 +3270,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     <TouchableOpacity
                       style={styles.ovProofBtn}
                       // iOS won't stack two Modals — close this before the proof viewer.
-                      onPress={() => { setTaskOverview(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                      onPress={() => { pendingProofRef.current = { url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }; setTaskOverview(null); }}
                       activeOpacity={0.85}
                     >
                       <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={18} color={t.proofVerified ? COLORS.success : COLORS.primary} />
@@ -3626,7 +3643,7 @@ const styles = themedStyles(() => StyleSheet.create({
   avatarStatusDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: COLORS.card },
   studentInfo: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 2 },
-  studentName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  studentName: { flex: 1, color: COLORS.text, fontWeight: '700', fontSize: 15 },
   todayBadge: { backgroundColor: 'rgba(16,185,129,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
   todayBadgeText: { color: COLORS.success, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   studentMeta: { color: COLORS.textMuted, fontSize: 12, marginBottom: 4 },

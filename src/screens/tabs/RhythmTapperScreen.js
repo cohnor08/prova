@@ -182,18 +182,22 @@ export default function RhythmTapperScreen({ navigation, route }) {
       if (uid) {
         const today = new Date().toISOString().split('T')[0];
         const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
-        const rt = cur.rhythmTapper || {};
-        const rounds = rt.date === today ? (rt.rounds || 0) : 0;
-        if (rounds < REWARDED_ROUNDS_PER_DAY) {
-          await updateDoc(doc(db, 'users', uid), {
-            rhythmTapper: { date: today, rounds: rounds + 1 },
-            provaScore: increment(ROUND_POINTS),
-            totalMinutes: increment(2),
-            ...practiceStreakUpdates(cur),
-          });
-          logPracticeMinutes(uid, 2, 'rhythm');
-          setRewarded(true);
-          celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${acc}% in time`, emoji: '🥁' });
+        if (cur.role === 'teacher') {
+          celebrate({ title: 'Round complete!', subtitle: `Worth ${ROUND_POINTS} pts for students`, emoji: '🥁' });
+        } else {
+          const rt = cur.rhythmTapper || {};
+          const rounds = rt.date === today ? (rt.rounds || 0) : 0;
+          if (rounds < REWARDED_ROUNDS_PER_DAY) {
+            await updateDoc(doc(db, 'users', uid), {
+              rhythmTapper: { date: today, rounds: rounds + 1 },
+              provaScore: increment(ROUND_POINTS),
+              totalMinutes: increment(2),
+              ...practiceStreakUpdates(cur),
+            });
+            logPracticeMinutes(uid, 2, 'rhythm');
+            setRewarded(true);
+            celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${acc}% in time`, emoji: '🥁' });
+          }
         }
       }
     } catch (e) { /* best effort */ }

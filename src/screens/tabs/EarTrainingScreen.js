@@ -164,6 +164,7 @@ export default function EarTrainingScreen({ navigation, route }) {
   };
 
   const next = async () => {
+    unloadAll(); // cut the current note the instant we advance/finish
     if (qNum >= ROUND_LEN) {
       setPhase('done');
       track('ear_round_completed', { mode, level, score });
@@ -173,18 +174,23 @@ export default function EarTrainingScreen({ navigation, route }) {
         if (uid) {
           const today = new Date().toISOString().split('T')[0];
           const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
-          const et = cur.earTraining || {};
-          const rounds = et.date === today ? (et.rounds || 0) : 0;
-          if (rounds < REWARDED_ROUNDS_PER_DAY) {
-            await updateDoc(doc(db, 'users', uid), {
-              earTraining: { date: today, rounds: rounds + 1 },
-              provaScore: increment(ROUND_POINTS),
-              totalMinutes: increment(2),
-              ...practiceStreakUpdates(cur),
-            });
-            logPracticeMinutes(uid, 2, 'ear');
-            setRewarded(true);
-            celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎧' });
+          if (cur.role === 'teacher') {
+            // Teachers are previewing — bank nothing; just show what it's worth.
+            celebrate({ title: 'Round complete!', subtitle: `Worth ${ROUND_POINTS} pts for students`, emoji: '🎧' });
+          } else {
+            const et = cur.earTraining || {};
+            const rounds = et.date === today ? (et.rounds || 0) : 0;
+            if (rounds < REWARDED_ROUNDS_PER_DAY) {
+              await updateDoc(doc(db, 'users', uid), {
+                earTraining: { date: today, rounds: rounds + 1 },
+                provaScore: increment(ROUND_POINTS),
+                totalMinutes: increment(2),
+                ...practiceStreakUpdates(cur),
+              });
+              logPracticeMinutes(uid, 2, 'ear');
+              setRewarded(true);
+              celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎧' });
+            }
           }
         }
       } catch (e) { /* reward is best-effort */ }

@@ -444,50 +444,6 @@ export default function ResourceLibraryScreen({ navigation }) {
           )}
         </View>
 
-        {/* ── Skill drills (assignable mini-games, pick a level) ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="game-controller" size={16} color={COLORS.primary} />
-            <Text style={styles.sectionTitle}>Skill drills</Text>
-          </View>
-          <Text style={styles.drillHint}>Tap a drill to preview it exactly as your student sees it, or assign it below.</Text>
-          {DRILLS.map((d) => {
-            const modes = drillModes(d.key);
-            return (
-              <View key={d.key} style={styles.item}>
-                {/* Tap the card body to open the game itself — the same screen,
-                    menu and levels the student gets. */}
-                <TouchableOpacity
-                  style={styles.customRow}
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate(d.route)}
-                >
-                  <Ionicons name={d.icon} size={16} color={COLORS.primary} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
-                    <Text style={styles.itemDetail} numberOfLines={1}>
-                      {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Assign to student — no kite. Opens the assign flow (mode/level/etc). */}
-                <TouchableOpacity
-                  style={styles.assignRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setAssignDrillMode(modes.length ? modes[0].key : null);
-                    setAssignDrillLevel(1);
-                    setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
-                  }}
-                >
-                  <Text style={styles.assignRowText}>Assign to student</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
-
         {/* ── Lesson library (searchable bank, assign any task) ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -570,6 +526,50 @@ export default function ResourceLibraryScreen({ navigation }) {
               );
             })
           )}
+        </View>
+
+        {/* ── Skill drills (assignable mini-games, pick a level) ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="game-controller" size={16} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Skill drills</Text>
+          </View>
+          <Text style={styles.drillHint}>Tap a drill to preview it exactly as your student sees it, or assign it below.</Text>
+          {DRILLS.map((d) => {
+            const modes = drillModes(d.key);
+            return (
+              <View key={d.key} style={styles.item}>
+                {/* Tap the card body to open the game itself — the same screen,
+                    menu and levels the student gets. */}
+                <TouchableOpacity
+                  style={styles.customRow}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate(d.route)}
+                >
+                  <Ionicons name={d.icon} size={16} color={COLORS.primary} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
+                    <Text style={styles.itemDetail} numberOfLines={1}>
+                      {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Assign to student — no kite. Opens the assign flow (mode/level/etc). */}
+                <TouchableOpacity
+                  style={styles.assignRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setAssignDrillMode(modes.length ? modes[0].key : null);
+                    setAssignDrillLevel(1);
+                    setAssignTarget({ title: d.title, drill: d.key, description: `Play a round of ${d.title.toLowerCase()}.` });
+                  }}
+                >
+                  <Text style={styles.assignRowText}>Assign to student</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </View>
 
         <View style={{ height: SPACING.xl }} />
