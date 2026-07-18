@@ -28,12 +28,16 @@ const MAX_WINDOW = 260;      // widest a tap can miss a beat by and still count 
 
 // Each level is really just an interval (ms between clicks) and a length. The
 // note-value labels are flavour; what changes is how fast the grid comes.
+// `div` = clicks per beat (1 = quarters, 2 = eighths, 4 = sixteenths); the
+// actual interval is computed from the user-adjustable tempo.
 const LEVELS = [
-  { id: 1, label: 'Steady',     bpm: 70, interval: Math.round(60000 / 70),     taps: 16, accentEvery: 4, note: 'Quarter notes' },
-  { id: 2, label: 'Groove',     bpm: 96, interval: Math.round(60000 / 96),     taps: 20, accentEvery: 4, note: 'Quarter notes' },
-  { id: 3, label: 'Eighths',    bpm: 84, interval: Math.round(60000 / 84 / 2), taps: 24, accentEvery: 8, note: 'Eighth notes' },
-  { id: 4, label: '16ths',      bpm: 66, interval: Math.round(60000 / 66 / 4), taps: 32, accentEvery: 8, note: 'Sixteenth notes' },
+  { id: 1, label: 'Steady',     bpm: 70, div: 1, taps: 16, accentEvery: 4, note: 'Quarter notes' },
+  { id: 2, label: 'Groove',     bpm: 96, div: 1, taps: 20, accentEvery: 4, note: 'Quarter notes' },
+  { id: 3, label: 'Eighths',    bpm: 84, div: 2, taps: 24, accentEvery: 8, note: 'Eighth notes' },
+  { id: 4, label: '16ths',      bpm: 66, div: 4, taps: 32, accentEvery: 8, note: 'Sixteenth notes' },
 ];
+const BPM_MIN = 40;
+const BPM_MAX = 200;
 // Two ways to play: 'click' keeps the metronome the whole way; 'hold' plays one
 // bar of click then goes SILENT — you keep the time on your own (real internal-
 // clock training). The beats are scored the same either way.
@@ -73,7 +77,11 @@ export default function RhythmTapperScreen({ navigation, route }) {
   const windowRef = useRef(MAX_WINDOW); // per-round match window (tightens on fast levels)
   const pulse = useRef(new Animated.Value(1)).current;
 
-  const cfg = LEVELS.find((l) => l.id === level);
+  const base = LEVELS.find((l) => l.id === level);
+  // Tempo is the user's to set — each level just supplies its default.
+  const [bpm, setBpm] = useState(base.bpm);
+  useEffect(() => { setBpm(LEVELS.find((l) => l.id === level).bpm); }, [level]);
+  const cfg = { ...base, bpm, interval: Math.round(60000 / bpm / base.div) };
 
   // Load the metronome clicks once (same assets/rate as the Practice metronome).
   useEffect(() => {
@@ -182,18 +190,22 @@ export default function RhythmTapperScreen({ navigation, route }) {
       if (uid) {
         const today = new Date().toISOString().split('T')[0];
         const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
-        const rt = cur.rhythmTapper || {};
-        const rounds = rt.date === today ? (rt.rounds || 0) : 0;
-        if (rounds < REWARDED_ROUNDS_PER_DAY) {
-          await updateDoc(doc(db, 'users', uid), {
-            rhythmTapper: { date: today, rounds: rounds + 1 },
-            provaScore: increment(ROUND_POINTS),
-            totalMinutes: increment(2),
-            ...practiceStreakUpdates(cur),
-          });
-          logPracticeMinutes(uid, 2, 'rhythm');
-          setRewarded(true);
-          celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${acc}% in time`, emoji: '🥁' });
+        if (cur.role === 'teacher') {
+          celebrate({ title: 'Round complete!', subtitle: `Worth ${ROUND_POINTS} pts for students`, emoji: '🥁' });
+        } else {
+          const rt = cur.rhythmTapper || {};
+          const rounds = rt.date === today ? (rt.rounds || 0) : 0;
+          if (rounds < REWARDED_ROUNDS_PER_DAY) {
+            await updateDoc(doc(db, 'users', uid), {
+              rhythmTapper: { date: today, rounds: rounds + 1 },
+              provaScore: increment(ROUND_POINTS),
+              totalMinutes: increment(2),
+              ...practiceStreakUpdates(cur),
+            });
+            logPracticeMinutes(uid, 2, 'rhythm');
+            setRewarded(true);
+            celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${acc}% in time`, emoji: '🥁' });
+          }
         }
       }
     } catch (e) { /* best effort */ }
@@ -232,8 +244,31 @@ export default function RhythmTapperScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={styles.menuLabel}>TEMPO</Text>
+          <View style={styles.bpmRow}>
+            <TouchableOpacity
+              style={styles.bpmBtn}
+              onPress={() => setBpm((b) => Math.max(BPM_MIN, b - 5))}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="remove" size={18} color={COLORS.text} />
+            </TouchableOpacity>
+            <Text style={styles.bpmValue}>{bpm}<Text style={styles.bpmUnit}> BPM</Text></Text>
+            <TouchableOpacity
+              style={styles.bpmBtn}
+              onPress={() => setBpm((b) => Math.min(BPM_MAX, b + 5))}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="add" size={18} color={COLORS.text} />
+            </TouchableOpacity>
+            {bpm !== base.bpm && (
+              <TouchableOpacity onPress={() => setBpm(base.bpm)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.bpmReset}>Reset</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <Text style={styles.levelHint}>
-            {cfg.bpm} BPM · {cfg.note} · {cfg.taps} beats{mode === 'hold' ? ' · click drops after one bar' : ''}
+            {cfg.note} · {cfg.taps} beats{mode === 'hold' ? ' · click drops after one bar' : ''}
           </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color="#fff" />
@@ -313,6 +348,11 @@ const styles = themedStyles(() => StyleSheet.create({
   segText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   segTextOn: { color: '#fff' },
   levelHint: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.lg, alignSelf: 'flex-start' },
+  bpmRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, alignSelf: 'flex-start', marginBottom: SPACING.md },
+  bpmBtn: { width: 32, height: 32, borderRadius: 9, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  bpmValue: { color: COLORS.text, fontSize: 18, fontWeight: '800', minWidth: 86, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  bpmUnit: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  bpmReset: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
   startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },

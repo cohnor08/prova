@@ -3,8 +3,10 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, FlatList,
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
+  Animated,
 } from 'react-native';
 import ProofMedia from '../../components/ProofMedia';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +18,9 @@ import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow } from '../../lib/claude';
 import { track } from '../../lib/analytics';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
-import { makeChatId, sendChatMessage, markChatRead, receiptStatus } from '../../lib/chat';
+import { makeChatId, sendChatMessage, markChatRead, receiptStatus, toggleChatReaction } from '../../lib/chat';
+import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
+import { ReactionChips, ReactionPicker } from '../../components/Reactions';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
 import { displayName } from '../../lib/displayName';
@@ -1410,7 +1414,20 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   // Demo chats simulate the student having caught up; real chats read the
   // student's actual lastRead marker.
   const [otherReadAt, setOtherReadAt] = useState(isDemo ? Date.now() : null);
+  const [reactTarget, setReactTarget] = useState(null); // message the reaction picker is open for
   const flatRef = useRef(null);
+  const kbInset = useKeyboardInset();
+
+  const react = (item, emoji) => {
+    if (isDemo) return; // demo threads are local-only
+    const live = messages.find((m) => m.id === item.id) || item;
+    toggleChatReaction({ chatId, messageId: live.id, emoji, uid: myUid, current: live.reactions })
+      .catch(() => Alert.alert('Error', "Couldn't add your reaction. Please try again."));
+  };
+  const pickReaction = (emoji) => {
+    if (reactTarget) react(reactTarget, emoji);
+    setReactTarget(null);
+  };
 
   // After the teacher sends in a demo chat, flip the receipt to "Read" shortly
   // after, so it behaves like a real conversation.
@@ -1501,18 +1518,17 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
     }
   };
 
+  const revMessages = [...messages].reverse();
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={{ flex: 1 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.chatNavBackBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
           <Text style={styles.chatNavBackText}>Messages</Text>
         </TouchableOpacity>
         <View style={styles.chatNavCenter}>
-          <Text style={styles.chatNavTitle} numberOfLines={1}>{title}</Text>
+          <Text style={styles.chatNavTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{title}</Text>
           {!!subtitle && <Text style={styles.chatNavSub}>{subtitle}</Text>}
         </View>
         <View style={{ width: 80 }} />
@@ -1521,7 +1537,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           whatever the keyboard does; dragging dismisses the keyboard. */}
       <FlatList
         ref={flatRef}
-        data={[...messages].reverse()}
+        data={revMessages}
         inverted={messages.length > 0}
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
@@ -1530,20 +1546,39 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
         renderItem={({ item, index }) => {
           const isMe = item.senderUid === myUid;
           const showReceipt = isMe && index === 0; // inverted: index 0 = newest
+          const ms = msgMs(item);
+          // Inverted list: the chronologically-older neighbour is index+1;
+          // a day separator goes above the first message of each day.
+          const olderMs = index < revMessages.length - 1 ? msgMs(revMessages[index + 1]) : null;
+          const showDay = !!ms && (!olderMs || !sameDay(ms, olderMs));
           const body = item.mediaUrl
-            ? <MediaMessageBubble item={item} isMe={isMe} />
-            : (
+            ? (
+              <>
+                <MediaMessageBubble item={item} isMe={isMe} />
+                {!!ms && <Text style={[styles.msgTimeUnder, isMe && styles.msgTimeUnderMine]}>{timeLabel(ms)}</Text>}
+              </>
+            ) : (
               <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
                 <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
                   {item.text}
                 </Text>
+                {!!ms && <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeMine]}>{timeLabel(ms)}</Text>}
               </View>
             );
-          if (!showReceipt) return body;
           return (
             <View>
+              {showDay && (
+                <View style={styles.dayRow}><Text style={styles.dayText}>{dayLabel(ms)}</Text></View>
+              )}
               {body}
-              <Text style={styles.chatReceipt}>{receiptStatus(item, otherReadAt)}</Text>
+              <ReactionChips
+                reactions={item.reactions}
+                myUid={myUid}
+                onToggle={(emoji) => react(item, emoji)}
+                onAdd={() => setReactTarget(item)}
+                alignRight={isMe}
+              />
+              {showReceipt && <Text style={styles.chatReceipt}>{receiptStatus(item, otherReadAt)}</Text>}
             </View>
           );
         }}
@@ -1554,7 +1589,9 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           </View>
         }
       />
-      <View style={[styles.chatInputRow, { paddingBottom: (insets.bottom || SPACING.sm) + SPACING.xs }]}>
+      {/* The bar owns its bottom padding (surface colour), driven by the
+          keyboard's own animation — no dark gap can show under the field. */}
+      <Animated.View style={[styles.chatInputRow, { paddingBottom: kbInset }]}>
         <TouchableOpacity
           style={styles.chatVideoBtn}
           onPress={() => handleMedia(captureMedia)}
@@ -1589,8 +1626,13 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
             ? <ActivityIndicator color={COLORS.text} size="small" />
             : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
         </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </Animated.View>
+      <ReactionPicker
+        visible={!!reactTarget}
+        onPick={pickReaction}
+        onClose={() => setReactTarget(null)}
+      />
+    </View>
   );
 }
 
@@ -1688,6 +1730,7 @@ function TeacherDashboard() {
   const [joinCode, setJoinCode] = useState(null);
   const [classes, setClasses] = useState([]);
   const [parentEmails, setParentEmails] = useState({});     // { studentUid: 'parent@email' }
+  const [pcSearch, setPcSearch] = useState('');             // parent-contacts filter (name or email)
   const [contactsOpen, setContactsOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState({});
   const [sendingReports, setSendingReports] = useState(false);
@@ -1703,6 +1746,9 @@ function TeacherDashboard() {
   const [studentSearch, setStudentSearch] = useState('');
   const [editTaskCtx, setEditTaskCtx] = useState(null); // { student, task } being edited
   const [taskOverview, setTaskOverview] = useState(null); // { student, task } read-only overview
+  // iOS won't present a Modal while a SheetModal is still animating out, so we
+  // stash the proof to open and fire it from the sheet's onClosed.
+  const pendingProofRef = useRef(null);
   const [editClassCtx, setEditClassCtx] = useState(null); // { klass, group, task } class-task batch being edited
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classView, setClassView] = useState('progress'); // 'progress' | 'leaderboard'
@@ -2305,7 +2351,11 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         <Text style={styles.title}>My Students</Text>
 
         {/* Tab switcher */}
@@ -2443,7 +2493,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     </View>
                     <View style={styles.studentInfo}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.studentName}>{nm}</Text>
+                        <Text style={styles.studentName} numberOfLines={1}>{nm}</Text>
                       </View>
                       <Text style={styles.studentMeta}>{student.level} · {student.instrument}</Text>
                       <View style={styles.statusRow}>
@@ -3035,23 +3085,51 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               ) : null}
             </View>
 
-            {students.length === 0 ? (
-              <Text style={styles.pcEmpty}>No students connected yet. Share your join code first.</Text>
-            ) : students.map((s) => (
-              <View key={s.uid} style={styles.pcRow}>
-                <Text style={styles.pcName} numberOfLines={1}>{displayName(s)}</Text>
+            {students.length > 0 && (
+              <View style={styles.pcSearchRow}>
+                <Ionicons name="search" size={15} color={COLORS.textMuted} />
                 <TextInput
-                  style={styles.pcInput}
-                  placeholder="parent@email.com"
+                  style={styles.pcSearchInput}
+                  placeholder="Search by student or parent email…"
                   placeholderTextColor={COLORS.textMuted}
-                  value={emailDraft[s.uid] || ''}
-                  onChangeText={(v) => setEmailDraft((d) => ({ ...d, [s.uid]: v }))}
-                  keyboardType="email-address"
+                  value={pcSearch}
+                  onChangeText={setPcSearch}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                {pcSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setPcSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                )}
               </View>
-            ))}
+            )}
+            {students.length === 0 ? (
+              <Text style={styles.pcEmpty}>No students connected yet. Share your join code first.</Text>
+            ) : (() => {
+              const q = pcSearch.trim().toLowerCase();
+              const shown = q
+                ? students.filter((s) =>
+                    displayName(s).toLowerCase().includes(q)
+                    || (emailDraft[s.uid] || '').toLowerCase().includes(q))
+                : students;
+              if (shown.length === 0) return <Text style={styles.pcEmpty}>No matches for “{pcSearch}”.</Text>;
+              return shown.map((s) => (
+                <View key={s.uid} style={styles.pcRow}>
+                  <Text style={styles.pcName} numberOfLines={1}>{displayName(s)}</Text>
+                  <TextInput
+                    style={styles.pcInput}
+                    placeholder="parent@email.com"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={emailDraft[s.uid] || ''}
+                    onChangeText={(v) => setEmailDraft((d) => ({ ...d, [s.uid]: v }))}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              ));
+            })()}
             {students.length > 0 && (
               <>
                 <TouchableOpacity
@@ -3116,7 +3194,12 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       />
 
       {/* Everything this student has finished, in its own window. */}
-      <SheetModal visible={!!completedView} onRequestClose={() => setCompletedView(null)} cardStyle={styles.modalCard}>
+      <SheetModal
+        visible={!!completedView}
+        onRequestClose={() => setCompletedView(null)}
+        cardStyle={styles.modalCard}
+        onClosed={() => { if (pendingProofRef.current) { setProofView(pendingProofRef.current); pendingProofRef.current = null; } }}
+      >
             {(() => {
               const live = students.find((s) => s.uid === completedView?.uid) || completedView;
               const done = (live?.assignedTasks || [])
@@ -3158,7 +3241,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                           {t.proofUrl && (
                             <TouchableOpacity
                               // Close this window first — iOS won't stack two Modals.
-                              onPress={() => { setCompletedView(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                              onPress={() => { pendingProofRef.current = { url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }; setCompletedView(null); }}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
                               <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
@@ -3177,7 +3260,12 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       </SheetModal>
 
       {/* Read-only overview of a student's task (opened from the task menu). */}
-      <SheetModal visible={!!taskOverview} onRequestClose={() => setTaskOverview(null)} cardStyle={styles.modalCard}>
+      <SheetModal
+        visible={!!taskOverview}
+        onRequestClose={() => setTaskOverview(null)}
+        cardStyle={styles.modalCard}
+        onClosed={() => { if (pendingProofRef.current) { setProofView(pendingProofRef.current); pendingProofRef.current = null; } }}
+      >
             {(() => {
               if (!taskOverview) return null;
               // Read the live copy so the overview reflects the latest state.
@@ -3253,7 +3341,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     <TouchableOpacity
                       style={styles.ovProofBtn}
                       // iOS won't stack two Modals — close this before the proof viewer.
-                      onPress={() => { setTaskOverview(null); setProofView({ url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }); }}
+                      onPress={() => { pendingProofRef.current = { url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }; setTaskOverview(null); }}
                       activeOpacity={0.85}
                     >
                       <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={18} color={t.proofVerified ? COLORS.success : COLORS.primary} />
@@ -3539,6 +3627,8 @@ const styles = themedStyles(() => StyleSheet.create({
   pcSave: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
   pcIntro: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
   pcEmpty: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', marginTop: SPACING.xl },
+  pcSearchRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, marginBottom: SPACING.md },
+  pcSearchInput: { flex: 1, color: COLORS.text, fontSize: 14, paddingVertical: 10 },
   pcRow: { marginBottom: SPACING.md },
   pcName: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginBottom: SPACING.xs },
   pcInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border },
@@ -3626,7 +3716,7 @@ const styles = themedStyles(() => StyleSheet.create({
   avatarStatusDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: COLORS.card },
   studentInfo: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 2 },
-  studentName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  studentName: { flex: 1, color: COLORS.text, fontWeight: '700', fontSize: 15 },
   todayBadge: { backgroundColor: 'rgba(16,185,129,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
   todayBadgeText: { color: COLORS.success, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   studentMeta: { color: COLORS.textMuted, fontSize: 12, marginBottom: 4 },
@@ -3771,7 +3861,14 @@ const styles = themedStyles(() => StyleSheet.create({
   chatNavBackBtn: { flexDirection: 'row', alignItems: 'center', width: 90 },
   chatNavBackText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
   chatNavCenter: { flex: 1, alignItems: 'center' },
-  chatNavTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  chatNavTitle: { color: COLORS.text, fontSize: 13.5, fontWeight: '700' },
+
+  dayRow: { alignItems: 'center', marginVertical: SPACING.sm },
+  dayText: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3, overflow: 'hidden' },
+  bubbleTime: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', alignSelf: 'flex-end', marginTop: 3 },
+  bubbleTimeMine: { color: 'rgba(255,255,255,0.75)' },
+  msgTimeUnder: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', marginTop: 3, marginLeft: 4 },
+  msgTimeUnderMine: { alignSelf: 'flex-end', marginLeft: 0, marginRight: 4 },
   chatNavSub: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
 
   // Chat messages

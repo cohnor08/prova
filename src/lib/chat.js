@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, getDoc, setDoc, serverTimestamp,
+  collection, doc, addDoc, getDoc, setDoc, updateDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -86,4 +86,20 @@ export async function sendChatMessage({ chatId, senderUid, senderEmail, otherUid
       { merge: true },
     ),
   ]);
+}
+
+// Toggle my reaction on a DM message — same shape as the group-chat version
+// ({ emoji: [uids] } map on the message). Either participant may update a
+// message under the existing chat rules, so no rules change is needed.
+export async function toggleChatReaction({ chatId, messageId, emoji, uid, current }) {
+  const reactions = {};
+  Object.keys(current || {}).forEach((k) => { reactions[k] = [...(current[k] || [])]; });
+  const list = reactions[emoji] || [];
+  if (list.includes(uid)) {
+    const next = list.filter((u) => u !== uid);
+    if (next.length) reactions[emoji] = next; else delete reactions[emoji];
+  } else {
+    reactions[emoji] = [...list, uid];
+  }
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), { reactions });
 }

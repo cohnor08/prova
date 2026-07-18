@@ -90,13 +90,28 @@ export default function FretboardGameScreen({ navigation, route }) {
 
   const strings = instrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS;
 
+  // Keep a handle to the playing note so we can cut it on the next tap / on
+  // exit, instead of letting each sample ring out (and leak).
+  const soundRef = useRef(null);
+  const unloadNote = async () => {
+    const s = soundRef.current; soundRef.current = null;
+    if (s) { try { await s.unloadAsync(); } catch (e) {} }
+  };
+  useEffect(() => () => { unloadNote(); }, []);
+
+  // Activate the audio session once on mount — spinning it up per note can pop.
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(() => {});
+  }, []);
+
   const playNote = async (midi) => {
     let m = midi;
     while (m < 48) m += 12;   // samples span C3–C5; octave-up keeps the pitch class
     while (m > 72) m -= 12;
     try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      await Audio.Sound.createAsync(NOTE_FILES[m], { shouldPlay: true });
+      await unloadNote(); // stop the previous note first
+      const { sound } = await Audio.Sound.createAsync(NOTE_FILES[m], { shouldPlay: true });
+      soundRef.current = sound;
     } catch (e) { /* best effort */ }
   };
 
@@ -147,6 +162,7 @@ export default function FretboardGameScreen({ navigation, route }) {
   };
 
   const next = async () => {
+    unloadNote(); // cut the current note the instant we advance/finish
     if (qNum >= ROUND_LEN) {
       setPhase('done');
       track('fretboard_round_completed', { level, score });
@@ -155,18 +171,22 @@ export default function FretboardGameScreen({ navigation, route }) {
         if (uid) {
           const today = new Date().toISOString().split('T')[0];
           const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
-          const fg = cur.fretGame || {};
-          const rounds = fg.date === today ? (fg.rounds || 0) : 0;
-          if (rounds < REWARDED_ROUNDS_PER_DAY) {
-            await updateDoc(doc(db, 'users', uid), {
-              fretGame: { date: today, rounds: rounds + 1 },
-              provaScore: increment(ROUND_POINTS),
-              totalMinutes: increment(2),
-              ...practiceStreakUpdates(cur),
-            });
-            logPracticeMinutes(uid, 2, 'fretboard');
-            setRewarded(true);
-            celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎸' });
+          if (cur.role === 'teacher') {
+            celebrate({ title: 'Round complete!', subtitle: `Worth ${ROUND_POINTS} pts for students`, emoji: '🎸' });
+          } else {
+            const fg = cur.fretGame || {};
+            const rounds = fg.date === today ? (fg.rounds || 0) : 0;
+            if (rounds < REWARDED_ROUNDS_PER_DAY) {
+              await updateDoc(doc(db, 'users', uid), {
+                fretGame: { date: today, rounds: rounds + 1 },
+                provaScore: increment(ROUND_POINTS),
+                totalMinutes: increment(2),
+                ...practiceStreakUpdates(cur),
+              });
+              logPracticeMinutes(uid, 2, 'fretboard');
+              setRewarded(true);
+              celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎸' });
+            }
           }
         }
       } catch (e) { /* best effort */ }
@@ -217,7 +237,7 @@ export default function FretboardGameScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { unloadNote(); navigation.goBack(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Fretboard Game</Text>
