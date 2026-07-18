@@ -2,6 +2,14 @@
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   },
+  "permissions": {
+    "ask": [
+      "Bash(eas update*)",
+      "Bash(eas submit*)",
+      "Bash(npx eas update*)",
+      "Bash(npx eas submit*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
