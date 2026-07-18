@@ -94,6 +94,8 @@ export default function TourOverlay({ role }) {
   const [mode, setMode] = useState('quick'); // 'quick' map | 'full' walkthrough
   const [rect, setRect] = useState(null);    // measured target box (full mode)
   const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
+  const [cardPos, setCardPos] = useState('bottom'); // flips to 'top' when a target is stuck low
+  const [settled, setSettled] = useState(true);     // ring + card appear TOGETHER
   const seqRef = useRef(0);                  // cancels stale async measurements
 
   const steps = role === 'teacher'
@@ -134,13 +136,14 @@ export default function TourOverlay({ role }) {
     const s = steps[step];
     const seq = ++seqRef.current;
     setRect(null);
+    setSettled(!s.target); // targeted steps hold the card until the ring is ready
     (async () => {
       if (s.nav) {
         try {
           navigation.navigate(s.nav.tab, s.nav.screen ? { screen: s.nav.screen } : undefined);
         } catch (e) { /* stay put */ }
       }
-      if (!s.target) return;
+      if (!s.target) { setCardPos('bottom'); return; }
       // The card is always anchored at the bottom, so the usable zone for the
       // spotlight runs from under the status bar to just above the card. The
       // scroll centres the target in that zone (never under the card); targets
@@ -164,14 +167,22 @@ export default function TourOverlay({ role }) {
         }
         break;
       }
-      if (seqRef.current !== seq || !best) return;
-      // Whatever happened with scrolling, the lit region must be ON screen —
-      // clamp the hole to the zone so the user always sees it glow.
-      const visTop = Math.max(best.y, zoneTop);
-      const visBottom = Math.min(best.y + best.h, zoneBottom);
+      if (seqRef.current !== seq) return;
+      if (!best) { setSettled(true); return; } // no target found → centered card fallback
+      // If the scroll maxed out and the target is stuck in the lower half
+      // (e.g. Today's drills near the end of the page), the card flips to the
+      // TOP so it can't cover what it's explaining.
+      const stuckLow = best.y + best.h > zoneBottom + 8;
+      setCardPos(stuckLow ? 'top' : 'bottom');
+      // Whatever happened with scrolling, the lit region must be ON screen.
+      const loTop = stuckLow ? 64 + cardH + 12 : zoneTop;
+      const loBottom = stuckLow ? winH - TAB_H - 14 : zoneBottom;
+      const visTop = Math.max(best.y, loTop);
+      const visBottom = Math.min(best.y + best.h, loBottom);
       if (visBottom - visTop > 40) {
         setRect({ x: best.x, y: visTop, w: best.w, h: visBottom - visTop });
       }
+      setSettled(true); // ring + card land together
     })();
   }, [visible, mode, step]);
 
@@ -195,16 +206,21 @@ export default function TourOverlay({ role }) {
   if (mode === 'full') {
     const hasRect = !!rect && !!size;
     // Clamp the ring against the card's LIVE height at render time — a taller
-    // card than expected can never cover the bottom of what it's explaining.
+    // card than expected can never cover what it's explaining, wherever the
+    // card sits.
     const winH = size?.height || 800;
-    const ringBottomMax = winH - TAB_H - 24 - cardH - 10;
+    const clampTop = cardPos === 'top' ? 64 + cardH + 10 : 54;
+    const clampBottom = cardPos === 'top' ? winH - TAB_H - 14 : winH - TAB_H - 24 - cardH - 10;
     const r = hasRect
-      ? { x: rect.x, y: rect.y, w: rect.w, h: Math.max(46, Math.min(rect.y + rect.h, ringBottomMax) - rect.y) }
+      ? (() => {
+          const t = Math.max(rect.y, clampTop);
+          const b = Math.min(rect.y + rect.h, clampBottom);
+          return b - t > 30 ? { x: rect.x, y: t, w: rect.w, h: b - t } : rect;
+        })()
       : null;
-    // The card lives at the bottom from the FIRST frame of every step (only
-    // the intro/outro are centered) — no jump when the spotlight lands, and a
-    // FIXED footprint (width overrides undo the base card's width/maxWidth so
-    // it can't grow past the screen).
+    // Fixed-footprint card (width overrides undo the base card's
+    // width/maxWidth so it can't grow past the screen). Bottom-anchored by
+    // default; flips to the top only when the target is stuck low.
     const card = (
       <View
         onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
@@ -212,7 +228,11 @@ export default function TourOverlay({ role }) {
           styles.card,
           isIntro
             ? styles.cardCentered
-            : { position: 'absolute', left: 20, right: 20, bottom: TAB_H + 24, width: undefined, maxWidth: undefined, alignSelf: undefined },
+            : {
+                position: 'absolute', left: 20, right: 20,
+                ...(cardPos === 'top' ? { top: 64 } : { bottom: TAB_H + 24 }),
+                width: undefined, maxWidth: undefined, alignSelf: undefined,
+              },
         ]}
       >
         {!isIntro && <Text style={styles.kicker}>{stepNum} OF {stepTotal}</Text>}
@@ -244,7 +264,10 @@ export default function TourOverlay({ role }) {
         // mid-tour — only the card's buttons advance.
         onStartShouldSetResponder={() => true}
       >
-        {r ? (
+        {!settled ? (
+          // Measuring: plain dim only — the ring and the card then land TOGETHER.
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />
+        ) : r ? (
           <>
             {/* Rect spotlight: the border trick with a rectangular hole. */}
             <View
