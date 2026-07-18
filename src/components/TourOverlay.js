@@ -141,22 +141,31 @@ export default function TourOverlay({ role }) {
       }
       if (!s.target) return;
       let scrolled = false;
+      let best = null;
       for (let i = 0; i < 10; i++) {
         await sleep(i === 0 ? 300 : 150);
         if (seqRef.current !== seq) return;
         const r = await measure(s.target);
         if (!r) continue;
+        best = r;
         const winH = size?.height || 800;
-        const offTop = r.y < 60;
-        const offBottom = r.y + r.h > winH - (TAB_H + 150);
+        const offTop = r.y < 50;
+        const offBottom = r.y + r.h > winH - (TAB_H + 130);
         if ((offTop || offBottom) && !scrolled) {
           scrolled = true;
           await scrollTo(s);
           continue; // remeasure after the scroll
         }
-        if (seqRef.current !== seq) return;
-        setRect(r);
-        return;
+        break;
+      }
+      if (seqRef.current !== seq || !best) return;
+      // Whatever happened with scrolling, the lit region must be ON screen —
+      // clamp the hole to the visible area so the user always sees it glow.
+      const winH = size?.height || 800;
+      const visTop = Math.max(best.y, 54);
+      const visBottom = Math.min(best.y + best.h, winH - TAB_H - 40);
+      if (visBottom - visTop > 50) {
+        setRect({ x: best.x, y: visTop, w: best.w, h: visBottom - visTop });
       }
     })();
   }, [visible, mode, step]);
@@ -227,13 +236,23 @@ export default function TourOverlay({ role }) {
                 borderWidth: B, borderRadius: B + 18, borderColor: DIM,
               }}
             />
+            {/* Soft outer glow so the lit element unmistakably pops. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: rect.x - PAD - 5, top: rect.y - PAD - 5,
+                width: rect.w + 2 * (PAD + 5), height: rect.h + 2 * (PAD + 5),
+                borderRadius: 22, borderWidth: 5, borderColor: COLORS.primary + '44',
+              }}
+            />
             <View
               pointerEvents="none"
               style={{
                 position: 'absolute',
                 left: rect.x - PAD, top: rect.y - PAD,
                 width: rect.w + 2 * PAD, height: rect.h + 2 * PAD,
-                borderRadius: 18, borderWidth: 2, borderColor: COLORS.primary,
+                borderRadius: 18, borderWidth: 2.5, borderColor: COLORS.primary,
               }}
             />
             {card}
@@ -316,6 +335,9 @@ function measure(id) {
 }
 
 // Bring a target into view via its screen's registered ScrollView.
+// measureLayout needs a REF to a native component on the new architecture
+// (a bare node handle logs "must be called with a ref" and fails), so prefer
+// getInnerViewRef; fall back to the node handle for the old architecture.
 function scrollTo(step) {
   return new Promise((resolve) => {
     const scRef = getTourScroller(step.scroller);
@@ -323,16 +345,20 @@ function scrollTo(step) {
     const sc = scRef?.current;
     const node = tRef?.current;
     if (!sc || !node?.measureLayout) return resolve();
-    const inner = sc.getInnerViewNode ? sc.getInnerViewNode() : null;
+    const inner = (sc.getInnerViewRef && sc.getInnerViewRef()) || (sc.getInnerViewNode && sc.getInnerViewNode()) || null;
     if (!inner) return resolve();
-    node.measureLayout(
-      inner,
-      (x, y) => {
-        try { sc.scrollTo({ y: Math.max(0, y - 110), animated: false }); } catch (e) {}
-        setTimeout(resolve, 140);
-      },
-      () => resolve(),
-    );
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; setTimeout(resolve, 160); } };
+    try {
+      node.measureLayout(
+        inner,
+        (x, y) => {
+          try { sc.scrollTo({ y: Math.max(0, y - 110), animated: false }); } catch (e) {}
+          done();
+        },
+        done,
+      );
+    } catch (e) { done(); }
   });
 }
 
