@@ -21,17 +21,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd /Users/ethanlam/prova && git add . && git diff --cached --quiet || git commit -m 'auto-save' && git push 2>/dev/null || true",
-            "statusMessage": "Pushing changes to GitHub..."
-          }
-        ]
-      }
     ]
   }
 }
