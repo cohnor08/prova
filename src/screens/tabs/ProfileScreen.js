@@ -886,7 +886,7 @@ export default function ProfileScreen({ navigation }) {
         {/* Help */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>HELP</Text>
-          <TouchableOpacity style={styles.row} onPress={replayTour}>
+          <TouchableOpacity style={styles.row} onPress={() => replayTour('full')}>
             <Text style={styles.rowLabel}>Show me around again</Text>
             <Text style={styles.rowArrow}>›</Text>
           </TouchableOpacity>

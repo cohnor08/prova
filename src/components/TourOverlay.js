@@ -19,9 +19,10 @@ const R = 42;            // spotlight radius
 const B = 1400;          // dark border thickness (the "everything else" part)
 const DIM = 'rgba(2,4,10,0.88)';
 
-// Replay hook for Profile's "Show me around" row.
+// Replay hook for Profile's "Show me around" row. Pass 'full' for the
+// feature-by-feature walkthrough; no argument = the quick first-run map.
 const listeners = new Set();
-export function replayTour() { listeners.forEach((fn) => fn()); }
+export function replayTour(mode) { listeners.forEach((fn) => fn(mode)); }
 
 const STUDENT_STEPS = [
   { tab: null, title: 'Welcome to Prova', text: 'Your practice coach. Twenty seconds — here’s where everything lives.' },
@@ -41,11 +42,47 @@ const TEACHER_STEPS = [
   { tab: null, title: 'That’s the map', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
 ];
 
+// The IN-DEPTH tour, from Profile's "Show me around again": same spotlight
+// mechanics, but several cards per tab so every main feature gets a moment.
+const STUDENT_STEPS_FULL = [
+  { tab: null, title: 'The full tour', text: 'Every main feature, a couple of minutes. Tap anywhere to step through — skip whenever.' },
+  { tab: 0, title: 'Today — your plan', text: 'Your AI practice plan lives here. One button starts a guided session with per-task timers, and the plan adapts weekly to how you actually practise.' },
+  { tab: 0, title: 'Daily challenge & drills', text: 'A bonus challenge and two rotating mini-game drills every day — quick wins that bank points and keep your streak alive.' },
+  { tab: 0, title: 'From your teacher', text: 'Tasks, class work and lesson info land on Today. Expand a task to watch its tutorial, practise it, or attach a video clip as proof.' },
+  { tab: 0, title: 'Ask Prova', text: 'Your AI coach. Ask anything — technique, theory, what to practise next — straight from the card on Today.' },
+  { tab: 1, title: 'Practice tools', text: 'Metronome with a speed trainer, and a tuner. The metronome keeps ticking when you leave the tab — the floating pill shows it’s running anywhere in the app.' },
+  { tab: 1, title: 'Learn — the games', text: 'Chords & scales library, ear training, the fretboard game, rhythm tapper and theory quiz. Your first rounds each day earn points.' },
+  { tab: 1, title: 'Songs & gigs', text: 'Pick any song and Prova builds the exact steps to learn it. Got a gig? It’ll build the setlist too.' },
+  { tab: 2, title: 'Progress', text: 'Streak, hours, session history and a weekly Practice Wrapped recap of your week.' },
+  { tab: 2, title: 'Score, badges & skill tree', text: 'Every session grows your Prova Score through the ranks. 32 badges to earn, a skill tree to climb, and personal goals to tick off.' },
+  { tab: 2, title: 'Leaderboards', text: 'See where you stand — worldwide, against friends, or inside your class.' },
+  { tab: 3, title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. Long stuck? React with the smiley under any message.' },
+  { tab: 4, title: 'Profile', text: 'Light or dark theme with your accent colour, practice reminders, your teacher’s join code — and this tour, any time you want it.' },
+  { tab: null, title: 'That’s everything', text: 'Now go practise — Prova takes it from here.' },
+];
+
+const TEACHER_STEPS_FULL = [
+  { tab: null, title: 'The full tour', text: 'Every main feature, a couple of minutes. Tap anywhere to step through — skip whenever.' },
+  { tab: 0, title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
+  { tab: 0, title: 'Lessons & attendance', text: 'Schedule lessons on the calendar, mark attendance and marks, and keep per-lesson notes your students can see.' },
+  { tab: 0, title: 'Packs & programs', text: 'Bundle tasks into reusable packs, or multi-week programs that assign themselves week by week.' },
+  { tab: 1, title: 'Students', text: 'Your roster. Students connect with your join code; open anyone for their streak, practice chart and assigned work.' },
+  { tab: 1, title: 'Assign work', text: 'Tasks with tutorials, songs, or a skill drill at the exact level you choose — to one student or a whole class. Tap any task for its overview or to edit it.' },
+  { tab: 1, title: 'Proof & parent reports', text: 'Watch students’ practice clips and verify them. Add parent emails and Prova sends beautiful weekly progress reports automatically.' },
+  { tab: 2, title: 'Resources', text: 'Your own materials, a full lesson library, and the skill drills — tap one to play it exactly as your students will.' },
+  { tab: 3, title: 'Messages', text: 'Direct chats with students — photos and videos too — plus class announcement channels with reactions. School-safe by design.' },
+  { tab: 4, title: 'Profile', text: 'Appearance, account settings — and this tour, any time you want it.' },
+  { tab: null, title: 'That’s everything', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
+];
+
 export default function TourOverlay({ role }) {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [size, setSize] = useState(null);
-  const steps = role === 'teacher' ? TEACHER_STEPS : STUDENT_STEPS;
+  const [mode, setMode] = useState('quick'); // 'quick' first-run map | 'full' feature walkthrough
+  const steps = role === 'teacher'
+    ? (mode === 'full' ? TEACHER_STEPS_FULL : TEACHER_STEPS)
+    : (mode === 'full' ? STUDENT_STEPS_FULL : STUDENT_STEPS);
 
   // First run: show once per account.
   useEffect(() => {
@@ -61,9 +98,9 @@ export default function TourOverlay({ role }) {
       .catch(() => {});
   }, []);
 
-  // Replay from Profile.
+  // Replay from Profile — 'full' gives the in-depth feature walkthrough.
   useEffect(() => {
-    const fn = () => { setStep(0); setVisible(true); track('tour_replayed'); };
+    const fn = (m) => { setMode(m === 'full' ? 'full' : 'quick'); setStep(0); setVisible(true); track('tour_replayed', { mode: m || 'quick' }); };
     listeners.add(fn);
     return () => listeners.delete(fn);
   }, []);
