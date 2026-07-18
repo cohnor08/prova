@@ -421,7 +421,9 @@ function ActivityGraph({ data, streak }) {
       <View style={styles.heatHeader}>
         <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>PRACTICE TREND · 12 WEEKS</Text>
         {streak > 0 && (
-          <Text style={styles.heatStreak}>🔥 {streak} day{streak === 1 ? '' : 's'}</Text>
+          <Text style={styles.heatStreak}>
+            <Ionicons name="flame" size={12} color="#F59E0B" /> {streak} day{streak === 1 ? '' : 's'}
+          </Text>
         )}
       </View>
 
@@ -685,21 +687,30 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+// Podium ranks get a tinted medal glyph (gold/silver/bronze) — the app's icon
+// language, not emoji.
+const RANK_COLORS = ['#F5C044', '#B9C2CE', '#CD8A4F'];
 
 function LeaderboardRow({ entry, rank, isMe }) {
   const score = displayScore(entry);
   const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
   const initial = (name[0] || '?').toUpperCase();
+  const streak = entry.streak || 0;
   return (
     <View style={[styles.lbRow, isMe && styles.lbRowMe]}>
-      <Text style={styles.lbRank}>{rank <= 3 ? RANK_MEDALS[rank - 1] : `#${rank}`}</Text>
+      <Text style={styles.lbRank}>
+        {rank <= 3 ? <Ionicons name="medal" size={16} color={RANK_COLORS[rank - 1]} /> : `#${rank}`}
+      </Text>
       <View style={[styles.lbAvatar, isMe && { backgroundColor: COLORS.primary }]}>
         <Text style={styles.lbAvatarText}>{initial}</Text>
       </View>
       <View style={styles.lbInfo}>
         <Text style={[styles.lbName, isMe && { color: COLORS.primary }]}>{isMe ? `${name} (you)` : name}</Text>
-        <Text style={styles.lbMeta}>{entry.level || 'Beginner'} · {entry.streak || 0}🔥</Text>
+        <Text style={styles.lbMeta}>
+          {entry.level || 'Beginner'}
+          {/* A flame next to a zero would just be noise — only show a live streak. */}
+          {streak > 0 && <>{' · '}{streak} <Ionicons name="flame" size={11} color="#F59E0B" /></>}
+        </Text>
       </View>
       <Text style={[styles.lbScore, isMe && { color: COLORS.primary }]}>{score}</Text>
     </View>
@@ -1250,14 +1261,16 @@ export default function ProgressScreen({ navigation }) {
         return (
           <View style={styles.statsRow}>
             {[
-              { value: streak, unit: '🔥', label: 'Day Streak' },
+              { value: streak, icon: 'flame', label: 'Day Streak' },
               { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
               { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
               { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
             ].map(s => (
               <View key={s.label} style={styles.statCard}>
                 <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statUnit}>{s.unit}</Text>
+                {s.icon
+                  ? <Text style={styles.statUnit}><Ionicons name={s.icon} size={12} color={s.value > 0 ? '#F59E0B' : COLORS.textMuted} /></Text>
+                  : <Text style={styles.statUnit}>{s.unit}</Text>}
                 <Text style={styles.statLabel}>{s.label}</Text>
               </View>
             ))}

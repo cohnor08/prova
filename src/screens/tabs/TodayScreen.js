@@ -365,11 +365,15 @@ function ClassScoreboard({ classId, teacherUid, myUid }) {
           <Text style={styles.scoreboardEmpty}>No classmates yet.</Text>
         ) : (
           rows.map((r, i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+            // Podium ranks get a tinted medal glyph (gold/silver/bronze) — the
+            // app's icon language, not emoji.
+            const medalColor = ['#F5C044', '#B9C2CE', '#CD8A4F'][i];
             const isMe = r.uid === myUid;
             return (
               <View key={r.uid} style={[styles.scoreboardRow, isMe && styles.scoreboardRowMe]}>
-                <Text style={styles.scoreboardRank}>{medal || `${i + 1}`}</Text>
+                <Text style={styles.scoreboardRank}>
+                  {i < 3 ? <Ionicons name="medal" size={15} color={medalColor} /> : `${i + 1}`}
+                </Text>
                 <Text style={[styles.scoreboardName, isMe && styles.scoreboardNameMe]} numberOfLines={1}>
                   {isMe ? 'You' : r.name}
                 </Text>
@@ -440,7 +444,11 @@ function SessionCard({ session, completed, onPractice }) {
             <Text style={styles.duration}>{session.duration} min</Text>
           </View>
           <View style={styles.sessionTitleRow}>
-            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>{session.title}</Text>
+            {/* Collapsed: just the part before the dash ("Fingerstyle Warmup").
+                Expanded: the full title. Kills the wall of "…" in the list. */}
+            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>
+              {expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
+            </Text>
             {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
           </View>
@@ -1512,7 +1520,9 @@ export default function TodayScreen({ navigation }) {
 
         {(userData?.streak || 0) > 0 && (
           <View style={styles.streakChip}>
-            <Text style={styles.streakChipText}>🔥 {userData.streak} day{userData.streak === 1 ? '' : 's'} streak</Text>
+            <Text style={styles.streakChipText}>
+              <Ionicons name="flame" size={13} color="#F59E0B" /> {userData.streak} day{userData.streak === 1 ? '' : 's'} streak
+            </Text>
           </View>
         )}
 
