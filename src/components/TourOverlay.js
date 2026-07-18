@@ -1,26 +1,35 @@
-// First-run guided tour: darkened overlay with a bright spotlight cut out
-// around each bottom tab, a short card explaining what lives there, Next/Skip.
-// Teaches the MAP only (which tab is what) — per-screen guidance is the empty
-// states' job. Shows once (users.tourSeen), replayable from Profile.
+// Guided tours: a darkened overlay with a bright spotlight, a short card, and
+// Next/Skip.
+//
+// Two flavours:
+//  • QUICK (first run + Profile "Show me around"): teaches the MAP — one stop
+//    per bottom tab, spotlight cut out around the tab icon.
+//  • FULL (Profile "Full feature tour"): actually NAVIGATES into each tab and
+//    lights up the real elements — the drills, the score card, the tools —
+//    via the TourSpot registry (which can also scroll them into view).
 //
 // The spotlight is the classic border trick: a huge transparent-centre view
-// whose massive dark border darkens everything EXCEPT a circle over the tab —
-// no SVG masks needed, works identically on native and web.
-import React, { useEffect, useState } from 'react';
+// whose massive dark border darkens everything EXCEPT the hole — no SVG masks
+// needed, works identically on native and web.
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { getTourTarget, getTourScroller } from './TourSpot';
 import { COLORS, themedStyles } from '../constants/theme';
 import { track } from '../lib/analytics';
 
 const TAB_H = 84;        // TAB_BAR_STYLE.height — bar is fixed, no insets
 const TAB_CENTER_Y = 47; // icon+label visual centre, from the bottom edge
-const R = 42;            // spotlight radius
+const R = 42;            // tab spotlight radius
 const B = 1400;          // dark border thickness (the "everything else" part)
+const PAD = 8;           // breathing room around a rect target
 const DIM = 'rgba(2,4,10,0.88)';
 
-// Replay hook for Profile's "Show me around" row. Pass 'full' for the
-// feature-by-feature walkthrough; no argument = the quick first-run map.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Replay hook for Profile. 'full' = the in-depth walkthrough; default quick.
 const listeners = new Set();
 export function replayTour(mode) { listeners.forEach((fn) => fn(mode)); }
 
@@ -42,74 +51,121 @@ const TEACHER_STEPS = [
   { tab: null, title: 'That’s the map', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
 ];
 
-// The IN-DEPTH tour, from Profile's "Show me around again": same spotlight
-// mechanics, but several cards per tab so every main feature gets a moment.
+// FULL tour steps: `nav` = where to go, `target` = TourSpot id to light up
+// (falls back to a centered card on that screen if the element isn't there —
+// e.g. the teacher section for a student with no teacher).
 const STUDENT_STEPS_FULL = [
-  { tab: null, title: 'The full tour', text: 'Every main feature, a couple of minutes. Tap anywhere to step through — skip whenever.' },
-  { tab: 0, title: 'Today — your plan', text: 'Your AI practice plan lives here. One button starts a guided session with per-task timers, and the plan adapts weekly to how you actually practise.' },
-  { tab: 0, title: 'Daily challenge & drills', text: 'A bonus challenge and two rotating mini-game drills every day — quick wins that bank points and keep your streak alive.' },
-  { tab: 0, title: 'From your teacher', text: 'Tasks, class work and lesson info land on Today. Expand a task to watch its tutorial, practise it, or attach a video clip as proof.' },
-  { tab: 0, title: 'Ask Prova', text: 'Your AI coach. Ask anything — technique, theory, what to practise next — straight from the card on Today.' },
-  { tab: 1, title: 'Practice tools', text: 'Metronome with a speed trainer, and a tuner. The metronome keeps ticking when you leave the tab — the floating pill shows it’s running anywhere in the app.' },
-  { tab: 1, title: 'Learn — the games', text: 'Chords & scales library, ear training, the fretboard game, rhythm tapper and theory quiz. Your first rounds each day earn points.' },
-  { tab: 1, title: 'Songs & gigs', text: 'Pick any song and Prova builds the exact steps to learn it. Got a gig? It’ll build the setlist too.' },
-  { tab: 2, title: 'Progress', text: 'Streak, hours, session history and a weekly Practice Wrapped recap of your week.' },
-  { tab: 2, title: 'Score, badges & skill tree', text: 'Every session grows your Prova Score through the ranks. 32 badges to earn, a skill tree to climb, and personal goals to tick off.' },
-  { tab: 2, title: 'Leaderboards', text: 'See where you stand — worldwide, against friends, or inside your class.' },
-  { tab: 3, title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. Long stuck? React with the smiley under any message.' },
-  { tab: 4, title: 'Profile', text: 'Light or dark theme with your accent colour, practice reminders, your teacher’s join code — and this tour, any time you want it.' },
-  { tab: null, title: 'That’s everything', text: 'Now go practise — Prova takes it from here.' },
+  { title: 'The full tour', text: 'Every main feature, right where it lives. Tap anywhere to step through — skip whenever.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-start', scroller: 'TodayHome', title: 'Your daily plan', text: 'Today’s summary — minutes, exercises, and the one button that starts a guided session. The plan adapts weekly to how you actually practise.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-ask', scroller: 'TodayHome', title: 'Ask Prova', text: 'Your AI coach. Technique, theory, what to practise next — ask anything.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-challenge', scroller: 'TodayHome', title: 'Daily challenge', text: 'A bonus task every day — quick points and an easy way to keep the streak alive.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-drills', scroller: 'TodayHome', title: 'Today’s drills', text: 'Two rotating mini-games a day. First rounds bank points and count as real practice.' },
+  { nav: { tab: 'Practice', screen: 'PracticeHome' }, target: 'p-learn', scroller: 'PracticeHome', title: 'Learn', text: 'The lesson library, chords & scales, ear training, the fretboard game, rhythm tapper and theory quiz.' },
+  { nav: { tab: 'Practice', screen: 'PracticeHome' }, target: 'p-tools', scroller: 'PracticeHome', title: 'Tools', text: 'Metronome with a speed trainer, tuner, songs and your calendar. The metronome keeps ticking anywhere in the app — watch for the floating pill.' },
+  { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-stats', scroller: 'ProgressHome', title: 'Your numbers', text: 'Streak, hours, sessions — plus a Practice Wrapped recap of your week, every week.' },
+  { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-score', scroller: 'ProgressHome', title: 'Prova Score', text: 'Every session grows your score through the ranks. Badges and the skill tree grow with it.' },
+  { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-board', scroller: 'ProgressHome', title: 'Leaderboards', text: 'Where you stand — worldwide, against friends, or inside your class.' },
+  { nav: { tab: 'Messages' }, title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. React with the smiley under any message.' },
+  { nav: { tab: 'Profile' }, target: 'pr-teacher', scroller: 'Profile', title: 'Your teacher', text: 'Connect a teacher with their join code and their tasks land on Today. You can link more than one.' },
+  { nav: { tab: 'Profile' }, target: 'pr-appearance', scroller: 'Profile', title: 'Make it yours', text: 'Light or dark, your accent colour, practice reminders — and this tour, any time.' },
+  { title: 'That’s everything', text: 'Now go practise — Prova takes it from here.' },
 ];
 
 const TEACHER_STEPS_FULL = [
-  { tab: null, title: 'The full tour', text: 'Every main feature, a couple of minutes. Tap anywhere to step through — skip whenever.' },
-  { tab: 0, title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
-  { tab: 0, title: 'Lessons & attendance', text: 'Schedule lessons on the calendar, mark attendance and marks, and keep per-lesson notes your students can see.' },
-  { tab: 0, title: 'Packs & programs', text: 'Bundle tasks into reusable packs, or multi-week programs that assign themselves week by week.' },
-  { tab: 1, title: 'Students', text: 'Your roster. Students connect with your join code; open anyone for their streak, practice chart and assigned work.' },
-  { tab: 1, title: 'Assign work', text: 'Tasks with tutorials, songs, or a skill drill at the exact level you choose — to one student or a whole class. Tap any task for its overview or to edit it.' },
-  { tab: 1, title: 'Proof & parent reports', text: 'Watch students’ practice clips and verify them. Add parent emails and Prova sends beautiful weekly progress reports automatically.' },
-  { tab: 2, title: 'Resources', text: 'Your own materials, a full lesson library, and the skill drills — tap one to play it exactly as your students will.' },
-  { tab: 3, title: 'Messages', text: 'Direct chats with students — photos and videos too — plus class announcement channels with reactions. School-safe by design.' },
-  { tab: 4, title: 'Profile', text: 'Appearance, account settings — and this tour, any time you want it.' },
-  { tab: null, title: 'That’s everything', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
+  { title: 'The full tour', text: 'Every main feature, right where it lives. Tap anywhere to step through — skip whenever.' },
+  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
+  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
+  { nav: { tab: 'Teacher' }, title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
+  { nav: { tab: 'Teacher' }, title: 'Assign work', text: 'Tasks with tutorials, songs, or a skill drill at the exact level you choose — to one student or a whole class. Tap any task for its overview or to edit it.' },
+  { nav: { tab: 'Teacher' }, title: 'Proof & parent reports', text: 'Watch students’ practice clips and verify them. Add parent emails and Prova emails beautiful weekly reports automatically.' },
+  { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-mine', scroller: 'ResourcesHome', title: 'Your resources', text: 'Your own materials — links, photos, anything — ready to assign in two taps.' },
+  { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-library', scroller: 'ResourcesHome', title: 'Lesson library', text: 'A searchable bank of ready-made lessons and tasks. Assign any of them straight to a student.' },
+  { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-drills', scroller: 'ResourcesHome', title: 'Skill drills', text: 'The mini-games, assignable at a chosen level. Tap one to play it exactly as your students will.' },
+  { nav: { tab: 'Messages' }, title: 'Messages', text: 'Direct chats with students — photos and videos too — plus class announcement channels with reactions. School-safe by design.' },
+  { nav: { tab: 'Profile' }, target: 'pr-appearance', scroller: 'Profile', title: 'Make it yours', text: 'Appearance, account settings — and this tour, any time you want it.' },
+  { title: 'That’s everything', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
 ];
 
 export default function TourOverlay({ role }) {
+  const navigation = useNavigation();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [size, setSize] = useState(null);
-  const [mode, setMode] = useState('quick'); // 'quick' first-run map | 'full' feature walkthrough
+  const [mode, setMode] = useState('quick'); // 'quick' map | 'full' walkthrough
+  const [rect, setRect] = useState(null);    // measured target box (full mode)
+  const seqRef = useRef(0);                  // cancels stale async measurements
+
   const steps = role === 'teacher'
     ? (mode === 'full' ? TEACHER_STEPS_FULL : TEACHER_STEPS)
     : (mode === 'full' ? STUDENT_STEPS_FULL : STUDENT_STEPS);
 
-  // First run: show once per account.
+  // First run: show the quick map once per account.
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     getDoc(doc(db, 'users', uid))
       .then((s) => {
         if (!(s.data() || {}).tourSeen) {
-          setStep(0); setVisible(true);
+          setMode('quick'); setStep(0); setVisible(true);
           track('tour_started', { role });
         }
       })
       .catch(() => {});
   }, []);
 
-  // Replay from Profile — 'full' gives the in-depth feature walkthrough.
+  // Replay from Profile.
   useEffect(() => {
-    const fn = (m) => { setMode(m === 'full' ? 'full' : 'quick'); setStep(0); setVisible(true); track('tour_replayed', { mode: m || 'quick' }); };
+    const fn = (m) => {
+      setMode(m === 'full' ? 'full' : 'quick');
+      setStep(0); setVisible(true);
+      track('tour_replayed', { mode: m === 'full' ? 'full' : 'quick' });
+    };
     listeners.add(fn);
     return () => listeners.delete(fn);
   }, []);
+
+  // FULL mode: on each step, navigate there, then find + measure the target
+  // (scrolling it into view if the screen registered its ScrollView). Retries
+  // cover the screen still rendering; a missing target falls back to a
+  // centered card on that screen.
+  useEffect(() => {
+    if (!visible || mode !== 'full') return;
+    const s = steps[step];
+    const seq = ++seqRef.current;
+    setRect(null);
+    (async () => {
+      if (s.nav) {
+        try {
+          navigation.navigate(s.nav.tab, s.nav.screen ? { screen: s.nav.screen } : undefined);
+        } catch (e) { /* stay put */ }
+      }
+      if (!s.target) return;
+      let scrolled = false;
+      for (let i = 0; i < 10; i++) {
+        await sleep(i === 0 ? 300 : 150);
+        if (seqRef.current !== seq) return;
+        const r = await measure(s.target);
+        if (!r) continue;
+        const winH = size?.height || 800;
+        const offTop = r.y < 60;
+        const offBottom = r.y + r.h > winH - (TAB_H + 150);
+        if ((offTop || offBottom) && !scrolled) {
+          scrolled = true;
+          await scrollTo(s);
+          continue; // remeasure after the scroll
+        }
+        if (seqRef.current !== seq) return;
+        setRect(r);
+        return;
+      }
+    })();
+  }, [visible, mode, step]);
 
   if (!visible) return null;
 
   const finish = (skipped) => {
     setVisible(false);
-    track(skipped ? 'tour_skipped' : 'tour_completed', { step });
+    track(skipped ? 'tour_skipped' : 'tour_completed', { step, mode });
     const uid = auth.currentUser?.uid;
     if (uid) updateDoc(doc(db, 'users', uid), { tourSeen: true }).catch(() => {});
   };
@@ -117,7 +173,79 @@ export default function TourOverlay({ role }) {
   const s = steps[step];
   const isLast = step === steps.length - 1;
   const next = () => (isLast ? finish(false) : setStep(step + 1));
+  const isIntro = step === 0 || isLast;
+  const stepNum = step;
+  const stepTotal = steps.length - 2;
 
+  // ── FULL mode render ──
+  if (mode === 'full') {
+    const winH = size?.height || 0;
+    const hasRect = !!rect && !!size;
+    // Card goes in whichever half the target isn't.
+    const cardLow = hasRect ? rect.y + rect.h / 2 < winH / 2 : false;
+    const card = (
+      <View
+        style={[
+          styles.card,
+          isIntro || !hasRect
+            ? styles.cardCentered
+            : { position: 'absolute', left: 20, right: 20, ...(cardLow ? { bottom: TAB_H + 24 } : { top: 64 }) },
+        ]}
+      >
+        {!isIntro && <Text style={styles.kicker}>{stepNum} OF {stepTotal}</Text>}
+        <Text style={styles.title}>{s.title}</Text>
+        <Text style={styles.text}>{s.text}</Text>
+        <View style={styles.btnRow}>
+          {!isLast && (
+            <TouchableOpacity onPress={() => finish(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.skip}>Skip</Text>
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
+            <Text style={styles.nextText}>{isLast ? 'Done' : step === 0 ? 'Start the tour' : 'Next'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+    return (
+      <View
+        style={StyleSheet.absoluteFill}
+        onLayout={(e) => setSize(e.nativeEvent.layout)}
+        onStartShouldSetResponder={() => true}
+        onResponderRelease={next}
+      >
+        {hasRect ? (
+          <>
+            {/* Rect spotlight: the border trick with a rectangular hole. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: rect.x - PAD - B, top: rect.y - PAD - B,
+                width: rect.w + 2 * (PAD + B), height: rect.h + 2 * (PAD + B),
+                borderWidth: B, borderRadius: B + 18, borderColor: DIM,
+              }}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: rect.x - PAD, top: rect.y - PAD,
+                width: rect.w + 2 * PAD, height: rect.h + 2 * PAD,
+                borderRadius: 18, borderWidth: 2, borderColor: COLORS.primary,
+              }}
+            />
+            {card}
+          </>
+        ) : (
+          <View style={styles.dimFull}>{card}</View>
+        )}
+      </View>
+    );
+  }
+
+  // ── QUICK mode render (unchanged behaviour) ──
   const cx = size ? (size.width * (s.tab + 0.5)) / 5 : 0;
   const cy = size ? size.height - TAB_CENTER_Y : 0;
 
@@ -175,6 +303,37 @@ export default function TourOverlay({ role }) {
       )}
     </View>
   );
+}
+
+// Measure a TourSpot in window coordinates; null when absent/not laid out.
+function measure(id) {
+  return new Promise((resolve) => {
+    const ref = getTourTarget(id);
+    const node = ref?.current;
+    if (!node?.measureInWindow) return resolve(null);
+    node.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, w, h } : null));
+  });
+}
+
+// Bring a target into view via its screen's registered ScrollView.
+function scrollTo(step) {
+  return new Promise((resolve) => {
+    const scRef = getTourScroller(step.scroller);
+    const tRef = getTourTarget(step.target);
+    const sc = scRef?.current;
+    const node = tRef?.current;
+    if (!sc || !node?.measureLayout) return resolve();
+    const inner = sc.getInnerViewNode ? sc.getInnerViewNode() : null;
+    if (!inner) return resolve();
+    node.measureLayout(
+      inner,
+      (x, y) => {
+        try { sc.scrollTo({ y: Math.max(0, y - 110), animated: false }); } catch (e) {}
+        setTimeout(resolve, 140);
+      },
+      () => resolve(),
+    );
+  });
 }
 
 const styles = themedStyles(() => StyleSheet.create({

@@ -30,6 +30,7 @@ import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
 import { useCelebration } from '../../components/Celebration';
+import { TourSpot, useTourScroller } from '../../components/TourSpot';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -560,6 +561,7 @@ export default function TodayScreen({ navigation }) {
   const [proofView, setProofView] = useState(null);     // { url, type, proofs, taskId } currently being watched
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
+  const tourScrollRef = useTourScroller('TodayHome'); // lets the full tour scroll targets into view
   const [soloOpen, setSoloOpen] = useState(true);
   const [closedTeachers, setClosedTeachers] = useState(() => new Set()); // collapsed per-teacher solo cards
   const [teacherNames, setTeacherNames] = useState({}); // teacherUid -> display name
@@ -1511,7 +1513,7 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
       </TouchableOpacity>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content}>
 
         <Text style={[styles.date, styles.headerCentered]}>{todayLabel.toUpperCase()}</Text>
         <Text style={[styles.title, styles.headerCentered]}>
@@ -1565,6 +1567,7 @@ export default function TodayScreen({ navigation }) {
             only assigned work get the same card. */}
         {isToday && exerciseCount > 0 && (
           <View style={styles.summaryCard}>
+            <TourSpot id="t-start" />
             <View style={styles.summaryStats}>
               {[
                 { value: practisedMins, suffix: totalMins > 0 ? ` /${totalMins}` : null, label: 'MINUTES' },
@@ -1606,6 +1609,7 @@ export default function TodayScreen({ navigation }) {
         {/* Ask Prova — a separate card, sitting below the start-practice box */}
         {isToday && (
           <TouchableOpacity style={styles.askCard} activeOpacity={0.85} onPress={() => navigation.navigate('AskProva')}>
+            <TourSpot id="t-ask" />
             <View style={styles.askIcon}>
               <Ionicons name="sparkles" size={20} color={COLORS.primary} />
             </View>
@@ -1620,6 +1624,7 @@ export default function TodayScreen({ navigation }) {
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
+            <TourSpot id="t-challenge" />
             <TouchableOpacity style={styles.challengeHeader} onPress={() => setChallengeOpen((o) => !o)} activeOpacity={0.7}>
               <View style={styles.challengeIcon}>
                 <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
@@ -1836,6 +1841,7 @@ export default function TodayScreen({ navigation }) {
           <>
             <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
             <View style={styles.drillRow}>
+              <TourSpot id="t-drills" />
               {todaysDrills.map((d) => {
                 const c = userData?.[d.counter];
                 const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { TourSpot, useTourScroller } from '../../components/TourSpot';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -1047,6 +1048,7 @@ export default function ProgressScreen({ navigation }) {
   const [className, setClassName] = useState('');
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
+  const tourScrollRef = useTourScroller('ProgressHome'); // full tour scroll access
   const [editMode, setEditMode] = useState(false);
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
@@ -1260,6 +1262,7 @@ export default function ProgressScreen({ navigation }) {
       case 'stats':
         return (
           <View style={styles.statsRow}>
+            <TourSpot id="g-stats" />
             {[
               { value: streak, icon: 'flame', label: 'Day Streak' },
               { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
@@ -1277,9 +1280,10 @@ export default function ProgressScreen({ navigation }) {
           </View>
         );
       case 'score':
-        return <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />;
+        return <TourSpot id="g-score"><ProvaScore score={provaScore} onPress={() => setShowRanks(true)} /></TourSpot>;
       case 'leaderboard':
         return (
+          <TourSpot id="g-board">
           <Leaderboard
             myUid={auth.currentUser?.uid}
             myData={userData}
@@ -1289,6 +1293,7 @@ export default function ProgressScreen({ navigation }) {
             className={className}
             onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
           />
+          </TourSpot>
         );
       case 'level': return <LevelProgress totalMins={totalMins} />;
       // Charts hide themselves until there's data, so new users don't see empty boxes.
@@ -1337,7 +1342,7 @@ export default function ProgressScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Progress</Text>
           <TouchableOpacity

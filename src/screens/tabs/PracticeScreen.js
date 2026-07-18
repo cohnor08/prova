@@ -12,6 +12,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { useMetronome } from '../../lib/MetronomeContext';
+import { TourSpot, useTourScroller } from '../../components/TourSpot';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -313,6 +314,8 @@ export default function PracticeScreen({ route, navigation }) {
     }
   }, [route?.params?.tool]);
 
+  const tourScrollRef = useTourScroller('PracticeHome'); // full tour scroll access
+
   // Metronome — the ENGINE lives app-level in MetronomeContext so the click
   // keeps going when the student switches tabs or opens a practice task and
   // plays along. This screen is just its control surface.
@@ -462,10 +465,11 @@ export default function PracticeScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
 
         {/* ── LEARN: browse content ── */}
+        <TourSpot id="p-learn">
         <Text style={styles.sectionLabel}>LEARN</Text>
         <View style={[styles.learnRow, { marginBottom: 0 }]}>
           <TouchableOpacity style={styles.learnCard} onPress={() => navigation.navigate('Library')} activeOpacity={0.85}>
@@ -511,6 +515,7 @@ export default function PracticeScreen({ route, navigation }) {
           </View>
           <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
         </TouchableOpacity>
+        </TourSpot>
 
         {/* ── Pre-Gig Mode banner ── */}
         {preGig && (
@@ -538,6 +543,7 @@ export default function PracticeScreen({ route, navigation }) {
         {/* ── TOOLS: practice with ── */}
         <Text style={styles.sectionLabel}>TOOLS</Text>
         <View style={styles.toolSelector}>
+          <TourSpot id="p-tools" />
           {[
             { key: 'metronome', label: 'Metro', icon: 'pulse-outline' },
             { key: 'tuner', label: 'Tuner', icon: 'musical-note-outline' },
