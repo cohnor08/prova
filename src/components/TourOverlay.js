@@ -93,6 +93,7 @@ export default function TourOverlay({ role }) {
   const [size, setSize] = useState(null);
   const [mode, setMode] = useState('quick'); // 'quick' map | 'full' walkthrough
   const [rect, setRect] = useState(null);    // measured target box (full mode)
+  const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
   const seqRef = useRef(0);                  // cancels stale async measurements
 
   const steps = role === 'teacher'
@@ -140,31 +141,35 @@ export default function TourOverlay({ role }) {
         } catch (e) { /* stay put */ }
       }
       if (!s.target) return;
+      // The card is always anchored at the bottom, so the usable zone for the
+      // spotlight runs from under the status bar to just above the card. The
+      // scroll centres the target in that zone (never under the card); targets
+      // taller than the zone pin to its top.
+      const winH = size?.height || 800;
+      const zoneTop = 54;
+      const zoneBottom = winH - TAB_H - 36 - cardH;
       let scrolled = false;
       let best = null;
-      for (let i = 0; i < 10; i++) {
-        await sleep(i === 0 ? 300 : 150);
+      for (let i = 0; i < 12; i++) {
+        await sleep(i === 0 ? 60 : 90);
         if (seqRef.current !== seq) return;
         const r = await measure(s.target);
         if (!r) continue;
         best = r;
-        const winH = size?.height || 800;
-        const offTop = r.y < 50;
-        const offBottom = r.y + r.h > winH - (TAB_H + 130);
-        if ((offTop || offBottom) && !scrolled) {
+        const off = r.y < zoneTop - 6 || r.y + r.h > zoneBottom + 6;
+        if (off && !scrolled) {
           scrolled = true;
-          await scrollTo(s);
+          await scrollTo(s, { zoneTop, zoneBottom });
           continue; // remeasure after the scroll
         }
         break;
       }
       if (seqRef.current !== seq || !best) return;
       // Whatever happened with scrolling, the lit region must be ON screen —
-      // clamp the hole to the visible area so the user always sees it glow.
-      const winH = size?.height || 800;
-      const visTop = Math.max(best.y, 54);
-      const visBottom = Math.min(best.y + best.h, winH - TAB_H - 40);
-      if (visBottom - visTop > 50) {
+      // clamp the hole to the zone so the user always sees it glow.
+      const visTop = Math.max(best.y, zoneTop);
+      const visBottom = Math.min(best.y + best.h, zoneBottom);
+      if (visBottom - visTop > 40) {
         setRect({ x: best.x, y: visTop, w: best.w, h: visBottom - visTop });
       }
     })();
@@ -188,17 +193,16 @@ export default function TourOverlay({ role }) {
 
   // ── FULL mode render ──
   if (mode === 'full') {
-    const winH = size?.height || 0;
     const hasRect = !!rect && !!size;
-    // Card goes in whichever half the target isn't.
-    const cardLow = hasRect ? rect.y + rect.h / 2 < winH / 2 : false;
+    // The card lives at the bottom, always — the spotlight zone sits above it.
     const card = (
       <View
+        onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
         style={[
           styles.card,
           isIntro || !hasRect
             ? styles.cardCentered
-            : { position: 'absolute', left: 20, right: 20, ...(cardLow ? { bottom: TAB_H + 24 } : { top: 64 }) },
+            : { position: 'absolute', left: 20, right: 20, bottom: TAB_H + 24 },
         ]}
       >
         {!isIntro && <Text style={styles.kicker}>{stepNum} OF {stepTotal}</Text>}
@@ -334,11 +338,13 @@ function measure(id) {
   });
 }
 
-// Bring a target into view via its screen's registered ScrollView.
+// Bring a target into view via its screen's registered ScrollView, centring
+// it in the spotlight zone (targets taller than the zone pin to its top, so
+// nothing ever slides under the card).
 // measureLayout needs a REF to a native component on the new architecture
 // (a bare node handle logs "must be called with a ref" and fails), so prefer
 // getInnerViewRef; fall back to the node handle for the old architecture.
-function scrollTo(step) {
+function scrollTo(step, zone) {
   return new Promise((resolve) => {
     const scRef = getTourScroller(step.scroller);
     const tRef = getTourTarget(step.target);
@@ -348,12 +354,14 @@ function scrollTo(step) {
     const inner = (sc.getInnerViewRef && sc.getInnerViewRef()) || (sc.getInnerViewNode && sc.getInnerViewNode()) || null;
     if (!inner) return resolve();
     let settled = false;
-    const done = () => { if (!settled) { settled = true; setTimeout(resolve, 160); } };
+    const done = () => { if (!settled) { settled = true; setTimeout(resolve, 80); } };
     try {
       node.measureLayout(
         inner,
-        (x, y) => {
-          try { sc.scrollTo({ y: Math.max(0, y - 110), animated: false }); } catch (e) {}
+        (x, y, w, h) => {
+          const zh = Math.max(80, zone.zoneBottom - zone.zoneTop);
+          const desiredTop = (h || 0) >= zh ? zone.zoneTop : zone.zoneTop + (zh - (h || 0)) / 2;
+          try { sc.scrollTo({ y: Math.max(0, y - desiredTop), animated: false }); } catch (e) {}
           done();
         },
         done,
