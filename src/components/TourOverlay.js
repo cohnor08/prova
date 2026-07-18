@@ -194,13 +194,14 @@ export default function TourOverlay({ role }) {
   // ── FULL mode render ──
   if (mode === 'full') {
     const hasRect = !!rect && !!size;
-    // The card lives at the bottom, always — the spotlight zone sits above it.
+    // The card lives at the bottom from the FIRST frame of every step (only
+    // the intro/outro are centered) — no jump when the spotlight lands.
     const card = (
       <View
         onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
         style={[
           styles.card,
-          isIntro || !hasRect
+          isIntro
             ? styles.cardCentered
             : { position: 'absolute', left: 20, right: 20, bottom: TAB_H + 24 },
         ]}
