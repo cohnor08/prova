@@ -55,7 +55,7 @@ const TEACHER_STEPS = [
 // (falls back to a centered card on that screen if the element isn't there —
 // e.g. the teacher section for a student with no teacher).
 const STUDENT_STEPS_FULL = [
-  { title: 'The full tour', text: 'Every main feature, right where it lives. Tap anywhere to step through — skip whenever.' },
+  { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
   { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-start', scroller: 'TodayHome', title: 'Your daily plan', text: 'Today’s summary — minutes, exercises, and the one button that starts a guided session. The plan adapts weekly to how you actually practise.' },
   { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-ask', scroller: 'TodayHome', title: 'Ask Prova', text: 'Your AI coach. Technique, theory, what to practise next — ask anything.' },
   { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-challenge', scroller: 'TodayHome', title: 'Daily challenge', text: 'A bonus task every day — quick points and an easy way to keep the streak alive.' },
@@ -72,7 +72,7 @@ const STUDENT_STEPS_FULL = [
 ];
 
 const TEACHER_STEPS_FULL = [
-  { title: 'The full tour', text: 'Every main feature, right where it lives. Tap anywhere to step through — skip whenever.' },
+  { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
   { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
   { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
   { nav: { tab: 'Teacher' }, title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
@@ -194,8 +194,17 @@ export default function TourOverlay({ role }) {
   // ── FULL mode render ──
   if (mode === 'full') {
     const hasRect = !!rect && !!size;
+    // Clamp the ring against the card's LIVE height at render time — a taller
+    // card than expected can never cover the bottom of what it's explaining.
+    const winH = size?.height || 800;
+    const ringBottomMax = winH - TAB_H - 24 - cardH - 10;
+    const r = hasRect
+      ? { x: rect.x, y: rect.y, w: rect.w, h: Math.max(46, Math.min(rect.y + rect.h, ringBottomMax) - rect.y) }
+      : null;
     // The card lives at the bottom from the FIRST frame of every step (only
-    // the intro/outro are centered) — no jump when the spotlight lands.
+    // the intro/outro are centered) — no jump when the spotlight lands, and a
+    // FIXED footprint (width overrides undo the base card's width/maxWidth so
+    // it can't grow past the screen).
     const card = (
       <View
         onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
@@ -203,7 +212,7 @@ export default function TourOverlay({ role }) {
           styles.card,
           isIntro
             ? styles.cardCentered
-            : { position: 'absolute', left: 20, right: 20, bottom: TAB_H + 24 },
+            : { position: 'absolute', left: 20, right: 20, bottom: TAB_H + 24, width: undefined, maxWidth: undefined, alignSelf: undefined },
         ]}
       >
         {!isIntro && <Text style={styles.kicker}>{stepNum} OF {stepTotal}</Text>}
@@ -216,6 +225,11 @@ export default function TourOverlay({ role }) {
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }} />
+          {step > 0 && !isLast && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)} activeOpacity={0.85}>
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
             <Text style={styles.nextText}>{isLast ? 'Done' : step === 0 ? 'Start the tour' : 'Next'}</Text>
           </TouchableOpacity>
@@ -226,18 +240,19 @@ export default function TourOverlay({ role }) {
       <View
         style={StyleSheet.absoluteFill}
         onLayout={(e) => setSize(e.nativeEvent.layout)}
+        // Claim (and swallow) touches so the app underneath can't be tapped
+        // mid-tour — only the card's buttons advance.
         onStartShouldSetResponder={() => true}
-        onResponderRelease={next}
       >
-        {hasRect ? (
+        {r ? (
           <>
             {/* Rect spotlight: the border trick with a rectangular hole. */}
             <View
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: rect.x - PAD - B, top: rect.y - PAD - B,
-                width: rect.w + 2 * (PAD + B), height: rect.h + 2 * (PAD + B),
+                left: r.x - PAD - B, top: r.y - PAD - B,
+                width: r.w + 2 * (PAD + B), height: r.h + 2 * (PAD + B),
                 borderWidth: B, borderRadius: B + 18, borderColor: DIM,
               }}
             />
@@ -246,8 +261,8 @@ export default function TourOverlay({ role }) {
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: rect.x - PAD - 5, top: rect.y - PAD - 5,
-                width: rect.w + 2 * (PAD + 5), height: rect.h + 2 * (PAD + 5),
+                left: r.x - PAD - 5, top: r.y - PAD - 5,
+                width: r.w + 2 * (PAD + 5), height: r.h + 2 * (PAD + 5),
                 borderRadius: 22, borderWidth: 5, borderColor: COLORS.primary + '44',
               }}
             />
@@ -255,8 +270,8 @@ export default function TourOverlay({ role }) {
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: rect.x - PAD, top: rect.y - PAD,
-                width: rect.w + 2 * PAD, height: rect.h + 2 * PAD,
+                left: r.x - PAD, top: r.y - PAD,
+                width: r.w + 2 * PAD, height: r.h + 2 * PAD,
                 borderRadius: 18, borderWidth: 2.5, borderColor: COLORS.primary,
               }}
             />
@@ -285,6 +300,11 @@ export default function TourOverlay({ role }) {
           </TouchableOpacity>
         )}
         <View style={{ flex: 1 }} />
+        {step > 0 && !isLast && (
+          <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)} activeOpacity={0.85}>
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
           <Text style={styles.nextText}>{isLast ? 'Done' : step === 0 ? 'Show me around' : 'Next'}</Text>
         </TouchableOpacity>
@@ -297,7 +317,6 @@ export default function TourOverlay({ role }) {
       style={StyleSheet.absoluteFill}
       onLayout={(e) => setSize(e.nativeEvent.layout)}
       onStartShouldSetResponder={() => true}
-      onResponderRelease={next}
     >
       {s.tab == null ? (
         <View style={styles.dimFull}>{card}</View>
@@ -385,6 +404,8 @@ const styles = themedStyles(() => StyleSheet.create({
   skip: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   nextBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 22 },
   nextText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  backBtn: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 18, marginRight: 10 },
+  backText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   caret: {
     position: 'absolute', width: 14, height: 14, backgroundColor: COLORS.surface,
     borderRightWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border,
