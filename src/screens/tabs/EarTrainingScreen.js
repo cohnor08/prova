@@ -12,6 +12,7 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
+import { useMetronome } from '../../lib/MetronomeContext';
 import { PIANO_FILES as NOTE_FILES } from '../../constants/pianoNotes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
@@ -98,6 +99,10 @@ export default function EarTrainingScreen({ navigation, route }) {
     for (const s of sounds) { try { await s.unloadAsync(); } catch (e) {} }
   };
   useEffect(() => () => { unloadAll(); }, []);
+
+  // A running metronome would drown the notes you're trying to identify.
+  const metronome = useMetronome();
+  useEffect(() => { metronome?.stop?.(); }, []);
 
   // Activate the audio session ONCE on mount and warm the pipeline with a
   // silent note — iOS pops audibly if the session spins up right as the first

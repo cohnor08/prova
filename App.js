@@ -32,6 +32,8 @@ import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE, makeTabBarStyle } from './src/constants/theme';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { CelebrationProvider } from './src/components/Celebration';
+import { MetronomeProvider } from './src/lib/MetronomeContext';
+import MetronomePill from './src/components/MetronomePill';
 import IntroSplash from './src/components/IntroSplash';
 import TourOverlay from './src/components/TourOverlay';
 
@@ -219,6 +221,9 @@ function MainTabs({ role }) {
         </>
       )}
     </Tab.Navigator>
+    {/* Students get the floating metronome pill so the click survives tab
+        switches and stays visible/stoppable from anywhere. */}
+    {!isTeacher && <MetronomePill />}
     <TourOverlay role={role} />
     </View>
   );
@@ -275,6 +280,7 @@ function AppInner() {
   } else {
     body = (
       <AuthContext.Provider value={{ setOnboardingComplete, role }}>
+        <MetronomeProvider>
         <CelebrationProvider>
         <NavigationContainer theme={navTheme}>
           <StatusBar style={statusBarStyle} />
@@ -303,6 +309,7 @@ function AppInner() {
           )}
         </NavigationContainer>
         </CelebrationProvider>
+        </MetronomeProvider>
       </AuthContext.Provider>
     );
   }

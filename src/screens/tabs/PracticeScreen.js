@@ -11,6 +11,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
+import { useMetronome } from '../../lib/MetronomeContext';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -312,29 +313,16 @@ export default function PracticeScreen({ route, navigation }) {
     }
   }, [route?.params?.tool]);
 
-  // Metronome
-  const [bpm, setBpm] = useState(80);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [beat, setBeat] = useState(0);
-  const [beatsPerBar, setBeatsPerBar] = useState(4);
-  const intervalRef = useRef(null);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const tickSound = useRef(null);
-  const accentSound = useRef(null);
-  const beatRef = useRef(0);
-
-  // Speed trainer — auto-ramps the tempo as you play (start → target, step every N bars)
-  const [trainerOn, setTrainerOn] = useState(false);
-  const [trainerStart, setTrainerStart] = useState(60);
-  const [trainerTarget, setTrainerTarget] = useState(120);
-  const [trainerStep, setTrainerStep] = useState(5);
-  const [trainerBars, setTrainerBars] = useState(2);
-  const [atTarget, setAtTarget] = useState(false); // reached target → show "✓ at target"
-  const barCountRef = useRef(0);
-  const trainerRef = useRef({ on: false, target: 120, step: 5, bars: 2 });
-  useEffect(() => {
-    trainerRef.current = { on: trainerOn, target: trainerTarget, step: trainerStep, bars: trainerBars };
-  }, [trainerOn, trainerTarget, trainerStep, trainerBars]);
+  // Metronome — the ENGINE lives app-level in MetronomeContext so the click
+  // keeps going when the student switches tabs or opens a practice task and
+  // plays along. This screen is just its control surface.
+  const {
+    bpm, setBpm, isPlaying, setIsPlaying, beat, setBeat, beatsPerBar, setBeatsPerBar,
+    trainerOn, setTrainerOn, trainerStart, setTrainerStart,
+    trainerTarget, setTrainerTarget, trainerStep, setTrainerStep,
+    trainerBars, setTrainerBars, atTarget, setAtTarget,
+    barCountRef, pulseAnim, stop: stopMetronome,
+  } = useMetronome();
 
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
@@ -344,74 +332,17 @@ export default function PracticeScreen({ route, navigation }) {
   const recordingRef = useRef(null);
   const smoothedHzRef = useRef(null);
 
-  // Load click sounds once on mount. Played ~26% fast without pitch correction,
-  // which shifts the click up about two whole tones (2^(4/12) ≈ 1.26) — the
-  // stock sample sat too low in the mix.
-  useEffect(() => {
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-    Audio.Sound.createAsync(require('../../../assets/tick.wav'), { rate: 1.26, shouldCorrectPitch: false })
-      .then(({ sound }) => { tickSound.current = sound; });
-    Audio.Sound.createAsync(require('../../../assets/tick-accent.wav'), { rate: 1.26, shouldCorrectPitch: false })
-      .then(({ sound }) => { accentSound.current = sound; });
-    return () => {
-      tickSound.current?.unloadAsync();
-      accentSound.current?.unloadAsync();
-    };
-  }, []);
-
   useFocusEffect(
     React.useCallback(() => {
       loadData();
       return () => {
-        clearInterval(intervalRef.current);
-        setIsPlaying(false);
+        // The metronome deliberately KEEPS playing on blur (that's the whole
+        // point — practice along on any screen). The tuner must stop: it holds
+        // the mic.
         stopTuning();
       };
     }, [])
   );
-
-  // Restart interval whenever bpm, beatsPerBar, or playing changes
-  useEffect(() => {
-    clearInterval(intervalRef.current);
-    if (!isPlaying) return;
-
-    const ms = (60 / bpm) * 1000;
-    intervalRef.current = setInterval(() => {
-      const nextBeat = (beatRef.current + 1) % beatsPerBar;
-      beatRef.current = nextBeat;
-      setBeat(nextBeat);
-
-      const isAccent = nextBeat === 0;
-      const sound = isAccent ? accentSound.current : tickSound.current;
-      if (sound) {
-        sound.replayAsync().catch(() => {});
-      }
-
-      // Speed trainer: every downbeat completes a bar — step the tempo up once
-      // we've counted enough bars, until we reach the target.
-      if (isAccent) {
-        const t = trainerRef.current;
-        if (t.on) {
-          barCountRef.current += 1;
-          if (barCountRef.current >= t.bars) {
-            barCountRef.current = 0;
-            setBpm((b) => {
-              const next = Math.min(t.target, b + t.step);
-              if (next >= t.target) setAtTarget(true);
-              return next;
-            });
-          }
-        }
-      }
-
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.25, duration: 55, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,    duration: 90, useNativeDriver: true }),
-      ]).start();
-    }, ms);
-
-    return () => clearInterval(intervalRef.current);
-  }, [isPlaying, bpm, beatsPerBar]);
 
   const loadData = async () => {
     try {
@@ -504,11 +435,11 @@ export default function PracticeScreen({ route, navigation }) {
     setIsPlaying((p) => !p);
   };
 
-  // Switch tools — stop any audio from the tool we're leaving
+  // Switch tools. The metronome keeps ticking across tools/screens by design;
+  // only the tuner forces it off (mic and playback can't share on iOS).
   const selectTool = (next) => {
-    if (next !== 'metronome' && isPlaying) {
-      clearInterval(intervalRef.current);
-      setIsPlaying(false);
+    if (next === 'tuner' && isPlaying) {
+      stopMetronome();
     }
     if (next !== 'tuner' && isTuning) {
       stopTuning();

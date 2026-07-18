@@ -15,6 +15,7 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
+import { useMetronome } from '../../lib/MetronomeContext';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
@@ -76,6 +77,10 @@ export default function RhythmTapperScreen({ navigation, route }) {
   const matchedRef = useRef([]);     // per scored beat: null | { pts, qkey }
   const windowRef = useRef(MAX_WINDOW); // per-round match window (tightens on fast levels)
   const pulse = useRef(new Animated.Value(1)).current;
+
+  // The game's click IS the metronome here — a second one ticking would wreck it.
+  const metronome = useMetronome();
+  useEffect(() => { metronome?.stop?.(); }, []);
 
   const base = LEVELS.find((l) => l.id === level);
   // Tempo is the user's to set — each level just supplies its default.
