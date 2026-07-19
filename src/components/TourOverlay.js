@@ -110,14 +110,9 @@ export default function TourOverlay({ role }) {
     const t = Math.max(rect.y, clampTop);
     const b = Math.min(rect.y + rect.h, clampBottom);
     const f = b - t > 30 ? { x: rect.x, y: t, w: rect.w, h: b - t } : rect;
-    if (!ringOnRef.current) {
-      frame.x.setValue(f.x); frame.y.setValue(f.y); frame.w.setValue(f.w); frame.h.setValue(f.h);
-      ringOnRef.current = true;
-      setRingOn(true);
-    } else {
-      const cfg = (v, to) => Animated.timing(v, { toValue: to, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false });
-      Animated.parallel([cfg(frame.x, f.x), cfg(frame.y, f.y), cfg(frame.w, f.w), cfg(frame.h, f.h)]).start();
-    }
+    // SNAP, never slide — pressing Next puts the ring straight on the element.
+    frame.x.setValue(f.x); frame.y.setValue(f.y); frame.w.setValue(f.w); frame.h.setValue(f.h);
+    if (!ringOnRef.current) { ringOnRef.current = true; setRingOn(true); }
   }, [display, size]);
   const seqRef = useRef(0);                  // cancels stale async measurements
   // Animated spotlight frame: on same-screen steps the ring SLIDES from the
@@ -203,56 +198,41 @@ export default function TourOverlay({ role }) {
         } catch (e) { /* stay put */ }
       }
       if (!s.target) { setDisplay({ idx: step, rect: null }); return; }
-      // Deterministic pipeline — lands right the FIRST time:
-      //  1. Wait for the target to exist (fresh screens still rendering).
-      //  2. Compute its position in the scroll CONTENT's coordinates —
-      //     independent of the current scroll offset — and do ONE scroll that
-      //     centres it in the zone.
-      //  3. Measure in window coordinates until two consecutive readings
-      //     agree, so a mid-scroll frame can never be shown.
-      // The zone uses a FIXED card allowance, so nothing re-clamps (and
-      // visibly shifts) after the card's real height settles.
+      // EXACT-MATH placement — the ring goes STRAIGHT onto the element:
+      // its position inside the scroll content is a fixed number, so one
+      // computation gives both the scroll offset AND the on-screen rect.
+      // Nothing is measured mid-motion, nothing corrects afterwards.
+      // (A short existence wait covers freshly-mounted screens.)
+      let probe = await measure(s.target);
+      for (let i = 0; i < 20 && !probe; i++) {
+        await sleep(60);
+        if (seqRef.current !== seq) return;
+        probe = await measure(s.target);
+      }
+      if (seqRef.current !== seq) return;
+      if (!probe) { setDisplay({ idx: step, rect: null }); return; }
       const winH = size?.height || 800;
       const zoneTop = 54;
       const zoneBottom = winH - TAB_H - CARD_SPACE;
-      // 1. existence
-      let exists = null;
-      for (let i = 0; i < 20 && !exists; i++) {
-        if (i > 0) await sleep(70);
-        if (seqRef.current !== seq) return;
-        exists = await measure(s.target);
-      }
-      if (seqRef.current !== seq) return;
-      if (!exists) { setDisplay({ idx: step, rect: null }); return; }
-      // 2. one deliberate scroll from content coordinates
+      const zh = zoneBottom - zoneTop;
       const pos = await measureInContent(s);
+      const vp = await measureViewport(s);
       if (seqRef.current !== seq) return;
-      if (pos) {
-        const zh = zoneBottom - zoneTop;
-        const desiredTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
-        doScroll(s, Math.max(0, pos.y - desiredTop));
+      let rect;
+      if (pos && vp) {
+        const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
+        const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
+        doScroll(s, offset);
+        rect = { x: vp.x + pos.x, y: vp.y + pos.y - offset, w: pos.w, h: pos.h };
+      } else {
+        rect = probe; // no scroller registered — use where it already is
       }
-      // 3. stability: two consecutive agreeing measurements
-      let best = exists;
-      let prev = null;
-      for (let i = 0; i < 10; i++) {
-        await sleep(i === 0 ? 90 : 60);
-        if (seqRef.current !== seq) return;
-        const r = await measure(s.target);
-        if (r) {
-          if (prev && Math.abs(r.y - prev.y) < 2 && Math.abs(r.h - prev.h) < 2) { best = r; break; }
-          prev = r;
-          best = r;
-        }
-      }
-      if (seqRef.current !== seq) return;
-      // The lit region must be ON screen and clear of the card space.
-      const visTop = Math.max(best.y, zoneTop);
-      const visBottom = Math.min(best.y + best.h, winH - TAB_H - 14);
-      const rect = visBottom - visTop > 40
-        ? { x: best.x, y: visTop, w: best.w, h: visBottom - visTop }
-        : null;
-      setDisplay({ idx: step, rect }); // ring + card land together, no gap
+      const visTop = Math.max(rect.y, zoneTop);
+      const visBottom = Math.min(rect.y + rect.h, winH - TAB_H - 14);
+      setDisplay({
+        idx: step,
+        rect: visBottom - visTop > 40 ? { x: rect.x, y: visTop, w: rect.w, h: visBottom - visTop } : null,
+      });
     })();
   }, [visible, mode, step]);
 
@@ -462,6 +442,17 @@ function measureInContent(step) {
     try {
       node.measureLayout(inner, (x, y, w, h) => resolve({ x, y, w, h }), () => resolve(null));
     } catch (e) { resolve(null); }
+  });
+}
+
+// Window position of the ScrollView's viewport — the bridge between content
+// coordinates and on-screen coordinates.
+function measureViewport(step) {
+  return new Promise((resolve) => {
+    const sc = getTourScroller(step.scroller)?.current;
+    const host = sc?.getNativeScrollRef ? sc.getNativeScrollRef() : sc;
+    if (!host?.measureInWindow) return resolve(null);
+    try { host.measureInWindow((x, y, w, h) => resolve({ x, y, w, h })); } catch (e) { resolve(null); }
   });
 }
 
