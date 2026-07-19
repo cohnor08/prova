@@ -12,7 +12,7 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { useMetronome } from '../../lib/MetronomeContext';
-import { TourSpot, useTourScroller } from '../../components/TourSpot';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -315,6 +315,7 @@ export default function PracticeScreen({ route, navigation }) {
   }, [route?.params?.tool]);
 
   const tourScrollRef = useTourScroller('PracticeHome'); // full tour scroll access
+  const tourPad = useTourPadding();
 
   // Metronome — the ENGINE lives app-level in MetronomeContext so the click
   // keeps going when the student switches tabs or opens a practice task and
@@ -465,7 +466,7 @@ export default function PracticeScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Practice</Text>
 
         {/* ── LEARN: browse content ── */}

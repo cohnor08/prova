@@ -16,7 +16,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { getTourTarget, getTourScroller } from './TourSpot';
+import { getTourTarget, getTourScroller, setTourPadding } from './TourSpot';
 import { COLORS, themedStyles } from '../constants/theme';
 import { track } from '../lib/analytics';
 
@@ -94,9 +94,13 @@ export default function TourOverlay({ role }) {
   const [mode, setMode] = useState('quick'); // 'quick' map | 'full' walkthrough
   const [rect, setRect] = useState(null);    // measured target box (full mode)
   const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
-  const [cardPos, setCardPos] = useState('bottom'); // flips to 'top' when a target is stuck low
-  const [settled, setSettled] = useState(true);     // ring + card appear TOGETHER
+  const [settled, setSettled] = useState(true); // ring + card appear TOGETHER
   const seqRef = useRef(0);                  // cancels stale async measurements
+
+  // Tab route roots, indexed like the quick steps' `tab`.
+  const TAB_ROOTS = role === 'teacher'
+    ? [['Home', 'TeacherHomeMain'], ['Teacher'], ['Resources', 'ResourcesHome'], ['Messages'], ['Profile']]
+    : [['Today', 'TodayHome'], ['Practice', 'PracticeHome'], ['Progress', 'ProgressHome'], ['Messages'], ['Profile']];
 
   const steps = role === 'teacher'
     ? (mode === 'full' ? TEACHER_STEPS_FULL : TEACHER_STEPS)
@@ -127,6 +131,26 @@ export default function TourOverlay({ role }) {
     return () => listeners.delete(fn);
   }, []);
 
+  // QUICK mode: actually switch to the tab being described, so the user sees
+  // the screen while its tab glows.
+  useEffect(() => {
+    if (!visible || mode !== 'quick') return;
+    const s = steps[step];
+    if (s.tab == null) return;
+    const [tab, screen] = TAB_ROOTS[s.tab] || [];
+    if (!tab) return;
+    try { navigation.navigate(tab, screen ? { screen } : undefined); } catch (e) { /* stay put */ }
+  }, [visible, mode, step]);
+
+  // FULL mode: pad the pages' bottoms while the tour runs, so end-of-page
+  // targets can scroll up into the zone like everything else.
+  useEffect(() => {
+    if (visible && mode === 'full') {
+      setTourPadding(300);
+      return () => setTourPadding(0);
+    }
+  }, [visible, mode]);
+
   // FULL mode: on each step, navigate there, then find + measure the target
   // (scrolling it into view if the screen registered its ScrollView). Retries
   // cover the screen still rendering; a missing target falls back to a
@@ -143,18 +167,18 @@ export default function TourOverlay({ role }) {
           navigation.navigate(s.nav.tab, s.nav.screen ? { screen: s.nav.screen } : undefined);
         } catch (e) { /* stay put */ }
       }
-      if (!s.target) { setCardPos('bottom'); return; }
-      // The card is always anchored at the bottom, so the usable zone for the
-      // spotlight runs from under the status bar to just above the card. The
-      // scroll centres the target in that zone (never under the card); targets
-      // taller than the zone pin to its top.
+      if (!s.target) return;
+      // The card is always anchored at the bottom; the spotlight zone runs
+      // from under the status bar to just above it. The scroll centres the
+      // target in that zone — the tour padding lets even end-of-page targets
+      // (Today's drills) get there, so every step reads the same.
       const winH = size?.height || 800;
       const zoneTop = 54;
       const zoneBottom = winH - TAB_H - 36 - cardH;
       let scrolled = false;
       let best = null;
-      for (let i = 0; i < 12; i++) {
-        await sleep(i === 0 ? 60 : 90);
+      for (let i = 0; i < 14; i++) {
+        await sleep(i === 0 ? 30 : 70);
         if (seqRef.current !== seq) return;
         const r = await measure(s.target);
         if (!r) continue;
@@ -163,22 +187,17 @@ export default function TourOverlay({ role }) {
         if (off && !scrolled) {
           scrolled = true;
           await scrollTo(s, { zoneTop, zoneBottom });
-          continue; // remeasure after the scroll
+          if (seqRef.current !== seq) return;
+          const r2 = await measure(s.target); // immediate remeasure — no extra wait
+          if (r2) best = r2;
         }
         break;
       }
       if (seqRef.current !== seq) return;
       if (!best) { setSettled(true); return; } // no target found → centered card fallback
-      // If the scroll maxed out and the target is stuck in the lower half
-      // (e.g. Today's drills near the end of the page), the card flips to the
-      // TOP so it can't cover what it's explaining.
-      const stuckLow = best.y + best.h > zoneBottom + 8;
-      setCardPos(stuckLow ? 'top' : 'bottom');
       // Whatever happened with scrolling, the lit region must be ON screen.
-      const loTop = stuckLow ? 64 + cardH + 12 : zoneTop;
-      const loBottom = stuckLow ? winH - TAB_H - 14 : zoneBottom;
-      const visTop = Math.max(best.y, loTop);
-      const visBottom = Math.min(best.y + best.h, loBottom);
+      const visTop = Math.max(best.y, zoneTop);
+      const visBottom = Math.min(best.y + best.h, winH - TAB_H - 14);
       if (visBottom - visTop > 40) {
         setRect({ x: best.x, y: visTop, w: best.w, h: visBottom - visTop });
       }
@@ -209,8 +228,8 @@ export default function TourOverlay({ role }) {
     // card than expected can never cover what it's explaining, wherever the
     // card sits.
     const winH = size?.height || 800;
-    const clampTop = cardPos === 'top' ? 64 + cardH + 10 : 54;
-    const clampBottom = cardPos === 'top' ? winH - TAB_H - 14 : winH - TAB_H - 24 - cardH - 10;
+    const clampTop = 54;
+    const clampBottom = winH - TAB_H - 24 - cardH - 10;
     const r = hasRect
       ? (() => {
           const t = Math.max(rect.y, clampTop);
@@ -230,7 +249,7 @@ export default function TourOverlay({ role }) {
             ? styles.cardCentered
             : {
                 position: 'absolute', left: 20, right: 20,
-                ...(cardPos === 'top' ? { top: 64 } : { bottom: TAB_H + 24 }),
+                bottom: TAB_H + 24,
                 width: undefined, maxWidth: undefined, alignSelf: undefined,
               },
         ]}

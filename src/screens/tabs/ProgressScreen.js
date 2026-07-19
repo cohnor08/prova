@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import { TourSpot, useTourScroller } from '../../components/TourSpot';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -1049,6 +1049,7 @@ export default function ProgressScreen({ navigation }) {
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const tourScrollRef = useTourScroller('ProgressHome'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [editMode, setEditMode] = useState(false);
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
@@ -1342,7 +1343,7 @@ export default function ProgressScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Progress</Text>
           <TouchableOpacity

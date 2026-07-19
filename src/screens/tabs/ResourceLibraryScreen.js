@@ -31,7 +31,7 @@ function dueLabel(iso) {
 }
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 import SheetModal from '../../components/SheetModal';
-import { TourSpot, useTourScroller } from '../../components/TourSpot';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
 
@@ -59,6 +59,7 @@ function Pill({ label, active, onPress }) {
 export default function ResourceLibraryScreen({ navigation }) {
   useThemeSync();
   const tourScrollRef = useTourScroller('ResourcesHome'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
 
@@ -331,7 +332,7 @@ export default function ResourceLibraryScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.kicker}>TEACHING LIBRARY</Text>
         <Text style={styles.title}>Resources</Text>
         <Text style={styles.subtitle}>Your own links, plus a full searchable lesson library — assign any of it to a student or class.</Text>

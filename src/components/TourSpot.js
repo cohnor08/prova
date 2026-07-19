@@ -42,3 +42,22 @@ export function useTourScroller(key) {
   }, [key]);
   return ref;
 }
+
+// While the full tour runs, screens add temporary bottom padding so targets
+// near the END of a page (Today's drills…) can still scroll up into the
+// spotlight zone like everything else. Screens read it with useTourPadding()
+// and append { paddingBottom } to their contentContainerStyle.
+let tourPadding = 0;
+const padListeners = new Set();
+export function setTourPadding(v) {
+  tourPadding = v;
+  padListeners.forEach((fn) => fn(v));
+}
+export function useTourPadding() {
+  const [pad, setPad] = React.useState(tourPadding);
+  useEffect(() => {
+    padListeners.add(setPad);
+    return () => padListeners.delete(setPad);
+  }, []);
+  return pad;
+}

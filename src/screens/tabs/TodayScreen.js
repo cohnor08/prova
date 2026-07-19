@@ -30,7 +30,7 @@ import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
 import { useCelebration } from '../../components/Celebration';
-import { TourSpot, useTourScroller } from '../../components/TourSpot';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -562,6 +562,7 @@ export default function TodayScreen({ navigation }) {
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
   const tourScrollRef = useTourScroller('TodayHome'); // lets the full tour scroll targets into view
+  const tourPad = useTourPadding();
   const [soloOpen, setSoloOpen] = useState(true);
   const [closedTeachers, setClosedTeachers] = useState(() => new Set()); // collapsed per-teacher solo cards
   const [teacherNames, setTeacherNames] = useState({}); // teacherUid -> display name
@@ -1513,7 +1514,7 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
       </TouchableOpacity>
-      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}>
 
         <Text style={[styles.date, styles.headerCentered]}>{todayLabel.toUpperCase()}</Text>
         <Text style={[styles.title, styles.headerCentered]}>

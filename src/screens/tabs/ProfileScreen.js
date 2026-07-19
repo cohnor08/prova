@@ -16,7 +16,7 @@ import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
 import { replayTour } from '../../components/TourOverlay';
-import { TourSpot, useTourScroller } from '../../components/TourSpot';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS, ACCENTS, ACCENT_KEYS } from '../../constants/theme';
 import { useThemeColors, useTheme } from '../../lib/ThemeContext';
@@ -277,6 +277,7 @@ export default function ProfileScreen({ navigation }) {
   const [linkingTeacher, setLinkingTeacher] = useState(false);
   const [showAddTeacher, setShowAddTeacher] = useState(false);
   const tourScrollRef = useTourScroller('Profile'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [teachers, setTeachers] = useState([]); // [{ uid, name }] — all connected teachers
   useEffect(() => { loadUser(); }, []);
 
@@ -608,7 +609,7 @@ export default function ProfileScreen({ navigation }) {
   }[modal.key] : null;
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView ref={tourScrollRef} contentContainerStyle={styles.content}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}>
         <Text style={styles.title}>Profile</Text>
 
         {/* Avatar */}
