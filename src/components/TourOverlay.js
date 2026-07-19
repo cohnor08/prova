@@ -25,6 +25,7 @@ const TAB_CENTER_Y = 47; // icon+label visual centre, from the bottom edge
 const R = 42;            // tab spotlight radius
 const B = 1400;          // dark border thickness (the "everything else" part)
 const PAD = 8;           // breathing room around a rect target
+const CARD_SPACE = 248;  // fixed allowance for the bottom card — nothing re-clamps after landing
 const DIM = 'rgba(2,4,10,0.88)';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -105,7 +106,7 @@ export default function TourOverlay({ role }) {
     const rect = display?.rect || null;
     if (!rect || !size) { ringOnRef.current = false; setRingOn(false); return; }
     const clampTop = 54;
-    const clampBottom = size.height - TAB_H - 24 - cardH - 10;
+    const clampBottom = size.height - TAB_H - CARD_SPACE;
     const t = Math.max(rect.y, clampTop);
     const b = Math.min(rect.y + rect.h, clampBottom);
     const f = b - t > 30 ? { x: rect.x, y: t, w: rect.w, h: b - t } : rect;
@@ -117,8 +118,7 @@ export default function TourOverlay({ role }) {
       const cfg = (v, to) => Animated.timing(v, { toValue: to, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false });
       Animated.parallel([cfg(frame.x, f.x), cfg(frame.y, f.y), cfg(frame.w, f.w), cfg(frame.h, f.h)]).start();
     }
-  }, [display, size, cardH]);
-  const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
+  }, [display, size]);
   const seqRef = useRef(0);                  // cancels stale async measurements
   // Animated spotlight frame: on same-screen steps the ring SLIDES from the
   // previous element to the next instead of teleporting.
@@ -203,34 +203,50 @@ export default function TourOverlay({ role }) {
         } catch (e) { /* stay put */ }
       }
       if (!s.target) { setDisplay({ idx: step, rect: null }); return; }
-      // The card is always anchored at the bottom; the spotlight zone runs
-      // from under the status bar to just above it. The scroll centres the
-      // target in that zone — the tour padding lets even end-of-page targets
-      // (Today's drills) get there, so every step reads the same.
+      // Deterministic pipeline — lands right the FIRST time:
+      //  1. Wait for the target to exist (fresh screens still rendering).
+      //  2. Compute its position in the scroll CONTENT's coordinates —
+      //     independent of the current scroll offset — and do ONE scroll that
+      //     centres it in the zone.
+      //  3. Measure in window coordinates until two consecutive readings
+      //     agree, so a mid-scroll frame can never be shown.
+      // The zone uses a FIXED card allowance, so nothing re-clamps (and
+      // visibly shifts) after the card's real height settles.
       const winH = size?.height || 800;
       const zoneTop = 54;
-      const zoneBottom = winH - TAB_H - 36 - cardH;
-      let scrolled = false;
-      let best = null;
-      for (let i = 0; i < 14; i++) {
+      const zoneBottom = winH - TAB_H - CARD_SPACE;
+      // 1. existence
+      let exists = null;
+      for (let i = 0; i < 20 && !exists; i++) {
         if (i > 0) await sleep(70);
         if (seqRef.current !== seq) return;
-        const r = await measure(s.target);
-        if (!r) continue;
-        best = r;
-        const off = r.y < zoneTop - 6 || r.y + r.h > zoneBottom + 6;
-        if (off && !scrolled) {
-          scrolled = true;
-          await scrollTo(s, { zoneTop, zoneBottom });
-          if (seqRef.current !== seq) return;
-          const r2 = await measure(s.target); // immediate remeasure — no extra wait
-          if (r2) best = r2;
-        }
-        break;
+        exists = await measure(s.target);
       }
       if (seqRef.current !== seq) return;
-      if (!best) { setDisplay({ idx: step, rect: null }); return; }
-      // Whatever happened with scrolling, the lit region must be ON screen.
+      if (!exists) { setDisplay({ idx: step, rect: null }); return; }
+      // 2. one deliberate scroll from content coordinates
+      const pos = await measureInContent(s);
+      if (seqRef.current !== seq) return;
+      if (pos) {
+        const zh = zoneBottom - zoneTop;
+        const desiredTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
+        doScroll(s, Math.max(0, pos.y - desiredTop));
+      }
+      // 3. stability: two consecutive agreeing measurements
+      let best = exists;
+      let prev = null;
+      for (let i = 0; i < 10; i++) {
+        await sleep(i === 0 ? 90 : 60);
+        if (seqRef.current !== seq) return;
+        const r = await measure(s.target);
+        if (r) {
+          if (prev && Math.abs(r.y - prev.y) < 2 && Math.abs(r.h - prev.h) < 2) { best = r; break; }
+          prev = r;
+          best = r;
+        }
+      }
+      if (seqRef.current !== seq) return;
+      // The lit region must be ON screen and clear of the card space.
       const visTop = Math.max(best.y, zoneTop);
       const visBottom = Math.min(best.y + best.h, winH - TAB_H - 14);
       const rect = visBottom - visTop > 40
@@ -271,7 +287,6 @@ export default function TourOverlay({ role }) {
     // width/maxWidth so it can't grow past the screen), always at the bottom.
     const card = ds && (
       <View
-        onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
         style={[
           styles.card,
           dIsIntro
@@ -430,36 +445,32 @@ function measure(id) {
   });
 }
 
-// Bring a target into view via its screen's registered ScrollView, centring
-// it in the spotlight zone (targets taller than the zone pin to its top, so
-// nothing ever slides under the card).
-// measureLayout needs a REF to a native component on the new architecture
-// (a bare node handle logs "must be called with a ref" and fails), so prefer
-// getInnerViewRef; fall back to the node handle for the old architecture.
-function scrollTo(step, zone) {
+// Position of a target within its screen's scroll CONTENT — independent of
+// the current scroll offset, so ONE scroll computed from it always lands
+// right. measureLayout needs a REF to a native component on the new
+// architecture (a bare node handle logs "must be called with a ref" and
+// fails), so prefer getInnerViewRef; fall back to the node handle.
+function measureInContent(step) {
   return new Promise((resolve) => {
     const scRef = getTourScroller(step.scroller);
     const tRef = getTourTarget(step.target);
     const sc = scRef?.current;
     const node = tRef?.current;
-    if (!sc || !node?.measureLayout) return resolve();
+    if (!sc || !node?.measureLayout) return resolve(null);
     const inner = (sc.getInnerViewRef && sc.getInnerViewRef()) || (sc.getInnerViewNode && sc.getInnerViewNode()) || null;
-    if (!inner) return resolve();
-    let settled = false;
-    const done = () => { if (!settled) { settled = true; setTimeout(resolve, 80); } };
+    if (!inner) return resolve(null);
     try {
-      node.measureLayout(
-        inner,
-        (x, y, w, h) => {
-          const zh = Math.max(80, zone.zoneBottom - zone.zoneTop);
-          const desiredTop = (h || 0) >= zh ? zone.zoneTop : zone.zoneTop + (zh - (h || 0)) / 2;
-          try { sc.scrollTo({ y: Math.max(0, y - desiredTop), animated: false }); } catch (e) {}
-          done();
-        },
-        done,
-      );
-    } catch (e) { done(); }
+      node.measureLayout(inner, (x, y, w, h) => resolve({ x, y, w, h }), () => resolve(null));
+    } catch (e) { resolve(null); }
   });
+}
+
+// Jump the screen's ScrollView to an absolute offset (no animation — the
+// spotlight's own slide is the visible motion).
+function doScroll(step, y) {
+  const sc = getTourScroller(step.scroller)?.current;
+  if (!sc) return;
+  try { sc.scrollTo({ y, animated: false }); } catch (e) {}
 }
 
 const styles = themedStyles(() => StyleSheet.create({
