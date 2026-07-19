@@ -11,7 +11,7 @@
 // The spotlight is the classic border trick: a huge transparent-centre view
 // whose massive dark border darkens everything EXCEPT the hole — no SVG masks
 // needed, works identically on native and web.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
@@ -29,6 +29,10 @@ const CARD_SPACE = 248;  // fixed allowance for the bottom card — nothing re-c
 const DIM = 'rgba(2,4,10,0.88)';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Log placement numbers to Metro while we chase device-specific offsets.
+const TOUR_DEBUG = true;
+const dbg = (...a) => { if (TOUR_DEBUG) console.log('[tour]', ...a); };
 
 // Replay hook for Profile. 'full' = the in-depth walkthrough; default quick.
 const listeners = new Set();
@@ -119,6 +123,7 @@ export default function TourOverlay({ role }) {
       if (!pos || !vp) return null;
       const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
       const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
+      dbg('prep', idx, t.target, 'pos.y', Math.round(pos.y), 'pos.h', Math.round(pos.h), 'vp.y', Math.round(vp.y), 'offset', Math.round(offset));
       const y = vp.y + pos.y - offset;
       const visTop = Math.max(y, zoneTop);
       const visBottom = Math.min(y + pos.h, winH - TAB_H - 14);
@@ -133,10 +138,10 @@ export default function TourOverlay({ role }) {
     return () => { alive = false; };
   }, [display, visible, mode, size]);
 
-  // Drive the spotlight frame from the displayed rect (clamped so the card can
-  // never cover it): SNAP when arriving on a new screen, SLIDE when moving
-  // between elements on the same one.
-  useEffect(() => {
+  // Drive the spotlight frame from the displayed rect. useLayoutEffect so the
+  // ring frame updates in the SAME paint as the card — never a frame where a
+  // new card shows with the old ring.
+  useLayoutEffect(() => {
     const rect = display?.rect || null;
     if (!rect || !size) { ringOnRef.current = false; setRingOn(false); return; }
     const clampTop = 54;
@@ -256,6 +261,7 @@ export default function TourOverlay({ role }) {
       if (pos && vp) {
         const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
         const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
+        dbg('math', step, steps[step]?.target, 'pos.y', Math.round(pos.y), 'pos.h', Math.round(pos.h), 'vp.y', Math.round(vp.y), 'offset', Math.round(offset));
         doScroll(s, offset);
         rect = { x: vp.x + pos.x, y: vp.y + pos.y - offset, w: pos.w, h: pos.h };
       } else {
@@ -264,10 +270,10 @@ export default function TourOverlay({ role }) {
       if (!rect) { setDisplay({ idx: step, rect: null }); return; }
       const visTop = Math.max(rect.y, zoneTop);
       const visBottom = Math.min(rect.y + rect.h, winH - TAB_H - 14);
-      setDisplay({
-        idx: step,
-        rect: visBottom - visTop > 40 ? { x: rect.x, y: visTop, w: rect.w, h: visBottom - visTop } : null,
-      });
+      const finalRect = visBottom - visTop > 40 ? { x: rect.x, y: visTop, w: rect.w, h: visBottom - visTop } : null;
+      dbg('effect', step, steps[step]?.target, 'rect', finalRect && Math.round(finalRect.y));
+      setDisplay({ idx: step, rect: finalRect });
+      verifyPlacement(step, finalRect, s);
     })();
   }, [visible, mode, step]);
 
@@ -278,6 +284,26 @@ export default function TourOverlay({ role }) {
     track(skipped ? 'tour_skipped' : 'tour_completed', { step, mode });
     const uid = auth.currentUser?.uid;
     if (uid) updateDoc(doc(db, 'users', uid), { tourSeen: true }).catch(() => {});
+  };
+
+  // If a predicted placement missed (scroll clamped, layout shifted), one
+  // quick post-scroll check corrects it — ~80ms later, at most once.
+  const verifyPlacement = (idx, rect, st) => {
+    if (!rect || !st?.target) return;
+    const seq = seqRef.current;
+    setTimeout(async () => {
+      if (seqRef.current !== seq || displayRef.current?.idx !== idx) return;
+      const r = await measure(st.target);
+      if (!r || seqRef.current !== seq || displayRef.current?.idx !== idx) return;
+      const winH = size?.height || 800;
+      const visTop = Math.max(r.y, 54);
+      const visBottom = Math.min(r.y + r.h, winH - TAB_H - 14);
+      if (visBottom - visTop <= 40) return;
+      const cand = { x: r.x, y: visTop, w: r.w, h: visBottom - visTop };
+      if (Math.abs(cand.y - rect.y) <= 8 && Math.abs(cand.h - rect.h) <= 8) return;
+      dbg('correct', idx, 'from', Math.round(rect.y), 'to', Math.round(cand.y));
+      setDisplay({ idx, rect: cand });
+    }, 80);
   };
 
   const s = steps[step];
@@ -304,6 +330,8 @@ export default function TourOverlay({ role }) {
       if (prep) {
         doScroll({ scroller: prep.scroller }, prep.offset);
         setDisplay({ idx: toIdx, rect: prep.rect });
+        dbg('jump', toIdx, 'offset', Math.round(prep.offset), 'predicted', prep.rect && Math.round(prep.rect.y));
+        verifyPlacement(toIdx, prep.rect, steps[toIdx]);
       }
       setStep(toIdx);
     };
