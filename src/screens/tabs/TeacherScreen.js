@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
   Animated,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import ProofMedia from '../../components/ProofMedia';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -322,7 +323,7 @@ function PaywallScreen({ onUnlock }) {
             disabled={loading}
           >
             {loading
-              ? <ActivityIndicator color={COLORS.text} />
+              ? <Ghost color={COLORS.text} />
               : <Text style={styles.subscribeBtnText}>Start Free Trial</Text>}
           </TouchableOpacity>
           <Text style={styles.trialNote}>7-day free trial · Cancel anytime</Text>
@@ -839,7 +840,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
 
           {generating ? (
             <View style={styles.songGenBox}>
-              <ActivityIndicator color={COLORS.primary} />
+              <Ghost color={COLORS.primary} />
               <Text style={styles.songGenText}>Building the step-by-step plan…</Text>
             </View>
           ) : !plan ? (
@@ -884,7 +885,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
                   <Text style={styles.songBackText}>Pick another</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.songAssignBtn} onPress={assign} disabled={assigning}>
-                  {assigning ? <ActivityIndicator color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
+                  {assigning ? <Ghost color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
                 </TouchableOpacity>
               </View>
             </>
@@ -1306,7 +1307,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                   disabled={!title.trim() || loading}
                 >
                   {loading
-                    ? <ActivityIndicator color={COLORS.text} size="small" />
+                    ? <Ghost color={COLORS.text} size="small" />
                     : <Text style={styles.modalAssignText}>{(isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
@@ -1605,7 +1606,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           disabled={sending || uploading}
         >
           {uploading
-            ? <ActivityIndicator color={COLORS.primary} size="small" />
+            ? <Ghost color={COLORS.primary} size="small" />
             : <Ionicons name="image" size={20} color={COLORS.primary} />}
         </TouchableOpacity>
         <TextInput
@@ -1623,7 +1624,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           disabled={!text.trim() || sending}
         >
           {sending
-            ? <ActivityIndicator color={COLORS.text} size="small" />
+            ? <Ghost color={COLORS.text} size="small" />
             : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
         </TouchableOpacity>
       </Animated.View>
@@ -1664,7 +1665,7 @@ function StudentActivityChart({ studentUid }) {
   }, [studentUid]);
 
   if (logMap === null) {
-    return <ActivityIndicator size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
+    return <Ghost size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -2309,7 +2310,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
   };
 
   if (loading) {
-    return <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />;
+    return <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />;
   }
 
   // ── Inline chat view ──
@@ -3139,7 +3140,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                   activeOpacity={0.85}
                 >
                   {sendingReports
-                    ? <ActivityIndicator color="#fff" />
+                    ? <Ghost color="#fff" />
                     : (
                       <>
                         <Ionicons name="mail-outline" size={18} color="#fff" />
@@ -3552,7 +3553,7 @@ export default function TeacherScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+        <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }

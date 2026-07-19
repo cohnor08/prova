@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, TextInput,
   Animated, PanResponder, Alert,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -660,7 +661,7 @@ export default function TeacherHomeScreen({ navigation }) {
         {editMode ? (
           <WidgetEditList layout={layout} onReorder={setLayout} onToggle={toggleWidget} renderPreview={renderWidget} onDragStateChange={setDragging} />
         ) : loading ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
+          <Ghost color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
           layout.map((w) => {
             if (!w.enabled) return null;

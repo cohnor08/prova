@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -208,7 +209,7 @@ export default function SignupScreen({ navigation, route }) {
             activeOpacity={0.8}
           >
             {loading
-              ? <ActivityIndicator color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.text} size="small" />
               : <Text style={styles.buttonText}>Get Started</Text>
             }
           </TouchableOpacity>

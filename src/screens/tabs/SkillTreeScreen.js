@@ -4,6 +4,7 @@
 // the sessionHistory daily logs' category totals.
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -102,7 +103,7 @@ export default function SkillTreeScreen({ navigation }) {
         <Text style={styles.navTitle}>Skill Tree</Text>
         <View style={{ width: 24 }} />
       </View>
-      {!lanes ? <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} /> : (
+      {!lanes ? <Ghost color={COLORS.primary} style={{ marginTop: 60 }} /> : (
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.intro}>Every minute of practice grows the tree. Unlock every node.</Text>
           {lanes.map((lane) => {

@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../../lib/firebase';
@@ -148,7 +149,7 @@ export default function LoginScreen({ navigation }) {
             activeOpacity={0.8}
           >
             {loading
-              ? <ActivityIndicator color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.text} size="small" />
               : <Text style={styles.buttonText}>Log In</Text>
             }
           </TouchableOpacity>

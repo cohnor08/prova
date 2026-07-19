@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -290,7 +291,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
           <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
             <View style={styles.proofAddIcon}>
               {proofBusy
-                ? <ActivityIndicator size="small" color={COLORS.primary} />
+                ? <Ghost size="small" color={COLORS.primary} />
                 : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
             </View>
             <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice'}</Text>
@@ -2165,7 +2166,7 @@ export default function TodayScreen({ navigation }) {
 
             {reviewLoading ? (
               <View style={styles.reviewLoading}>
-                <ActivityIndicator color={COLORS.primary} />
+                <Ghost color={COLORS.primary} />
                 <Text style={styles.reviewLoadingText}>Reading your week and adapting your plan…</Text>
               </View>
             ) : reviewData ? (

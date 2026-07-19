@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Modal, ActivityIndicator, TextInput, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut, deleteUser } from 'firebase/auth';
@@ -625,13 +626,13 @@ export default function ProfileScreen({ navigation }) {
 
         {saving && (
           <View style={styles.savingRow}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Ghost size="small" color={COLORS.primary} />
             <Text style={styles.savingText}>Saving...</Text>
           </View>
         )}
         {regenerating && (
           <View style={styles.savingRow}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Ghost size="small" color={COLORS.primary} />
             <Text style={styles.savingText}>Building your new plan...</Text>
           </View>
         )}
@@ -686,7 +687,7 @@ export default function ProfileScreen({ navigation }) {
                   activeOpacity={0.85}
                 >
                   {linkingTeacher
-                    ? <ActivityIndicator size="small" color="#fff" />
+                    ? <Ghost size="small" color="#fff" />
                     : <Text style={styles.teacherConnectBtnText}>Connect</Text>}
                 </TouchableOpacity>
               </View>
@@ -982,7 +983,7 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingUsername}
               >
                 {savingUsername
-                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
@@ -1012,7 +1013,7 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingTip}
               >
                 {savingTip
-                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>

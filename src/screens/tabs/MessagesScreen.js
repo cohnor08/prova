@@ -4,6 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator, Animated,
   Platform, Modal, Keyboard,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -196,7 +197,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
         ) : (
           <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             {sendingProgress
-              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              ? <Ghost size="small" color={COLORS.primary} />
               : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
             <Text style={styles.progressBtnText}>Progress</Text>
           </TouchableOpacity>
@@ -282,7 +283,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
             disabled={sending || uploading}
           >
             {uploading
-              ? <ActivityIndicator color={COLORS.primary} size="small" />
+              ? <Ghost color={COLORS.primary} size="small" />
               : <Ionicons name="image" size={20} color={COLORS.primary} />}
           </TouchableOpacity>
           <TextInput
@@ -300,7 +301,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
             disabled={!text.trim() || sending}
           >
             {sending
-              ? <ActivityIndicator color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.text} size="small" />
               : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
           </TouchableOpacity>
         </Animated.View>
@@ -480,7 +481,7 @@ export default function MessagesScreen() {
       </View>
 
       {loading || !profileLoaded ? (
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+        <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />
       ) : loadErr && listData.length === 0 ? (
         <EmptyState
           variant="error"

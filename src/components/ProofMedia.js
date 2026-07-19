@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Image, Text } from 'react-native';
+import Ghost from './Ghost';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { COLORS, themedStyles } from '../constants/theme';
 
@@ -36,7 +37,7 @@ export default function ProofMedia({ url, type, style }) {
       )}
       {!ready && (
         <View style={local.loading} pointerEvents="none">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Ghost size="large" color={COLORS.primary} />
           <Text style={local.loadingText}>Loading…</Text>
         </View>
       )}

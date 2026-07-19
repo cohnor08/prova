@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
@@ -60,7 +61,7 @@ export default function LessonNoteScreen({ navigation, route }) {
         </TouchableOpacity>
         <Text style={styles.navTitle}>Lesson note</Text>
         <TouchableOpacity onPress={save} disabled={saving} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.saveBtn}>
-          {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text style={styles.saveText}>Save</Text>}
+          {saving ? <Ghost size="small" color={COLORS.primary} /> : <Text style={styles.saveText}>Save</Text>}
         </TouchableOpacity>
       </View>
 

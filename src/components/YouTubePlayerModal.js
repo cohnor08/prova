@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
   ScrollView, Image, Linking, useWindowDimensions,
 } from 'react-native';
+import Ghost from './Ghost';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, SPACING, themedStyles } from '../constants/theme';
@@ -84,7 +85,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
           ) : (
             <View style={[styles.player, styles.playerPlaceholder, { height: playerHeight }]}>
               {loading ? (
-                <ActivityIndicator color={COLORS.primary} />
+                <Ghost color={COLORS.primary} />
               ) : (
                 <Ionicons name="logo-youtube" size={36} color={COLORS.textMuted} />
               )}

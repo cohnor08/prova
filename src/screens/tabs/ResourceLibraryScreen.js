@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform, InputAccessoryView, Keyboard,
   Image, ActivityIndicator, Dimensions,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { pickMedia, captureMedia, uploadResourceMedia } from '../../lib/media';
@@ -661,7 +662,7 @@ export default function ResourceLibraryScreen({ navigation }) {
               ) : (
                 <TouchableOpacity style={styles.photoAddBtn} onPress={attachPhoto} disabled={photoBusy} activeOpacity={0.85}>
                   {photoBusy
-                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    ? <Ghost size="small" color={COLORS.primary} />
                     : <Ionicons name="image-outline" size={18} color={COLORS.primary} />}
                   <Text style={styles.photoAddText}>{photoBusy ? 'Uploading…' : 'Add a photo (library or camera)'}</Text>
                 </TouchableOpacity>

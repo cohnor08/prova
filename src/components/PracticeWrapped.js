@@ -5,6 +5,7 @@
 // (needs a dev build); otherwise falls back to a text share.
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Share, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import Ghost from './Ghost';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -134,7 +135,7 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
   return (
     <Modal visible={visible && (show || !stats)} animationType="fade" transparent onRequestClose={close}>
       <View style={styles.dim}>
-        {!stats ? <ActivityIndicator color={COLORS.primary} /> : show && (
+        {!stats ? <Ghost color={COLORS.primary} /> : show && (
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
             <View ref={cardRef} collapsable={false} style={styles.card}>
               <Text style={styles.kicker}>{stats.soFar ? 'YOUR WEEK SO FAR' : 'YOUR WEEK IN MUSIC'}</Text>

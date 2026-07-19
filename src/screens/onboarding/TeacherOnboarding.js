@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, setDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -122,7 +123,7 @@ export default function TeacherOnboarding() {
             activeOpacity={0.85}
           >
             {saving
-              ? <ActivityIndicator color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.text} size="small" />
               : <Text style={styles.buttonText}>Get Started</Text>}
           </TouchableOpacity>
         </View>

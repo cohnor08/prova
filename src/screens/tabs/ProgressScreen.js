@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -847,7 +848,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalConfirm, adding && { opacity: 0.6 }]} onPress={handleAdd} disabled={adding}>
-                {adding ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
+                {adding ? <Ghost color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
               </TouchableOpacity>
             </View>
       </SheetModal>
@@ -1164,7 +1165,7 @@ export default function ProgressScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} size="large" />
+        <Ghost color={COLORS.primary} size="large" />
       </View>
     );
   }
@@ -1421,7 +1422,7 @@ export default function ProgressScreen({ navigation }) {
             <Text style={styles.shareSheetSub}>Send it to your teacher in the app, or share it anywhere.</Text>
 
             {shareLoading ? (
-              <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
+              <Ghost color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
             ) : convos.length === 0 ? (
               <Text style={styles.shareEmpty}>Connect a teacher to send it in-app, or share it outside the app below.</Text>
             ) : (
@@ -1431,7 +1432,7 @@ export default function ProgressScreen({ navigation }) {
                     <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color="#fff" /></View>
                     <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
                     {sendingTo === c.otherUid
-                      ? <ActivityIndicator size="small" color={COLORS.primary} />
+                      ? <Ghost size="small" color={COLORS.primary} />
                       : <Ionicons name="send" size={16} color={COLORS.primary} />}
                   </TouchableOpacity>
                 ))}

@@ -12,7 +12,7 @@
 // whose massive dark border darkens everything EXCEPT the hole — no SVG masks
 // needed, works identically on native and web.
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -97,8 +97,37 @@ export default function TourOverlay({ role }) {
   const [display, setDisplay] = useState(null); // { idx, rect } | null
   const displayRef = useRef(null);
   useEffect(() => { displayRef.current = display; }, [display]);
+
+  // Drive the spotlight frame from the displayed rect (clamped so the card can
+  // never cover it): SNAP when arriving on a new screen, SLIDE when moving
+  // between elements on the same one.
+  useEffect(() => {
+    const rect = display?.rect || null;
+    if (!rect || !size) { ringOnRef.current = false; setRingOn(false); return; }
+    const clampTop = 54;
+    const clampBottom = size.height - TAB_H - 24 - cardH - 10;
+    const t = Math.max(rect.y, clampTop);
+    const b = Math.min(rect.y + rect.h, clampBottom);
+    const f = b - t > 30 ? { x: rect.x, y: t, w: rect.w, h: b - t } : rect;
+    if (!ringOnRef.current) {
+      frame.x.setValue(f.x); frame.y.setValue(f.y); frame.w.setValue(f.w); frame.h.setValue(f.h);
+      ringOnRef.current = true;
+      setRingOn(true);
+    } else {
+      const cfg = (v, to) => Animated.timing(v, { toValue: to, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false });
+      Animated.parallel([cfg(frame.x, f.x), cfg(frame.y, f.y), cfg(frame.w, f.w), cfg(frame.h, f.h)]).start();
+    }
+  }, [display, size, cardH]);
   const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
   const seqRef = useRef(0);                  // cancels stale async measurements
+  // Animated spotlight frame: on same-screen steps the ring SLIDES from the
+  // previous element to the next instead of teleporting.
+  const frame = useRef({
+    x: new Animated.Value(0), y: new Animated.Value(0),
+    w: new Animated.Value(0), h: new Animated.Value(0),
+  }).current;
+  const [ringOn, setRingOn] = useState(false);
+  const ringOnRef = useRef(false);
 
   // Tab route roots, indexed like the quick steps' `tab`.
   const TAB_ROOTS = role === 'teacher'
@@ -237,19 +266,7 @@ export default function TourOverlay({ role }) {
     const dIsLast = d ? d.idx === steps.length - 1 : false;
     const dIsIntro = d ? d.idx === 0 || dIsLast : true;
     const dNext = () => (dIsLast ? finish(false) : setStep(d.idx + 1));
-    // Clamp the ring against the card's LIVE height at render time — a taller
-    // card than expected can never cover what it's explaining.
-    const winH = size?.height || 800;
-    const clampTop = 54;
-    const clampBottom = winH - TAB_H - 24 - cardH - 10;
-    const rect = d?.rect || null;
-    const r = rect && size
-      ? (() => {
-          const t = Math.max(rect.y, clampTop);
-          const b = Math.min(rect.y + rect.h, clampBottom);
-          return b - t > 30 ? { x: rect.x, y: t, w: rect.w, h: b - t } : rect;
-        })()
-      : null;
+    const showRing = ringOn && !!d?.rect;
     // Fixed-footprint card (width overrides undo the base card's
     // width/maxWidth so it can't grow past the screen), always at the bottom.
     const card = ds && (
@@ -298,34 +315,35 @@ export default function TourOverlay({ role }) {
         {!d ? (
           // Switching screens: plain dim for a beat, then ring + card together.
           <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />
-        ) : r ? (
+        ) : showRing ? (
           <>
-            {/* Rect spotlight: the border trick with a rectangular hole. */}
-            <View
+            {/* Rect spotlight: the border trick with a rectangular hole. The
+                frame is Animated so the hole SLIDES between elements. */}
+            <Animated.View
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: r.x - PAD - B, top: r.y - PAD - B,
-                width: r.w + 2 * (PAD + B), height: r.h + 2 * (PAD + B),
+                left: Animated.subtract(frame.x, PAD + B), top: Animated.subtract(frame.y, PAD + B),
+                width: Animated.add(frame.w, 2 * (PAD + B)), height: Animated.add(frame.h, 2 * (PAD + B)),
                 borderWidth: B, borderRadius: B + 18, borderColor: DIM,
               }}
             />
             {/* Soft outer glow so the lit element unmistakably pops. */}
-            <View
+            <Animated.View
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: r.x - PAD - 5, top: r.y - PAD - 5,
-                width: r.w + 2 * (PAD + 5), height: r.h + 2 * (PAD + 5),
+                left: Animated.subtract(frame.x, PAD + 5), top: Animated.subtract(frame.y, PAD + 5),
+                width: Animated.add(frame.w, 2 * (PAD + 5)), height: Animated.add(frame.h, 2 * (PAD + 5)),
                 borderRadius: 22, borderWidth: 5, borderColor: COLORS.primary + '44',
               }}
             />
-            <View
+            <Animated.View
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: r.x - PAD, top: r.y - PAD,
-                width: r.w + 2 * PAD, height: r.h + 2 * PAD,
+                left: Animated.subtract(frame.x, PAD), top: Animated.subtract(frame.y, PAD),
+                width: Animated.add(frame.w, 2 * PAD), height: Animated.add(frame.h, 2 * PAD),
                 borderRadius: 18, borderWidth: 2.5, borderColor: COLORS.primary,
               }}
             />

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 
+import Ghost from './src/components/Ghost';
 // Web: the app is phone-designed — pin the app root to a centred column.
 // react-native-web modal portals are ALSO direct children of <body>, but they
 // sit at height 0 in normal flow, so constraining them the same way parks
@@ -271,7 +272,7 @@ function AppInner() {
       <View style={styles.loading}>
         <StatusBar style="light" />
         <Text style={styles.loadingLogo}>PROVA</Text>
-        <ActivityIndicator color={COLORS.primary} size="small" />
+        <Ghost color={COLORS.primary} size="small" />
       </View>
     );
   } else if (isUnderMaintenance) {

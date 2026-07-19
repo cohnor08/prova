@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   ActivityIndicator, Platform, StyleSheet, Keyboard, Animated, Easing,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
@@ -190,7 +191,7 @@ export default function AskProvaScreen({ navigation }) {
         {loading && (
           <View style={[styles.bubbleRow, styles.rowLeft]}>
             <View style={[styles.bubble, styles.provaBubble, styles.typingBubble]}>
-              <ActivityIndicator size="small" color={COLORS.textSecondary} />
+              <Ghost size="small" color={COLORS.textSecondary} />
               <Text style={styles.typingText}>Prova is thinking…</Text>
             </View>
           </View>
