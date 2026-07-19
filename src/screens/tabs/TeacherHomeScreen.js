@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
@@ -230,6 +231,8 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
 
 export default function TeacherHomeScreen({ navigation }) {
   useThemeSync();
+  const tourScrollRef = useTourScroller('TeacherHomeMain'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
   const [students, setStudents] = useState([]);
@@ -386,6 +389,7 @@ export default function TeacherHomeScreen({ navigation }) {
       case 'code':
         return joinCode ? (
           <View style={styles.codeCard}>
+            <TourSpot id="th-code" />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.codeLabel}>YOUR JOIN CODE</Text>
               <Text style={styles.codeValue}>{joinCode}</Text>
@@ -625,7 +629,7 @@ export default function TeacherHomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.kicker}>TEACHER HOME</Text>

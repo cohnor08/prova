@@ -78,9 +78,9 @@ const STUDENT_STEPS_FULL = [
 
 const TEACHER_STEPS_FULL = [
   { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
-  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
+  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-code', scroller: 'TeacherHomeMain', title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
   { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
-  { nav: { tab: 'Teacher' }, title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
+  { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
   { nav: { tab: 'Teacher' }, title: 'Assign work', text: 'Tasks with tutorials, songs, or a skill drill at the exact level you choose — to one student or a whole class. Tap any task for its overview or to edit it.' },
   { nav: { tab: 'Teacher' }, title: 'Proof & parent reports', text: 'Watch students’ practice clips and verify them. Add parent emails and Prova emails beautiful weekly reports automatically.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-mine', scroller: 'ResourcesHome', title: 'Your resources', text: 'Your own materials — links, photos, anything — ready to assign in two taps.' },
@@ -217,6 +217,14 @@ export default function TourOverlay({ role }) {
       const p = await placeStep(s, winH);
       if (seqRef.current !== seq) return;
       if (!p) { setDisplay({ idx: step, rect: null }); return; }
+      // If the page will visibly jump, drop to dim for ~2 frames first — the
+      // old ring must never be seen sitting on freshly-scrolled content.
+      const willJump = p.offset != null && p.rect && Math.abs((p.curY ?? p.rect.y) - p.rect.y) > 6;
+      if (willJump && displayRef.current) {
+        setDisplay(null);
+        await sleep(32);
+        if (seqRef.current !== seq) return;
+      }
       if (p.offset != null) doScroll(s, p.offset);
       const visTop = Math.max(p.rect.y, 54);
       const visBottom = Math.min(p.rect.y + p.rect.h, winH - TAB_H - 14);
@@ -449,7 +457,7 @@ async function placeStep(st, winH) {
   const desiredWinTop = elW.h >= zh ? zoneTop : zoneTop + (zh - elW.h) / 2;
   const offset = Math.min(Math.max(0, posY - (desiredWinTop - vpW.y)), maxScroll);
   dbg('place', st.target, 'posY', Math.round(posY), 'max', Math.round(maxScroll), 'offset', Math.round(offset));
-  return { offset, rect: { x: elW.x, y: vpW.y + posY - offset, w: elW.w, h: elW.h } };
+  return { offset, curY: elW.y, rect: { x: elW.x, y: vpW.y + posY - offset, w: elW.w, h: elW.h } };
 }
 
 // Jump the screen's ScrollView to an absolute offset (no animation — the swap

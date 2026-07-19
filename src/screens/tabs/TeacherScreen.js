@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import Ghost from '../../components/Ghost';
 import ProofMedia from '../../components/ProofMedia';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -1732,6 +1733,8 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [parentEmails, setParentEmails] = useState({});     // { studentUid: 'parent@email' }
   const [pcSearch, setPcSearch] = useState('');             // parent-contacts filter (name or email)
+  const tourScrollRef = useTourScroller('TeacherStudents'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [contactsOpen, setContactsOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState({});
   const [sendingReports, setSendingReports] = useState(false);
@@ -2353,7 +2356,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
   return (
     <>
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={tourScrollRef}
+        contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
       >
@@ -2466,7 +2470,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               <Text style={styles.studentSearchEmpty}>No students match “{studentSearch.trim()}”.</Text>
             )}
 
-            {filteredStudents.map((student) => {
+            {filteredStudents.map((student, studentIdx) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = liveStreak(student);
@@ -2484,6 +2488,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
               return (
                 <View key={student.uid} style={styles.studentCard}>
+                  {studentIdx === 0 && <TourSpot id="ts-roster" />}
                   <TouchableOpacity
                     style={styles.studentHeader}
                     onPress={() => setExpanded(isOpen ? null : student.uid)}
