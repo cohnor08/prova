@@ -31,7 +31,7 @@ const DIM = 'rgba(2,4,10,0.88)';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Log placement numbers to Metro while we chase device-specific offsets.
-const TOUR_DEBUG = true;
+const TOUR_DEBUG = false;
 const dbg = (...a) => { if (TOUR_DEBUG) console.log('[tour]', ...a); };
 
 // Replay hook for Profile. 'full' = the in-depth walkthrough; default quick.
@@ -103,40 +103,7 @@ export default function TourOverlay({ role }) {
   const displayRef = useRef(null);
   useEffect(() => { displayRef.current = display; }, [display]);
 
-  // Precomputed placement for the next/previous step on the SAME screen —
-  // measured while the user reads the current card, so pressing Next applies
-  // scroll + ring SYNCHRONOUSLY: the ring goes straight onto the element.
-  const prepRef = useRef(null);
   const navKeyOf = (st) => (st?.nav ? `${st.nav.tab}/${st.nav.screen || ''}` : 'none');
-  useEffect(() => {
-    if (!visible || mode !== 'full' || !display) { prepRef.current = null; return; }
-    let alive = true;
-    const winH = size?.height || 800;
-    const zoneTop = 54;
-    const zoneBottom = winH - TAB_H - CARD_SPACE;
-    const zh = zoneBottom - zoneTop;
-    const mk = async (idx) => {
-      const t = steps[idx];
-      if (!t || !t.target || navKeyOf(t) !== navKeyOf(steps[display.idx])) return null;
-      const pos = await measureInContent(t);
-      const vp = await measureViewport(t);
-      if (!pos || !vp) return null;
-      const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
-      const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
-      dbg('prep', idx, t.target, 'pos.y', Math.round(pos.y), 'pos.h', Math.round(pos.h), 'vp.y', Math.round(vp.y), 'offset', Math.round(offset));
-      const y = vp.y + pos.y - offset;
-      const visTop = Math.max(y, zoneTop);
-      const visBottom = Math.min(y + pos.h, winH - TAB_H - 14);
-      if (visBottom - visTop <= 40) return null;
-      return { scroller: t.scroller, offset, rect: { x: vp.x + pos.x, y: visTop, w: pos.w, h: visBottom - visTop } };
-    };
-    (async () => {
-      const next = display.idx + 1 < steps.length ? await mk(display.idx + 1) : null;
-      const prev = display.idx > 0 ? await mk(display.idx - 1) : null;
-      if (alive) prepRef.current = { base: display.idx, next, prev };
-    })();
-    return () => { alive = false; };
-  }, [display, visible, mode, size]);
 
   // Drive the spotlight frame from the displayed rect. useLayoutEffect so the
   // ring frame updates in the SAME paint as the card — never a frame where a
@@ -237,43 +204,26 @@ export default function TourOverlay({ role }) {
         } catch (e) { /* stay put */ }
       }
       if (!s.target) { setDisplay({ idx: step, rect: null }); return; }
-      // EXACT-MATH placement — the ring goes STRAIGHT onto the element:
-      // its position inside the scroll content is a fixed number, so one
-      // computation gives both the scroll offset AND the on-screen rect.
-      // Nothing is measured mid-motion, nothing corrects afterwards.
-      // (A short existence wait covers freshly-mounted screens.)
-      let probe = await measure(s.target);
-      for (let i = 0; i < 20 && !probe; i++) {
+      // Existence wait (fresh screens still rendering) — usually instant.
+      let exists = await measure(s.target);
+      for (let i = 0; i < 20 && !exists; i++) {
         await sleep(60);
         if (seqRef.current !== seq) return;
-        probe = await measure(s.target);
+        exists = await measure(s.target);
       }
       if (seqRef.current !== seq) return;
-      if (!probe) { setDisplay({ idx: step, rect: null }); return; }
+      if (!exists) { setDisplay({ idx: step, rect: null }); return; }
       const winH = size?.height || 800;
-      const zoneTop = 54;
-      const zoneBottom = winH - TAB_H - CARD_SPACE;
-      const zh = zoneBottom - zoneTop;
-      const pos = await measureInContent(s);
-      const vp = await measureViewport(s);
+      const p = await placeStep(s, winH);
       if (seqRef.current !== seq) return;
-      let rect;
-      if (pos && vp) {
-        const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
-        const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
-        dbg('math', step, steps[step]?.target, 'pos.y', Math.round(pos.y), 'pos.h', Math.round(pos.h), 'vp.y', Math.round(vp.y), 'offset', Math.round(offset));
-        doScroll(s, offset);
-        rect = { x: vp.x + pos.x, y: vp.y + pos.y - offset, w: pos.w, h: pos.h };
-      } else {
-        rect = null; // no reliable math — centered card, never a stale box
-      }
-      if (!rect) { setDisplay({ idx: step, rect: null }); return; }
-      const visTop = Math.max(rect.y, zoneTop);
-      const visBottom = Math.min(rect.y + rect.h, winH - TAB_H - 14);
-      const finalRect = visBottom - visTop > 40 ? { x: rect.x, y: visTop, w: rect.w, h: visBottom - visTop } : null;
-      dbg('effect', step, steps[step]?.target, 'rect', finalRect && Math.round(finalRect.y));
-      setDisplay({ idx: step, rect: finalRect });
-      verifyPlacement(step, finalRect, s);
+      if (!p) { setDisplay({ idx: step, rect: null }); return; }
+      if (p.offset != null) doScroll(s, p.offset);
+      const visTop = Math.max(p.rect.y, 54);
+      const visBottom = Math.min(p.rect.y + p.rect.h, winH - TAB_H - 14);
+      const rect = visBottom - visTop > 40 && p.rect.w > 100
+        ? { x: p.rect.x, y: visTop, w: p.rect.w, h: visBottom - visTop }
+        : null;
+      setDisplay({ idx: step, rect }); // scroll + ring + card in one swap
     })();
   }, [visible, mode, step]);
 
@@ -286,25 +236,7 @@ export default function TourOverlay({ role }) {
     if (uid) updateDoc(doc(db, 'users', uid), { tourSeen: true }).catch(() => {});
   };
 
-  // If a predicted placement missed (scroll clamped, layout shifted), one
-  // quick post-scroll check corrects it — ~80ms later, at most once.
-  const verifyPlacement = (idx, rect, st) => {
-    if (!rect || !st?.target) return;
-    const seq = seqRef.current;
-    setTimeout(async () => {
-      if (seqRef.current !== seq || displayRef.current?.idx !== idx) return;
-      const r = await measure(st.target);
-      if (!r || seqRef.current !== seq || displayRef.current?.idx !== idx) return;
-      const winH = size?.height || 800;
-      const visTop = Math.max(r.y, 54);
-      const visBottom = Math.min(r.y + r.h, winH - TAB_H - 14);
-      if (visBottom - visTop <= 40) return;
-      const cand = { x: r.x, y: visTop, w: r.w, h: visBottom - visTop };
-      if (Math.abs(cand.y - rect.y) <= 8 && Math.abs(cand.h - rect.h) <= 8) return;
-      dbg('correct', idx, 'from', Math.round(rect.y), 'to', Math.round(cand.y));
-      setDisplay({ idx, rect: cand });
-    }, 80);
-  };
+
 
   const s = steps[step];
   const isLast = step === steps.length - 1;
@@ -322,19 +254,7 @@ export default function TourOverlay({ role }) {
     const ds = d ? steps[d.idx] : null;
     const dIsLast = d ? d.idx === steps.length - 1 : false;
     const dIsIntro = d ? d.idx === 0 || dIsLast : true;
-    const jump = (toIdx) => {
-      const p = prepRef.current;
-      const prep = p && d && p.base === d.idx
-        ? (toIdx === d.idx + 1 ? p.next : toIdx === d.idx - 1 ? p.prev : null)
-        : null;
-      if (prep) {
-        doScroll({ scroller: prep.scroller }, prep.offset);
-        setDisplay({ idx: toIdx, rect: prep.rect });
-        dbg('jump', toIdx, 'offset', Math.round(prep.offset), 'predicted', prep.rect && Math.round(prep.rect.y));
-        verifyPlacement(toIdx, prep.rect, steps[toIdx]);
-      }
-      setStep(toIdx);
-    };
+    const jump = (toIdx) => setStep(toIdx);
     const dNext = () => (dIsLast ? finish(false) : jump(d.idx + 1));
     const showRing = ringOn && !!d?.rect;
     // Fixed-footprint card (width overrides undo the base card's
@@ -499,40 +419,41 @@ function measure(id) {
   });
 }
 
-// Position of a target within its screen's scroll CONTENT — independent of
-// the current scroll offset, so ONE scroll computed from it always lands
-// right. measureLayout needs a REF to a native component on the new
-// architecture (a bare node handle logs "must be called with a ref" and
-// fails), so prefer getInnerViewRef; fall back to the node handle.
-function measureInContent(step) {
+function measureWin(node) {
   return new Promise((resolve) => {
-    const sc = getTourScroller(step.scroller)?.current;
-    const node = getTourTarget(step.target)?.current;
-    const inner = sc && sc.getInnerViewRef ? sc.getInnerViewRef() : null;
-    if (!node?.measureInWindow || !inner?.measureInWindow) return resolve(null);
-    try {
-      node.measureInWindow((ex, ey, ew, eh) => {
-        try {
-          inner.measureInWindow((ix, iy) => resolve({ x: ex - ix, y: ey - iy, w: ew, h: eh }));
-        } catch (e) { resolve(null); }
-      });
-    } catch (e) { resolve(null); }
+    if (!node?.measureInWindow) return resolve(null);
+    try { node.measureInWindow((x, y, w, h) => resolve({ x, y, w, h })); } catch (e) { resolve(null); }
   });
 }
 
-// Window position of the ScrollView's viewport — the bridge between content
-// coordinates and on-screen coordinates.
-function measureViewport(step) {
-  return new Promise((resolve) => {
-    const sc = getTourScroller(step.scroller)?.current;
-    const host = sc?.getNativeScrollRef ? sc.getNativeScrollRef() : sc;
-    if (!host?.measureInWindow) return resolve(null);
-    try { host.measureInWindow((x, y, w, h) => resolve({ x, y, w, h })); } catch (e) { resolve(null); }
-  });
+// CLOSED-FORM placement — exact by construction:
+// content height is measured, so the maximum possible scroll is KNOWN and the
+// requested offset is clamped to it; the predicted on-screen rect therefore
+// always matches where the element really ends up. No verification loops.
+async function placeStep(st, winH) {
+  const sc = getTourScroller(st.scroller)?.current;
+  const el = getTourTarget(st.target)?.current;
+  if (!el) return null;
+  const zoneTop = 54;
+  const zoneBottom = winH - TAB_H - CARD_SPACE;
+  const zh = zoneBottom - zoneTop;
+  const inner = sc && sc.getInnerViewRef ? sc.getInnerViewRef() : null;
+  const host = sc && sc.getNativeScrollRef ? sc.getNativeScrollRef() : sc;
+  const [elW, inW, vpW] = await Promise.all([measureWin(el), measureWin(inner), measureWin(host)]);
+  if (!elW || elW.w < 40 || elW.h < 20) return null; // never a garbage rect
+  if (!inW || !vpW || inW.h <= 0 || vpW.h <= 0) {
+    return { offset: null, rect: elW }; // no scroll math — light it where it is
+  }
+  const posY = elW.y - inW.y;                     // position inside the content
+  const maxScroll = Math.max(0, inW.h - vpW.h);   // ← the clamp that was missing
+  const desiredWinTop = elW.h >= zh ? zoneTop : zoneTop + (zh - elW.h) / 2;
+  const offset = Math.min(Math.max(0, posY - (desiredWinTop - vpW.y)), maxScroll);
+  dbg('place', st.target, 'posY', Math.round(posY), 'max', Math.round(maxScroll), 'offset', Math.round(offset));
+  return { offset, rect: { x: elW.x, y: vpW.y + posY - offset, w: elW.w, h: elW.h } };
 }
 
-// Jump the screen's ScrollView to an absolute offset (no animation — the
-// spotlight's own slide is the visible motion).
+// Jump the screen's ScrollView to an absolute offset (no animation — the swap
+// itself is the visible transition).
 function doScroll(step, y) {
   const sc = getTourScroller(step.scroller)?.current;
   if (!sc) return;
