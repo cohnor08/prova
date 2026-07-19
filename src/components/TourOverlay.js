@@ -99,6 +99,40 @@ export default function TourOverlay({ role }) {
   const displayRef = useRef(null);
   useEffect(() => { displayRef.current = display; }, [display]);
 
+  // Precomputed placement for the next/previous step on the SAME screen —
+  // measured while the user reads the current card, so pressing Next applies
+  // scroll + ring SYNCHRONOUSLY: the ring goes straight onto the element.
+  const prepRef = useRef(null);
+  const navKeyOf = (st) => (st?.nav ? `${st.nav.tab}/${st.nav.screen || ''}` : 'none');
+  useEffect(() => {
+    if (!visible || mode !== 'full' || !display) { prepRef.current = null; return; }
+    let alive = true;
+    const winH = size?.height || 800;
+    const zoneTop = 54;
+    const zoneBottom = winH - TAB_H - CARD_SPACE;
+    const zh = zoneBottom - zoneTop;
+    const mk = async (idx) => {
+      const t = steps[idx];
+      if (!t || !t.target || navKeyOf(t) !== navKeyOf(steps[display.idx])) return null;
+      const pos = await measureInContent(t);
+      const vp = await measureViewport(t);
+      if (!pos || !vp) return null;
+      const desiredWinTop = pos.h >= zh ? zoneTop : zoneTop + (zh - pos.h) / 2;
+      const offset = Math.max(0, pos.y - (desiredWinTop - vp.y));
+      const y = vp.y + pos.y - offset;
+      const visTop = Math.max(y, zoneTop);
+      const visBottom = Math.min(y + pos.h, winH - TAB_H - 14);
+      if (visBottom - visTop <= 40) return null;
+      return { scroller: t.scroller, offset, rect: { x: vp.x + pos.x, y: visTop, w: pos.w, h: visBottom - visTop } };
+    };
+    (async () => {
+      const next = display.idx + 1 < steps.length ? await mk(display.idx + 1) : null;
+      const prev = display.idx > 0 ? await mk(display.idx - 1) : null;
+      if (alive) prepRef.current = { base: display.idx, next, prev };
+    })();
+    return () => { alive = false; };
+  }, [display, visible, mode, size]);
+
   // Drive the spotlight frame from the displayed rect (clamped so the card can
   // never cover it): SNAP when arriving on a new screen, SLIDE when moving
   // between elements on the same one.
@@ -187,10 +221,10 @@ export default function TourOverlay({ role }) {
   useEffect(() => {
     if (!visible || mode !== 'full') return;
     const s = steps[step];
+    if (displayRef.current?.idx === step) { seqRef.current++; return; } // pre-placed by jump()
     const seq = ++seqRef.current;
-    const navKey = (st) => (st?.nav ? `${st.nav.tab}/${st.nav.screen || ''}` : 'none');
-    const prevIdx = displayRef.current?.idx;
-    if (prevIdx == null || navKey(steps[prevIdx]) !== navKey(s)) setDisplay(null);
+    // Blink to dim rather than EVER showing the ring on the wrong element.
+    setDisplay(null);
     (async () => {
       if (s.nav) {
         try {
@@ -225,8 +259,9 @@ export default function TourOverlay({ role }) {
         doScroll(s, offset);
         rect = { x: vp.x + pos.x, y: vp.y + pos.y - offset, w: pos.w, h: pos.h };
       } else {
-        rect = probe; // no scroller registered — use where it already is
+        rect = null; // no reliable math — centered card, never a stale box
       }
+      if (!rect) { setDisplay({ idx: step, rect: null }); return; }
       const visTop = Math.max(rect.y, zoneTop);
       const visBottom = Math.min(rect.y + rect.h, winH - TAB_H - 14);
       setDisplay({
@@ -261,7 +296,18 @@ export default function TourOverlay({ role }) {
     const ds = d ? steps[d.idx] : null;
     const dIsLast = d ? d.idx === steps.length - 1 : false;
     const dIsIntro = d ? d.idx === 0 || dIsLast : true;
-    const dNext = () => (dIsLast ? finish(false) : setStep(d.idx + 1));
+    const jump = (toIdx) => {
+      const p = prepRef.current;
+      const prep = p && d && p.base === d.idx
+        ? (toIdx === d.idx + 1 ? p.next : toIdx === d.idx - 1 ? p.prev : null)
+        : null;
+      if (prep) {
+        doScroll({ scroller: prep.scroller }, prep.offset);
+        setDisplay({ idx: toIdx, rect: prep.rect });
+      }
+      setStep(toIdx);
+    };
+    const dNext = () => (dIsLast ? finish(false) : jump(d.idx + 1));
     const showRing = ringOn && !!d?.rect;
     // Fixed-footprint card (width overrides undo the base card's
     // width/maxWidth so it can't grow past the screen), always at the bottom.
@@ -289,7 +335,7 @@ export default function TourOverlay({ role }) {
           )}
           <View style={{ flex: 1 }} />
           {d.idx > 0 && !dIsLast && (
-            <TouchableOpacity style={styles.backBtn} onPress={() => setStep(d.idx - 1)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => jump(d.idx - 1)} activeOpacity={0.85}>
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           )}
@@ -432,15 +478,16 @@ function measure(id) {
 // fails), so prefer getInnerViewRef; fall back to the node handle.
 function measureInContent(step) {
   return new Promise((resolve) => {
-    const scRef = getTourScroller(step.scroller);
-    const tRef = getTourTarget(step.target);
-    const sc = scRef?.current;
-    const node = tRef?.current;
-    if (!sc || !node?.measureLayout) return resolve(null);
-    const inner = (sc.getInnerViewRef && sc.getInnerViewRef()) || (sc.getInnerViewNode && sc.getInnerViewNode()) || null;
-    if (!inner) return resolve(null);
+    const sc = getTourScroller(step.scroller)?.current;
+    const node = getTourTarget(step.target)?.current;
+    const inner = sc && sc.getInnerViewRef ? sc.getInnerViewRef() : null;
+    if (!node?.measureInWindow || !inner?.measureInWindow) return resolve(null);
     try {
-      node.measureLayout(inner, (x, y, w, h) => resolve({ x, y, w, h }), () => resolve(null));
+      node.measureInWindow((ex, ey, ew, eh) => {
+        try {
+          inner.measureInWindow((ix, iy) => resolve({ x: ex - ix, y: ey - iy, w: ew, h: eh }));
+        } catch (e) { resolve(null); }
+      });
     } catch (e) { resolve(null); }
   });
 }
