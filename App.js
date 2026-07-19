@@ -192,6 +192,10 @@ function MainTabs({ role }) {
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
+        // Mount every tab up front: screens load their data at app start, so
+        // switching tabs (and the guided tour walking through them) never
+        // shows a cold-load spinner.
+        lazy: false,
         tabBarStyle: makeTabBarStyle(colors),
         tabBarShowLabel: true,
         tabBarActiveTintColor: colors.primary,

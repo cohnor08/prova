@@ -92,9 +92,12 @@ export default function TourOverlay({ role }) {
   const [step, setStep] = useState(0);
   const [size, setSize] = useState(null);
   const [mode, setMode] = useState('quick'); // 'quick' map | 'full' walkthrough
-  const [rect, setRect] = useState(null);    // measured target box (full mode)
+  // What's actually SHOWN (may lag `step` while the next target is measured —
+  // the old ring+card stay up until the new ones are ready, so nothing flashes).
+  const [display, setDisplay] = useState(null); // { idx, rect } | null
+  const displayRef = useRef(null);
+  useEffect(() => { displayRef.current = display; }, [display]);
   const [cardH, setCardH] = useState(190);   // live card height → spotlight zone
-  const [settled, setSettled] = useState(true); // ring + card appear TOGETHER
   const seqRef = useRef(0);                  // cancels stale async measurements
 
   // Tab route roots, indexed like the quick steps' `tab`.
@@ -113,7 +116,7 @@ export default function TourOverlay({ role }) {
     getDoc(doc(db, 'users', uid))
       .then((s) => {
         if (!(s.data() || {}).tourSeen) {
-          setMode('quick'); setStep(0); setVisible(true);
+          setMode('quick'); setStep(0); setDisplay(null); setVisible(true);
           track('tour_started', { role });
         }
       })
@@ -124,7 +127,7 @@ export default function TourOverlay({ role }) {
   useEffect(() => {
     const fn = (m) => {
       setMode(m === 'full' ? 'full' : 'quick');
-      setStep(0); setVisible(true);
+      setStep(0); setDisplay(null); setVisible(true);
       track('tour_replayed', { mode: m === 'full' ? 'full' : 'quick' });
     };
     listeners.add(fn);
@@ -152,22 +155,25 @@ export default function TourOverlay({ role }) {
   }, [visible, mode]);
 
   // FULL mode: on each step, navigate there, then find + measure the target
-  // (scrolling it into view if the screen registered its ScrollView). Retries
-  // cover the screen still rendering; a missing target falls back to a
-  // centered card on that screen.
+  // (scrolling it into view if the screen registered its ScrollView).
+  // Anti-flash: the PREVIOUS ring + card stay fully visible while the next
+  // step is prepared, then everything swaps in a single frame. The screen only
+  // drops to plain dim when the step changes tab (the screen behind changes
+  // anyway). A missing target falls back to a centered card on that screen.
   useEffect(() => {
     if (!visible || mode !== 'full') return;
     const s = steps[step];
     const seq = ++seqRef.current;
-    setRect(null);
-    setSettled(!s.target); // targeted steps hold the card until the ring is ready
+    const navKey = (st) => (st?.nav ? `${st.nav.tab}/${st.nav.screen || ''}` : 'none');
+    const prevIdx = displayRef.current?.idx;
+    if (prevIdx == null || navKey(steps[prevIdx]) !== navKey(s)) setDisplay(null);
     (async () => {
       if (s.nav) {
         try {
           navigation.navigate(s.nav.tab, s.nav.screen ? { screen: s.nav.screen } : undefined);
         } catch (e) { /* stay put */ }
       }
-      if (!s.target) return;
+      if (!s.target) { setDisplay({ idx: step, rect: null }); return; }
       // The card is always anchored at the bottom; the spotlight zone runs
       // from under the status bar to just above it. The scroll centres the
       // target in that zone — the tour padding lets even end-of-page targets
@@ -178,7 +184,7 @@ export default function TourOverlay({ role }) {
       let scrolled = false;
       let best = null;
       for (let i = 0; i < 14; i++) {
-        await sleep(i === 0 ? 30 : 70);
+        if (i > 0) await sleep(70);
         if (seqRef.current !== seq) return;
         const r = await measure(s.target);
         if (!r) continue;
@@ -194,14 +200,14 @@ export default function TourOverlay({ role }) {
         break;
       }
       if (seqRef.current !== seq) return;
-      if (!best) { setSettled(true); return; } // no target found → centered card fallback
+      if (!best) { setDisplay({ idx: step, rect: null }); return; }
       // Whatever happened with scrolling, the lit region must be ON screen.
       const visTop = Math.max(best.y, zoneTop);
       const visBottom = Math.min(best.y + best.h, winH - TAB_H - 14);
-      if (visBottom - visTop > 40) {
-        setRect({ x: best.x, y: visTop, w: best.w, h: visBottom - visTop });
-      }
-      setSettled(true); // ring + card land together
+      const rect = visBottom - visTop > 40
+        ? { x: best.x, y: visTop, w: best.w, h: visBottom - visTop }
+        : null;
+      setDisplay({ idx: step, rect }); // ring + card land together, no gap
     })();
   }, [visible, mode, step]);
 
@@ -223,14 +229,21 @@ export default function TourOverlay({ role }) {
 
   // ── FULL mode render ──
   if (mode === 'full') {
-    const hasRect = !!rect && !!size;
+    // Everything renders from `display` — which step is actually SHOWN. It
+    // lags `step` while the next target is measured, so the old ring + card
+    // stay up and the swap is a single frame.
+    const d = display;
+    const ds = d ? steps[d.idx] : null;
+    const dIsLast = d ? d.idx === steps.length - 1 : false;
+    const dIsIntro = d ? d.idx === 0 || dIsLast : true;
+    const dNext = () => (dIsLast ? finish(false) : setStep(d.idx + 1));
     // Clamp the ring against the card's LIVE height at render time — a taller
-    // card than expected can never cover what it's explaining, wherever the
-    // card sits.
+    // card than expected can never cover what it's explaining.
     const winH = size?.height || 800;
     const clampTop = 54;
     const clampBottom = winH - TAB_H - 24 - cardH - 10;
-    const r = hasRect
+    const rect = d?.rect || null;
+    const r = rect && size
       ? (() => {
           const t = Math.max(rect.y, clampTop);
           const b = Math.min(rect.y + rect.h, clampBottom);
@@ -238,14 +251,13 @@ export default function TourOverlay({ role }) {
         })()
       : null;
     // Fixed-footprint card (width overrides undo the base card's
-    // width/maxWidth so it can't grow past the screen). Bottom-anchored by
-    // default; flips to the top only when the target is stuck low.
-    const card = (
+    // width/maxWidth so it can't grow past the screen), always at the bottom.
+    const card = ds && (
       <View
         onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
         style={[
           styles.card,
-          isIntro
+          dIsIntro
             ? styles.cardCentered
             : {
                 position: 'absolute', left: 20, right: 20,
@@ -254,23 +266,23 @@ export default function TourOverlay({ role }) {
               },
         ]}
       >
-        {!isIntro && <Text style={styles.kicker}>{stepNum} OF {stepTotal}</Text>}
-        <Text style={styles.title}>{s.title}</Text>
-        <Text style={styles.text}>{s.text}</Text>
+        {!dIsIntro && <Text style={styles.kicker}>{d.idx} OF {stepTotal}</Text>}
+        <Text style={styles.title}>{ds.title}</Text>
+        <Text style={styles.text}>{ds.text}</Text>
         <View style={styles.btnRow}>
-          {!isLast && (
+          {!dIsLast && (
             <TouchableOpacity onPress={() => finish(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.skip}>Skip</Text>
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }} />
-          {step > 0 && !isLast && (
-            <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)} activeOpacity={0.85}>
+          {d.idx > 0 && !dIsLast && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => setStep(d.idx - 1)} activeOpacity={0.85}>
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
-            <Text style={styles.nextText}>{isLast ? 'Done' : step === 0 ? 'Start the tour' : 'Next'}</Text>
+          <TouchableOpacity style={styles.nextBtn} onPress={dNext} activeOpacity={0.85}>
+            <Text style={styles.nextText}>{dIsLast ? 'Done' : d.idx === 0 ? 'Start the tour' : 'Next'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -283,8 +295,8 @@ export default function TourOverlay({ role }) {
         // mid-tour — only the card's buttons advance.
         onStartShouldSetResponder={() => true}
       >
-        {!settled ? (
-          // Measuring: plain dim only — the ring and the card then land TOGETHER.
+        {!d ? (
+          // Switching screens: plain dim for a beat, then ring + card together.
           <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />
         ) : r ? (
           <>
