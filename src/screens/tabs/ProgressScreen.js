@@ -1,9 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert, Share, Animated, PanResponder, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, getDocs, collection, query, orderBy, limit, where, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -421,7 +423,9 @@ function ActivityGraph({ data, streak }) {
       <View style={styles.heatHeader}>
         <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>PRACTICE TREND · 12 WEEKS</Text>
         {streak > 0 && (
-          <Text style={styles.heatStreak}>🔥 {streak} day{streak === 1 ? '' : 's'}</Text>
+          <Text style={styles.heatStreak}>
+            <Ionicons name="flame" size={12} color="#F59E0B" /> {streak} day{streak === 1 ? '' : 's'}
+          </Text>
         )}
       </View>
 
@@ -685,21 +689,30 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+// Podium ranks get a tinted medal glyph (gold/silver/bronze) — the app's icon
+// language, not emoji.
+const RANK_COLORS = ['#F5C044', '#B9C2CE', '#CD8A4F'];
 
 function LeaderboardRow({ entry, rank, isMe }) {
   const score = displayScore(entry);
   const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
   const initial = (name[0] || '?').toUpperCase();
+  const streak = entry.streak || 0;
   return (
     <View style={[styles.lbRow, isMe && styles.lbRowMe]}>
-      <Text style={styles.lbRank}>{rank <= 3 ? RANK_MEDALS[rank - 1] : `#${rank}`}</Text>
+      <Text style={styles.lbRank}>
+        {rank <= 3 ? <Ionicons name="medal" size={16} color={RANK_COLORS[rank - 1]} /> : `#${rank}`}
+      </Text>
       <View style={[styles.lbAvatar, isMe && { backgroundColor: COLORS.primary }]}>
         <Text style={styles.lbAvatarText}>{initial}</Text>
       </View>
       <View style={styles.lbInfo}>
         <Text style={[styles.lbName, isMe && { color: COLORS.primary }]}>{isMe ? `${name} (you)` : name}</Text>
-        <Text style={styles.lbMeta}>{entry.level || 'Beginner'} · {entry.streak || 0}🔥</Text>
+        <Text style={styles.lbMeta}>
+          {entry.level || 'Beginner'}
+          {/* A flame next to a zero would just be noise — only show a live streak. */}
+          {streak > 0 && <>{' · '}{streak} <Ionicons name="flame" size={11} color="#F59E0B" /></>}
+        </Text>
       </View>
       <Text style={[styles.lbScore, isMe && { color: COLORS.primary }]}>{score}</Text>
     </View>
@@ -835,7 +848,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalConfirm, adding && { opacity: 0.6 }]} onPress={handleAdd} disabled={adding}>
-                {adding ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
+                {adding ? <Ghost color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
               </TouchableOpacity>
             </View>
       </SheetModal>
@@ -1036,6 +1049,8 @@ export default function ProgressScreen({ navigation }) {
   const [className, setClassName] = useState('');
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
+  const tourScrollRef = useTourScroller('ProgressHome'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [editMode, setEditMode] = useState(false);
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
   const [weekPoints, setWeekPoints] = useState(0);
@@ -1051,6 +1066,11 @@ export default function ProgressScreen({ navigation }) {
       if (Date.now() - lastFetchRef.current > CACHE_TTL) loadData();
     }, [])
   );
+
+  // Tabs mount eagerly (lazy:false) but focus effects don't fire until the
+  // first visit — load on MOUNT too, so the screen (and the tour's targets)
+  // are ready before anyone arrives.
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
@@ -1150,7 +1170,7 @@ export default function ProgressScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} size="large" />
+        <Ghost color={COLORS.primary} size="large" />
       </View>
     );
   }
@@ -1249,24 +1269,28 @@ export default function ProgressScreen({ navigation }) {
       case 'stats':
         return (
           <View style={styles.statsRow}>
+            <TourSpot id="g-stats" />
             {[
-              { value: streak, unit: '🔥', label: 'Day Streak' },
+              { value: streak, icon: 'flame', label: 'Day Streak' },
               { value: Math.floor(totalMins / 60), unit: 'HRS', label: 'Total Time' },
               { value: totalSessions, unit: 'SESSIONS', label: 'All Time' },
               { value: avgMins, unit: 'MIN AVG', label: 'Per Session' },
             ].map(s => (
               <View key={s.label} style={styles.statCard}>
                 <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statUnit}>{s.unit}</Text>
+                {s.icon
+                  ? <Text style={styles.statUnit}><Ionicons name={s.icon} size={12} color={s.value > 0 ? '#F59E0B' : COLORS.textMuted} /></Text>
+                  : <Text style={styles.statUnit}>{s.unit}</Text>}
                 <Text style={styles.statLabel}>{s.label}</Text>
               </View>
             ))}
           </View>
         );
       case 'score':
-        return <ProvaScore score={provaScore} onPress={() => setShowRanks(true)} />;
+        return <TourSpot id="g-score"><ProvaScore score={provaScore} onPress={() => setShowRanks(true)} /></TourSpot>;
       case 'leaderboard':
         return (
+          <TourSpot id="g-board">
           <Leaderboard
             myUid={auth.currentUser?.uid}
             myData={userData}
@@ -1276,6 +1300,7 @@ export default function ProgressScreen({ navigation }) {
             className={className}
             onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
           />
+          </TourSpot>
         );
       case 'level': return <LevelProgress totalMins={totalMins} />;
       // Charts hide themselves until there's data, so new users don't see empty boxes.
@@ -1324,7 +1349,7 @@ export default function ProgressScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Progress</Text>
           <TouchableOpacity
@@ -1402,7 +1427,7 @@ export default function ProgressScreen({ navigation }) {
             <Text style={styles.shareSheetSub}>Send it to your teacher in the app, or share it anywhere.</Text>
 
             {shareLoading ? (
-              <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
+              <Ghost color={COLORS.primary} style={{ marginVertical: SPACING.lg }} />
             ) : convos.length === 0 ? (
               <Text style={styles.shareEmpty}>Connect a teacher to send it in-app, or share it outside the app below.</Text>
             ) : (
@@ -1412,7 +1437,7 @@ export default function ProgressScreen({ navigation }) {
                     <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color="#fff" /></View>
                     <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
                     {sendingTo === c.otherUid
-                      ? <ActivityIndicator size="small" color={COLORS.primary} />
+                      ? <Ghost size="small" color={COLORS.primary} />
                       : <Ionicons name="send" size={16} color={COLORS.primary} />}
                   </TouchableOpacity>
                 ))}

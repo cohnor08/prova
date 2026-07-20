@@ -3,12 +3,14 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, TextInput,
   Animated, PanResponder, Alert,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
@@ -229,6 +231,8 @@ function WidgetEditList({ layout, onReorder, onToggle, renderPreview, onDragStat
 
 export default function TeacherHomeScreen({ navigation }) {
   useThemeSync();
+  const tourScrollRef = useTourScroller('TeacherHomeMain'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ students: 0, active: 0, tasks: 0 });
   const [students, setStudents] = useState([]);
@@ -385,6 +389,7 @@ export default function TeacherHomeScreen({ navigation }) {
       case 'code':
         return joinCode ? (
           <View style={styles.codeCard}>
+            <TourSpot id="th-code" />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.codeLabel}>YOUR JOIN CODE</Text>
               <Text style={styles.codeValue}>{joinCode}</Text>
@@ -469,6 +474,7 @@ export default function TeacherHomeScreen({ navigation }) {
             activeOpacity={0.85}
             disabled={editMode}
           >
+            <TourSpot id="th-lessons" />
             <View style={styles.calendarCardIcon}>
               <Ionicons name="calendar" size={20} color={COLORS.primary} />
             </View>
@@ -624,7 +630,7 @@ export default function TeacherHomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragging}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} scrollEnabled={!dragging}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.kicker}>TEACHER HOME</Text>
@@ -660,7 +666,7 @@ export default function TeacherHomeScreen({ navigation }) {
         {editMode ? (
           <WidgetEditList layout={layout} onReorder={setLayout} onToggle={toggleWidget} renderPreview={renderWidget} onDragStateChange={setDragging} />
         ) : loading ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
+          <Ghost color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
           layout.map((w) => {
             if (!w.enabled) return null;

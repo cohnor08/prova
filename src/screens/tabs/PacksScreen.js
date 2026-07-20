@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Modal,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -219,7 +220,7 @@ export default function PacksScreen({ navigation }) {
       </View>
 
       {loading ? (
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+        <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />
       ) : (
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={styles.sectionHeading}>PACKS</Text>
@@ -385,7 +386,7 @@ export default function PacksScreen({ navigation }) {
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={assignProg ? doAssignProgram : doAssign} disabled={saving}>
-            {saving ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.saveText}>{assignProg ? 'Start program' : 'Assign'}</Text>}
+            {saving ? <Ghost color={COLORS.text} size="small" /> : <Text style={styles.saveText}>{assignProg ? 'Start program' : 'Assign'}</Text>}
           </TouchableOpacity>
         </View>
       </SheetModal>

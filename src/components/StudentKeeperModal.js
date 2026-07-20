@@ -6,6 +6,7 @@
 // the choice is theirs to make, not ours to guess.
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import Ghost from './Ghost';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -70,7 +71,7 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
             activeOpacity={0.85}
           >
             {saving
-              ? <ActivityIndicator color="#fff" size="small" />
+              ? <Ghost color="#fff" size="small" />
               : <Text style={styles.btnText}>Keep these {picked.length}/{limit}</Text>}
           </TouchableOpacity>
         </View>

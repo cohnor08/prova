@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Animated, Keyboard, Platform,
 } from 'react-native';
+import Ghost from './Ghost';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -210,7 +211,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
               disabled={sending || uploading}
             >
               {uploading
-                ? <ActivityIndicator color={COLORS.primary} size="small" />
+                ? <Ghost color={COLORS.primary} size="small" />
                 : <Ionicons name="image" size={20} color={COLORS.primary} />}
             </TouchableOpacity>
             <TextInput
@@ -228,7 +229,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
               disabled={!text.trim() || sending}
             >
               {sending
-                ? <ActivityIndicator color={COLORS.text} size="small" />
+                ? <Ghost color={COLORS.text} size="small" />
                 : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
             </TouchableOpacity>
           </Animated.View>

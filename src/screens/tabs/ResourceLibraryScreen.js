@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform, InputAccessoryView, Keyboard,
   Image, ActivityIndicator, Dimensions,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { pickMedia, captureMedia, uploadResourceMedia } from '../../lib/media';
@@ -31,6 +32,7 @@ function dueLabel(iso) {
 }
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 import SheetModal from '../../components/SheetModal';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 const INSTRUMENTS = ['Guitar', 'Bass'];
 
@@ -57,6 +59,8 @@ function Pill({ label, active, onPress }) {
 
 export default function ResourceLibraryScreen({ navigation }) {
   useThemeSync();
+  const tourScrollRef = useTourScroller('ResourcesHome'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [instrument, setInstrument] = useState('Guitar');
   const [level, setLevel] = useState('Beginner');
 
@@ -329,7 +333,7 @@ export default function ResourceLibraryScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.kicker}>TEACHING LIBRARY</Text>
         <Text style={styles.title}>Resources</Text>
         <Text style={styles.subtitle}>Your own links, plus a full searchable lesson library — assign any of it to a student or class.</Text>
@@ -347,6 +351,7 @@ export default function ResourceLibraryScreen({ navigation }) {
 
         {/* ── Your resources ── */}
         <View style={styles.section}>
+          <TourSpot id="r-mine" />
           <View style={styles.sectionHeader}>
             <Ionicons name="bookmark" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Your resources</Text>
@@ -446,6 +451,7 @@ export default function ResourceLibraryScreen({ navigation }) {
 
         {/* ── Lesson library (searchable bank, assign any task) ── */}
         <View style={styles.section}>
+          <TourSpot id="r-library" />
           <View style={styles.sectionHeader}>
             <Ionicons name="book" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Lesson library</Text>
@@ -530,6 +536,7 @@ export default function ResourceLibraryScreen({ navigation }) {
 
         {/* ── Skill drills (assignable mini-games, pick a level) ── */}
         <View style={styles.section}>
+          <TourSpot id="r-drills" />
           <View style={styles.sectionHeader}>
             <Ionicons name="game-controller" size={16} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Skill drills</Text>
@@ -655,7 +662,7 @@ export default function ResourceLibraryScreen({ navigation }) {
               ) : (
                 <TouchableOpacity style={styles.photoAddBtn} onPress={attachPhoto} disabled={photoBusy} activeOpacity={0.85}>
                   {photoBusy
-                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    ? <Ghost size="small" color={COLORS.primary} />
                     : <Ionicons name="image-outline" size={18} color={COLORS.primary} />}
                   <Text style={styles.photoAddText}>{photoBusy ? 'Uploading…' : 'Add a photo (library or camera)'}</Text>
                 </TouchableOpacity>

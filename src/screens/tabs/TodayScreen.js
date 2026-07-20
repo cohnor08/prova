@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Modal, Animated, Alert, Linking, ActivityIndicator, Image, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +31,7 @@ import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
 import { useCelebration } from '../../components/Celebration';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -289,7 +291,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
           <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
             <View style={styles.proofAddIcon}>
               {proofBusy
-                ? <ActivityIndicator size="small" color={COLORS.primary} />
+                ? <Ghost size="small" color={COLORS.primary} />
                 : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
             </View>
             <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice'}</Text>
@@ -365,11 +367,15 @@ function ClassScoreboard({ classId, teacherUid, myUid }) {
           <Text style={styles.scoreboardEmpty}>No classmates yet.</Text>
         ) : (
           rows.map((r, i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+            // Podium ranks get a tinted medal glyph (gold/silver/bronze) — the
+            // app's icon language, not emoji.
+            const medalColor = ['#F5C044', '#B9C2CE', '#CD8A4F'][i];
             const isMe = r.uid === myUid;
             return (
               <View key={r.uid} style={[styles.scoreboardRow, isMe && styles.scoreboardRowMe]}>
-                <Text style={styles.scoreboardRank}>{medal || `${i + 1}`}</Text>
+                <Text style={styles.scoreboardRank}>
+                  {i < 3 ? <Ionicons name="medal" size={15} color={medalColor} /> : `${i + 1}`}
+                </Text>
                 <Text style={[styles.scoreboardName, isMe && styles.scoreboardNameMe]} numberOfLines={1}>
                   {isMe ? 'You' : r.name}
                 </Text>
@@ -440,7 +446,11 @@ function SessionCard({ session, completed, onPractice }) {
             <Text style={styles.duration}>{session.duration} min</Text>
           </View>
           <View style={styles.sessionTitleRow}>
-            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>{session.title}</Text>
+            {/* Collapsed: just the part before the dash ("Fingerstyle Warmup").
+                Expanded: the full title. Kills the wall of "…" in the list. */}
+            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>
+              {expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
+            </Text>
             {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
           </View>
@@ -552,6 +562,8 @@ export default function TodayScreen({ navigation }) {
   const [proofView, setProofView] = useState(null);     // { url, type, proofs, taskId } currently being watched
   const [proofIdx, setProofIdx] = useState(0);           // which clip is showing when a task has several
   useEffect(() => { setProofIdx(0); }, [proofView?.taskId]);
+  const tourScrollRef = useTourScroller('TodayHome'); // lets the full tour scroll targets into view
+  const tourPad = useTourPadding();
   const [soloOpen, setSoloOpen] = useState(true);
   const [closedTeachers, setClosedTeachers] = useState(() => new Set()); // collapsed per-teacher solo cards
   const [teacherNames, setTeacherNames] = useState({}); // teacherUid -> display name
@@ -1503,7 +1515,7 @@ export default function TodayScreen({ navigation }) {
           </View>
         )}
       </TouchableOpacity>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}>
 
         <Text style={[styles.date, styles.headerCentered]}>{todayLabel.toUpperCase()}</Text>
         <Text style={[styles.title, styles.headerCentered]}>
@@ -1512,7 +1524,9 @@ export default function TodayScreen({ navigation }) {
 
         {(userData?.streak || 0) > 0 && (
           <View style={styles.streakChip}>
-            <Text style={styles.streakChipText}>🔥 {userData.streak} day{userData.streak === 1 ? '' : 's'} streak</Text>
+            <Text style={styles.streakChipText}>
+              <Ionicons name="flame" size={13} color="#F59E0B" /> {userData.streak} day{userData.streak === 1 ? '' : 's'} streak
+            </Text>
           </View>
         )}
 
@@ -1555,6 +1569,7 @@ export default function TodayScreen({ navigation }) {
             only assigned work get the same card. */}
         {isToday && exerciseCount > 0 && (
           <View style={styles.summaryCard}>
+            <TourSpot id="t-start" />
             <View style={styles.summaryStats}>
               {[
                 { value: practisedMins, suffix: totalMins > 0 ? ` /${totalMins}` : null, label: 'MINUTES' },
@@ -1596,6 +1611,7 @@ export default function TodayScreen({ navigation }) {
         {/* Ask Prova — a separate card, sitting below the start-practice box */}
         {isToday && (
           <TouchableOpacity style={styles.askCard} activeOpacity={0.85} onPress={() => navigation.navigate('AskProva')}>
+            <TourSpot id="t-ask" />
             <View style={styles.askIcon}>
               <Ionicons name="sparkles" size={20} color={COLORS.primary} />
             </View>
@@ -1610,6 +1626,7 @@ export default function TodayScreen({ navigation }) {
         {/* Daily challenge — bonus task that keeps the streak alive */}
         {isToday && (
           <View style={styles.challengeCard}>
+            <TourSpot id="t-challenge" />
             <TouchableOpacity style={styles.challengeHeader} onPress={() => setChallengeOpen((o) => !o)} activeOpacity={0.7}>
               <View style={styles.challengeIcon}>
                 <Ionicons name={dailyChallenge.icon} size={18} color={COLORS.accent} />
@@ -1695,6 +1712,13 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
+        {/* Teacher + class work grouped under one quiet header, so the two
+            (personal-teacher tasks and class tasks) read as one section
+            rather than two competing full-weight cards. */}
+        {isToday && (teacherGroups.length > 0 || classGroups.length > 0) && (
+          <Text style={[styles.sectionLabel, { marginTop: SPACING.sm }]}>FROM YOUR TEACHER</Text>
+        )}
+
         {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
         {isToday && teacherGroups.map((g) => {
           const open = !closedTeachers.has(g.tid);
@@ -1702,7 +1726,7 @@ export default function TodayScreen({ navigation }) {
             const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
           });
           return (
-            <View key={g.tid} style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
+            <View key={g.tid} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
@@ -1824,8 +1848,9 @@ export default function TodayScreen({ navigation }) {
         {/* Today's drills — optional mini-games, above the song (low priority) */}
         {isToday && (
           <>
-            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
+            <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TODAY'S DRILLS</Text>
             <View style={styles.drillRow}>
+              <TourSpot id="t-drills" />
               {todaysDrills.map((d) => {
                 const c = userData?.[d.counter];
                 const doneToday = c?.date === drillDateKey && (c?.rounds || 0) > 0;
@@ -2148,7 +2173,7 @@ export default function TodayScreen({ navigation }) {
 
             {reviewLoading ? (
               <View style={styles.reviewLoading}>
-                <ActivityIndicator color={COLORS.primary} />
+                <Ghost color={COLORS.primary} />
                 <Text style={styles.reviewLoadingText}>Reading your week and adapting your plan…</Text>
               </View>
             ) : reviewData ? (
@@ -2273,13 +2298,14 @@ const makeStyles = (COLORS) => StyleSheet.create({
 
   // Daily challenge card
   challengeCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.md,
     borderWidth: 1, borderColor: COLORS.border,
   },
 
-  // Teacher-assigned tasks
+  // Teacher-assigned tasks — sit under one "FROM YOUR TEACHER" header, so they
+  // hug together (sm gap) rather than floating as separate big cards.
   teacherCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.sm,
     borderWidth: 1, borderColor: COLORS.border,
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
@@ -2454,7 +2480,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   askCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
-    padding: SPACING.md, marginBottom: SPACING.lg,
+    padding: SPACING.md, marginBottom: SPACING.md,
   },
   askIcon: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
@@ -2494,7 +2520,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
-  songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4 },
 
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },

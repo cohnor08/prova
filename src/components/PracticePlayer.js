@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, ActivityIndicator,
 } from 'react-native';
+import Ghost from './Ghost';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -326,7 +327,7 @@ export default function PracticePlayer({
                 ) : (
                   <TouchableOpacity style={styles.proofBtn} onPress={() => onAttachProof(item.taskId)} disabled={proofBusyId === item.taskId} activeOpacity={0.8}>
                     {proofBusyId === item.taskId
-                      ? <ActivityIndicator size="small" color={COLORS.primary} />
+                      ? <Ghost size="small" color={COLORS.primary} />
                       : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
                     <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…')) : 'Add proof of practice'}</Text>
                   </TouchableOpacity>

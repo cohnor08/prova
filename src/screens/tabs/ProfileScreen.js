@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Modal, ActivityIndicator, TextInput, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut, deleteUser } from 'firebase/auth';
@@ -16,6 +17,7 @@ import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { track } from '../../lib/analytics';
 import SheetModal from '../../components/SheetModal';
 import { replayTour } from '../../components/TourOverlay';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { AuthContext } from '../../contexts/AuthContext';
 import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS, ACCENTS, ACCENT_KEYS } from '../../constants/theme';
 import { useThemeColors, useTheme } from '../../lib/ThemeContext';
@@ -275,6 +277,8 @@ export default function ProfileScreen({ navigation }) {
   const [teacherCodeInput, setTeacherCodeInput] = useState('');
   const [linkingTeacher, setLinkingTeacher] = useState(false);
   const [showAddTeacher, setShowAddTeacher] = useState(false);
+  const tourScrollRef = useTourScroller('Profile'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [teachers, setTeachers] = useState([]); // [{ uid, name }] — all connected teachers
   useEffect(() => { loadUser(); }, []);
 
@@ -606,7 +610,7 @@ export default function ProfileScreen({ navigation }) {
   }[modal.key] : null;
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={tourScrollRef} contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}>
         <Text style={styles.title}>Profile</Text>
 
         {/* Avatar */}
@@ -622,13 +626,13 @@ export default function ProfileScreen({ navigation }) {
 
         {saving && (
           <View style={styles.savingRow}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Ghost size="small" color={COLORS.primary} />
             <Text style={styles.savingText}>Saving...</Text>
           </View>
         )}
         {regenerating && (
           <View style={styles.savingRow}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Ghost size="small" color={COLORS.primary} />
             <Text style={styles.savingText}>Building your new plan...</Text>
           </View>
         )}
@@ -638,6 +642,7 @@ export default function ProfileScreen({ navigation }) {
         {/* My Teacher — students AND personal accounts can connect a teacher,
             which adds the teacher's tasks/lessons on top of their account. */}
         <View style={styles.section}>
+          <TourSpot id="pr-teacher" />
           <Text style={styles.sectionTitle}>MY TEACHER{teachers.length > 1 ? 'S' : ''}</Text>
           {teachers.map((t) => (
             <TouchableOpacity key={t.uid} style={styles.row} onPress={() => handleDisconnectTeacher(t.uid, t.name)} activeOpacity={0.7}>
@@ -682,7 +687,7 @@ export default function ProfileScreen({ navigation }) {
                   activeOpacity={0.85}
                 >
                   {linkingTeacher
-                    ? <ActivityIndicator size="small" color="#fff" />
+                    ? <Ghost size="small" color="#fff" />
                     : <Text style={styles.teacherConnectBtnText}>Connect</Text>}
                 </TouchableOpacity>
               </View>
@@ -825,6 +830,7 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Appearance — light/dark + accent colour, saved to the account */}
         <View style={styles.section}>
+          <TourSpot id="pr-appearance" />
           <Text style={styles.sectionTitle}>APPEARANCE</Text>
           <View style={styles.appModeRow}>
             {[['dark', 'Dark', 'moon'], ['light', 'Light', 'sunny']].map(([m, label, icon]) => (
@@ -886,9 +892,16 @@ export default function ProfileScreen({ navigation }) {
         {/* Help */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>HELP</Text>
-          <TouchableOpacity style={styles.row} onPress={replayTour}>
-            <Text style={styles.rowLabel}>Show me around again</Text>
+          <TouchableOpacity style={styles.row} onPress={() => replayTour('quick')}>
+            <Text style={styles.rowLabel}>Quick tour — the map</Text>
             <Text style={styles.rowArrow}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.row} onPress={() => replayTour('full')}>
+            <Text style={styles.rowLabel}>Full feature tour</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>Every feature, lit up</Text>
+              <Text style={styles.rowArrow}>›</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -970,7 +983,7 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingUsername}
               >
                 {savingUsername
-                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
@@ -1000,7 +1013,7 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingTip}
               >
                 {savingTip
-                  ? <ActivityIndicator color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.text} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>

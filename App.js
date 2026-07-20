@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 
+import Ghost from './src/components/Ghost';
 // Web: the app is phone-designed — pin the app root to a centred column.
 // react-native-web modal portals are ALSO direct children of <body>, but they
 // sit at height 0 in normal flow, so constraining them the same way parks
@@ -32,6 +33,8 @@ import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE, makeTabBarStyle } from './src/constants/theme';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { CelebrationProvider } from './src/components/Celebration';
+import { MetronomeProvider } from './src/lib/MetronomeContext';
+import MetronomePill from './src/components/MetronomePill';
 import IntroSplash from './src/components/IntroSplash';
 import TourOverlay from './src/components/TourOverlay';
 
@@ -190,6 +193,10 @@ function MainTabs({ role }) {
       initialRouteName={isTeacher ? 'Home' : 'Today'}
       screenOptions={({ route }) => ({
         headerShown: false,
+        // Mount every tab up front: screens load their data at app start, so
+        // switching tabs (and the guided tour walking through them) never
+        // shows a cold-load spinner.
+        lazy: false,
         tabBarStyle: makeTabBarStyle(colors),
         tabBarShowLabel: true,
         tabBarActiveTintColor: colors.primary,
@@ -219,6 +226,9 @@ function MainTabs({ role }) {
         </>
       )}
     </Tab.Navigator>
+    {/* Students get the floating metronome pill so the click survives tab
+        switches and stays visible/stoppable from anywhere. */}
+    {!isTeacher && <MetronomePill />}
     <TourOverlay role={role} />
     </View>
   );
@@ -262,7 +272,7 @@ function AppInner() {
       <View style={styles.loading}>
         <StatusBar style="light" />
         <Text style={styles.loadingLogo}>PROVA</Text>
-        <ActivityIndicator color={COLORS.primary} size="small" />
+        <Ghost color={COLORS.primary} size="small" />
       </View>
     );
   } else if (isUnderMaintenance) {
@@ -275,6 +285,7 @@ function AppInner() {
   } else {
     body = (
       <AuthContext.Provider value={{ setOnboardingComplete, role }}>
+        <MetronomeProvider>
         <CelebrationProvider>
         <NavigationContainer theme={navTheme}>
           <StatusBar style={statusBarStyle} />
@@ -303,6 +314,7 @@ function AppInner() {
           )}
         </NavigationContainer>
         </CelebrationProvider>
+        </MetronomeProvider>
       </AuthContext.Provider>
     );
   }

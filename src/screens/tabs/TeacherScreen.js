@@ -5,7 +5,9 @@ import {
   KeyboardAvoidingView, Platform, Share, Keyboard, Image, InputAccessoryView,
   Animated,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import ProofMedia from '../../components/ProofMedia';
+import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -322,7 +324,7 @@ function PaywallScreen({ onUnlock }) {
             disabled={loading}
           >
             {loading
-              ? <ActivityIndicator color={COLORS.text} />
+              ? <Ghost color={COLORS.text} />
               : <Text style={styles.subscribeBtnText}>Start Free Trial</Text>}
           </TouchableOpacity>
           <Text style={styles.trialNote}>7-day free trial · Cancel anytime</Text>
@@ -839,7 +841,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
 
           {generating ? (
             <View style={styles.songGenBox}>
-              <ActivityIndicator color={COLORS.primary} />
+              <Ghost color={COLORS.primary} />
               <Text style={styles.songGenText}>Building the step-by-step plan…</Text>
             </View>
           ) : !plan ? (
@@ -884,7 +886,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
                   <Text style={styles.songBackText}>Pick another</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.songAssignBtn} onPress={assign} disabled={assigning}>
-                  {assigning ? <ActivityIndicator color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
+                  {assigning ? <Ghost color={COLORS.background} /> : <Text style={styles.songAssignText}>Assign {picked.size} step{picked.size === 1 ? '' : 's'}</Text>}
                 </TouchableOpacity>
               </View>
             </>
@@ -1306,7 +1308,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                   disabled={!title.trim() || loading}
                 >
                   {loading
-                    ? <ActivityIndicator color={COLORS.text} size="small" />
+                    ? <Ghost color={COLORS.text} size="small" />
                     : <Text style={styles.modalAssignText}>{(isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
@@ -1605,7 +1607,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           disabled={sending || uploading}
         >
           {uploading
-            ? <ActivityIndicator color={COLORS.primary} size="small" />
+            ? <Ghost color={COLORS.primary} size="small" />
             : <Ionicons name="image" size={20} color={COLORS.primary} />}
         </TouchableOpacity>
         <TextInput
@@ -1623,7 +1625,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
           disabled={!text.trim() || sending}
         >
           {sending
-            ? <ActivityIndicator color={COLORS.text} size="small" />
+            ? <Ghost color={COLORS.text} size="small" />
             : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
         </TouchableOpacity>
       </Animated.View>
@@ -1664,7 +1666,7 @@ function StudentActivityChart({ studentUid }) {
   }, [studentUid]);
 
   if (logMap === null) {
-    return <ActivityIndicator size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
+    return <Ghost size="small" color={COLORS.textMuted} style={{ marginVertical: SPACING.md }} />;
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -1731,6 +1733,8 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState([]);
   const [parentEmails, setParentEmails] = useState({});     // { studentUid: 'parent@email' }
   const [pcSearch, setPcSearch] = useState('');             // parent-contacts filter (name or email)
+  const tourScrollRef = useTourScroller('TeacherStudents'); // full tour scroll access
+  const tourPad = useTourPadding();
   const [contactsOpen, setContactsOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState({});
   const [sendingReports, setSendingReports] = useState(false);
@@ -1785,6 +1789,10 @@ function TeacherDashboard() {
   useFocusEffect(
     React.useCallback(() => { loadStudents(); }, [])
   );
+
+  // Eager-mounted tabs never fire focus effects until first visit — load the
+  // roster on mount so the screen (and tour targets) are ready beforehand.
+  useEffect(() => { loadStudents(); }, []);
 
   // Live last-message previews for the Messages tab, keyed by chatId.
   useEffect(() => {
@@ -2309,7 +2317,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
   };
 
   if (loading) {
-    return <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />;
+    return <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />;
   }
 
   // ── Inline chat view ──
@@ -2352,7 +2360,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
   return (
     <>
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={tourScrollRef}
+        contentContainerStyle={[styles.content, tourPad ? { paddingBottom: tourPad } : null]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
       >
@@ -2465,7 +2474,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               <Text style={styles.studentSearchEmpty}>No students match “{studentSearch.trim()}”.</Text>
             )}
 
-            {filteredStudents.map((student) => {
+            {filteredStudents.map((student, studentIdx) => {
               const isOpen = expanded === student.uid;
               const status = getStudentStatus(student);
               const streak = liveStreak(student);
@@ -2483,6 +2492,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
               return (
                 <View key={student.uid} style={styles.studentCard}>
+                  {studentIdx === 0 && <TourSpot id="ts-roster" />}
                   <TouchableOpacity
                     style={styles.studentHeader}
                     onPress={() => setExpanded(isOpen ? null : student.uid)}
@@ -3139,7 +3149,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                   activeOpacity={0.85}
                 >
                   {sendingReports
-                    ? <ActivityIndicator color="#fff" />
+                    ? <Ghost color="#fff" />
                     : (
                       <>
                         <Ionicons name="mail-outline" size={18} color="#fff" />
@@ -3552,7 +3562,7 @@ export default function TeacherScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+        <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }

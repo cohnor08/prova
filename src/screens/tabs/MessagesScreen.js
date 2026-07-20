@@ -4,6 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator, Animated,
   Platform, Modal, Keyboard,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
+import { TourSpot } from '../../components/TourSpot';
 import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -196,7 +198,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
         ) : (
           <TouchableOpacity style={styles.progressBtn} onPress={sendProgress} disabled={sendingProgress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             {sendingProgress
-              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              ? <Ghost size="small" color={COLORS.primary} />
               : <Ionicons name="stats-chart" size={15} color={COLORS.primary} />}
             <Text style={styles.progressBtnText}>Progress</Text>
           </TouchableOpacity>
@@ -282,7 +284,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
             disabled={sending || uploading}
           >
             {uploading
-              ? <ActivityIndicator color={COLORS.primary} size="small" />
+              ? <Ghost color={COLORS.primary} size="small" />
               : <Ionicons name="image" size={20} color={COLORS.primary} />}
           </TouchableOpacity>
           <TextInput
@@ -300,7 +302,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
             disabled={!text.trim() || sending}
           >
             {sending
-              ? <ActivityIndicator color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.text} size="small" />
               : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
           </TouchableOpacity>
         </Animated.View>
@@ -473,6 +475,8 @@ export default function MessagesScreen() {
     otherRows.forEach((c) => listData.push(c));
   }
 
+  const firstRowId = listData.find((x) => x.type !== 'header')?.id;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -480,7 +484,7 @@ export default function MessagesScreen() {
       </View>
 
       {loading || !profileLoaded ? (
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 60 }} />
+        <Ghost color={COLORS.primary} style={{ marginTop: 60 }} />
       ) : loadErr && listData.length === 0 ? (
         <EmptyState
           variant="error"
@@ -528,6 +532,7 @@ export default function MessagesScreen() {
                   onPress={() => setActiveGroup(item)}
                   activeOpacity={0.8}
                 >
+                  {item.id === firstRowId && <TourSpot id="m-chats" />}
                   <View style={[styles.convoAvatar, styles.convoAvatarTeacher]}>
                     <Ionicons name="people" size={20} color="#fff" />
                   </View>
@@ -554,6 +559,7 @@ export default function MessagesScreen() {
               onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid, otherName: name })}
               activeOpacity={0.8}
             >
+              {item.id === firstRowId && <TourSpot id="m-chats" />}
               <View style={[styles.convoAvatar, isTeacher && styles.convoAvatarTeacher]}>
                 {isTeacher
                   ? <Ionicons name="school" size={20} color="#fff" />

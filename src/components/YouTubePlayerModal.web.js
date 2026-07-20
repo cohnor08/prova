@@ -4,6 +4,7 @@
 // and plays the top result, with the other results listed below.
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Linking } from 'react-native';
+import Ghost from './Ghost';
 import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { searchYouTube } from '../lib/youtube';
 import SheetModal from './SheetModal';
@@ -36,7 +37,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
           <Text style={styles.close}>✕</Text>
         </TouchableOpacity>
       </View>
-      {loading ? <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 40 }} /> : null}
+      {loading ? <Ghost color={COLORS.primary} style={{ marginVertical: 40 }} /> : null}
       {playingId ? (
         <View style={styles.playerBox}>
           <iframe

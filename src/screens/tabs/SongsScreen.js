@@ -4,6 +4,7 @@ import {
   Animated, PanResponder, Alert, TextInput, Keyboard, Modal, Linking, Image, ActivityIndicator,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { PitchDetector } from 'pitchy';
@@ -1404,7 +1405,7 @@ export default function SongsScreen({ route, navigation }) {
               autoCorrect={false}
             />
             {searchingTrack
-              ? <ActivityIndicator size="small" color={COLORS.primary} />
+              ? <Ghost size="small" color={COLORS.primary} />
               : songSearch.length > 0 && (
                 <TouchableOpacity onPress={() => { setSongSearch(''); setTrackResult(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
@@ -1439,7 +1440,7 @@ export default function SongsScreen({ route, navigation }) {
               <Text style={styles.emptyTaskText}>Not in your library yet</Text>
               <TouchableOpacity style={styles.searchWebBtn} onPress={runTrackSearch} disabled={searchingTrack} activeOpacity={0.85}>
                 {searchingTrack
-                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  ? <Ghost size="small" color={COLORS.primary} />
                   : <Ionicons name="cloud-outline" size={15} color={COLORS.primary} />}
                 <Text style={styles.searchWebText}>Find “{songSearch.trim()}” online</Text>
               </TouchableOpacity>
@@ -1708,7 +1709,7 @@ export default function SongsScreen({ route, navigation }) {
             >
               {generatingSetlist ? (
                 <>
-                  <ActivityIndicator color="#fff" size="small" />
+                  <Ghost color="#fff" size="small" />
                   <Text style={styles.gigGenerateText}>Building your setlist…</Text>
                 </>
               ) : (
@@ -1765,7 +1766,7 @@ export default function SongsScreen({ route, navigation }) {
             />
             <TouchableOpacity style={styles.manualSearchBtn} onPress={runManualSearch} disabled={manualSearching} activeOpacity={0.85}>
               {manualSearching
-                ? <ActivityIndicator size="small" color={COLORS.text} />
+                ? <Ghost size="small" color={COLORS.text} />
                 : <Ionicons name="search" size={17} color={COLORS.text} />}
             </TouchableOpacity>
           </View>
@@ -1873,7 +1874,7 @@ export default function SongsScreen({ route, navigation }) {
               >
                 {exportingSetlistId === viewingSetlist?.id ? (
                   <>
-                    <ActivityIndicator color="#fff" size="small" />
+                    <Ghost color="#fff" size="small" />
                     <Text style={styles.spotifyExportText}>Adding to Spotify…</Text>
                   </>
                 ) : (

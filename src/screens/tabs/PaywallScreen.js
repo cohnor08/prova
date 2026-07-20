@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -118,7 +119,7 @@ export default function PaywallScreen({ navigation }) {
       <View style={styles.footer}>
         <TouchableOpacity style={styles.cta} onPress={mockCheckout ? confirm : comingSoon} disabled={busy} activeOpacity={0.9}>
           {busy
-            ? <ActivityIndicator color="#fff" />
+            ? <Ghost color="#fff" />
             : <Text style={styles.ctaText}>{mockCheckout ? 'Start free trial' : 'Coming soon'}</Text>}
         </TouchableOpacity>
         {busy && <Text style={styles.busyNote}>Setting up your plan — this can take a moment…</Text>}

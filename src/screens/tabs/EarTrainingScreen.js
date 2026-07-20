@@ -12,6 +12,7 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
+import { useMetronome } from '../../lib/MetronomeContext';
 import { PIANO_FILES as NOTE_FILES } from '../../constants/pianoNotes';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
@@ -92,12 +93,17 @@ export default function EarTrainingScreen({ navigation, route }) {
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
   const soundsRef = useRef([]);
+  const playScrollRef = useRef(null);
 
   const unloadAll = async () => {
     const sounds = soundsRef.current; soundsRef.current = [];
     for (const s of sounds) { try { await s.unloadAsync(); } catch (e) {} }
   };
   useEffect(() => () => { unloadAll(); }, []);
+
+  // A running metronome would drown the notes you're trying to identify.
+  const metronome = useMetronome();
+  useEffect(() => { metronome?.stop?.(); }, []);
 
   // Activate the audio session ONCE on mount and warm the pipeline with a
   // silent note — iOS pops audibly if the session spins up right as the first
@@ -123,18 +129,26 @@ export default function EarTrainingScreen({ navigation, route }) {
     } catch (e) { /* audio is best-effort */ }
   };
 
+  // On the hardest level of each mode, drop the 4-way multiple choice and show
+  // EVERY possible answer (recall mode) — real recognition, not a 1-in-4 guess.
+  const shuffle = (arr) => arr.slice().sort(() => Math.random() - 0.5);
+
   const makeQuestion = () => {
     if (mode === 'intervals') {
       const set = LEVELS.find((l) => l.id === level).semis;
+      const recall = level === LEVELS[LEVELS.length - 1].id;
       const semis = pick(set);
       const root = LOW + Math.floor(Math.random() * (HIGH - LOW - semis + 1));
-      const wrong = set.filter((x) => x !== semis).sort(() => Math.random() - 0.5).slice(0, Math.min(3, set.length - 1));
-      const choices = [semis, ...wrong].sort(() => Math.random() - 0.5)
-        .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
-      return { midis: [root, root + semis], gap: 650, answer: INTERVALS.find((iv) => iv.semis === semis).name, choices };
+      const answerName = INTERVALS.find((iv) => iv.semis === semis).name;
+      const choices = recall
+        ? shuffle(set.map((x) => INTERVALS.find((iv) => iv.semis === x).name))
+        : shuffle([semis, ...set.filter((x) => x !== semis).sort(() => Math.random() - 0.5).slice(0, 3)])
+            .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
+      return { midis: [root, root + semis], gap: 650, answer: answerName, choices, recall };
     }
     if (mode === 'scales') {
       const names = SCALE_LEVELS.find((l) => l.id === level).names;
+      const recall = level === SCALE_LEVELS[SCALE_LEVELS.length - 1].id;
       const set = SCALES.filter((s) => names.includes(s.name));
       const scale = pick(set);
       const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 12 + 1));
@@ -142,10 +156,12 @@ export default function EarTrainingScreen({ navigation, route }) {
       return {
         midis: scale.steps.map((s) => root + s), gap: 300,
         answer: scale.name,
-        choices: [scale.name, ...wrong.map((s) => s.name)].sort(() => Math.random() - 0.5),
+        choices: recall ? shuffle(names) : shuffle([scale.name, ...wrong.map((s) => s.name)]),
+        recall,
       };
     }
     const names = CHORD_LEVELS.find((l) => l.id === level).names;
+    const recall = level === CHORD_LEVELS[CHORD_LEVELS.length - 1].id;
     const set = CHORDS.filter((c) => names.includes(c.name));
     const chord = pick(set);
     const maxOff = Math.max(...chord.offsets);
@@ -154,7 +170,8 @@ export default function EarTrainingScreen({ navigation, route }) {
     return {
       midis: chord.offsets.map((o) => root + o), gap: 0,
       answer: chord.name,
-      choices: [chord.name, ...wrong.map((c) => c.name)].sort(() => Math.random() - 0.5),
+      choices: recall ? shuffle(names) : shuffle([chord.name, ...wrong.map((c) => c.name)]),
+      recall,
     };
   };
 
@@ -173,6 +190,8 @@ export default function EarTrainingScreen({ navigation, route }) {
     if (picked) return;
     setPicked(choice);
     if (choice === question.answer) setScore((s) => s + 1);
+    // Bring the Next button into view for the long recall answer lists.
+    setTimeout(() => playScrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
   const next = async () => {
@@ -217,7 +236,7 @@ export default function EarTrainingScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => { unloadAll(); navigation.goBack(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { unloadAll(); if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Ear Training</Text>
@@ -256,7 +275,7 @@ export default function EarTrainingScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <View style={styles.game}>
+        <ScrollView ref={playScrollRef} style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 
@@ -265,6 +284,7 @@ export default function EarTrainingScreen({ navigation, route }) {
             <Text style={styles.playBigText}>Tap to replay</Text>
           </TouchableOpacity>
 
+          {question.recall && <Text style={styles.recallHint}>Recall mode — no multiple choice, name it from them all</Text>}
           <View style={styles.choices}>
             {question.choices.map((c) => {
               const isPicked = picked === c;
@@ -289,7 +309,7 @@ export default function EarTrainingScreen({ navigation, route }) {
               <Text style={styles.nextText}>{qNum >= ROUND_LEN ? 'Finish' : 'Next ›'}</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {phase === 'done' && (
@@ -330,10 +350,12 @@ const styles = themedStyles(() => StyleSheet.create({
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
   startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
+  gamePlay: { padding: SPACING.xl, alignItems: 'center', flexGrow: 1, paddingBottom: SPACING.xxl },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   playBig: { width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl },
   playBigText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 6 },
+  recallHint: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' },
   choice: { width: '47%', paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   choiceRight: { backgroundColor: '#16a34a', borderColor: '#16a34a' },

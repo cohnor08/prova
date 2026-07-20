@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -113,7 +114,7 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>
+        <View style={styles.center}><Ghost color={COLORS.primary} /></View>
       ) : tab === 'feedback' ? (
         taskNotes.length === 0 ? (
           <View style={styles.center}>

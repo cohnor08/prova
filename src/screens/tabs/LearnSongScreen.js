@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
   TextInput, Modal, Alert, ActivityIndicator, Linking, Keyboard, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { Audio } from 'expo-av';
 import { fetchSongArtwork, fetchSongPreview, spotifySearchUrl } from '../../constants/songs';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -289,7 +290,7 @@ export default function LearnSongScreen({ navigation }) {
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>
+        <View style={styles.center}><Ghost color={COLORS.primary} /></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
           <Text style={styles.intro}>
@@ -347,7 +348,7 @@ export default function LearnSongScreen({ navigation }) {
                                 {!!s.artist && <Text style={styles.mediaArtist} numberOfLines={1}>{s.artist}</Text>}
                                 <View style={styles.mediaBtns}>
                                   {!m ? (
-                                    <ActivityIndicator size="small" color={COLORS.primary} />
+                                    <Ghost size="small" color={COLORS.primary} />
                                   ) : (
                                     <>
                                       {!!m.preview && (
@@ -461,7 +462,7 @@ export default function LearnSongScreen({ navigation }) {
 
             {generating ? (
               <View style={styles.genBox}>
-                <ActivityIndicator color={COLORS.primary} />
+                <Ghost color={COLORS.primary} />
                 <Text style={styles.genText}>Building your step-by-step plan…</Text>
                 <Text style={styles.genHint}>This can take a few seconds.</Text>
               </View>

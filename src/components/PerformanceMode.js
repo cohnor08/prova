@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, StatusBar, ActivityIndicator, Linking, ScrollView,
 } from 'react-native';
+import Ghost from './Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -172,7 +173,7 @@ export default function PerformanceMode({
                   activeOpacity={0.8}
                 >
                   {isPreviewLoading
-                    ? <ActivityIndicator size="small" color={COLORS.text} />
+                    ? <Ghost size="small" color={COLORS.text} />
                     : <Ionicons name={isPreviewing ? 'pause' : 'play'} size={18} color={COLORS.text} />}
                   <Text style={styles.songActionText}>{isPreviewing ? 'Stop' : 'Preview'}</Text>
                 </TouchableOpacity>

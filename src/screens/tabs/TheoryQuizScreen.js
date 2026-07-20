@@ -3,7 +3,7 @@
 // on the fly (src/constants/theory.js) so they never run out. No audio needed.
 // Same daily economy as the other mini-games: the first three rounds a day bank
 // +20 Prova points and a couple of practice minutes.
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +33,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
+  const playScrollRef = useRef(null);
 
   const startRound = async () => {
     if (!(await allowGameRound('theoryQuiz'))) {
@@ -47,6 +48,9 @@ export default function TheoryQuizScreen({ navigation, route }) {
     if (picked !== null) return;
     setPicked(choice);
     if (choice === question.answer) setScore((s) => s + 1);
+    // Reveal the Next button without a manual scroll — helps the long recall
+    // lists where Next would otherwise sit below the fold.
+    setTimeout(() => playScrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
   const next = async () => {
@@ -86,7 +90,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Theory Quiz</Text>
@@ -125,7 +129,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <View style={styles.game}>
+        <ScrollView ref={playScrollRef} style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 
@@ -133,6 +137,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
             <Text style={styles.prompt}>{question.prompt}</Text>
           </View>
 
+          {question.recall && <Text style={styles.recallHint}>Recall mode — pick from every option</Text>}
           <View style={styles.choices}>
             {question.choices.map((c) => {
               const isPicked = picked === c;
@@ -157,7 +162,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
               <Text style={styles.nextText}>{qNum >= ROUND_LEN ? 'Finish' : 'Next ›'}</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {phase === 'done' && (
@@ -200,10 +205,12 @@ const styles = themedStyles(() => StyleSheet.create({
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
   startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
+  gamePlay: { padding: SPACING.xl, alignItems: 'center', flexGrow: 1, paddingBottom: SPACING.xxl },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   promptCard: { alignSelf: 'stretch', backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, paddingVertical: SPACING.xl, paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   prompt: { color: COLORS.text, fontSize: 19, textAlign: 'center', lineHeight: 27, fontWeight: '700' },
+  recallHint: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', alignSelf: 'stretch' },
   choice: { width: '47%', flexGrow: 1, paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   choiceRight: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
