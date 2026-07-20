@@ -1212,19 +1212,6 @@ export default function TodayScreen({ navigation }) {
     if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video', proofs: task.proofs, taskId: task.id });
   };
 
-  // Free student accounts don't get the AI personalised plan — it's part of a
-  // paid Personal account. Confirm, then send them to the upgrade screen.
-  const promptUpgrade = () => {
-    Alert.alert(
-      'Upgrade to Personal',
-      'Get your own AI practice plan that adapts to you — alongside your teacher’s tasks.',
-      [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'See plans', onPress: () => navigation.navigate('Paywall') },
-      ]
-    );
-  };
-
   // Open an attachment a teacher added to a task: a raw URL opens directly,
   // anything else becomes a YouTube search (handles links and song names).
   const openTaskLink = (value) => {
@@ -1673,21 +1660,17 @@ export default function TodayScreen({ navigation }) {
         )}
         {selectedSessions.length === 0 ? (
           isToday && !hasPlan ? (
-            // Students: the "unlock your AI plan" hero is rendered at the BOTTOM
-            // (teacher tasks/classes/song take priority), so nothing here.
-            userData?.role === 'student' ? null : (
-              <View style={styles.restDay}>
-                <View style={styles.restIconWrap}>
-                  <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
-                </View>
-                <Text style={styles.restTitle}>No plan yet</Text>
-                <Text style={styles.restSubtitle}>Build your personalised plan from Profile whenever you’re ready.</Text>
-                <TouchableOpacity style={styles.makePlanBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.85}>
-                  <Ionicons name="add" size={16} color="#fff" />
-                  <Text style={styles.makePlanText}>Create a plan</Text>
-                </TouchableOpacity>
+            <View style={styles.restDay}>
+              <View style={styles.restIconWrap}>
+                <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
               </View>
-            )
+              <Text style={styles.restTitle}>No plan yet</Text>
+              <Text style={styles.restSubtitle}>Build your personalised plan from Profile whenever you’re ready.</Text>
+              <TouchableOpacity style={styles.makePlanBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.85}>
+                <Ionicons name="add" size={16} color="#fff" />
+                <Text style={styles.makePlanText}>Create a plan</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View style={styles.restDay}>
               <View style={styles.restIconWrap}>
@@ -1899,24 +1882,6 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
-        )}
-
-        {/* Free students: the upgrade CTA sits at the bottom, below the teacher's
-            tasks, classes and the song — those take priority. */}
-        {isToday && !hasPlan && userData?.role === 'student' && (
-          <LinearGradient
-            colors={[COLORS.primary + '3D', (COLORS.accent || '#06B6D4') + '1A']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={styles.upgradeHero}
-          >
-            <View style={styles.upgradeBadge}><Ionicons name="sparkles" size={20} color={COLORS.primary} /></View>
-            <Text style={styles.upgradeTitle}>Unlock your own AI plan</Text>
-            <Text style={styles.upgradeSub}>Your teacher’s tasks and the daily challenge are free — get a personalised plan that adapts to you with Personal.</Text>
-            <TouchableOpacity style={styles.upgradeBtn} onPress={promptUpgrade} activeOpacity={0.85}>
-              <Ionicons name="star" size={15} color={COLORS.text} />
-              <Text style={styles.upgradeBtnText}>Upgrade to Personal</Text>
-            </TouchableOpacity>
-          </LinearGradient>
         )}
 
       </ScrollView>

@@ -44,7 +44,7 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
           <Text style={styles.sub}>
             Your plan includes {limit} connected students. Pick who stays — the others are
             unlinked (their accounts and progress are untouched) and can reconnect with your
-            join code whenever you upgrade.
+            join code at any time.
           </Text>
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
             {students.map((s) => {
