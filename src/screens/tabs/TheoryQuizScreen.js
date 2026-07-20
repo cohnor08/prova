@@ -133,6 +133,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
             <Text style={styles.prompt}>{question.prompt}</Text>
           </View>
 
+          {question.recall && <Text style={styles.recallHint}>Recall mode — pick from every option</Text>}
           <View style={styles.choices}>
             {question.choices.map((c) => {
               const isPicked = picked === c;
@@ -204,6 +205,7 @@ const styles = themedStyles(() => StyleSheet.create({
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   promptCard: { alignSelf: 'stretch', backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, paddingVertical: SPACING.xl, paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   prompt: { color: COLORS.text, fontSize: 19, textAlign: 'center', lineHeight: 27, fontWeight: '700' },
+  recallHint: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', alignSelf: 'stretch' },
   choice: { width: '47%', flexGrow: 1, paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   choiceRight: { backgroundColor: '#16a34a', borderColor: '#16a34a' },

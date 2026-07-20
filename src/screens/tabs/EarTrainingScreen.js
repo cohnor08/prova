@@ -128,18 +128,26 @@ export default function EarTrainingScreen({ navigation, route }) {
     } catch (e) { /* audio is best-effort */ }
   };
 
+  // On the hardest level of each mode, drop the 4-way multiple choice and show
+  // EVERY possible answer (recall mode) — real recognition, not a 1-in-4 guess.
+  const shuffle = (arr) => arr.slice().sort(() => Math.random() - 0.5);
+
   const makeQuestion = () => {
     if (mode === 'intervals') {
       const set = LEVELS.find((l) => l.id === level).semis;
+      const recall = level === LEVELS[LEVELS.length - 1].id;
       const semis = pick(set);
       const root = LOW + Math.floor(Math.random() * (HIGH - LOW - semis + 1));
-      const wrong = set.filter((x) => x !== semis).sort(() => Math.random() - 0.5).slice(0, Math.min(3, set.length - 1));
-      const choices = [semis, ...wrong].sort(() => Math.random() - 0.5)
-        .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
-      return { midis: [root, root + semis], gap: 650, answer: INTERVALS.find((iv) => iv.semis === semis).name, choices };
+      const answerName = INTERVALS.find((iv) => iv.semis === semis).name;
+      const choices = recall
+        ? shuffle(set.map((x) => INTERVALS.find((iv) => iv.semis === x).name))
+        : shuffle([semis, ...set.filter((x) => x !== semis).sort(() => Math.random() - 0.5).slice(0, 3)])
+            .map((x) => INTERVALS.find((iv) => iv.semis === x).name);
+      return { midis: [root, root + semis], gap: 650, answer: answerName, choices, recall };
     }
     if (mode === 'scales') {
       const names = SCALE_LEVELS.find((l) => l.id === level).names;
+      const recall = level === SCALE_LEVELS[SCALE_LEVELS.length - 1].id;
       const set = SCALES.filter((s) => names.includes(s.name));
       const scale = pick(set);
       const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 12 + 1));
@@ -147,10 +155,12 @@ export default function EarTrainingScreen({ navigation, route }) {
       return {
         midis: scale.steps.map((s) => root + s), gap: 300,
         answer: scale.name,
-        choices: [scale.name, ...wrong.map((s) => s.name)].sort(() => Math.random() - 0.5),
+        choices: recall ? shuffle(names) : shuffle([scale.name, ...wrong.map((s) => s.name)]),
+        recall,
       };
     }
     const names = CHORD_LEVELS.find((l) => l.id === level).names;
+    const recall = level === CHORD_LEVELS[CHORD_LEVELS.length - 1].id;
     const set = CHORDS.filter((c) => names.includes(c.name));
     const chord = pick(set);
     const maxOff = Math.max(...chord.offsets);
@@ -159,7 +169,8 @@ export default function EarTrainingScreen({ navigation, route }) {
     return {
       midis: chord.offsets.map((o) => root + o), gap: 0,
       answer: chord.name,
-      choices: [chord.name, ...wrong.map((c) => c.name)].sort(() => Math.random() - 0.5),
+      choices: recall ? shuffle(names) : shuffle([chord.name, ...wrong.map((c) => c.name)]),
+      recall,
     };
   };
 
@@ -270,6 +281,7 @@ export default function EarTrainingScreen({ navigation, route }) {
             <Text style={styles.playBigText}>Tap to replay</Text>
           </TouchableOpacity>
 
+          {question.recall && <Text style={styles.recallHint}>Recall mode — no multiple choice, name it from them all</Text>}
           <View style={styles.choices}>
             {question.choices.map((c) => {
               const isPicked = picked === c;
@@ -339,6 +351,7 @@ const styles = themedStyles(() => StyleSheet.create({
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   playBig: { width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl },
   playBigText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 6 },
+  recallHint: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' },
   choice: { width: '47%', paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   choiceRight: { backgroundColor: '#16a34a', borderColor: '#16a34a' },

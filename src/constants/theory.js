@@ -12,12 +12,17 @@ const note = (i) => CHROMA[(((i % 12) + 12) % 12)];
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 
-// Build exactly `n` unique choices that include `answer`, drawing the rest from
-// `pool` (skipping anything equal to the answer). Returned shuffled.
+// On the hardest level, choicesFrom widens to the WHOLE pool (recall mode) —
+// name it, don't pick from four. Toggled per question by makeTheoryQuestion.
+let RECALL = false;
+
+// Build unique choices that include `answer`, drawing the rest from `pool`.
+// n is the cap; in recall mode the cap lifts to the full pool.
 function choicesFrom(answer, pool, n = 4) {
+  const cap = RECALL ? pool.length + 1 : n;
   const set = new Set([answer]);
   for (const x of shuffle(pool)) {
-    if (set.size >= n) break;
+    if (set.size >= cap) break;
     if (x !== answer) set.add(x);
   }
   return shuffle([...set]);
@@ -192,5 +197,9 @@ function genScale(level) {
 const GENERATORS = { intervals: genInterval, chords: genChord, keys: genKey, scales: genScale };
 
 export function makeTheoryQuestion(categoryId, level) {
-  return (GENERATORS[categoryId] || genInterval)(level);
+  // Hardest level → recall mode: name-from-a-pool questions show every option.
+  RECALL = level >= 3;
+  const q = (GENERATORS[categoryId] || genInterval)(level);
+  q.recall = RECALL && q.choices.length > 4;
+  return q;
 }
