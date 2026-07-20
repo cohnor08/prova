@@ -209,8 +209,8 @@ export default function TourOverlay({ role }) {
       // two agreeing, sane measurements before placing.
       let prevProbe = null;
       let stable = null;
-      for (let i = 0; i < 10; i++) {
-        if (i > 0) await sleep(50);
+      for (let i = 0; i < 16; i++) {
+        if (i > 0) await sleep(80);
         if (seqRef.current !== seq) return;
         const r = await measure(s.target);
         if (!r || r.w < 40 || r.h < 20) { prevProbe = null; continue; }

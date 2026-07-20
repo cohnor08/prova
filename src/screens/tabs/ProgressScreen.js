@@ -1067,6 +1067,11 @@ export default function ProgressScreen({ navigation }) {
     }, [])
   );
 
+  // Tabs mount eagerly (lazy:false) but focus effects don't fire until the
+  // first visit — load on MOUNT too, so the screen (and the tour's targets)
+  // are ready before anyone arrives.
+  useEffect(() => { loadData(); }, []);
+
   const loadData = async () => {
     try {
       const uid = auth.currentUser?.uid;
