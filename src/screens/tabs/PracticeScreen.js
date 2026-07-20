@@ -614,10 +614,15 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.bpmRangeLabel}>{BPM_MAX}</Text>
           </View>
 
-          {/* Time signature — Beat / Note steppers (Apple-metronome style) */}
-          <View style={styles.tsRow}>
-            <View style={styles.tsSide}>
-              <Text style={styles.tsSideLabel}>Beat</Text>
+          {/* Time signature — Beat / Note steppers (Apple-metronome style).
+              Labels sit in their own row so the buttons line up with the box. */}
+          <View style={styles.tsBlock}>
+            <View style={styles.tsLabelRow}>
+              <Text style={styles.tsColLabel}>Beat</Text>
+              <View style={styles.tsLabelSpacer} />
+              <Text style={styles.tsColLabel}>Note</Text>
+            </View>
+            <View style={styles.tsRow}>
               <View style={styles.tsBtns}>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => setBeatsPerBar(beatsPerBar - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name="remove" size={18} color={COLORS.primary} />
@@ -626,12 +631,9 @@ export default function PracticeScreen({ route, navigation }) {
                   <Ionicons name="add" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
               </View>
-            </View>
-            <View style={styles.tsDisplay}>
-              <Text style={styles.tsDisplayText}>{beatsPerBar}/{denom}</Text>
-            </View>
-            <View style={styles.tsSide}>
-              <Text style={styles.tsSideLabel}>Note</Text>
+              <View style={styles.tsDisplay}>
+                <Text style={styles.tsDisplayText}>{beatsPerBar}/{denom}</Text>
+              </View>
               <View style={styles.tsBtns}>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => cycleDenom(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name="remove" size={18} color={COLORS.primary} />
@@ -859,12 +861,14 @@ const makeStyles = (COLORS) => StyleSheet.create({
   beatSegFilled: { backgroundColor: COLORS.primary },
   beatSegOn: { backgroundColor: COLORS.accent || COLORS.primary },
 
-  tsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.md },
-  tsSide: { alignItems: 'center', gap: 5 },
-  tsSideLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  tsBtns: { flexDirection: 'row', gap: 6 },
+  tsBlock: { alignSelf: 'center', marginBottom: SPACING.md },
+  tsLabelRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: 6 },
+  tsColLabel: { width: 74, textAlign: 'center', color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  tsLabelSpacer: { width: 62 },
+  tsRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  tsBtns: { flexDirection: 'row', gap: 6, width: 74, justifyContent: 'center' },
   tsBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
-  tsDisplay: { minWidth: 62, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  tsDisplay: { width: 62, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   tsDisplayText: { color: COLORS.primary, fontSize: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
 
   soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
