@@ -12,20 +12,53 @@ const MetronomeContext = createContext(null);
 // The click voices. Classic = the original tick (played sharp via rate 1.26);
 // the rest are synthesized samples in assets/click. Choice persists on-device.
 export const CLICK_SETS = {
-  classic: { label: 'Classic', tick: require('../../assets/tick.wav'), accent: require('../../assets/tick-accent.wav'), rate: 1.26 },
-  wood:    { label: 'Wood',    tick: require('../../assets/click/wood.wav'),  accent: require('../../assets/click/wood-accent.wav'),  rate: 1 },
-  beep:    { label: 'Beep',    tick: require('../../assets/click/beep.wav'),  accent: require('../../assets/click/beep-accent.wav'),  rate: 1 },
-  clave:   { label: 'Clave',   tick: require('../../assets/click/clave.wav'), accent: require('../../assets/click/clave-accent.wav'), rate: 1 },
-  hat:     { label: 'Hi-hat',  tick: require('../../assets/click/hat.wav'),   accent: require('../../assets/click/hat-accent.wav'),   rate: 1 },
+  classic:  { label: 'Classic',  tick: require('../../assets/tick.wav'),               accent: require('../../assets/tick-accent.wav'),               rate: 1.26 },
+  wood:     { label: 'Wood',     tick: require('../../assets/click/wood.wav'),         accent: require('../../assets/click/wood-accent.wav'),         rate: 1 },
+  beep:     { label: 'Beep',     tick: require('../../assets/click/beep.wav'),         accent: require('../../assets/click/beep-accent.wav'),         rate: 1 },
+  clave:    { label: 'Clave',    tick: require('../../assets/click/clave.wav'),        accent: require('../../assets/click/clave-accent.wav'),        rate: 1 },
+  hat:      { label: 'Hi-hat',   tick: require('../../assets/click/hat.wav'),          accent: require('../../assets/click/hat-accent.wav'),          rate: 1 },
+  rim:      { label: 'Rimshot',  tick: require('../../assets/click/rim.wav'),          accent: require('../../assets/click/rim-accent.wav'),          rate: 1 },
+  cowbell:  { label: 'Cowbell',  tick: require('../../assets/click/cowbell.wav'),      accent: require('../../assets/click/cowbell-accent.wav'),      rate: 1 },
+  digital:  { label: 'Digital',  tick: require('../../assets/click/digital.wav'),      accent: require('../../assets/click/digital-accent.wav'),      rate: 1 },
+  marimba:  { label: 'Marimba',  tick: require('../../assets/click/marimba.wav'),      accent: require('../../assets/click/marimba-accent.wav'),      rate: 1 },
+  triangle: { label: 'Triangle', tick: require('../../assets/click/triangle.wav'),     accent: require('../../assets/click/triangle-accent.wav'),     rate: 1 },
 };
 const SOUND_PREF_KEY = 'prova:metroSound';
+
+// Per-beat accent levels 1–4 → which sample + how loud. Level 1 = quiet tick,
+// level 4 = the loud accent. Tapping a beat bar cycles it.
+export const ACCENT_LEVELS = 4;
+function levelSound(level) {
+  if (level >= 4) return { accent: true, volume: 1.0 };
+  if (level === 3) return { accent: true, volume: 0.78 };
+  if (level === 2) return { accent: false, volume: 0.8 };
+  return { accent: false, volume: 0.42 };
+}
+// A sensible default accent map for N beats: downbeat loud, the rest quiet.
+function defaultAccents(n) {
+  return Array.from({ length: n }, (_, i) => (i === 0 ? 3 : 1));
+}
 
 export function MetronomeProvider({ children }) {
   const [bpm, setBpm] = useState(80);
   const [clickSet, setClickSetState] = useState('classic');
   const [isPlaying, setIsPlaying] = useState(false);
   const [beat, setBeat] = useState(0);
-  const [beatsPerBar, setBeatsPerBar] = useState(4);
+  const [beatsPerBar, setBeatsPerBarState] = useState(4);
+  const [accents, setAccents] = useState(() => defaultAccents(4)); // per-beat level 1–4
+  const accentsRef = useRef(accents);
+  useEffect(() => { accentsRef.current = accents; }, [accents]);
+
+  // Changing the time signature resizes the accent map, keeping existing beats'
+  // levels and defaulting any new beats (quiet, downbeat loud).
+  const setBeatsPerBar = useCallback((n) => {
+    setBeatsPerBarState(n);
+    setAccents((prev) => Array.from({ length: n }, (_, i) => prev[i] || (i === 0 ? 3 : 1)));
+  }, []);
+  // Tap a beat bar → cycle its accent level 1→2→3→4→1.
+  const cycleAccent = useCallback((i) => {
+    setAccents((prev) => prev.map((v, j) => (j === i ? (v % ACCENT_LEVELS) + 1 : v)));
+  }, []);
 
   // Speed trainer — auto-ramps the tempo as you play (start → target, step every N bars)
   const [trainerOn, setTrainerOn] = useState(false);
@@ -99,15 +132,19 @@ export function MetronomeProvider({ children }) {
       beatRef.current = nextBeat;
       setBeat(nextBeat);
 
-      const isAccent = nextBeat === 0;
-      const sound = isAccent ? accentSound.current : tickSound.current;
+      // Per-beat accent: the beat's level picks the sample (tick/accent) and
+      // volume, so a louder-set beat clicks louder.
+      const level = accentsRef.current[nextBeat] || 1;
+      const { accent, volume } = levelSound(level);
+      const sound = accent ? accentSound.current : tickSound.current;
       if (sound) {
+        sound.setVolumeAsync(volume).catch(() => {});
         sound.replayAsync().catch(() => {});
       }
 
       // Speed trainer: every downbeat completes a bar — step the tempo up once
       // we've counted enough bars, until we reach the target.
-      if (isAccent) {
+      if (nextBeat === 0) {
         const t = trainerRef.current;
         if (t.on) {
           barCountRef.current += 1;
@@ -144,6 +181,7 @@ export function MetronomeProvider({ children }) {
     trainerBars, setTrainerBars, atTarget, setAtTarget,
     barCountRef, pulseAnim, stop,
     clickSet, setClickSet,
+    accents, cycleAccent,
   };
 
   return <MetronomeContext.Provider value={value}>{children}</MetronomeContext.Provider>;

@@ -11,7 +11,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
-import { useMetronome, CLICK_SETS } from '../../lib/MetronomeContext';
+import { useMetronome, CLICK_SETS, ACCENT_LEVELS } from '../../lib/MetronomeContext';
+import SheetModal from '../../components/SheetModal';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ const BASS_STRINGS = [
   { number: 1, note: 'G', octave: '2', freq: 98.00,  label: '1st string (G)' },
 ];
 
-const TIME_SIGNATURES = [2, 3, 4, 6];
+const TIME_SIGNATURES = [2, 3, 4, 5, 6, 7, 8, 9, 12];
 
 const BPM_MIN = 20;
 const BPM_MAX = 250;
@@ -326,8 +327,9 @@ export default function PracticeScreen({ route, navigation }) {
     trainerTarget, setTrainerTarget, trainerStep, setTrainerStep,
     trainerBars, setTrainerBars, atTarget, setAtTarget,
     barCountRef, pulseAnim, stop: stopMetronome,
-    clickSet, setClickSet,
+    clickSet, setClickSet, accents, cycleAccent,
   } = useMetronome();
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
 
   // Tuner
   const [tunerInstrument, setTunerInstrument] = useState('Guitar');
@@ -568,25 +570,38 @@ export default function PracticeScreen({ route, navigation }) {
         {tool === 'metronome' && (
         <View style={styles.card}>
 
-          {/* Beat dots */}
+          {/* Beat bars — each beat is a 4-segment column; tap to raise its
+              accent (louder click). The playing beat glows and pulses. */}
           <View style={styles.beatRow}>
             {Array.from({ length: beatsPerBar }).map((_, i) => {
               const isActive = isPlaying && i === beat % beatsPerBar;
-              const isAccent = i === 0;
+              const level = accents[i] || 1;
               return (
-                <Animated.View
+                <TouchableOpacity
                   key={i}
-                  style={[
-                    styles.beatDot,
-                    isAccent && styles.beatDotAccent,
-                    isActive && styles.beatDotOn,
-                    isActive && isAccent && styles.beatDotAccentOn,
-                    isActive && { transform: [{ scale: pulseAnim }] },
-                  ]}
-                />
+                  onPress={() => cycleAccent(i)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 3, right: 3 }}
+                >
+                  <Animated.View style={[styles.beatBar, isActive && { transform: [{ scale: pulseAnim }] }]}>
+                    {Array.from({ length: ACCENT_LEVELS }).map((__, seg) => {
+                      const filled = ACCENT_LEVELS - 1 - seg < level; // fill from the bottom up
+                      return (
+                        <View
+                          key={seg}
+                          style={[
+                            styles.beatSeg,
+                            filled && (isActive ? styles.beatSegOn : styles.beatSegFilled),
+                          ]}
+                        />
+                      );
+                    })}
+                  </Animated.View>
+                </TouchableOpacity>
               );
             })}
           </View>
+          <Text style={styles.beatHint}>Tap a bar to make that beat louder</Text>
 
           {/* BPM display */}
           <View style={styles.bpmDisplay}>
@@ -619,23 +634,14 @@ export default function PracticeScreen({ route, navigation }) {
             </View>
           </View>
 
-          {/* Click voice — picking one plays a preview tick; choice persists */}
-          <View style={styles.timeSigRow}>
-            <Text style={styles.timeSigLabel}>Sound</Text>
-            <View style={[styles.timeSigBtns, { flexWrap: 'wrap' }]}>
-              {Object.entries(CLICK_SETS).map(([key, set]) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.timeSigBtn, clickSet === key && styles.timeSigBtnActive]}
-                  onPress={() => setClickSet(key)}
-                >
-                  <Text style={[styles.timeSigText, clickSet === key && styles.timeSigTextActive]}>
-                    {set.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          {/* Click voice — opens the full library */}
+          <TouchableOpacity style={styles.soundBtn} onPress={() => setSoundPickerOpen(true)} activeOpacity={0.8}>
+            <Ionicons name="musical-notes-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.soundBtnText}>Sound</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={styles.soundBtnValue}>{(CLICK_SETS[clickSet] || CLICK_SETS.classic).label}</Text>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+          </TouchableOpacity>
 
           {/* Speed trainer */}
           <View style={[styles.trainerBox, trainerOn && styles.trainerBoxOn]}>
@@ -692,6 +698,34 @@ export default function PracticeScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
         )}
+
+        {/* Sound library — pick a click voice (each preview plays a tick) */}
+        <SheetModal visible={soundPickerOpen} onRequestClose={() => setSoundPickerOpen(false)} cardStyle={styles.soundModalCard}>
+          <View style={styles.soundModalHead}>
+            <Text style={styles.soundModalTitle}>Metronome sound</Text>
+            <TouchableOpacity onPress={() => setSoundPickerOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+            {Object.entries(CLICK_SETS).map(([key, set]) => {
+              const active = clickSet === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.soundRow, active && styles.soundRowActive]}
+                  onPress={() => setClickSet(key)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name={active ? 'volume-high' : 'musical-note-outline'} size={18} color={active ? COLORS.primary : COLORS.textMuted} />
+                  <Text style={[styles.soundRowText, active && { color: COLORS.primary, fontWeight: '800' }]}>{set.label}</Text>
+                  <View style={{ flex: 1 }} />
+                  {active && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </SheetModal>
 
         {/* ── Tuner (chromatic, auto-detecting) ── */}
         {tool === 'tuner' && (() => {
@@ -810,11 +844,22 @@ const makeStyles = (COLORS) => StyleSheet.create({
   learnCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Metronome
-  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: SPACING.lg },
-  beatDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.border },
-  beatDotAccent: { width: 20, height: 20, borderRadius: 10, backgroundColor: COLORS.border },
-  beatDotOn: { backgroundColor: COLORS.primary },
-  beatDotAccentOn: { backgroundColor: COLORS.accent },
+  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 12, marginBottom: SPACING.xs },
+  beatBar: { width: 26, height: 46, borderRadius: 7, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, padding: 3, gap: 3, justifyContent: 'flex-end' },
+  beatSeg: { flex: 1, borderRadius: 2, backgroundColor: COLORS.border },
+  beatSegFilled: { backgroundColor: COLORS.primary },
+  beatSegOn: { backgroundColor: COLORS.accent || COLORS.primary },
+  beatHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginBottom: SPACING.md },
+
+  soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  soundBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  soundBtnValue: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', marginRight: 4 },
+  soundModalCard: { borderRadius: 20, padding: SPACING.lg },
+  soundModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  soundModalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  soundRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 13, paddingHorizontal: SPACING.sm, borderRadius: 12 },
+  soundRowActive: { backgroundColor: COLORS.primary + '18' },
+  soundRowText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
 
   bpmDisplay: { alignItems: 'center', marginBottom: SPACING.sm },
   bpmValue: { color: COLORS.text, fontSize: 48, fontWeight: '900', fontVariant: ['tabular-nums'], lineHeight: 52 },
