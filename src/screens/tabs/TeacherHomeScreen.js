@@ -474,6 +474,7 @@ export default function TeacherHomeScreen({ navigation }) {
             activeOpacity={0.85}
             disabled={editMode}
           >
+            <TourSpot id="th-lessons" />
             <View style={styles.calendarCardIcon}>
               <Ionicons name="calendar" size={20} color={COLORS.primary} />
             </View>

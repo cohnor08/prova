@@ -79,10 +79,10 @@ const STUDENT_STEPS_FULL = [
 const TEACHER_STEPS_FULL = [
   { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
   { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-code', scroller: 'TeacherHomeMain', title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
-  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
+  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-lessons', scroller: 'TeacherHomeMain', title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
   { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
-  { nav: { tab: 'Teacher' }, title: 'Assign work', text: 'Tasks with tutorials, songs, or a skill drill at the exact level you choose — to one student or a whole class. Tap any task for its overview or to edit it.' },
-  { nav: { tab: 'Teacher' }, title: 'Proof & parent reports', text: 'Watch students’ practice clips and verify them. Add parent emails and Prova emails beautiful weekly reports automatically.' },
+  { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Assign work', text: 'Open a student and hit Assign Task — tutorials, songs, or a skill drill at the exact level you choose, to one student or a whole class.' },
+  { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Proof & parent reports', text: 'Inside a student: watch their practice clips and verify them. Add a parent email and Prova sends beautiful weekly reports automatically.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-mine', scroller: 'ResourcesHome', title: 'Your resources', text: 'Your own materials — links, photos, anything — ready to assign in two taps.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-library', scroller: 'ResourcesHome', title: 'Lesson library', text: 'A searchable bank of ready-made lessons and tasks. Assign any of them straight to a student.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-drills', scroller: 'ResourcesHome', title: 'Skill drills', text: 'The mini-games, assignable at a chosen level. Tap one to play it exactly as your students will.' },
