@@ -68,6 +68,7 @@ import FretboardGameScreen from './src/screens/tabs/FretboardGameScreen';
 import RhythmTapperScreen from './src/screens/tabs/RhythmTapperScreen';
 import TheoryQuizScreen from './src/screens/tabs/TheoryQuizScreen';
 import JournalScreen from './src/screens/tabs/JournalScreen';
+import CreatePlanScreen from './src/screens/onboarding/CreatePlanScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
 import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
 
@@ -125,6 +126,7 @@ function TodayStackScreen() {
   return (
     <TodayStack.Navigator screenOptions={{ headerShown: false }}>
       <TodayStack.Screen name="TodayHome" component={TodayScreen} />
+      <TodayStack.Screen name="CreatePlan" component={CreatePlanScreen} />
       <TodayStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
       <TodayStack.Screen name="Notifications" component={NotificationsScreen} />
     </TodayStack.Navigator>

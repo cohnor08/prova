@@ -504,7 +504,7 @@ function PlanCard({ session }) {
   );
 }
 
-export default function TodayScreen({ navigation }) {
+export default function TodayScreen({ navigation, route }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const celebrate = useCelebration();
@@ -593,6 +593,15 @@ export default function TodayScreen({ navigation }) {
   const restorePromptedRef = useRef(false); // pop the restore modal once per app open
 
   useEffect(() => { loadData(); }, []);
+
+  // After the "Create a plan" survey builds a plan, it returns here with a
+  // planCreated stamp — reload so the fresh plan shows, then clear the param.
+  useEffect(() => {
+    if (route?.params?.planCreated) {
+      loadData();
+      navigation.setParams({ planCreated: undefined });
+    }
+  }, [route?.params?.planCreated]);
 
   // On refocus (e.g. returning from the Practice tab) pull the latest completed
   // sessions + score so a session finished over there shows as done here too.
@@ -1660,17 +1669,9 @@ export default function TodayScreen({ navigation }) {
         )}
         {selectedSessions.length === 0 ? (
           isToday && !hasPlan ? (
-            <View style={styles.restDay}>
-              <View style={styles.restIconWrap}>
-                <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
-              </View>
-              <Text style={styles.restTitle}>No plan yet</Text>
-              <Text style={styles.restSubtitle}>Build your personalised plan from Profile whenever you’re ready.</Text>
-              <TouchableOpacity style={styles.makePlanBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.85}>
-                <Ionicons name="add" size={16} color="#fff" />
-                <Text style={styles.makePlanText}>Create a plan</Text>
-              </TouchableOpacity>
-            </View>
+            // The "Create a plan" card lives at the very bottom (below teacher
+            // tasks/classes/song), so nothing renders in this slot.
+            null
           ) : (
             <View style={styles.restDay}>
               <View style={styles.restIconWrap}>
@@ -1882,6 +1883,35 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
+        )}
+
+        {/* No plan yet: the "Create a plan" survey CTA sits at the very bottom,
+            below the teacher's tasks, classes and the song — those take priority. */}
+        {isToday && !hasPlan && (
+          <View style={styles.restDay}>
+            <View style={styles.restIconWrap}>
+              <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />
+            </View>
+            <Text style={styles.restTitle}>Create your practice plan</Text>
+            <Text style={styles.restSubtitle}>Answer a few quick questions and Prova builds a daily plan around your instrument, level and goals.</Text>
+            <TouchableOpacity
+              style={styles.makePlanBtn}
+              onPress={() => navigation.navigate('CreatePlan', {
+                profile: {
+                  instrument: userData?.instrument,
+                  level: userData?.level,
+                  goals: userData?.goals,
+                  skills: userData?.skills,
+                  availableDays: userData?.availableDays,
+                  dailyDuration: userData?.dailyDuration,
+                },
+              })}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={16} color="#fff" />
+              <Text style={styles.makePlanText}>Create a plan</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
       </ScrollView>
