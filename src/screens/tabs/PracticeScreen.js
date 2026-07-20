@@ -871,7 +871,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   tsDisplay: { width: 62, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   tsDisplayText: { color: COLORS.primary, fontSize: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
 
-  soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
+  soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.sm },
   soundBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   soundBtnValue: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700', marginRight: 4 },
   soundModalCard: { borderRadius: 20, padding: SPACING.lg },
@@ -888,11 +888,11 @@ const makeStyles = (COLORS) => StyleSheet.create({
   bpmRangeLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
 
-  playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: SPACING.lg },
+  playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: SPACING.md, marginBottom: SPACING.lg },
   playBtnActive: { backgroundColor: COLORS.error },
 
   // Speed trainer
-  trainerBox: { marginTop: SPACING.lg, marginBottom: SPACING.md, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, overflow: 'hidden' },
+  trainerBox: { marginTop: SPACING.sm, marginBottom: SPACING.md, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, overflow: 'hidden' },
   trainerBoxOn: { borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
   trainerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2 },
   trainerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
