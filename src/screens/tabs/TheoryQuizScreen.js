@@ -3,7 +3,7 @@
 // on the fly (src/constants/theory.js) so they never run out. No audio needed.
 // Same daily economy as the other mini-games: the first three rounds a day bank
 // +20 Prova points and a couple of practice minutes.
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +33,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
+  const playScrollRef = useRef(null);
 
   const startRound = async () => {
     if (!(await allowGameRound('theoryQuiz'))) {
@@ -47,6 +48,9 @@ export default function TheoryQuizScreen({ navigation, route }) {
     if (picked !== null) return;
     setPicked(choice);
     if (choice === question.answer) setScore((s) => s + 1);
+    // Reveal the Next button without a manual scroll — helps the long recall
+    // lists where Next would otherwise sit below the fold.
+    setTimeout(() => playScrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
   const next = async () => {
@@ -125,7 +129,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={playScrollRef} style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 

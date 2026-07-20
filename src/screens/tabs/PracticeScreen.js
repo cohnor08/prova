@@ -645,6 +645,15 @@ export default function PracticeScreen({ route, navigation }) {
             </View>
           </View>
 
+          {/* Play — sits directly under the time signature */}
+          <TouchableOpacity
+            style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+            onPress={togglePlay}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.text} />
+          </TouchableOpacity>
+
           {/* Click voice — opens the full library */}
           <TouchableOpacity style={styles.soundBtn} onPress={() => setSoundPickerOpen(true)} activeOpacity={0.8}>
             <Ionicons name="musical-notes-outline" size={18} color={COLORS.primary} />
@@ -698,15 +707,6 @@ export default function PracticeScreen({ route, navigation }) {
               </View>
             )}
           </View>
-
-          {/* Play */}
-          <TouchableOpacity
-            style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-            onPress={togglePlay}
-            activeOpacity={0.8}
-          >
-            <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.text} />
-          </TouchableOpacity>
         </View>
         )}
 
@@ -888,7 +888,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   bpmRangeLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
 
-  playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: SPACING.lg },
   playBtnActive: { backgroundColor: COLORS.error },
 
   // Speed trainer

@@ -93,6 +93,7 @@ export default function EarTrainingScreen({ navigation, route }) {
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
   const soundsRef = useRef([]);
+  const playScrollRef = useRef(null);
 
   const unloadAll = async () => {
     const sounds = soundsRef.current; soundsRef.current = [];
@@ -189,6 +190,8 @@ export default function EarTrainingScreen({ navigation, route }) {
     if (picked) return;
     setPicked(choice);
     if (choice === question.answer) setScore((s) => s + 1);
+    // Bring the Next button into view for the long recall answer lists.
+    setTimeout(() => playScrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
   const next = async () => {
@@ -272,7 +275,7 @@ export default function EarTrainingScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={playScrollRef} style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 

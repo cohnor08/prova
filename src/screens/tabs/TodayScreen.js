@@ -2520,7 +2520,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   songTitle: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
-  songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  songArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4 },
 
   restDay: { alignItems: 'center', paddingTop: SPACING.xxl },
   restIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
