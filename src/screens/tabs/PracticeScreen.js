@@ -620,10 +620,10 @@ export default function PracticeScreen({ route, navigation }) {
               <Text style={styles.tsSideLabel}>Beat</Text>
               <View style={styles.tsBtns}>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => setBeatsPerBar(beatsPerBar - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Ionicons name="remove" size={20} color={COLORS.primary} />
+                  <Ionicons name="remove" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => setBeatsPerBar(beatsPerBar + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Ionicons name="add" size={20} color={COLORS.primary} />
+                  <Ionicons name="add" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -634,10 +634,10 @@ export default function PracticeScreen({ route, navigation }) {
               <Text style={styles.tsSideLabel}>Note</Text>
               <View style={styles.tsBtns}>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => cycleDenom(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Ionicons name="remove" size={20} color={COLORS.primary} />
+                  <Ionicons name="remove" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.tsBtn} onPress={() => cycleDenom(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Ionicons name="add" size={20} color={COLORS.primary} />
+                  <Ionicons name="add" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -853,19 +853,19 @@ const makeStyles = (COLORS) => StyleSheet.create({
   learnCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Metronome
-  beatRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-end', gap: 10, rowGap: 8, marginBottom: SPACING.md },
-  beatBar: { width: 24, height: 44, borderRadius: 7, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, padding: 3, gap: 3, justifyContent: 'flex-end' },
-  beatSeg: { flex: 1, borderRadius: 2, backgroundColor: COLORS.border },
+  beatRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-end', gap: 12, rowGap: 10, marginBottom: SPACING.lg, minHeight: 62 },
+  beatBar: { width: 30, height: 60, borderRadius: 9, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, padding: 4, gap: 4, justifyContent: 'flex-end' },
+  beatSeg: { flex: 1, borderRadius: 3, backgroundColor: COLORS.border },
   beatSegFilled: { backgroundColor: COLORS.primary },
   beatSegOn: { backgroundColor: COLORS.accent || COLORS.primary },
 
-  tsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
-  tsSide: { alignItems: 'center', gap: 6 },
-  tsSideLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  tsBtns: { flexDirection: 'row', gap: SPACING.sm },
-  tsBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
-  tsDisplay: { minWidth: 96, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: SPACING.md, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  tsDisplayText: { color: COLORS.primary, fontSize: 30, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 1 },
+  tsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.md },
+  tsSide: { alignItems: 'center', gap: 5 },
+  tsSideLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  tsBtns: { flexDirection: 'row', gap: 6 },
+  tsBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  tsDisplay: { minWidth: 62, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  tsDisplayText: { color: COLORS.primary, fontSize: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
 
   soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   soundBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
