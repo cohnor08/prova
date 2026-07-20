@@ -272,7 +272,7 @@ export default function EarTrainingScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <View style={styles.game}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 
@@ -306,7 +306,7 @@ export default function EarTrainingScreen({ navigation, route }) {
               <Text style={styles.nextText}>{qNum >= ROUND_LEN ? 'Finish' : 'Next ›'}</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {phase === 'done' && (
@@ -347,6 +347,7 @@ const styles = themedStyles(() => StyleSheet.create({
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
   startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
+  gamePlay: { padding: SPACING.xl, alignItems: 'center', flexGrow: 1, paddingBottom: SPACING.xxl },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   playBig: { width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl },
