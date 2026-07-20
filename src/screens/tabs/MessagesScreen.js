@@ -21,6 +21,7 @@ import EmptyState from '../../components/EmptyState';
 import { fetchProgressReport } from '../../lib/progressReport';
 import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
+import { TourSpot } from '../../components/TourSpot';
 import { COLORS, SPACING, TAB_BAR_STYLE, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import MediaMessageBubble from '../../components/MediaMessageBubble';
@@ -474,6 +475,8 @@ export default function MessagesScreen() {
     otherRows.forEach((c) => listData.push(c));
   }
 
+  const firstRowId = listData.find((x) => x.type !== 'header')?.id;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -529,6 +532,7 @@ export default function MessagesScreen() {
                   onPress={() => setActiveGroup(item)}
                   activeOpacity={0.8}
                 >
+                  {item.id === firstRowId && <TourSpot id="m-chats" />}
                   <View style={[styles.convoAvatar, styles.convoAvatarTeacher]}>
                     <Ionicons name="people" size={20} color="#fff" />
                   </View>
@@ -555,6 +559,7 @@ export default function MessagesScreen() {
               onPress={() => setActiveChat({ chatId: item.chatId, otherEmail: item.otherEmail || item.otherUid, otherUid: item.otherUid, otherName: name })}
               activeOpacity={0.8}
             >
+              {item.id === firstRowId && <TourSpot id="m-chats" />}
               <View style={[styles.convoAvatar, isTeacher && styles.convoAvatarTeacher]}>
                 {isTeacher
                   ? <Ionicons name="school" size={20} color="#fff" />

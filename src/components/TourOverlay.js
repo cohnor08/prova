@@ -70,7 +70,7 @@ const STUDENT_STEPS_FULL = [
   { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-stats', scroller: 'ProgressHome', title: 'Your numbers', text: 'Streak, hours, sessions — plus a Practice Wrapped recap of your week, every week.' },
   { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-score', scroller: 'ProgressHome', title: 'Prova Score', text: 'Every session grows your score through the ranks. Badges and the skill tree grow with it.' },
   { nav: { tab: 'Progress', screen: 'ProgressHome' }, target: 'g-board', scroller: 'ProgressHome', title: 'Leaderboards', text: 'Where you stand — worldwide, against friends, or inside your class.' },
-  { nav: { tab: 'Messages' }, title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. React with the smiley under any message.' },
+  { nav: { tab: 'Messages' }, target: 'm-chats', title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. React with the smiley under any message.' },
   { nav: { tab: 'Profile' }, target: 'pr-teacher', scroller: 'Profile', title: 'Your teacher', text: 'Connect a teacher with their join code and their tasks land on Today. You can link more than one.' },
   { nav: { tab: 'Profile' }, target: 'pr-appearance', scroller: 'Profile', title: 'Make it yours', text: 'Light or dark, your accent colour, practice reminders — and this tour, any time.' },
   { title: 'That’s everything', text: 'Now go practise — Prova takes it from here.' },
@@ -86,7 +86,7 @@ const TEACHER_STEPS_FULL = [
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-mine', scroller: 'ResourcesHome', title: 'Your resources', text: 'Your own materials — links, photos, anything — ready to assign in two taps.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-library', scroller: 'ResourcesHome', title: 'Lesson library', text: 'A searchable bank of ready-made lessons and tasks. Assign any of them straight to a student.' },
   { nav: { tab: 'Resources', screen: 'ResourcesHome' }, target: 'r-drills', scroller: 'ResourcesHome', title: 'Skill drills', text: 'The mini-games, assignable at a chosen level. Tap one to play it exactly as your students will.' },
-  { nav: { tab: 'Messages' }, title: 'Messages', text: 'Direct chats with students — photos and videos too — plus class announcement channels with reactions. School-safe by design.' },
+  { nav: { tab: 'Messages' }, target: 'm-chats', title: 'Messages', text: 'Direct chats with students — photos and videos too — plus class announcement channels with reactions. School-safe by design.' },
   { nav: { tab: 'Profile' }, target: 'pr-appearance', scroller: 'Profile', title: 'Make it yours', text: 'Appearance, account settings — and this tour, any time you want it.' },
   { title: 'That’s everything', text: 'Prova handles the accountability between lessons. Enjoy teaching.' },
 ];
@@ -204,15 +204,21 @@ export default function TourOverlay({ role }) {
         } catch (e) { /* stay put */ }
       }
       if (!s.target) { setDisplay({ idx: step, rect: null }); return; }
-      // Existence wait (fresh screens still rendering) — usually instant.
-      let exists = await measure(s.target);
-      for (let i = 0; i < 20 && !exists; i++) {
-        await sleep(60);
+      // Existence + sanity + stability: inactive tabs are natively DETACHED, so
+      // the first measurement after arriving can be a partial layout. Require
+      // two agreeing, sane measurements before placing.
+      let prevProbe = null;
+      let stable = null;
+      for (let i = 0; i < 10; i++) {
+        if (i > 0) await sleep(50);
         if (seqRef.current !== seq) return;
-        exists = await measure(s.target);
+        const r = await measure(s.target);
+        if (!r || r.w < 40 || r.h < 20) { prevProbe = null; continue; }
+        if (prevProbe && Math.abs(r.y - prevProbe.y) < 2 && Math.abs(r.h - prevProbe.h) < 2) { stable = r; break; }
+        prevProbe = r;
       }
       if (seqRef.current !== seq) return;
-      if (!exists) { setDisplay({ idx: step, rect: null }); return; }
+      if (!stable && !prevProbe) { setDisplay({ idx: step, rect: null }); return; }
       const winH = size?.height || 800;
       const p = await placeStep(s, winH);
       if (seqRef.current !== seq) return;
