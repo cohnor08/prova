@@ -1712,6 +1712,13 @@ export default function TodayScreen({ navigation }) {
           ))
         )}
 
+        {/* Teacher + class work grouped under one quiet header, so the two
+            (personal-teacher tasks and class tasks) read as one section
+            rather than two competing full-weight cards. */}
+        {isToday && (teacherGroups.length > 0 || classGroups.length > 0) && (
+          <Text style={[styles.sectionLabel, { marginTop: SPACING.sm }]}>FROM YOUR TEACHER</Text>
+        )}
+
         {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
         {isToday && teacherGroups.map((g) => {
           const open = !closedTeachers.has(g.tid);
@@ -1719,7 +1726,7 @@ export default function TodayScreen({ navigation }) {
             const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
           });
           return (
-            <View key={g.tid} style={[styles.teacherCard, { marginTop: SPACING.sm }]}>
+            <View key={g.tid} style={styles.teacherCard}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
@@ -1841,7 +1848,7 @@ export default function TodayScreen({ navigation }) {
         {/* Today's drills — optional mini-games, above the song (low priority) */}
         {isToday && (
           <>
-            <Text style={styles.sectionLabel}>TODAY'S DRILLS</Text>
+            <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TODAY'S DRILLS</Text>
             <View style={styles.drillRow}>
               <TourSpot id="t-drills" />
               {todaysDrills.map((d) => {
@@ -2291,13 +2298,14 @@ const makeStyles = (COLORS) => StyleSheet.create({
 
   // Daily challenge card
   challengeCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.md,
     borderWidth: 1, borderColor: COLORS.border,
   },
 
-  // Teacher-assigned tasks
+  // Teacher-assigned tasks — sit under one "FROM YOUR TEACHER" header, so they
+  // hug together (sm gap) rather than floating as separate big cards.
   teacherCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg,
+    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.sm,
     borderWidth: 1, borderColor: COLORS.border,
   },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
@@ -2472,7 +2480,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   askCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
-    padding: SPACING.md, marginBottom: SPACING.lg,
+    padding: SPACING.md, marginBottom: SPACING.md,
   },
   askIcon: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '18',
