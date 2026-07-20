@@ -33,7 +33,6 @@ const BASS_STRINGS = [
   { number: 1, note: 'G', octave: '2', freq: 98.00,  label: '1st string (G)' },
 ];
 
-const TIME_SIGNATURES = [2, 3, 4, 5, 6, 7, 8, 9, 12];
 
 const BPM_MIN = 20;
 const BPM_MAX = 250;
@@ -327,7 +326,7 @@ export default function PracticeScreen({ route, navigation }) {
     trainerTarget, setTrainerTarget, trainerStep, setTrainerStep,
     trainerBars, setTrainerBars, atTarget, setAtTarget,
     barCountRef, pulseAnim, stop: stopMetronome,
-    clickSet, setClickSet, accents, cycleAccent,
+    clickSet, setClickSet, accents, cycleAccent, denom, cycleDenom,
   } = useMetronome();
   const [soundPickerOpen, setSoundPickerOpen] = useState(false);
 
@@ -601,7 +600,6 @@ export default function PracticeScreen({ route, navigation }) {
               );
             })}
           </View>
-          <Text style={styles.beatHint}>Tap a bar to make that beat louder</Text>
 
           {/* BPM display */}
           <View style={styles.bpmDisplay}>
@@ -616,21 +614,32 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.bpmRangeLabel}>{BPM_MAX}</Text>
           </View>
 
-          {/* Time signature */}
-          <View style={styles.timeSigRow}>
-            <Text style={styles.timeSigLabel}>Time sig</Text>
-            <View style={styles.timeSigBtns}>
-              {TIME_SIGNATURES.map((n) => (
-                <TouchableOpacity
-                  key={n}
-                  style={[styles.timeSigBtn, beatsPerBar === n && styles.timeSigBtnActive]}
-                  onPress={() => { setBeatsPerBar(n); setBeat(0); }}
-                >
-                  <Text style={[styles.timeSigText, beatsPerBar === n && styles.timeSigTextActive]}>
-                    {n}/4
-                  </Text>
+          {/* Time signature — Beat / Note steppers (Apple-metronome style) */}
+          <View style={styles.tsRow}>
+            <View style={styles.tsSide}>
+              <Text style={styles.tsSideLabel}>Beat</Text>
+              <View style={styles.tsBtns}>
+                <TouchableOpacity style={styles.tsBtn} onPress={() => setBeatsPerBar(beatsPerBar - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name="remove" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
-              ))}
+                <TouchableOpacity style={styles.tsBtn} onPress={() => setBeatsPerBar(beatsPerBar + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name="add" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.tsDisplay}>
+              <Text style={styles.tsDisplayText}>{beatsPerBar}/{denom}</Text>
+            </View>
+            <View style={styles.tsSide}>
+              <Text style={styles.tsSideLabel}>Note</Text>
+              <View style={styles.tsBtns}>
+                <TouchableOpacity style={styles.tsBtn} onPress={() => cycleDenom(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name="remove" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.tsBtn} onPress={() => cycleDenom(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Ionicons name="add" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -844,12 +853,19 @@ const makeStyles = (COLORS) => StyleSheet.create({
   learnCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   // Metronome
-  beatRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 12, marginBottom: SPACING.xs },
-  beatBar: { width: 26, height: 46, borderRadius: 7, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, padding: 3, gap: 3, justifyContent: 'flex-end' },
+  beatRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-end', gap: 10, rowGap: 8, marginBottom: SPACING.md },
+  beatBar: { width: 24, height: 44, borderRadius: 7, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, padding: 3, gap: 3, justifyContent: 'flex-end' },
   beatSeg: { flex: 1, borderRadius: 2, backgroundColor: COLORS.border },
   beatSegFilled: { backgroundColor: COLORS.primary },
   beatSegOn: { backgroundColor: COLORS.accent || COLORS.primary },
-  beatHint: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginBottom: SPACING.md },
+
+  tsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+  tsSide: { alignItems: 'center', gap: 6 },
+  tsSideLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  tsBtns: { flexDirection: 'row', gap: SPACING.sm },
+  tsBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  tsDisplay: { minWidth: 96, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: SPACING.md, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  tsDisplayText: { color: COLORS.primary, fontSize: 30, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 1 },
 
   soundBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   soundBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
@@ -867,13 +883,6 @@ const makeStyles = (COLORS) => StyleSheet.create({
   bpmRange: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.xs, marginBottom: SPACING.md },
   bpmRangeLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
-  timeSigRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginBottom: SPACING.lg },
-  timeSigLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
-  timeSigBtns: { flexDirection: 'row', gap: SPACING.sm },
-  timeSigBtn: { paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
-  timeSigBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  timeSigText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
-  timeSigTextActive: { color: COLORS.text },
 
   playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   playBtnActive: { backgroundColor: COLORS.error },

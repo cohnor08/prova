@@ -45,15 +45,24 @@ export function MetronomeProvider({ children }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [beat, setBeat] = useState(0);
   const [beatsPerBar, setBeatsPerBarState] = useState(4);
+  const [denom, setDenom] = useState(4); // time-signature note value (2/4/8/16)
   const [accents, setAccents] = useState(() => defaultAccents(4)); // per-beat level 1–4
   const accentsRef = useRef(accents);
   useEffect(() => { accentsRef.current = accents; }, [accents]);
 
-  // Changing the time signature resizes the accent map, keeping existing beats'
-  // levels and defaulting any new beats (quiet, downbeat loud).
+  // Changing the beat count resizes the accent map (keeping set levels, new
+  // beats default) and restarts the count at the downbeat.
   const setBeatsPerBar = useCallback((n) => {
-    setBeatsPerBarState(n);
-    setAccents((prev) => Array.from({ length: n }, (_, i) => prev[i] || (i === 0 ? 3 : 1)));
+    const c = Math.max(1, Math.min(16, n));
+    setBeatsPerBarState(c);
+    setAccents((prev) => Array.from({ length: c }, (_, i) => prev[i] || (i === 0 ? 3 : 1)));
+    beatRef.current = 0;
+    setBeat(0);
+  }, []);
+  // Note value cycles 2 → 4 → 8 → 16 (display only; the click is per beat).
+  const cycleDenom = useCallback((delta) => {
+    const opts = [2, 4, 8, 16];
+    setDenom((d) => opts[Math.max(0, Math.min(opts.length - 1, opts.indexOf(d) + delta))]);
   }, []);
   // Tap a beat bar → cycle its accent level 1→2→3→4→1.
   const cycleAccent = useCallback((i) => {
@@ -182,6 +191,7 @@ export function MetronomeProvider({ children }) {
     barCountRef, pulseAnim, stop,
     clickSet, setClickSet,
     accents, cycleAccent,
+    denom, cycleDenom,
   };
 
   return <MetronomeContext.Provider value={value}>{children}</MetronomeContext.Provider>;

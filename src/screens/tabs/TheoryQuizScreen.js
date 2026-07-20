@@ -86,7 +86,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Theory Quiz</Text>
