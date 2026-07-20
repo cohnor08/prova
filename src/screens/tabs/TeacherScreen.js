@@ -1787,12 +1787,12 @@ function TeacherDashboard() {
   const todayName = WEEK_DAYS[new Date().getDay()];
 
   useFocusEffect(
-    React.useCallback(() => { loadStudents();
+    React.useCallback(() => { loadStudents(); }, [])
+  );
 
   // Eager-mounted tabs never fire focus effects until first visit — load the
   // roster on mount so the screen (and tour targets) are ready beforehand.
-  useEffect(() => { loadStudents(); }, []); }, [])
-  );
+  useEffect(() => { loadStudents(); }, []);
 
   // Live last-message previews for the Messages tab, keyed by chatId.
   useEffect(() => {
