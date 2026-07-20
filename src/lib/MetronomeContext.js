@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { Animated } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // The metronome ENGINE, app-level — so the click keeps going when the student
 // switches tabs or opens a practice task and plays along. PracticeScreen is
@@ -8,8 +9,20 @@ import { Audio } from 'expo-av';
 // it's running from anywhere and can stop it.
 const MetronomeContext = createContext(null);
 
+// The click voices. Classic = the original tick (played sharp via rate 1.26);
+// the rest are synthesized samples in assets/click. Choice persists on-device.
+export const CLICK_SETS = {
+  classic: { label: 'Classic', tick: require('../../assets/tick.wav'), accent: require('../../assets/tick-accent.wav'), rate: 1.26 },
+  wood:    { label: 'Wood',    tick: require('../../assets/click/wood.wav'),  accent: require('../../assets/click/wood-accent.wav'),  rate: 1 },
+  beep:    { label: 'Beep',    tick: require('../../assets/click/beep.wav'),  accent: require('../../assets/click/beep-accent.wav'),  rate: 1 },
+  clave:   { label: 'Clave',   tick: require('../../assets/click/clave.wav'), accent: require('../../assets/click/clave-accent.wav'), rate: 1 },
+  hat:     { label: 'Hi-hat',  tick: require('../../assets/click/hat.wav'),   accent: require('../../assets/click/hat-accent.wav'),   rate: 1 },
+};
+const SOUND_PREF_KEY = 'prova:metroSound';
+
 export function MetronomeProvider({ children }) {
   const [bpm, setBpm] = useState(80);
+  const [clickSet, setClickSetState] = useState('classic');
   const [isPlaying, setIsPlaying] = useState(false);
   const [beat, setBeat] = useState(0);
   const [beatsPerBar, setBeatsPerBar] = useState(4);
@@ -34,21 +47,45 @@ export function MetronomeProvider({ children }) {
     trainerRef.current = { on: trainerOn, target: trainerTarget, step: trainerStep, bars: trainerBars };
   }, [trainerOn, trainerTarget, trainerStep, trainerBars]);
 
-  // Load the click sounds once for the whole app. Played ~26% fast without
-  // pitch correction, which shifts the click up about two whole tones
-  // (2^(4/12) ≈ 1.26) — the stock sample sat too low in the mix.
+  // Restore the saved click voice once.
   useEffect(() => {
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(() => {});
-    Audio.Sound.createAsync(require('../../assets/tick.wav'), { rate: 1.26, shouldCorrectPitch: false })
-      .then(({ sound }) => { tickSound.current = sound; })
+    AsyncStorage.getItem(SOUND_PREF_KEY)
+      .then((v) => { if (v && CLICK_SETS[v]) setClickSetState(v); })
       .catch(() => {});
-    Audio.Sound.createAsync(require('../../assets/tick-accent.wav'), { rate: 1.26, shouldCorrectPitch: false })
-      .then(({ sound }) => { accentSound.current = sound; })
+  }, []);
+
+  // (Re)load the click samples whenever the voice changes. The tick loop reads
+  // the refs, so a swap mid-play just changes the next click's sound.
+  useEffect(() => {
+    let alive = true;
+    const set = CLICK_SETS[clickSet] || CLICK_SETS.classic;
+    const opts = { rate: set.rate, shouldCorrectPitch: false };
+    const prevTick = tickSound.current;
+    const prevAccent = accentSound.current;
+    Audio.Sound.createAsync(set.tick, opts)
+      .then(({ sound }) => { if (alive) tickSound.current = sound; else sound.unloadAsync(); })
       .catch(() => {});
-    return () => {
-      tickSound.current?.unloadAsync();
-      accentSound.current?.unloadAsync();
-    };
+    Audio.Sound.createAsync(set.accent, opts)
+      .then(({ sound }) => { if (alive) accentSound.current = sound; else sound.unloadAsync(); })
+      .catch(() => {});
+    prevTick?.unloadAsync?.();
+    prevAccent?.unloadAsync?.();
+    return () => { alive = false; };
+  }, [clickSet]);
+
+  // Unload on app teardown.
+  useEffect(() => () => {
+    tickSound.current?.unloadAsync();
+    accentSound.current?.unloadAsync();
+  }, []);
+
+  // Pick a click voice (persists) and give immediate feedback with one tick.
+  const setClickSet = useCallback((key) => {
+    if (!CLICK_SETS[key]) return;
+    setClickSetState(key);
+    AsyncStorage.setItem(SOUND_PREF_KEY, key).catch(() => {});
+    setTimeout(() => { tickSound.current?.replayAsync?.().catch(() => {}); }, 250);
   }, []);
 
   // The tick loop — restarts whenever bpm, beatsPerBar, or playing changes.
@@ -106,6 +143,7 @@ export function MetronomeProvider({ children }) {
     trainerTarget, setTrainerTarget, trainerStep, setTrainerStep,
     trainerBars, setTrainerBars, atTarget, setAtTarget,
     barCountRef, pulseAnim, stop,
+    clickSet, setClickSet,
   };
 
   return <MetronomeContext.Provider value={value}>{children}</MetronomeContext.Provider>;

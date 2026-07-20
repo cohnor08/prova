@@ -11,7 +11,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
-import { useMetronome } from '../../lib/MetronomeContext';
+import { useMetronome, CLICK_SETS } from '../../lib/MetronomeContext';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -326,6 +326,7 @@ export default function PracticeScreen({ route, navigation }) {
     trainerTarget, setTrainerTarget, trainerStep, setTrainerStep,
     trainerBars, setTrainerBars, atTarget, setAtTarget,
     barCountRef, pulseAnim, stop: stopMetronome,
+    clickSet, setClickSet,
   } = useMetronome();
 
   // Tuner
@@ -612,6 +613,24 @@ export default function PracticeScreen({ route, navigation }) {
                 >
                   <Text style={[styles.timeSigText, beatsPerBar === n && styles.timeSigTextActive]}>
                     {n}/4
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Click voice — picking one plays a preview tick; choice persists */}
+          <View style={styles.timeSigRow}>
+            <Text style={styles.timeSigLabel}>Sound</Text>
+            <View style={[styles.timeSigBtns, { flexWrap: 'wrap' }]}>
+              {Object.entries(CLICK_SETS).map(([key, set]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.timeSigBtn, clickSet === key && styles.timeSigBtnActive]}
+                  onPress={() => setClickSet(key)}
+                >
+                  <Text style={[styles.timeSigText, clickSet === key && styles.timeSigTextActive]}>
+                    {set.label}
                   </Text>
                 </TouchableOpacity>
               ))}
