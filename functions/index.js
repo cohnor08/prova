@@ -334,7 +334,9 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL_SMART, 220000);
+      // Haiku 4.5 builds a valid, specific weekly plan in ~12-15s (vs ~35s-2min
+      // on the smart model) at a fraction of the cost — verified structurally.
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL, 220000);
     } catch (err) {
       await writeUsageLog(uid, 'generatePracticePlan', {
         tokensIn: 0, tokensOut: 0,
@@ -976,7 +978,9 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL_SMART, 220000);
+      // Haiku 4.5 builds a valid, specific weekly plan in ~12-15s (vs ~35s-2min
+      // on the smart model) at a fraction of the cost — verified structurally.
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 12000, MODEL, 220000);
     } catch (err) {
       await writeUsageLog(uid, 'refreshWeeklyPlan', {
         tokensIn: 0, tokensOut: 0, durationMs: Date.now() - startTime,
