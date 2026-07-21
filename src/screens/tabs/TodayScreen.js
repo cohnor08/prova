@@ -595,10 +595,12 @@ export default function TodayScreen({ navigation, route }) {
   useEffect(() => { loadData(); }, []);
 
   // After the "Create a plan" survey builds a plan, it returns here with a
-  // planCreated stamp — reload so the fresh plan shows, then clear the param.
+  // planCreated stamp — reload so the fresh plan shows, jump to the top of the
+  // screen (they tapped from the bottom), then clear the param.
   useEffect(() => {
     if (route?.params?.planCreated) {
       loadData();
+      tourScrollRef.current?.scrollTo({ y: 0, animated: false });
       navigation.setParams({ planCreated: undefined });
     }
   }, [route?.params?.planCreated]);
