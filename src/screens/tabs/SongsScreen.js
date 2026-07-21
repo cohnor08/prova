@@ -1282,7 +1282,7 @@ export default function SongsScreen({ route, navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* ── Learn a song (paid: personal / legacy; free students upgrade) ── */}
         {role !== 'student' && (
