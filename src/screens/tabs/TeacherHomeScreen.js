@@ -307,7 +307,7 @@ export default function TeacherHomeScreen({ navigation }) {
           updateDoc(doc(db, 'users', uid), { teacherWidgets: merged, widgetOrderFixed: true }).catch(() => {});
         }
         setLayout(merged);
-        setTeacherPro((s.data()?.teacherPlan || 'free') === 'pro');
+        setTeacherPro(true); // FREE LAUNCH: Studio unlocked for all (real value in teacherPlan)
         setNote(s.data()?.teacherNote || '');
         setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
       })

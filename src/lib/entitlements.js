@@ -20,42 +20,25 @@ import { track } from './analytics';
 export const TEACHER_FREE_STUDENT_LIMIT = 3;
 export const FREE_GAME_ROUNDS_PER_DAY = 1;
 
-export const isPersonal = (u) =>
-  !!u && (u.role === 'personal' || (u.planType || '').startsWith('personal'));
+// ─── FREE LAUNCH (Apple 3.1.1) ───────────────────────────────────────────────
+// The App Store requires that any purchasable digital content be sold through
+// Apple In-App Purchase. Until the real IAP paywall ships, the app sells NOTHING:
+// every account is fully unlocked and there are zero purchase surfaces. The tier
+// helpers below are deliberately switched OFF — they report "entitled" for
+// everyone and the upsell prompts are no-ops. The real gating logic is kept in
+// git history and re-enabled alongside the StoreKit paywall.
 
-export const isProTeacher = (u) => !!u && u.teacherPlan === 'pro';
+export const isPersonal = (_u) => true;
 
-// May this account start another mini-game round today? counterField is the
-// per-game daily counter on the user doc ('earTraining' | 'fretGame').
-// Fails OPEN — a network hiccup must never lock a paying user out.
-export async function allowGameRound(counterField) {
-  try {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return true;
-    const u = (await getDoc(doc(db, 'users', uid))).data() || {};
-    if (isPersonal(u) || u.role === 'teacher') return true;
-    const today = new Date().toISOString().split('T')[0];
-    const c = u[counterField] || {};
-    const played = c.date === today ? (c.rounds || 0) : 0;
-    return played < FREE_GAME_ROUNDS_PER_DAY;
-  } catch (e) {
-    return true;
-  }
+export const isProTeacher = (_u) => true;
+
+// Free-launch: everyone may play unlimited mini-game rounds.
+export async function allowGameRound(_counterField) {
+  return true;
 }
 
-export function personalUpsell(navigation, message) {
-  track('upsell_shown', { plan: 'personal' });
-  Alert.alert('Prova Personal', message, [
-    { text: 'Not now', style: 'cancel' },
-    { text: 'See Personal', onPress: () => { try { navigation?.navigate('Paywall'); } catch (e) {} } },
-  ]);
-}
+// Free-launch: no upsell prompts (they were the "upgrade" / "email us to
+// upgrade" surfaces Apple flagged). No-ops until IAP ships.
+export function personalUpsell(_navigation, _message) {}
 
-export function studioUpsell(message) {
-  track('upsell_shown', { plan: 'studio' });
-  Alert.alert(
-    'Prova Studio',
-    `${message}\n\nStudio upgrades are handled personally while we're in early access — email cehthoanprova@gmail.com and we'll set you up.`,
-    [{ text: 'OK' }]
-  );
-}
+export function studioUpsell(_message) {}

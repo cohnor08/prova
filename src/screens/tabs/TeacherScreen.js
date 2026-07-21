@@ -254,84 +254,11 @@ function DemoStudentCard({ student }) {
   );
 }
 
-function PaywallScreen({ onUnlock }) {
-  const [loading, setLoading] = useState(false);
-
-  const handleSubscribe = async () => {
-    setLoading(true);
-    try {
-      const uid = auth.currentUser.uid;
-      await updateDoc(doc(db, 'users', uid), { isTeacherPro: true });
-      onUnlock();
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <Text style={styles.title}>Teacher Mode</Text>
-        <Text style={styles.subtitle}>See what your dashboard looks like</Text>
-
-        {/* Blurred demo preview */}
-        <View style={styles.previewWrapper}>
-          <View style={styles.demoInviteBar}>
-            <Text style={styles.demoInviteText}>student@email.com</Text>
-            <View style={styles.demoInviteBtn}>
-              <Text style={styles.demoInviteBtnText}>Add</Text>
-            </View>
-          </View>
-          {DEMO_PREVIEW_STUDENTS.map(s => (
-            <DemoStudentCard key={s.name} student={s} />
-          ))}
-          <View style={styles.lockOverlay}>
-            <View style={styles.lockBadge}>
-              <Text style={styles.lockIcon}>🔒</Text>
-              <Text style={styles.lockText}>Unlock Teacher Mode</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* CTA card */}
-        <View style={styles.paywallCard}>
-          <Text style={styles.paywallTitle}>Prova for Teachers</Text>
-          <Text style={styles.paywallDesc}>
-            Monitor students' practice, assign custom tasks, and track their weekly progress.
-          </Text>
-          <View style={styles.featureList}>
-            {[
-              'Add unlimited students',
-              'Assign custom practice tasks',
-              'View streaks, hours and ratings',
-              'Chat directly with students',
-            ].map((f) => (
-              <View key={f} style={styles.featureRow}>
-                <Ionicons name="checkmark-circle" size={16} color={COLORS.success} style={{ marginRight: 8 }} />
-                <Text style={styles.featureItem}>{f}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={styles.pricingRow}>
-            <Text style={styles.price}>£9.99</Text>
-            <Text style={styles.pricePer}> / month</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.subscribeBtn, loading && { opacity: 0.6 }]}
-            onPress={handleSubscribe}
-            disabled={loading}
-          >
-            {loading
-              ? <Ghost color={COLORS.text} />
-              : <Text style={styles.subscribeBtnText}>Start Free Trial</Text>}
-          </TouchableOpacity>
-          <Text style={styles.trialNote}>7-day free trial · Cancel anytime</Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+// FREE LAUNCH (Apple 3.1.1): the teacher paywall is retired. Kept as an inert
+// stub (never rendered) so history stays clean; the real Studio IAP paywall
+// replaces this later.
+function PaywallScreen() {
+  return null;
 }
 
 // ─── Create Class Modal ──────────────────────────────────────────────────────
@@ -1815,7 +1742,7 @@ function TeacherDashboard() {
         setMyName(displayName({ uid: myUid, ...d }));
         setParentEmails(d.parentEmails && typeof d.parentEmails === 'object' ? d.parentEmails : {});
         setReportCadence(d.reportCadence || 'off');
-        setTeacherPlan(d.teacherPlan || 'free');
+        setTeacherPlan('pro'); // FREE LAUNCH: Studio features unlocked for all (real value in d.teacherPlan)
         setLastAutoReportAt(d.lastAutoReportAt || null);
       })
       .catch(() => {});
@@ -1912,12 +1839,8 @@ function TeacherDashboard() {
       ]);
       setStudents(roster);
       setClasses(Array.isArray(meSnap.data()?.classes) ? meSnap.data().classes : []);
-      // Downgraded (or signed up free) with more students than the plan
-      // includes: they choose who stays. Nothing else about the account is
-      // touched by a plan change — this is the one consequence.
-      if ((meSnap.data()?.teacherPlan || 'free') !== 'pro' && roster.length > TEACHER_FREE_STUDENT_LIMIT) {
-        setKeeperOpen(true);
-      }
+      // FREE LAUNCH: no student cap, so the "pick who stays" keeper never fires.
+      // Re-enable alongside the Studio paywall.
       // Mirror the roster onto my doc — the student-side join-by-code cap
       // reads students.length off the teacher doc.
       updateDoc(doc(db, 'users', uid), { students: roster.map((s) => s.uid) }).catch(() => {});
@@ -3567,12 +3490,9 @@ export default function TeacherScreen() {
     );
   }
 
-  // role (set at signup) is the source of truth.
-  // Fall back to legacy fields for existing accounts without a role.
-  // Only paid teachers get in — role alone doesn't bypass the paywall
-  if (!userData?.isTeacherPro) {
-    return <PaywallScreen onUnlock={loadUser} />;
-  }
+  // FREE LAUNCH (Apple 3.1.1): no teacher paywall — every teacher gets the full
+  // dashboard. The old isTeacherPro gate + PaywallScreen return here when the
+  // real Studio paywall ships again.
 
   // Paid teachers who are also linked as a student see assigned tasks
   if (userData?.teacherUid) {

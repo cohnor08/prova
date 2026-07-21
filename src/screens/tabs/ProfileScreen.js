@@ -381,13 +381,7 @@ export default function ProfileScreen({ navigation }) {
     const key = modal.key;
     setModal(null);
 
-    // Students can't change plan settings (they have no plan). Don't write
-    // anything — just nudge them to upgrade.
     const planKeys = ['instrument', 'level', 'goals', 'skills', 'availableDays', 'dailyDuration'];
-    if (planKeys.includes(key) && isStudentAcct) {
-      promptUpgrade();
-      return;
-    }
 
     setSaving(true);
     try {
@@ -420,19 +414,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Students don't get the AI plan — changing plan settings nudges them to
-  // upgrade (which is where the plan lives), mirroring the Today upgrade card.
-  const isStudentAcct = userData?.role === 'student';
-  const promptUpgrade = () => {
-    Alert.alert(
-      'Upgrade to Personal',
-      'A personalised AI plan that adapts to these settings is part of a Personal account.',
-      [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'See plans', onPress: () => navigation.navigate('Today', { screen: 'Paywall' }) },
-      ]
-    );
-  };
 
   // Save the chosen reminder time and re-arm the daily notification if it's on.
   const saveReminderTime = async () => {
@@ -808,20 +789,18 @@ export default function ProfileScreen({ navigation }) {
           <TouchableOpacity
             style={styles.row}
             disabled={regenerating}
-            onPress={() => isStudentAcct
-              ? promptUpgrade()
-              : Alert.alert(
-                'Regenerate Plan?',
-                'Build a fresh practice plan from your current settings. Your existing plan will be replaced.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Regenerate', onPress: () => handleRegenerate(userData) },
-                ]
-              )}
+            onPress={() => Alert.alert(
+              'Regenerate Plan?',
+              'Build a fresh practice plan from your current settings. Your existing plan will be replaced.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Regenerate', onPress: () => handleRegenerate(userData) },
+              ]
+            )}
           >
-            <Text style={styles.rowLabel}>{isStudentAcct ? 'Get a personalised plan' : 'Regenerate Plan'}</Text>
+            <Text style={styles.rowLabel}>Regenerate Plan</Text>
             <View style={styles.rowRight}>
-              <Text style={styles.rowValue}>{isStudentAcct ? 'Personal' : (regenerating ? 'Building…' : 'Rebuild now')}</Text>
+              <Text style={styles.rowValue}>{regenerating ? 'Building…' : 'Rebuild now'}</Text>
               <Text style={styles.rowArrow}>›</Text>
             </View>
           </TouchableOpacity>

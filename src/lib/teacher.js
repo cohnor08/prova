@@ -57,12 +57,7 @@ export async function linkTeacherByCode(studentUid, rawCode) {
   const cur = (await getDoc(doc(db, 'users', studentUid))).data() || {};
   const already = teacherIdsOf(cur);
   if (already.includes(teacher.id)) throw new Error("You're already connected to this teacher.");
-  if (d.teacherPlan !== 'pro') {
-    const roster = Array.isArray(d.students) ? d.students : [];
-    if (!roster.includes(studentUid) && roster.length >= TEACHER_FREE_STUDENT_LIMIT) {
-      throw new Error("This teacher's student list is full on their current plan — ask them about Prova Studio.");
-    }
-  }
+  // FREE LAUNCH (Apple 3.1.1): no student cap — re-add with the Studio paywall.
   const nextUids = [...already, teacher.id];
   const update = { teacherUids: nextUids };
   if (!cur.teacherUid) update.teacherUid = teacher.id; // first teacher = primary
