@@ -493,24 +493,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleResetTeacherPro = () => {
-    Alert.alert('Reset Teacher Pro', 'This will remove your Teacher Pro access so you can see the paywall again.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset', onPress: async () => {
-          try {
-            const uid = auth.currentUser?.uid;
-            if (!uid) return;
-            await updateDoc(doc(db, 'users', uid), { isTeacherPro: false });
-            Alert.alert('Done', 'Teacher Pro reset. Tap the Teacher tab to see the paywall.');
-          } catch (err) {
-            Alert.alert('Error', err.message);
-          }
-        },
-      },
-    ]);
-  };
-
   const handleRestartSurvey = () => {
     Alert.alert('Restart Survey', 'This will take you back through the setup survey and generate a new plan. Continue?', [
       { text: 'Cancel', style: 'cancel' },
@@ -860,12 +842,6 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.rowLabel}>Email</Text>
             <Text style={styles.rowValue}>{auth.currentUser?.email}</Text>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Plan</Text>
-            <Text style={[styles.rowValue, { color: COLORS.primary }]}>
-              {userData?.isTeacherPro ? 'Teacher Pro' : 'Free'}
-            </Text>
-          </View>
         </View>
 
         {/* Help */}
@@ -899,10 +875,6 @@ export default function ProfileScreen({ navigation }) {
 
         <TouchableOpacity style={styles.restartBtn} onPress={handleRestartSurvey}>
           <Text style={styles.restartText}>Restart Survey</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.restartBtn} onPress={handleResetTeacherPro}>
-          <Text style={styles.restartText}>Reset Teacher Pro</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
