@@ -63,6 +63,7 @@ export default function PracticePlayer({
   onCompleteSession, // (sessionId) -> Promise<pts>
   onBankTeacher,     // (taskId, seconds) -> Promise<pts>
   onBankSong,        // (seconds) -> Promise<pts> — pre-gig setlist rehearsal
+  onBankStep,        // (stepId, seconds) -> Promise<pts> — learn-a-song step
   onGigSongEnd,      // Done/Next on a setlist song → back to the song picker
   onAttachProof,
   proofBusyId,
@@ -209,6 +210,7 @@ export default function PracticePlayer({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const write = cur.kind === 'session' ? onCompleteSession(cur.sessionId)
       : cur.kind === 'gigsong' ? onBankSong(sec)
+      : cur.kind === 'songstep' ? onBankStep(cur.stepId, sec)
       : onBankTeacher(cur.taskId, sec);
     Promise.resolve(write)
       .then((pts) => {
@@ -284,6 +286,7 @@ export default function PracticePlayer({
                 <Text style={[styles.kickerText, { color }]}>
                   {item.kind === 'teacher' ? 'FROM YOUR TEACHER'
                     : item.kind === 'gigsong' ? 'GIG REHEARSAL'
+                    : item.kind === 'songstep' ? 'LEARN A SONG'
                     : (item.category || '').replace('_', ' ').toUpperCase()}
                 </Text>
               </View>

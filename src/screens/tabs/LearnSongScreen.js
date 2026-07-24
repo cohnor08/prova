@@ -17,6 +17,7 @@ import { POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import SheetModal from '../../components/SheetModal';
+import PracticePlayer from '../../components/PracticePlayer';
 
 const ytUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 const STEP_BONUS = 15; // banked for finishing a timed step, on top of the practice-time points
@@ -56,6 +57,7 @@ export default function LearnSongScreen({ navigation }) {
 
   // One active practice timer across the whole screen.
   const [active, setActive] = useState(null); // { songKey, stepId, seconds }
+  const [player, setPlayer] = useState(null); // { songKey, queue, startId } — guided run of a song's steps
   const tickRef = useRef(null);
   const [watch, setWatch] = useState(null); // { query, title } for the in-app video player
   const [media, setMedia] = useState({});   // songKey -> { artwork, preview } (fetched lazily)
@@ -240,6 +242,53 @@ export default function LearnSongScreen({ navigation }) {
     if (gained > 0) Alert.alert('Step complete', `+${gained} Prova points 🎸`);
   };
 
+  // ── Guided "Start practice" run — reuse the shared PracticePlayer with the
+  // song's steps as its queue, so it feels exactly like the Today tab. ──
+  const buildSongQueue = (song) => (song.steps || []).map((st, i) => ({
+    id: `ls_${st.id}`,
+    kind: 'songstep',
+    stepId: st.id,
+    title: `${i + 1}. ${st.title}${st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}`,
+    description: [st.summary, ...(st.tasks || []).map((t) => `• ${t}`)].filter(Boolean).join('\n'),
+    targetSec: 0,                    // open practice — count up, Done once they've put time in
+    priorSec: st.practicedSec || 0,
+    watch: st.yt || '',
+  }));
+
+  const openSongPlayer = (song) => {
+    stopStep(); // never run the inline step timer and the guided player at once
+    const items = buildSongQueue(song);
+    if (items.length === 0) return;
+    const firstUndone = (song.steps || []).find((st) => !st.done);
+    setPlayer({ songKey: song.songKey, queue: items, startId: firstUndone ? `ls_${firstUndone.id}` : items[0].id });
+  };
+
+  // Bank a step's practice from the guided player: mark done + add points and
+  // minutes (mirrors finishStep). Returns the points gained for the celebration.
+  const bankSongStep = async (songKey, stepId, seconds) => {
+    const gained = stepPoints(seconds);
+    const next = songs.map((s) => {
+      if (s.songKey !== songKey) return s;
+      return {
+        ...s,
+        steps: s.steps.map((st) =>
+          st.id === stepId ? { ...st, done: true, practicedSec: (st.practicedSec || 0) + seconds } : st
+        ),
+      };
+    });
+    const mins = Math.round(seconds / 60);
+    await persist(next, gained, mins > 0 ? practiceStreakUpdates(userData) : {});
+    if (mins > 0) {
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        updateDoc(doc(db, 'users', uid), { totalMinutes: increment(mins) }).catch(() => {});
+        logPracticeMinutes(uid, mins, 'song');
+        setUserData((u) => ({ ...(u || {}), totalMinutes: (u?.totalMinutes || 0) + mins }));
+      }
+    }
+    return gained;
+  };
+
   // Pause / resume the running step timer (count-up keeps its banked seconds).
   const toggleStepTimer = () => {
     if (!active) return;
@@ -369,6 +418,16 @@ export default function LearnSongScreen({ navigation }) {
                           );
                         })()}
                         {!!s.overview && <Text style={styles.overview}>{s.overview}</Text>}
+                        {s.steps.length > 0 && (
+                          <TouchableOpacity style={styles.startRunBtn} onPress={() => openSongPlayer(s)} activeOpacity={0.85}>
+                            <Ionicons name="play" size={16} color={COLORS.text} />
+                            <Text style={styles.startRunText}>
+                              {s.steps.every((st) => st.done) ? 'Practice again'
+                                : s.steps.some((st) => st.done) ? 'Continue practice'
+                                : 'Start practice'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                         {s.steps.map((st, i) => {
                           const isActive = active && active.songKey === s.songKey && active.stepId === st.id;
                           const stepKey = `${s.songKey}_${st.id}`;
@@ -522,6 +581,21 @@ export default function LearnSongScreen({ navigation }) {
         title={watch?.title || 'Watch a tutorial'}
         onClose={() => setWatch(null)}
       />
+
+      {player && (
+        <PracticePlayer
+          visible={!!player}
+          queue={player.queue}
+          startId={player.startId}
+          streak={userData?.streak || 0}
+          allSessionsDone={false}
+          onCompleteSession={() => Promise.resolve(0)}
+          onBankTeacher={() => Promise.resolve(0)}
+          onBankSong={() => Promise.resolve(0)}
+          onBankStep={(stepId, sec) => bankSongStep(player.songKey, stepId, sec)}
+          onClose={() => setPlayer(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -544,6 +618,12 @@ const styles = themedStyles(() => StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   addBtnText: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
+  startRunBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 13,
+    marginTop: SPACING.sm, marginBottom: SPACING.md,
+  },
+  startRunText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
 
   empty: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.sm },
   emptyText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', paddingHorizontal: SPACING.lg },
