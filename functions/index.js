@@ -641,19 +641,25 @@ If you do not recognise this exact song, build the most sensible plan you can fo
 
 Break learning this song into an ORDERED sequence of practice steps that ramp from easiest to full-speed performance. A good sequence looks like: learn the core chords/notes → the shapes/fingerings → the strumming/picking or groove → each section (intro, verse, chorus, bridge, solo) → transitions between sections → play along slowly → bring it up to full tempo. Adapt to what THIS song actually needs (e.g. a riff-based song leads with the riff; a fingerstyle song leads with the pattern).
 
-Each step must be CONCRETE and specific to ${instrument}: name the actual chords, frets, strings, fingerings, BPM targets, or techniques — never vague ("practice the chorus" is bad; "play the C–G–Am–F chorus progression at 70 BPM, 1 strum per beat" is good).
+Each step must be SPECIFIC but written SIMPLY. Name the real chords, frets, strings, and BPM — but say it in plain, everyday words a total beginner understands. "Practice the chorus" is too vague; "Play the chorus chords C, G, Am, F — one slow strum on each, at 70 BPM" is specific AND easy to read.
+
+WRITING STYLE (the student may be a complete beginner — this is the most important part):
+- Plain, everyday English. Short sentences. Warm and encouraging.
+- No music jargon unless you explain it in a couple of plain words right there, e.g. "downstrokes (strum downward)".
+- Keep every line short and skimmable — never a wall of text.
+- Talk TO the student ("Place your first finger on..."), not about the song.
 
 Return a JSON object with this exact structure:
 {
   "title": "${safeTitle}",
   "artist": "${safeArtist}",
   "instrument": "${instrument}",
-  "overview": "one-sentence summary of what makes this song a good learning target and its overall difficulty (max 140 chars)",
+  "overview": "one simple, friendly sentence about the song and how hard it is to learn (max 140 chars)",
   "steps": [
     {
-      "title": "short step name (max 50 chars)",
-      "summary": "what to do and why, 1–2 sentences with concrete details",
-      "tasks": [ "specific actionable task with frets/chords/BPM", "another task" ],
+      "title": "short, plain step name (max 40 chars)",
+      "summary": "ONE short, simple sentence in plain words — what you'll do in this step",
+      "tasks": [ "one short, clear instruction with the exact chords/frets/BPM", "another short one" ],
       "targetBpm": 90,
       "yt": "a YouTube SEARCH PHRASE to find a helpful tutorial for this step (never a URL)"
     }
@@ -661,7 +667,9 @@ Return a JSON object with this exact structure:
 }
 
 Rules:
-- 5 to 9 steps, ordered easiest → full performance.
+- 5 to 8 steps, ordered easiest → full performance.
+- 2 to 4 tasks per step, each ONE short line a beginner can follow.
+- Keep it specific (real chords, frets, BPM) but always phrased simply and plainly.
 - "targetBpm" is optional — include it only where a tempo target makes sense (omit for pure chord-learning steps).
 - "yt" is a search phrase like "${safeTitle} ${instrument} chords tutorial", never a link.
 - Return only valid JSON, no markdown fences, no explanation.`;
