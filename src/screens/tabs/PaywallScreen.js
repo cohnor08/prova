@@ -28,7 +28,8 @@ const PLANS = {
     tagline: 'Your own AI coach that builds and adapts a plan just for you.',
     price: '$6.99',
     trialDays: 7,
-    gradient: [COLORS.primary, COLORS.accent || '#06B6D4'],
+    // Deep navy → indigo: darker + cooler than the old light-blue/cyan.
+    gradient: ['#0F172A', '#3730A3'],
     perks: [
       { icon: 'sparkles', title: 'Your own AI practice plan', sub: 'A daily plan built around your instrument, level and goals.' },
       { icon: 'trending-up', title: 'Adapts as you improve', sub: 'Rate a session and the next day’s plan adjusts to match.' },
