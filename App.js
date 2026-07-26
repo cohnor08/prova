@@ -71,6 +71,7 @@ import JournalScreen from './src/screens/tabs/JournalScreen';
 import CreatePlanScreen from './src/screens/onboarding/CreatePlanScreen';
 import NotificationsScreen from './src/screens/tabs/NotificationsScreen';
 import AskProvaScreen from './src/screens/tabs/AskProvaScreen';
+import PaywallScreen from './src/screens/tabs/PaywallScreen';
 
 // Dark navigation theme so screen push transitions (and the tab-bar hide when a
 // full-screen child like Ask Prova opens) never flash the default white
@@ -308,6 +309,11 @@ function AppInner() {
                 name="AskProva"
                 component={AskProvaScreen}
                 options={{ contentStyle: { backgroundColor: colors.background } }}
+              />
+              <Stack.Screen
+                name="Paywall"
+                component={PaywallScreen}
+                options={{ presentation: 'modal', contentStyle: { backgroundColor: colors.background } }}
               />
             </Stack.Navigator>
           )}

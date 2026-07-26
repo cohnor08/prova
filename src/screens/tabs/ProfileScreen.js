@@ -877,6 +877,15 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.restartText}>Restart Survey</Text>
         </TouchableOpacity>
 
+        {/* TEMP PREVIEW (paywall branch only) — remove before activation.
+            Lets us see the Paywall screen in Expo Go while it's being built. */}
+        <TouchableOpacity
+          style={[styles.restartBtn, { borderColor: COLORS.primary }]}
+          onPress={() => navigation.navigate('Paywall')}
+        >
+          <Text style={[styles.restartText, { color: COLORS.primary }]}>Preview paywall (dev)</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
