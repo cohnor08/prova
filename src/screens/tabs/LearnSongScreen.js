@@ -143,6 +143,22 @@ export default function LearnSongScreen({ navigation }) {
     setGenerating(true);
     try {
       const plan = await generateSongPlan({ instrument, title: t, artist: (artist || '').trim(), tuning: (tuning || '').trim() });
+
+      // Prova would rather say nothing than teach the wrong song. No plan is
+      // saved and no weekly slot is used — we offer a tutorial search instead.
+      if (plan.known === false) {
+        const q = `${t} ${(artist || '').trim()} ${instrument} tutorial`.replace(/\s+/g, ' ').trim();
+        Alert.alert(
+          "Prova doesn't know this one",
+          `Prova doesn't know "${t}" well enough to teach it properly, and it won't guess at the chords — that would just teach you the wrong song.\n\nThis didn't use one of your weekly plans.`,
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Find a tutorial', onPress: () => Linking.openURL(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`).catch(() => {}) },
+          ]
+        );
+        return;
+      }
+
       const entry = {
         songKey: plan.key,
         title: plan.title,
@@ -151,7 +167,6 @@ export default function LearnSongScreen({ navigation }) {
         overview: plan.overview,
         tuning: plan.tuning || '',
         capo: plan.capo || '',
-        confidence: plan.confidence || 'low',
         tuningFromUser: !!plan.tuningFromUser,
         addedAt: new Date().toISOString(),
         steps: (plan.steps || []).map((s) => ({ ...s, done: false, practicedSec: 0 })),
@@ -433,14 +448,7 @@ export default function LearnSongScreen({ navigation }) {
                             </Text>
                           </View>
                         )}
-                        {s.confidence === 'low' && (
-                          <View style={styles.lowConfBar}>
-                            <Ionicons name="alert-circle-outline" size={15} color={COLORS.accent} />
-                            <Text style={styles.lowConfText}>
-                              Prova doesn't know this exact recording well, so treat the chords, frets and tuning as a starting point — check them against a tab or the tutorial videos.
-                            </Text>
-                          </View>
-                        )}
+
                         {s.steps.length > 0 && (
                           <TouchableOpacity style={styles.startRunBtn} onPress={() => openSongPlayer(s)} activeOpacity={0.85}>
                             <Ionicons name="play" size={16} color={COLORS.text} />
@@ -677,12 +685,6 @@ const styles = themedStyles(() => StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   tuningText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '700' },
-  lowConfBar: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: COLORS.accent + '12', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11,
-    marginBottom: SPACING.md,
-  },
-  lowConfText: { flex: 1, color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
   tuningHint: { color: COLORS.textMuted, fontSize: 11.5, lineHeight: 16, marginTop: -SPACING.sm + 2, marginBottom: SPACING.md },
   mediaCard: { flexDirection: 'row', gap: SPACING.md, backgroundColor: COLORS.background, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, marginBottom: SPACING.md, alignItems: 'center' },
   mediaArt: { width: 66, height: 66, borderRadius: 10, backgroundColor: COLORS.card },
