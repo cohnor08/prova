@@ -53,6 +53,8 @@ export default function LearnSongScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [freeTitle, setFreeTitle] = useState('');
   const [freeArtist, setFreeArtist] = useState('');
+  // If the player already knows the tuning, it beats anything the model recalls.
+  const [freeTuning, setFreeTuning] = useState('');
   const [generating, setGenerating] = useState(false);
 
   // One active practice timer across the whole screen.
@@ -134,19 +136,23 @@ export default function LearnSongScreen({ navigation }) {
   };
 
   // ── Generate a new song plan ──────────────────────────────────────────────
-  const handleGenerate = async (title, artist) => {
+  const handleGenerate = async (title, artist, tuning) => {
     const t = (title || '').trim();
     if (!t) { Alert.alert('Pick a song', 'Enter a song title first.'); return; }
     Keyboard.dismiss();
     setGenerating(true);
     try {
-      const plan = await generateSongPlan({ instrument, title: t, artist: (artist || '').trim() });
+      const plan = await generateSongPlan({ instrument, title: t, artist: (artist || '').trim(), tuning: (tuning || '').trim() });
       const entry = {
         songKey: plan.key,
         title: plan.title,
         artist: plan.artist,
         instrument: plan.instrument,
         overview: plan.overview,
+        tuning: plan.tuning || '',
+        capo: plan.capo || '',
+        confidence: plan.confidence || 'low',
+        tuningFromUser: !!plan.tuningFromUser,
         addedAt: new Date().toISOString(),
         steps: (plan.steps || []).map((s) => ({ ...s, done: false, practicedSec: 0 })),
       };
@@ -165,7 +171,7 @@ export default function LearnSongScreen({ navigation }) {
 
       await persist(next, 0, { songLibrary: nextLib });
       setAddOpen(false);
-      setSearch(''); setFreeTitle(''); setFreeArtist('');
+      setSearch(''); setFreeTitle(''); setFreeArtist(''); setFreeTuning('');
       setExpandedSong(plan.key);
     } catch (e) {
       const msg = String(e?.message || '');
@@ -418,6 +424,23 @@ export default function LearnSongScreen({ navigation }) {
                           );
                         })()}
                         {!!s.overview && <Text style={styles.overview}>{s.overview}</Text>}
+                        {(!!s.tuning || !!s.capo) && (
+                          <View style={styles.tuningBar}>
+                            <Ionicons name="options-outline" size={15} color={COLORS.primary} />
+                            <Text style={styles.tuningText} numberOfLines={2}>
+                              {s.tuning || 'Standard'}{s.capo && !/no capo/i.test(s.capo) ? ` · ${s.capo}` : ''}
+                              {s.tuningFromUser ? ' · you set this' : ''}
+                            </Text>
+                          </View>
+                        )}
+                        {s.confidence === 'low' && (
+                          <View style={styles.lowConfBar}>
+                            <Ionicons name="alert-circle-outline" size={15} color={COLORS.accent} />
+                            <Text style={styles.lowConfText}>
+                              Prova doesn't know this exact recording well, so treat the chords, frets and tuning as a starting point — check them against a tab or the tutorial videos.
+                            </Text>
+                          </View>
+                        )}
                         {s.steps.length > 0 && (
                           <TouchableOpacity style={styles.startRunBtn} onPress={() => openSongPlayer(s)} activeOpacity={0.85}>
                             <Ionicons name="play" size={16} color={COLORS.text} />
@@ -563,9 +586,20 @@ export default function LearnSongScreen({ navigation }) {
                   onChangeText={setFreeArtist}
                 />
 
+                <Text style={styles.fieldLabel}>Tuning (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Drop D, or D A D F# B E"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={freeTuning}
+                  onChangeText={setFreeTuning}
+                  autoCapitalize="characters"
+                />
+                <Text style={styles.tuningHint}>If you know the tuning, tell Prova — it'll write every fret for that tuning instead of guessing.</Text>
+
                 <TouchableOpacity
                   style={[styles.genBtn, !freeTitle.trim() && styles.genBtnOff]}
-                  onPress={() => handleGenerate(freeTitle, freeArtist)}
+                  onPress={() => handleGenerate(freeTitle, freeArtist, freeTuning)}
                   disabled={!freeTitle.trim()}
                 >
                   <Text style={styles.genBtnText}>Build my plan</Text>
@@ -637,6 +671,19 @@ const styles = themedStyles(() => StyleSheet.create({
   songProgress: { color: COLORS.accent, fontSize: 12, marginTop: 4, fontWeight: '600' },
   songBody: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md },
   overview: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: SPACING.md, fontStyle: 'italic' },
+  tuningBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.primary + '12', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11,
+    marginBottom: SPACING.sm,
+  },
+  tuningText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  lowConfBar: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: COLORS.accent + '12', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11,
+    marginBottom: SPACING.md,
+  },
+  lowConfText: { flex: 1, color: COLORS.textSecondary, fontSize: 12, lineHeight: 17 },
+  tuningHint: { color: COLORS.textMuted, fontSize: 11.5, lineHeight: 16, marginTop: -SPACING.sm + 2, marginBottom: SPACING.md },
   mediaCard: { flexDirection: 'row', gap: SPACING.md, backgroundColor: COLORS.background, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, marginBottom: SPACING.md, alignItems: 'center' },
   mediaArt: { width: 66, height: 66, borderRadius: 10, backgroundColor: COLORS.card },
   mediaArtEmpty: { alignItems: 'center', justifyContent: 'center' },
