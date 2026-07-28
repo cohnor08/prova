@@ -78,6 +78,21 @@ function periodKeyFor(action) {
 
 // Check request count atomically; token ceiling is checked non-transactionally
 // before the call and then the actual usage is written after.
+// Give a request back. Used when we charged for a generation and then chose
+// not to give the user a plan (an unknown song), so a refusal never costs one
+// of their five weekly slots. Best-effort: never let this fail the request.
+async function refundRateLimit(uid, action) {
+  try {
+    const ref = db.doc(`rateLimits/${uid}/actions/${action}`);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.data() || {};
+      if (data.date !== periodKeyFor(action)) return;   // period rolled over
+      tx.set(ref, { ...data, requests: Math.max(0, (data.requests || 0) - 1) });
+    });
+  } catch (e) { /* non-fatal */ }
+}
+
 async function checkRateLimit(uid, action) {
   const key = periodKeyFor(action);
   const span = (RATE_LIMITS[action].period === 'week') ? 'Weekly' : 'Daily';
@@ -578,7 +593,11 @@ function songPlanKey(instrument, title, artist) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
-  return `${norm(instrument)}__${norm(title)}__${norm(artist) || 'unknown'}`;
+  // v3: scope is now chords + simple tabs only, and the model returns
+  // {known:false} rather than guessing at a song it doesn't know. Bump the
+  // version on every material prompt change — otherwise cached answers written
+  // under the OLD rules keep being served for their full 180-day TTL.
+  return `v3__${norm(instrument)}__${norm(title)}__${norm(artist) || 'unknown'}`;
 }
 
 exports.generateSongPlan = onCall(
@@ -590,7 +609,7 @@ exports.generateSongPlan = onCall(
     const appCheckPresent = !!request.app;
     const startTime = Date.now();
 
-    const { instrument, title, artist } = request.data || {};
+    const { instrument, title, artist, tuning: userTuning } = request.data || {};
 
     // ── Validate input ──
     if (!ALLOWED_INSTRUMENTS.has(instrument))
@@ -599,6 +618,10 @@ exports.generateSongPlan = onCall(
       throw new HttpsError('invalid-argument', 'Song title must be 1–120 characters');
     if (artist !== undefined && artist !== null && (typeof artist !== 'string' || artist.length > 120))
       throw new HttpsError('invalid-argument', 'Artist too long (max 120 chars)');
+    // Optional: the player already knows the tuning (they can read it off a tab
+    // or their own guitar). If they tell us, it beats anything the model recalls.
+    if (userTuning !== undefined && userTuning !== null && (typeof userTuning !== 'string' || userTuning.length > 60))
+      throw new HttpsError('invalid-argument', 'Tuning too long (max 60 chars)');
 
     const cleanTitle  = title.trim();
     const cleanArtist = (artist || '').trim();
@@ -613,7 +636,11 @@ exports.generateSongPlan = onCall(
       .trim();
     const safeTitle  = promptSafe(cleanTitle);
     const safeArtist = promptSafe(cleanArtist);
-    const key = songPlanKey(instrument, cleanTitle, cleanArtist);
+    const cleanTuning = (userTuning || '').trim();
+    const safeTuning  = promptSafe(cleanTuning);
+    // A user-supplied tuning changes the plan, so it must change the cache key —
+    // otherwise the first person's standard-tuning plan is served to everyone.
+    const key = songPlanKey(instrument, cleanTitle, cleanArtist) + (safeTuning ? `__t-${safeTuning.toLowerCase().replace(/[^a-z0-9]+/g, '')}` : '');
     const cacheRef = db.doc(`songPlans/${key}`);
 
     // ── Cache hit: return for free, don't count against the weekly limit ──
@@ -636,12 +663,34 @@ THE SONG:
 - Title: ${safeTitle}
 - Artist: ${safeArtist || 'unknown — infer the most likely well-known version'}
 - Instrument: ${instrument}
+${safeTuning
+  ? `- Tuning: ${safeTuning} — THE STUDENT SUPPLIED THIS. Treat it as fact, and write every fret/shape for THIS tuning, not standard.`
+  : '- Tuning: not supplied — work it out (see the TUNING rules below).'}
 
-If you do not recognise this exact song, build the most sensible plan you can for a song of this title/artist on ${instrument}; never refuse.
+TUNING AND CAPO (get this right or the whole plan is wrong):
+Many songs are NOT in standard tuning. Drop D, half-step-down, open tunings and one-off altered tunings are extremely common, and a plan written in standard tuning for a song that isn't is useless — every fret number is wrong.
+- Work out the tuning BEFORE the steps, and put it in the "tuning" field (e.g. "Standard (E A D G B E)", "Drop D (D A D G B E)", "D A D F# B E").
+- If the song uses ANYTHING other than standard tuning, or a capo, then STEP 1 MUST be tuning/capo setup — tell the student exactly which strings to move and in which direction, in plain words.
+- If you are not certain of the tuning, say so: set "confidence" to "low", put your best guess in "tuning" and add "(check a tab to confirm)" to it. NEVER silently default to standard tuning.
+
+HONESTY ABOUT WHAT YOU KNOW (the most important rule here):
+Only teach a song you genuinely know. A confidently wrong chord chart teaches someone the wrong song and destroys their trust in the app — that is far worse than admitting you do not know it.
+If you are not genuinely confident you know THIS recording — its chords, its structure, its tuning — then DO NOT write a plan. Return exactly this instead, and nothing else:
+{"known": false}
+Be strict with yourself: "I have heard of this artist" is not knowing the song. If you would be guessing at the chords, return {"known": false}.
+If you DO know it, return the full plan below with "known": true.
 
 Break learning this song into an ORDERED sequence of practice steps that ramp from easiest to full-speed performance. A good sequence looks like: learn the core chords/notes → the shapes/fingerings → the strumming/picking or groove → each section (intro, verse, chorus, bridge, solo) → transitions between sections → play along slowly → bring it up to full tempo. Adapt to what THIS song actually needs (e.g. a riff-based song leads with the riff; a fingerstyle song leads with the pattern).
 
 Each step must be SPECIFIC but written SIMPLY. Name the real chords, frets, strings, and BPM — but say it in plain, everyday words a total beginner understands. "Practice the chorus" is too vague; "Play the chorus chords C, G, Am, F — one slow strum on each, at 70 BPM" is specific AND easy to read.
+
+WHAT YOU MAY TEACH (deliberately limited — stay inside this):
+Prova teaches songs at the level of CHORDS and SIMPLE TABS. Nothing more ambitious.
+- Chords: name the shape (e.g. Am, Cadd9) and, where it helps, which strings are actually played.
+- Simple tabs: short single-note riffs or lines as STRING + FRET in order, e.g. "6th string: 0-0-3-5". Keep them to a few notes.
+- Fingerpicking: describe the pattern in words (which finger takes which string, in what order). Do not attempt to notate it.
+- Do NOT attempt solos, complex lead lines, note-for-note transcription, or anything that really needs proper notation. If a section is beyond chords and a simple riff, say so plainly and tell the student to slow the recording down and learn it by ear, or ask their teacher.
+Match the instruction to how the part is really played — if a song is built on a riff, the riff is step one, not "learn the chords".
 
 WRITING STYLE (the student may be a complete beginner — this is the most important part):
 - Plain, everyday English. Short sentences. Warm and encouraging.
@@ -651,10 +700,14 @@ WRITING STYLE (the student may be a complete beginner — this is the most impor
 
 Return a JSON object with this exact structure:
 {
+  "known": true,
   "title": "${safeTitle}",
   "artist": "${safeArtist}",
   "instrument": "${instrument}",
   "overview": "one simple, friendly sentence about the song and how hard it is to learn (max 140 chars)",
+  "tuning": "the tuning this song is played in, low string to high (e.g. 'Standard (E A D G B E)' or 'Drop D (D A D G B E)')",
+  "capo": "capo position as plain text (e.g. 'No capo' or 'Capo 2nd fret')",
+  "known": true,
   "steps": [
     {
       "title": "short, plain step name (max 40 chars)",
@@ -672,6 +725,8 @@ Rules:
 - Keep it specific (real chords, frets, BPM) but always phrased simply and plainly.
 - "targetBpm" is optional — include it only where a tempo target makes sense (omit for pure chord-learning steps).
 - "yt" is a search phrase like "${safeTitle} ${instrument} chords tutorial", never a link.
+- "tuning" and "capo" are REQUIRED. If the tuning is anything but standard, step 1 is the tuning step.
+- Never state a tuning you are unsure of. If you know the song but not its tuning, write "Standard (E A D G B E) — check a tab to confirm" and make that clear.
 - Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
@@ -701,6 +756,26 @@ Rules:
       throw new HttpsError('internal', 'Could not build a plan for that song. Try again.');
     }
 
+    // ── The model says it doesn't know this song ──────────────────────────────
+    // Return that as a first-class answer rather than a half-guessed plan. We
+    // refund the weekly slot (being told "I don't know" shouldn't cost one of
+    // five) and deliberately do NOT cache it — the next model version may well
+    // know the song, and a cached refusal would outlive its own reason for
+    // 180 days.
+    if (plan.known === false) {
+      await refundRateLimit(uid, 'generateSongPlan');
+      Promise.all([
+        recordTokenUsage(uid, 'generateSongPlan', result.tokensIn + result.tokensOut),
+        writeUsageLog(uid, 'generateSongPlan', {
+          tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+          durationMs: Date.now() - startTime,
+          success: true, errorType: 'unknown_song',
+          appCheckPresent,
+        }),
+      ]).catch(() => {});
+      return { known: false, title: cleanTitle, artist: cleanArtist, instrument, cached: false };
+    }
+
     // Stamp ids/order on the steps so the client can track per-step progress.
     const steps = (Array.isArray(plan.steps) ? plan.steps : []).map((s, i) => ({
       id: `${i}`,
@@ -721,6 +796,11 @@ Rules:
       artist: cleanArtist,
       instrument,
       overview: String(plan.overview || '').slice(0, 160),
+      // A user-supplied tuning always wins over the model's guess.
+      tuning: cleanTuning ? cleanTuning.slice(0, 60) : String(plan.tuning || '').slice(0, 60),
+      capo: String(plan.capo || '').slice(0, 40),
+      known: true,
+      tuningFromUser: !!cleanTuning,
       steps,
       model: MODEL_SMART,
       createdAt: new Date().toISOString(),
