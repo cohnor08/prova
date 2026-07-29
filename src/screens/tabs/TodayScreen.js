@@ -169,12 +169,27 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
-// A one-line title that CUTS rather than ellipsises. RN's ellipsizeMode
-// "clip" cuts mid-word, which looks like a mistake, so we let it lay out once,
-// read back what actually fitted (onTextLayout hands us the laid-out line) and
-// re-render trimmed to the last whole word. Measured once per title; the full
-// text is shown when the card is expanded.
-function ClipTitle({ text, style, expanded }) {
+// Collapsed session titles show the NAME of the exercise, not its description:
+// "Legato Warmup — build fluidity across the strings" becomes "Legato Warmup".
+// Cut at the first dash/colon/comma/bracket, then cap the length so a title
+// written without any of those still stays short. The full text is one tap away.
+function shortTitle(full) {
+  let t = String(full || '').split(/\s+[\u2014\u2013-]\s+|[:(,]/)[0].trim();
+  const words = t.split(/\s+/);
+  if (words.length > 4) t = words.slice(0, 4).join(' ');
+  return t || String(full || '');
+}
+
+// A one-line title that CUTS rather than ellipsises, and only ever on a whole
+// word. Safety net for the rare title shortTitle can't get under the width.
+//
+// How the measurement works: an invisible copy of the text is rendered with NO
+// numberOfLines, so it wraps normally — and RN wraps at WORD boundaries. Its
+// onTextLayout hands back one entry per line, so lines[0].text is exactly "the
+// words that fit on one line". We then show that. Reading the line back from a
+// truncated Text instead would be unreliable, since what `text` contains for a
+// clipped line isn't guaranteed.
+function ClipTitle({ text, style, containerStyle, expanded }) {
   const [clipped, setClipped] = useState(null);
   const measuredFor = useRef(null);
   useEffect(() => { measuredFor.current = null; setClipped(null); }, [text]);
@@ -182,21 +197,29 @@ function ClipTitle({ text, style, expanded }) {
   if (expanded) return <Text style={style}>{text}</Text>;
 
   const onTextLayout = (e) => {
-    if (measuredFor.current === text) return;      // already settled
-    const line = e.nativeEvent.lines && e.nativeEvent.lines[0];
-    if (!line) return;
+    if (measuredFor.current === text) return;
+    const lines = e.nativeEvent.lines || [];
     measuredFor.current = text;
-    const shown = (line.text || '').trim();
-    if (shown.length >= (text || '').length) return;   // it all fitted
-    const space = shown.lastIndexOf(' ');
-    const cut = space > 0 ? shown.slice(0, space) : shown;
-    setClipped(cut.replace(/[\s,;:.\u2013\u2014-]+$/, ''));
+    if (lines.length <= 1) return;                       // fits already
+    const first = (lines[0].text || '').trim();
+    if (first) setClipped(first.replace(/[\s,;:.\u2013\u2014-]+$/, ''));
   };
 
   return (
-    <Text style={style} numberOfLines={1} ellipsizeMode="clip" onTextLayout={onTextLayout}>
-      {clipped == null ? text : clipped}
-    </Text>
+    <View style={containerStyle}>
+      <Text style={style} numberOfLines={1} ellipsizeMode="clip">
+        {clipped == null ? text : clipped}
+      </Text>
+      {clipped == null && (
+        <Text
+          style={[style, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}
+          onTextLayout={onTextLayout}
+          pointerEvents="none"
+        >
+          {text}
+        </Text>
+      )}
+    </View>
   );
 }
 
@@ -481,8 +504,9 @@ function SessionCard({ session, completed, onPractice }) {
                 Expanded: the full title. Kills the wall of "…" in the list. */}
             <ClipTitle
               expanded={expanded}
-              style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]}
-              text={expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
+              containerStyle={{ flex: 1, minWidth: 0 }}
+              style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { marginBottom: 0 }]}
+              text={expanded ? session.title : shortTitle(session.title)}
             />
             {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
