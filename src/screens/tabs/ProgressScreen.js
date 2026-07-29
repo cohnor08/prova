@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
 import { makeChatId, sendChatMessage } from '../../lib/chat';
@@ -34,14 +34,6 @@ const HEAT_GAP = 3;
 
 const LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
 
 // Hours of practice needed to "fill" the progress bar for each level
 const LEVEL_HOURS = { Beginner: 10, Novice: 25, Intermediate: 60, Advanced: 120, Elite: 120 };

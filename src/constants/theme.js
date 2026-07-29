@@ -90,6 +90,24 @@ export const FONTS = {
   bold: 'System',
 };
 
+// Session category colours. One definition for the whole app — these used to be
+// copy-pasted into four screens, which is how they drifted.
+//
+// Chosen to be told apart on a 3px rail: six DIFFERENT hues spread around the
+// wheel. The old set was four blues, a cyan and a green, so warmup, technique
+// and repertoire were indistinguishable at a glance — which defeats the point
+// of colouring the bar at all.
+//
+// Identity only: a left rail or a small dot. Never a button fill.
+export const CATEGORY_COLORS = {
+  warmup:        '#C77B5A',   // terracotta
+  technique:     '#7FA06B',   // sage
+  theory:        '#A98BC4',   // lilac
+  repertoire:    '#6FA5A8',   // teal
+  ear_training:  '#C9A24B',   // ochre
+  improvisation: '#B5747E',   // rose
+};
+
 export const SPACING = {
   xs: 4,
   sm: 8,

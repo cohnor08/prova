@@ -6,7 +6,7 @@ import Ghost from './Ghost';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING, themedStyles } from '../constants/theme';
+import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../constants/theme';
 import YouTubePlayerModal from './YouTubePlayerModal';
 import Celebration from './Celebration';
 
@@ -25,14 +25,6 @@ const fmt = (s) => {
   return `${Math.floor(v / 60).toString().padStart(2, '0')}:${(v % 60).toString().padStart(2, '0')}`;
 };
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
 
 // Safe-area insets are unreliable inside an RN Modal (they intermittently read
 // as 0, which is why the close/skip buttons sometimes sat under the notch or

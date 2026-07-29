@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder, scheduleWrappedNudge } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, CATEGORY_COLORS } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
@@ -35,14 +35,6 @@ import { TourSpot, useTourScroller, useTourPadding } from '../../components/Tour
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
 
 // Compact one-tap difficulty options shown inline on each completed session.
 // Keys match the values Prova's plan logic already understands (too_hard etc.).
