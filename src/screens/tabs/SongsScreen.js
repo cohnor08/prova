@@ -1273,8 +1273,12 @@ export default function SongsScreen({ route, navigation }) {
     </View>
   );
 
+  // No 'top' edge: this screen is pushed inside a stack that already shows a
+  // header, so a top safe-area inset here gets applied a SECOND time and the
+  // gap renders as a black band above the content. (Same class of bug as the
+  // one under the tab bar, PR #141.)
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* ── Learn a song ── */}
         {role !== 'student' && (

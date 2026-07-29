@@ -1478,7 +1478,7 @@ export default function ProgressScreen({ navigation }) {
         })()}
       </SheetModal>
 
-      <SheetModal visible={goalModalOpen} onRequestClose={() => setGoalModalOpen(false)} cardStyle={styles.goalSheet} keyboardAvoiding>
+      <SheetModal visible={goalModalOpen} onRequestClose={() => setGoalModalOpen(false)} cardStyle={styles.goalSheet} keyboardLift>
         <Text style={styles.goalSheetTitle}>New goal</Text>
         <TextInput
           ref={goalInputRef}
@@ -1487,7 +1487,6 @@ export default function ProgressScreen({ navigation }) {
           placeholderTextColor={COLORS.textMuted}
           value={goalText}
           onChangeText={setGoalText}
-          autoFocus
           maxLength={80}
           onSubmitEditing={saveGoal}
           returnKeyType="done"

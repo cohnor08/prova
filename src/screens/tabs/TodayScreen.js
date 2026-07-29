@@ -169,6 +169,37 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
+// A one-line title that CUTS rather than ellipsises. RN's ellipsizeMode
+// "clip" cuts mid-word, which looks like a mistake, so we let it lay out once,
+// read back what actually fitted (onTextLayout hands us the laid-out line) and
+// re-render trimmed to the last whole word. Measured once per title; the full
+// text is shown when the card is expanded.
+function ClipTitle({ text, style, expanded }) {
+  const [clipped, setClipped] = useState(null);
+  const measuredFor = useRef(null);
+  useEffect(() => { measuredFor.current = null; setClipped(null); }, [text]);
+
+  if (expanded) return <Text style={style}>{text}</Text>;
+
+  const onTextLayout = (e) => {
+    if (measuredFor.current === text) return;      // already settled
+    const line = e.nativeEvent.lines && e.nativeEvent.lines[0];
+    if (!line) return;
+    measuredFor.current = text;
+    const shown = (line.text || '').trim();
+    if (shown.length >= (text || '').length) return;   // it all fitted
+    const space = shown.lastIndexOf(' ');
+    const cut = space > 0 ? shown.slice(0, space) : shown;
+    setClipped(cut.replace(/[\s,;:.\u2013\u2014-]+$/, ''));
+  };
+
+  return (
+    <Text style={style} numberOfLines={1} ellipsizeMode="clip" onTextLayout={onTextLayout}>
+      {clipped == null ? text : clipped}
+    </Text>
+  );
+}
+
 function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
@@ -448,9 +479,11 @@ function SessionCard({ session, completed, onPractice }) {
           <View style={styles.sessionTitleRow}>
             {/* Collapsed: just the part before the dash ("Fingerstyle Warmup").
                 Expanded: the full title. Kills the wall of "…" in the list. */}
-            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>
-              {expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
-            </Text>
+            <ClipTitle
+              expanded={expanded}
+              style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]}
+              text={expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
+            />
             {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
           </View>
@@ -1713,6 +1746,11 @@ export default function TodayScreen({ navigation, route }) {
           });
           return (
             <View key={g.tid} style={styles.teacherCard}>
+              {/* Same coloured left bar the session cards use, so an assigned
+                  section reads as "a thing to do" at a glance even collapsed.
+                  Blue = from a person (your teacher), cyan = from a class. */}
+              <View style={[styles.categoryBar, { backgroundColor: COLORS.primary }]} />
+              <View style={styles.assignedBody}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
@@ -1783,6 +1821,7 @@ export default function TodayScreen({ navigation, route }) {
                   ))}
                 </View>
               )}
+              </View>
             </View>
           );
         })}
@@ -1792,6 +1831,8 @@ export default function TodayScreen({ navigation, route }) {
           const collapsed = collapsedGroups.has(g.key);
           return (
             <View key={g.key} style={styles.teacherCard}>
+              <View style={[styles.categoryBar, { backgroundColor: COLORS.accent }]} />
+              <View style={styles.assignedBody}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
                 <Ionicons name="people" size={16} color={COLORS.accent} />
                 <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
@@ -1827,6 +1868,7 @@ export default function TodayScreen({ navigation, route }) {
                   myUid={auth.currentUser?.uid}
                 />
               )}
+              </View>
             </View>
           );
         })}
@@ -2302,9 +2344,13 @@ const makeStyles = (COLORS) => StyleSheet.create({
   // Teacher-assigned tasks — sit under one "FROM YOUR TEACHER" header, so they
   // hug together (sm gap) rather than floating as separate big cards.
   teacherCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.sm,
+    backgroundColor: COLORS.card, borderRadius: 16, marginBottom: SPACING.sm,
     borderWidth: 1, borderColor: COLORS.border,
+    // Row + clipped so the coloured left bar runs the full height of the card,
+    // exactly like the session cards. Padding moved onto assignedBody.
+    flexDirection: 'row', overflow: 'hidden',
   },
+  assignedBody: { flex: 1, minWidth: 0, padding: SPACING.lg },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
