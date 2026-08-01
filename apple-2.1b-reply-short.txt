@@ -1,0 +1,38 @@
+Hello,
+
+Prova is completely free. There is no In-App Purchase, no subscription and no external purchase path and no paid tier of any kind in this build.
+
+1. Where can users purchase the content, subscriptions, features, and services accessed in the app?
+
+Nowhere. As of this version Prova sells nothing at all, inside the app or outside it. There is no In-App Purchase, no subscription, no website checkout, no payment processor, and no "contact us to upgrade" route. The app has no purchase surface: no prices, no plan selector, no upgrade button, no paywall. The binary contains no commerce or billing SDK (no StoreKit purchase code, no RevenueCat, no Stripe).
+
+2. What previously purchased content, subscriptions, features or services can a user access in the app?
+
+None. Prova has never sold anything, so no user has any prior purchase to access or restore. There is deliberately no Restore Purchases flow because nothing has ever been purchasable. Every account (Student, Personal, Teacher) is fully unlocked from sign-up, with no entitlement check or licence key.
+
+3. What paid content, subscriptions or features are unlocked within the app that do not use In-App Purchase?
+
+None. No feature sits behind a payment of any kind. Everything is free for every account with no limits: AI practice plans, timers, progress tracking, song library, all four mini-games, journal, messaging, AI chat, and the full teacher toolkit (unlimited students, lesson notes, calendar, packs, parent reports).
+
+ONE FEATURE WE FLAG PROACTIVELY
+
+Prova has a Performance Mode for musicians playing live. It shows a QR code the audience in the venue can scan to request a song. If the performer has optionally saved their own payment link (e.g. PayPal), that page also shows it so an audience member can tip them.
+
+We believe this sits outside In-App Purchase: it is a person-to-person payment for a real-world live performance, not digital content; nothing in the app is unlocked by it; and Prova never processes, holds or takes any share of the money, which moves entirely on a third-party service. It is optional and blank by default. If you would prefer it removed, we will do so.
+
+OUR BUSINESS MODEL
+
+You asked to understand our model, so we state it now. Today nothing is sold. We intend two revenue streams:
+
+1. Institutional licences sold business-to-business to schools. Prova is a classroom practice and management tool for music departments. We intend to license it directly to schools for their students, invoiced to the institution. We understand this falls under Guideline 3.1.3(c) Enterprise Services, covering apps "sold directly by you to organizations or groups for their employees or students (for example professional databases and classroom management tools)".
+
+2. Individual subscriptions, for both musicians and teachers, sold inside the app through Apple In-App Purchase. This covers an individual musician practising alone and a private teacher buying for their own studio. Both are single-user consumer purchases, so both will be sold on an in-app paywall entirely through StoreKit, with price and terms shown before purchase and a Restore Purchases option. They will not be sold on our website or by invoice, as required by 3.1.1 and 3.1.3(c) ("Consumer, single user, or family sales must use in-app purchase").
+
+Where the line sits: a school buying for its students is institutional and invoiced directly; an individual teacher buying for their own studio is a consumer purchase through Apple, as is an individual musician. We will not use the institutional channel to sell to individuals.
+
+The app will never contain a button, link, price or call to action pointing to any external purchase, as required by 3.1.3. School licensing is discussed only outside the app.
+
+None of this exists in the build under review: no licences on sale, no institutional accounts, no seat or licence fields, no billing.
+
+Kind regards,
+The Prova Team

@@ -840,7 +840,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalConfirm, adding && { opacity: 0.6 }]} onPress={handleAdd} disabled={adding}>
-                {adding ? <Ghost color={COLORS.text} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
+                {adding ? <Ghost color={COLORS.onPrimary} size="small" /> : <Text style={styles.modalConfirmText}>Add</Text>}
               </TouchableOpacity>
             </View>
       </SheetModal>
@@ -1350,7 +1350,7 @@ export default function ProgressScreen({ navigation }) {
             activeOpacity={0.85}
           >
             <Ionicons name={editMode ? 'checkmark' : 'create-outline'} size={16} color={editMode ? '#fff' : COLORS.primary} />
-            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Customize'}</Text>
+            <Text style={[styles.editBtnText, editMode && { color: COLORS.onPrimary }]}>{editMode ? 'Done' : 'Customize'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1361,7 +1361,7 @@ export default function ProgressScreen({ navigation }) {
         {!editMode && (
           <>
             <TouchableOpacity style={styles.shareBtn} onPress={openShare} activeOpacity={0.85}>
-              <Ionicons name="share-outline" size={16} color="#fff" />
+              <Ionicons name="share-outline" size={16} color={COLORS.onPrimary} />
               <Text style={styles.shareBtnText}>Share my progress</Text>
               <Text style={styles.shareBtnPts}>+{formatScore(weekPoints)} pts this week</Text>
             </TouchableOpacity>
@@ -1426,7 +1426,7 @@ export default function ProgressScreen({ navigation }) {
               <ScrollView style={{ maxHeight: 260 }}>
                 {convos.map((c) => (
                   <TouchableOpacity key={c.id} style={styles.shareRow} onPress={() => sendToConversation(c)} disabled={sendingTo != null} activeOpacity={0.7}>
-                    <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color="#fff" /></View>
+                    <View style={[styles.shareAvatar, styles.shareAvatarTeacher]}><Ionicons name="school" size={17} color={COLORS.onPrimary} /></View>
                     <Text style={styles.shareRowName} numberOfLines={1}>{c.name}</Text>
                     {sendingTo === c.otherUid
                       ? <Ghost size="small" color={COLORS.primary} />
@@ -1513,7 +1513,7 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 14,
     paddingVertical: 13, paddingHorizontal: SPACING.lg, marginBottom: SPACING.lg,
   },
-  shareBtnText: { color: '#fff', fontSize: 15, fontWeight: '800', flex: 1 },
+  shareBtnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800', flex: 1 },
   shareBtnPts: { color: '#fff', fontSize: 12, fontWeight: '700', opacity: 0.85 },
   shareBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   shareSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
@@ -1698,10 +1698,10 @@ const styles = themedStyles(() => StyleSheet.create({
   goalSheetTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', marginBottom: SPACING.md, textAlign: 'center' },
   goalInput: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, color: COLORS.text, fontSize: 15, paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md },
   goalBtnRow: { flexDirection: 'row', gap: SPACING.md },
-  goalCancel: { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  goalCancel: { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   goalCancelText: { color: COLORS.textSecondary, fontWeight: '700' },
   goalSave: { flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.primary },
-  goalSaveText: { color: '#fff', fontWeight: '700' },
+  goalSaveText: { color: COLORS.onPrimary, fontWeight: '700' },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   goalText: { color: COLORS.text, fontSize: 15 },
 
@@ -1740,8 +1740,8 @@ const styles = themedStyles(() => StyleSheet.create({
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.lg },
   modalInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg },
   modalBtns: { flexDirection: 'row', gap: SPACING.md },
-  modalCancel: { flex: 1, padding: SPACING.md, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  modalCancel: { flex: 1, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },
   modalConfirm: { flex: 1, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
-  modalConfirmText: { color: COLORS.text, fontWeight: '700' },
+  modalConfirmText: { color: COLORS.onPrimary, fontWeight: '700' },
 }));

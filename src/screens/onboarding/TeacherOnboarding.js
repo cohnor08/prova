@@ -123,7 +123,7 @@ export default function TeacherOnboarding() {
             activeOpacity={0.85}
           >
             {saving
-              ? <Ghost color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.onPrimary} size="small" />
               : <Text style={styles.buttonText}>Get Started</Text>}
           </TouchableOpacity>
         </View>
@@ -191,5 +191,5 @@ const styles = themedStyles(() => StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
+  buttonText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
 }));

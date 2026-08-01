@@ -348,7 +348,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       {/* Practicing happens in the player — this just opens it at this task. */}
       {expanded && !task.completed && (
         <TouchableOpacity style={styles.practiceThisBtn} onPress={() => onPractice(task)} activeOpacity={0.85}>
-          <Ionicons name="play" size={15} color={COLORS.text} />
+          <Ionicons name="play" size={15} color={COLORS.onPrimary} />
           <Text style={styles.practiceThisText}>Practice{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
         </TouchableOpacity>
       )}
@@ -513,7 +513,7 @@ function SessionCard({ session, completed, onPractice }) {
         </View>
         {!completed && (
           <TouchableOpacity style={[styles.practiceThisBtn, { backgroundColor: categoryColor }]} onPress={() => onPractice(session)} activeOpacity={0.85}>
-            <Ionicons name="play" size={15} color={COLORS.text} />
+            <Ionicons name="play" size={15} color={COLORS.onPrimary} />
             <Text style={styles.practiceThisText}>Practice</Text>
           </TouchableOpacity>
         )}
@@ -1642,7 +1642,7 @@ export default function TodayScreen({ navigation, route }) {
             </Text>
             {playerQueue.length > 0 && (
               <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
-                <Ionicons name="play" size={18} color={COLORS.text} />
+                <Ionicons name="play" size={18} color={COLORS.onPrimary} />
                 <Text style={styles.startPracticeText}>{startLabel}</Text>
               </TouchableOpacity>
             )}
@@ -1698,7 +1698,7 @@ export default function TodayScreen({ navigation, route }) {
                   </View>
                 ) : (
                   <TouchableOpacity style={styles.challengeBtn} onPress={handleCompleteChallenge} activeOpacity={0.85}>
-                    <Ionicons name="checkmark" size={16} color="#fff" />
+                    <Ionicons name="checkmark" size={16} color={COLORS.onPrimary} />
                     <Text style={styles.challengeBtnText}>Mark complete</Text>
                   </TouchableOpacity>
                 )}
@@ -1968,7 +1968,7 @@ export default function TodayScreen({ navigation, route }) {
               })}
               activeOpacity={0.85}
             >
-              <Ionicons name="add" size={16} color="#fff" />
+              <Ionicons name="add" size={16} color={COLORS.onPrimary} />
               <Text style={styles.makePlanText}>Create a plan</Text>
             </TouchableOpacity>
           </View>
@@ -2156,7 +2156,7 @@ export default function TodayScreen({ navigation, route }) {
                 <Text style={styles.gigAskNoText}>Not now</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.gigAskYes} onPress={() => { setPickSetlistId(null); setSetlistAsk('pick'); }} activeOpacity={0.85}>
-                <Ionicons name="musical-notes" size={16} color={COLORS.text} />
+                <Ionicons name="musical-notes" size={16} color={COLORS.onPrimary} />
                 <Text style={styles.gigAskYesText}>Practice my set</Text>
               </TouchableOpacity>
             </View>
@@ -2165,7 +2165,7 @@ export default function TodayScreen({ navigation, route }) {
       </SheetModal>
 
       {/* End-of-day review — rate every task in one place, then Submit */}
-      <SheetModal visible={dayReviewOpen} onRequestClose={skipDayReview} cardStyle={styles.drSheet} keyboardAvoiding>
+      <SheetModal visible={dayReviewOpen} onRequestClose={skipDayReview} cardStyle={styles.drSheet} keyboardLift>
             <View style={styles.drHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.drTitle}>How did today go?</Text>
@@ -2277,7 +2277,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   dayBtnSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   dayBtnToday: { borderColor: COLORS.primary },
   dayBtnText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
-  dayBtnTextSelected: { color: COLORS.text },
+  dayBtnTextSelected: { color: COLORS.onPrimary },
   dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted, marginTop: 3 },
   dayDotSelected: { backgroundColor: COLORS.text },
 
@@ -2292,7 +2292,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, marginTop: SPACING.md,
   },
-  startPracticeText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  startPracticeText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   gigAskCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: SPACING.xxl },
   gigAskKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: SPACING.xs },
   gigAskTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: 4 },
@@ -2301,7 +2301,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   gigAskNo: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   gigAskNoText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   gigAskYes: { flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.primary },
-  gigAskYesText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  gigAskYesText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   gigSongRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   gigSongNum: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700', width: 20, textAlign: 'center' },
   gigSongTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
@@ -2319,7 +2319,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: COLORS.primaryDark, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
   },
-  practiceThisText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  practiceThisText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '700' },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },
   summaryDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
@@ -2403,17 +2403,17 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherDueOverdue: { color: COLORS.error },
   teacherDoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   teacherDoneBtnLocked: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  teacherDoneText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  teacherDoneText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
   teacherDoneTextLocked: { color: COLORS.textMuted },
   ttTimer: { marginTop: SPACING.md },
   ttRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  ttTimerText: { color: COLORS.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  ttTimerText: { color: COLORS.onPrimary, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   ttTimerTarget: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 1 },
   ttDurationLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 6 },
   ttLapPts: { color: COLORS.accent, fontSize: 13, fontWeight: '800' },
   ttTimerBtn: { backgroundColor: COLORS.primaryDark, borderRadius: 999, width: 100, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
   ttTimerBtnActive: { backgroundColor: COLORS.border },
-  ttTimerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  ttTimerBtnText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
   ttBankBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 999, width: 76, justifyContent: 'center', paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 18 },
   ttBankBtnDim: { backgroundColor: COLORS.card },
   ttBankBtnText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
@@ -2442,7 +2442,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 12,
   },
-  challengeBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  challengeBtnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '700' },
   challengeDone: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 4 },
   challengeDoneText: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
 
@@ -2488,11 +2488,11 @@ const makeStyles = (COLORS) => StyleSheet.create({
   drOpt: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   drOptOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   drOptText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
-  drOptTextOn: { color: '#FFFFFF' },
+  drOptTextOn: { color: COLORS.onPrimary },
   drNoteLabel: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: SPACING.sm, marginBottom: SPACING.sm },
   drNote: { backgroundColor: COLORS.surface, borderRadius: 10, color: COLORS.text, fontSize: 14, paddingHorizontal: SPACING.md, paddingVertical: 12, minHeight: 60, textAlignVertical: 'top' },
   drSubmit: { backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: SPACING.md },
-  drSubmitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  drSubmitText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   drSkip: { paddingVertical: SPACING.md, alignItems: 'center' },
   drSkipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 
@@ -2514,7 +2514,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   reviewSession: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
   reviewSessionMin: { color: COLORS.textMuted, fontSize: 12 },
   reviewApplyBtn: { backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: SPACING.sm },
-  reviewApplyText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  reviewApplyText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   reviewKeepBtn: { paddingVertical: SPACING.md, alignItems: 'center' },
   reviewKeepText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 
@@ -2553,7 +2553,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     backgroundColor: COLORS.primary + '12', borderRadius: 10,
     marginHorizontal: -(SPACING.lg - SPACING.sm), // full-width like the task group
   },
-  lessonRowText: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  lessonRowText: { flex: 1, color: COLORS.onPrimary, fontSize: 13, fontWeight: '600' },
   attDot: { width: 9, height: 9, borderRadius: 5 },
   attNoteText: { color: COLORS.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
   notesChip: {
@@ -2586,7 +2586,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   restTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
   restSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 21, paddingHorizontal: SPACING.lg },
   makePlanBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: COLORS.primary },
-  makePlanText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  makePlanText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
   upgradeHero: {
     borderRadius: 20, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.md,
     borderWidth: 1, borderColor: COLORS.primary + '55', overflow: 'hidden',
@@ -2595,7 +2595,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   upgradeTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
   upgradeSub: { color: COLORS.textSecondary, fontSize: 13.5, textAlign: 'center', marginTop: 6, lineHeight: 19 },
   upgradeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 12, paddingHorizontal: SPACING.xl, borderRadius: 999, backgroundColor: COLORS.primary },
-  upgradeBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  upgradeBtnText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
 
   ratingBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   ratingSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.xl, paddingBottom: 40, borderTopWidth: 1, borderColor: COLORS.border },

@@ -4,10 +4,12 @@
 // three completed rounds each day bank +20 Prova points and count a couple of
 // practice minutes toward the daily log.
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { useGameAudio } from '../../hooks/useGameAudio';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -75,7 +77,63 @@ const SCALE_LEVELS = [
   { id: 1, label: 'Starter', names: ['Major', 'Natural Minor'] },
   { id: 2, label: 'Modes',   names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian'] },
   { id: 3, label: 'Complete', names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian', 'Harmonic Minor', 'Major Pentatonic', 'Minor Pentatonic', 'Blues'] },
+  // No choices at all — you name it yourself. The hardest way to be tested.
+  { id: 4, label: 'Expert', typed: true, names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian', 'Harmonic Minor', 'Major Pentatonic', 'Minor Pentatonic', 'Blues'] },
 ];
+
+// ── Typed-answer matching ────────────────────────────────────────────────────
+// Someone who can HEAR a dorian scale should not be marked wrong for writing
+// "dorien", "Dorian mode" or "aeolian" instead of "natural minor". We accept a
+// name if it matches after normalising, or matches a known alias, or is within a
+// small edit distance — while still rejecting a genuinely different scale.
+const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Real alternative names players actually use, not typos.
+const ALIASES = {
+  'major': ['ionian', 'major scale'],
+  'natural minor': ['minor', 'aeolian', 'nat minor', 'natural min'],
+  'dorian': ['dorian mode'],
+  'mixolydian': ['mixo', 'mixolydian mode'],
+  'harmonic minor': ['harmonic', 'harm minor'],
+  'major pentatonic': ['pentatonic major', 'maj pentatonic', 'major pent', 'pentatonic'],
+  'minor pentatonic': ['pentatonic minor', 'min pentatonic', 'minor pent'],
+  'blues': ['blues scale'],
+};
+
+function editDistance(a, b) {
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// Tolerance scales with length: one slip in a short word, more in a long one,
+// but never enough to turn one scale name into another.
+const slack = (t) => (t.length <= 5 ? 1 : t.length <= 10 ? 2 : 3);
+
+export function answerMatches(input, answer) {
+  const got = norm(input);
+  if (!got) return false;
+  const want = norm(answer);
+  // Best edit distance from what they typed to a name or any of its aliases.
+  const score = (name) => {
+    const n = norm(name);
+    return Math.min(...[n, ...(ALIASES[n] || []).map(norm)].map((t) => editDistance(got, t)));
+  };
+  const mine = score(want);
+  // Guard against slack turning one scale into another: "minor pentatonic" is
+  // only 3 edits from "major pentatonic", so a tolerant match would accept it.
+  // If any OTHER scale name fits at least as well, the answer is ambiguous and
+  // we reject it rather than award a point for naming a different scale.
+  if (Object.keys(ALIASES).some((n) => n !== want && score(n) <= mine)) return false;
+  return mine <= slack(want);
+}
 const LEVEL_SETS = { intervals: LEVELS, chords: CHORD_LEVELS, scales: SCALE_LEVELS };
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -90,16 +148,18 @@ export default function EarTrainingScreen({ navigation, route }) {
   const [qNum, setQNum] = useState(0);
   const [question, setQuestion] = useState(null);      // { answer, choices }
   const [picked, setPicked] = useState(null);          // chosen answer (locks the question)
+  const [typedAnswer, setTyped] = useState('');        // level 4: what they wrote
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
-  const soundsRef = useRef([]);
+
+  // Leaving the game abandons the round: coming back starts fresh at the menu
+  // rather than dropping you back mid-question with a stale score.
+  useFocusEffect(React.useCallback(() => () => {
+    setPhase('menu'); setQNum(0); setQuestion(null); setPicked(null); setScore(0); setRewarded(false); setTyped('');
+  }, []));
+  const audio = useGameAudio();
   const playScrollRef = useRef(null);
 
-  const unloadAll = async () => {
-    const sounds = soundsRef.current; soundsRef.current = [];
-    for (const s of sounds) { try { await s.unloadAsync(); } catch (e) {} }
-  };
-  useEffect(() => () => { unloadAll(); }, []);
 
   // A running metronome would drown the notes you're trying to identify.
   const metronome = useMetronome();
@@ -118,16 +178,10 @@ export default function EarTrainingScreen({ navigation, route }) {
     })();
   }, []);
 
-  const playMidi = async (midis, gapMs) => {
-    await unloadAll();
-    try {
-      for (let i = 0; i < midis.length; i++) {
-        const { sound } = await Audio.Sound.createAsync(NOTE_FILES[midis[i]], { shouldPlay: true });
-        soundsRef.current.push(sound);
-        if (gapMs && i < midis.length - 1) await new Promise((r) => setTimeout(r, gapMs));
-      }
-    } catch (e) { /* audio is best-effort */ }
-  };
+  // opts.restart = always start over (used when a new question begins); without
+  // it this toggles, so tapping the play button mid-sequence stops it.
+  const playMidi = (midis, gapMs, opts) =>
+    audio.play(midis.map((m) => NOTE_FILES[m]), gapMs, opts);
 
   // On the hardest level of each mode, drop the 4-way multiple choice and show
   // EVERY possible answer (recall mode) — real recognition, not a 1-in-4 guess.
@@ -147,8 +201,10 @@ export default function EarTrainingScreen({ navigation, route }) {
       return { midis: [root, root + semis], gap: 650, answer: answerName, choices, recall };
     }
     if (mode === 'scales') {
-      const names = SCALE_LEVELS.find((l) => l.id === level).names;
-      const recall = level === SCALE_LEVELS[SCALE_LEVELS.length - 1].id;
+      const lvl = SCALE_LEVELS.find((l) => l.id === level);
+      const names = lvl.names;
+      const typed = !!lvl.typed;
+      const recall = !typed && level === 3;
       const set = SCALES.filter((s) => names.includes(s.name));
       const scale = pick(set);
       const root = LOW + Math.floor(Math.random() * (HIGH - LOW - 12 + 1));
@@ -156,8 +212,8 @@ export default function EarTrainingScreen({ navigation, route }) {
       return {
         midis: scale.steps.map((s) => root + s), gap: 300,
         answer: scale.name,
-        choices: recall ? shuffle(names) : shuffle([scale.name, ...wrong.map((s) => s.name)]),
-        recall,
+        choices: typed ? [] : recall ? shuffle(names) : shuffle([scale.name, ...wrong.map((s) => s.name)]),
+        recall, typed,
       };
     }
     const names = CHORD_LEVELS.find((l) => l.id === level).names;
@@ -183,19 +239,21 @@ export default function EarTrainingScreen({ navigation, route }) {
     setScore(0); setQNum(1); setPicked(null); setRewarded(false);
     const q = makeQuestion();
     setQuestion(q); setPhase('playing');
-    setTimeout(() => playMidi(q.midis, q.gap), 350);
+    setTimeout(() => playMidi(q.midis, q.gap, { restart: true }), 350);
   };
 
   const answer = (choice) => {
     if (picked) return;
     setPicked(choice);
-    if (choice === question.answer) setScore((s) => s + 1);
+    const right = question.typed ? answerMatches(choice, question.answer) : choice === question.answer;
+    if (right) setScore((s) => s + 1);
     // Bring the Next button into view for the long recall answer lists.
     setTimeout(() => playScrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
   const next = async () => {
-    unloadAll(); // cut the current note the instant we advance/finish
+    audio.stop();     // cut the current note the instant we advance/finish
+    setTyped('');
     if (qNum >= ROUND_LEN) {
       setPhase('done');
       track('ear_round_completed', { mode, level, score });
@@ -230,13 +288,13 @@ export default function EarTrainingScreen({ navigation, route }) {
     setQNum((n) => n + 1); setPicked(null);
     const q = makeQuestion();
     setQuestion(q);
-    setTimeout(() => playMidi(q.midis, q.gap), 250);
+    setTimeout(() => playMidi(q.midis, q.gap, { restart: true }), 250);
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => { unloadAll(); if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { audio.stop(); if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Ear Training</Text>
@@ -268,7 +326,7 @@ export default function EarTrainingScreen({ navigation, route }) {
           </View>
 
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="play" size={18} color="#fff" />
+            <Ionicons name="play" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Start round</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -285,6 +343,42 @@ export default function EarTrainingScreen({ navigation, route }) {
           </TouchableOpacity>
 
           {question.recall && <Text style={styles.recallHint}>Recall mode — no multiple choice, name it from them all</Text>}
+
+          {question.typed ? (
+            <View style={styles.typedWrap}>
+              <Text style={styles.recallHint}>Type the scale you heard.</Text>
+              <TextInput
+                style={[styles.typedInput,
+                  picked && (answerMatches(picked, question.answer) ? styles.typedRight : styles.typedWrong)]}
+                value={picked ?? typedAnswer}
+                onChangeText={setTyped}
+                placeholder="e.g. dorian"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!picked}
+                returnKeyType="done"
+                blurOnSubmit
+                /* Return just closes the keyboard — submitting is a deliberate
+                   press, so a stray Enter can't spend the question. */
+              />
+              {!picked ? (
+                <TouchableOpacity
+                  style={[styles.nextBtn, !typedAnswer.trim() && { opacity: 0.4 }]}
+                  onPress={() => typedAnswer.trim() && answer(typedAnswer.trim())}
+                  disabled={!typedAnswer.trim()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.nextText}>Submit</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.typedAnswerLine}>
+                  {answerMatches(picked, question.answer) ? 'Correct — ' : 'It was '}
+                  <Text style={{ color: COLORS.text, fontWeight: '800' }}>{question.answer}</Text>
+                </Text>
+              )}
+            </View>
+          ) : (
           <View style={styles.choices}>
             {question.choices.map((c) => {
               const isPicked = picked === c;
@@ -303,6 +397,7 @@ export default function EarTrainingScreen({ navigation, route }) {
               );
             })}
           </View>
+          )}
 
           {picked && (
             <TouchableOpacity style={styles.nextBtn} onPress={next} activeOpacity={0.85}>
@@ -321,7 +416,7 @@ export default function EarTrainingScreen({ navigation, route }) {
             {rewarded ? `  +${ROUND_POINTS} pts banked.` : ''}
           </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Play again</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setPhase('menu')} hitSlop={{ top: 8, bottom: 8 }}>
@@ -346,15 +441,24 @@ const styles = themedStyles(() => StyleSheet.create({
   seg: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   segOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   segText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
-  segTextOn: { color: '#fff' },
+  segTextOn: { color: COLORS.onPrimary },
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
-  startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  startText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
   gamePlay: { padding: SPACING.xl, alignItems: 'center', flexGrow: 1, paddingBottom: SPACING.xxl },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
   playBig: { width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl },
   playBigText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 6 },
+  typedWrap: { gap: SPACING.md, marginTop: SPACING.sm },
+  typedInput: {
+    backgroundColor: COLORS.card, color: COLORS.text, fontSize: 17, fontWeight: '700',
+    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md, paddingVertical: 14, textAlign: 'center',
+  },
+  typedRight: { borderColor: COLORS.success },
+  typedWrong: { borderColor: COLORS.error },
+  typedAnswerLine: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 2 },
   recallHint: { color: COLORS.accent || COLORS.primary, fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' },
   choice: { width: '47%', paddingVertical: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
@@ -362,6 +466,6 @@ const styles = themedStyles(() => StyleSheet.create({
   choiceWrong: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
   choiceText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
-  nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  nextText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
 }));

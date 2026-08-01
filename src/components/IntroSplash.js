@@ -14,14 +14,14 @@ const FADE_MS = 420;
 const SVG = `
 <svg width="400" height="680" viewBox="0 0 400 680" xmlns="http://www.w3.org/2000/svg">
 <style>
-.bg { fill: #050810; }
+.bg { fill: #171A21; }
 .cd-group { opacity:0; animation:groupIn 0.01s ease forwards; animation-delay:0.15s; transform:translateY(-14px) scale(1.32); transform-origin:200px 275px; }
 @keyframes groupIn { to { opacity:1; } }
-.cd-outer  { fill:#0a0f1a; stroke:#3B82F6; stroke-width:9; stroke-dasharray:251; stroke-dashoffset:251; animation:drawCircle 0.9s ease forwards; animation-delay:0.15s; }
-.cd-mid    { fill:none; stroke:#1E40AF; stroke-width:3; stroke-dasharray:233; stroke-dashoffset:233; animation:drawCircle 1.0s ease forwards; animation-delay:0.25s; }
-.cd-hole   { fill:#050810; stroke:#3B82F6; stroke-width:2; opacity:0; animation:fadeIn 0.4s ease forwards; animation-delay:0.95s; }
-.ring-in   { fill:none; stroke:#2563EB; stroke-width:1; stroke-dasharray:5 15; opacity:0; transform-origin:200px 275px; animation:spinIn 10s linear infinite; animation-delay:0.75s; }
-.ring-out  { fill:none; stroke:#1D4ED8; stroke-width:1; stroke-dasharray:3 12; opacity:0; transform-origin:200px 275px; animation:spinRev 14s linear infinite; animation-delay:0.85s; }
+.cd-outer  { fill:#1E222B; stroke:#5FC4F5; stroke-width:9; stroke-dasharray:251; stroke-dashoffset:251; animation:drawCircle 0.9s ease forwards; animation-delay:0.15s; }
+.cd-mid    { fill:none; stroke:#2E7FB8; stroke-width:3; stroke-dasharray:233; stroke-dashoffset:233; animation:drawCircle 1.0s ease forwards; animation-delay:0.25s; }
+.cd-hole   { fill:#171A21; stroke:#5FC4F5; stroke-width:2; opacity:0; animation:fadeIn 0.4s ease forwards; animation-delay:0.95s; }
+.ring-in   { fill:none; stroke:#8FCCEF; stroke-width:1; stroke-dasharray:5 15; opacity:0; transform-origin:200px 275px; animation:spinIn 10s linear infinite; animation-delay:0.75s; }
+.ring-out  { fill:none; stroke:#7FA0DD; stroke-width:1; stroke-dasharray:3 12; opacity:0; transform-origin:200px 275px; animation:spinRev 14s linear infinite; animation-delay:0.85s; }
 @keyframes drawCircle { to { stroke-dashoffset:0; } }
 @keyframes fadeIn     { to { opacity:1; } }
 @keyframes spinIn     { 0%{opacity:0;transform:rotate(0deg)} 8%{opacity:1} 100%{opacity:1;transform:rotate(360deg)} }
@@ -35,7 +35,7 @@ const SVG = `
 .dots    { animation:fadeUp 0.5s ease forwards; animation-delay:2.15s; opacity:0; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .glow  { opacity:0; animation:fadeIn 1.4s ease forwards; animation-delay:0.55s; }
-.burst { fill:none; stroke:#3B82F6; stroke-width:2; opacity:0; transform-origin:200px 261px; animation:burst 0.9s ease-out forwards; animation-delay:1.05s; }
+.burst { fill:none; stroke:#5FC4F5; stroke-width:2; opacity:0; transform-origin:200px 261px; animation:burst 0.9s ease-out forwards; animation-delay:1.05s; }
 @keyframes burst { 0%{opacity:0.7;transform:scale(0.55)} 100%{opacity:0;transform:scale(1.9)} }
 .dotmid { animation:dotPulse 1.8s ease-in-out infinite; animation-delay:2.6s; }
 @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
@@ -43,8 +43,8 @@ const SVG = `
 <rect width="400" height="680" class="bg" rx="16"/>
 <defs>
   <radialGradient id="glowGrad">
-    <stop offset="0" stop-color="#3B82F6" stop-opacity="0.20"/>
-    <stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>
+    <stop offset="0" stop-color="#5FC4F5" stop-opacity="0.20"/>
+    <stop offset="1" stop-color="#5FC4F5" stop-opacity="0"/>
   </radialGradient>
 </defs>
 <circle class="glow" cx="200" cy="261" r="150" fill="url(#glowGrad)"/>
@@ -56,19 +56,19 @@ const SVG = `
   <circle cx="200" cy="275" r="62" class="ring-out"/>
 </g>
 <circle class="burst" cx="200" cy="261" r="92"/>
-<rect x="75" y="408" width="250" height="1" fill="#3B82F6" opacity="0.8" class="theline"/>
-<text x="200" y="400" text-anchor="middle" fill="#F0F4FF" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
-<text x="200" y="432" text-anchor="middle" fill="#60A5FA" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
+<rect x="75" y="408" width="250" height="1" fill="#5FC4F5" opacity="0.8" class="theline"/>
+<text x="200" y="400" text-anchor="middle" fill="#F4F7FD" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
+<text x="200" y="432" text-anchor="middle" fill="#8FCCEF" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
 <g class="dots">
-  <circle cx="160" cy="458" r="2" fill="#1E40AF"/>
-  <circle cx="200" cy="458" r="2" fill="#3B82F6" class="dotmid"/>
-  <circle cx="240" cy="458" r="2" fill="#1E40AF"/>
+  <circle cx="160" cy="458" r="2" fill="#2E7FB8"/>
+  <circle cx="200" cy="458" r="2" fill="#5FC4F5" class="dotmid"/>
+  <circle cx="240" cy="458" r="2" fill="#2E7FB8"/>
 </g>
 </svg>`;
 
 const HTML = `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>html,body{margin:0;height:100%;background:#050810;display:flex;align-items:center;justify-content:center;overflow:hidden}svg{width:82vw;max-width:420px;height:auto}</style>
+<style>html,body{margin:0;height:100%;background:#171A21;display:flex;align-items:center;justify-content:center;overflow:hidden}svg{width:82vw;max-width:420px;height:auto}</style>
 </head><body>${SVG}</body></html>`;
 
 export default function IntroSplash({ onDone }) {
@@ -98,7 +98,7 @@ export default function IntroSplash({ onDone }) {
             bounces={false}
             javaScriptEnabled={false}
             originWhitelist={['*']}
-            backgroundColor="#050810"
+            backgroundColor="#171A21"
           />
         </View>
       </Animated.View>
@@ -107,7 +107,7 @@ export default function IntroSplash({ onDone }) {
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#050810', zIndex: 9999 },
+  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#171A21', zIndex: 9999 },
   inner: { flex: 1 },
-  web: { flex: 1, backgroundColor: '#050810' },
+  web: { flex: 1, backgroundColor: '#171A21' },
 });

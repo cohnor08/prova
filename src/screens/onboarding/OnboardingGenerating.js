@@ -66,7 +66,7 @@ export default function OnboardingGenerating() {
             >
               <View style={[styles.stepIcon, isDone && styles.stepIconDone, isActive && styles.stepIconActive]}>
                 {isDone
-                  ? <Ionicons name="checkmark" size={12} color={COLORS.text} />
+                  ? <Ionicons name="checkmark" size={12} color={COLORS.onPrimary} />
                   : <View style={[styles.stepDot, isActive && styles.stepDotActive]} />
                 }
               </View>

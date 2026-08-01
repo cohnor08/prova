@@ -161,7 +161,7 @@ const styles = themedStyles(() => StyleSheet.create({
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 9 },
   segBtnOn: { backgroundColor: COLORS.primary },
   segText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
-  segTextOn: { color: '#fff' },
+  segTextOn: { color: COLORS.onPrimary },
 
   filterBlock: { paddingTop: SPACING.sm },
   chipRow: { paddingHorizontal: SPACING.lg, gap: 8 },
@@ -171,7 +171,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: COLORS.onPrimary },
 
   grid: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
   gridRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md },

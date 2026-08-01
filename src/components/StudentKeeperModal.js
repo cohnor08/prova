@@ -71,7 +71,7 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
             activeOpacity={0.85}
           >
             {saving
-              ? <Ghost color="#fff" size="small" />
+              ? <Ghost color={COLORS.onPrimary} size="small" />
               : <Text style={styles.btnText}>Keep these {picked.length}/{limit}</Text>}
           </TouchableOpacity>
         </View>
@@ -100,5 +100,5 @@ const styles = themedStyles(() => StyleSheet.create({
     alignItems: 'center', marginTop: SPACING.lg,
   },
   btnOff: { opacity: 0.4 },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  btnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
 }));

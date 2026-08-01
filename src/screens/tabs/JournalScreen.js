@@ -55,7 +55,7 @@ function FocusPicker({ value, onToggle }) {
         const on = value.includes(f);
         return (
           <TouchableOpacity key={f} style={[styles.focusChip, on && styles.focusChipOn]} onPress={() => onToggle(f)} activeOpacity={0.8}>
-            <Text style={[styles.focusChipText, on && { color: '#fff' }]}>{f}</Text>
+            <Text style={[styles.focusChipText, on && { color: COLORS.onPrimary }]}>{f}</Text>
           </TouchableOpacity>
         );
       })}
@@ -223,7 +223,7 @@ export default function JournalScreen({ navigation }) {
             disabled={!text.trim() || saving}
             activeOpacity={0.85}
           >
-            <Ionicons name="checkmark" size={18} color="#fff" />
+            <Ionicons name="checkmark" size={18} color={COLORS.onPrimary} />
             <Text style={styles.saveText}>Save entry</Text>
           </TouchableOpacity>
         </View>
@@ -294,7 +294,7 @@ export default function JournalScreen({ navigation }) {
                 disabled={!eText.trim()}
                 activeOpacity={0.85}
               >
-                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Ionicons name="checkmark" size={18} color={COLORS.onPrimary} />
                 <Text style={styles.saveText}>Save changes</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => editing && remove(editing.id)} style={styles.deleteRow} hitSlop={{ top: 8, bottom: 8 }}>
@@ -332,7 +332,7 @@ const styles = themedStyles(() => StyleSheet.create({
   moodText: { color: COLORS.textSecondary, fontSize: 12.5, fontWeight: '700' },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13, marginTop: SPACING.xl },
   saveBtnOff: { opacity: 0.4 },
-  saveText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  saveText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 2, marginBottom: SPACING.md },
   empty: { alignItems: 'center', paddingVertical: SPACING.xl },
   emptyIcon: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primary + '14', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },

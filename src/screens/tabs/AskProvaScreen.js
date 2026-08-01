@@ -216,7 +216,7 @@ export default function AskProvaScreen({ navigation }) {
           disabled={!input.trim() || loading}
           activeOpacity={0.85}
         >
-          <Ionicons name="arrow-up" size={20} color={COLORS.text} />
+          <Ionicons name="arrow-up" size={20} color={COLORS.onPrimary} />
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -263,7 +263,7 @@ const styles = themedStyles(() => StyleSheet.create({
   provaBubble: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderBottomLeftRadius: 5 },
   errorBubble: { borderColor: COLORS.error + '55' },
   bubbleText: { color: COLORS.text, fontSize: 15, lineHeight: 21 },
-  userBubbleText: { color: '#FFFFFF' },
+  userBubbleText: { color: COLORS.onPrimary },
   typingBubble: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   typingText: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' },
 

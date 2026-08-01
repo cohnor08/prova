@@ -60,7 +60,7 @@ export default function OnboardingLevel({ onNext, onBack, data, steps = 4 }) {
         activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Continue</Text>
-        <Ionicons name="arrow-forward" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
+        <Ionicons name="arrow-forward" size={18} color={COLORS.onPrimary} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
     </View>
   );
@@ -98,7 +98,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   badgeSelected: { backgroundColor: COLORS.primary },
   badgeText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
-  badgeTextSelected: { color: COLORS.text },
+  badgeTextSelected: { color: COLORS.onPrimary },
   optionContent: { flex: 1 },
   optionTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
   optionTitleSelected: { color: COLORS.primary },
@@ -113,5 +113,5 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: SPACING.lg,
   },
   buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  buttonText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '700' },
 }));

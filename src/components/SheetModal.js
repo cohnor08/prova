@@ -36,6 +36,7 @@ export default function SheetModal({
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
+  const kbLift = useRef(new Animated.Value(0)).current;   // keyboard lift, native-driven
   // Children can depend on state the parent nulls on close (visible={!!obj}) —
   // keep rendering the last visible tree while the exit animation plays.
   const lastChildren = useRef(children);

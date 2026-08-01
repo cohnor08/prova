@@ -5,9 +5,11 @@
 // set and fret range. Rounds of 10; first 3 rounds a day bank +20 points.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { useGameAudio } from '../../hooks/useGameAudio';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -62,6 +64,12 @@ export default function FretboardGameScreen({ navigation, route }) {
   const [picked, setPicked] = useState(null);     // tapped fret
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
+
+  // Leaving the game abandons the round: coming back starts fresh at the menu
+  // rather than dropping you back mid-question with a stale score.
+  useFocusEffect(React.useCallback(() => () => {
+    setPhase('menu'); setQNum(0); setQuestion(null); setPicked(null); setScore(0); setRewarded(false);
+  }, []));
   const [fretRowW, setFretRowW] = useState(0);      // viewport width
   const [fretContentW, setFretContentW] = useState(0); // content width
   const canScroll = fretContentW > fretRowW + 2;
@@ -92,27 +100,19 @@ export default function FretboardGameScreen({ navigation, route }) {
 
   // Keep a handle to the playing note so we can cut it on the next tap / on
   // exit, instead of letting each sample ring out (and leak).
-  const soundRef = useRef(null);
-  const unloadNote = async () => {
-    const s = soundRef.current; soundRef.current = null;
-    if (s) { try { await s.unloadAsync(); } catch (e) {} }
-  };
-  useEffect(() => () => { unloadNote(); }, []);
+  const audio = useGameAudio();
 
   // Activate the audio session once on mount — spinning it up per note can pop.
   useEffect(() => {
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(() => {});
   }, []);
 
-  const playNote = async (midi) => {
+  const playNote = (midi) => {
     let m = midi;
     while (m < 48) m += 12;   // samples span C3–C5; octave-up keeps the pitch class
     while (m > 72) m -= 12;
-    try {
-      await unloadNote(); // stop the previous note first
-      const { sound } = await Audio.Sound.createAsync(NOTE_FILES[m], { shouldPlay: true });
-      soundRef.current = sound;
-    } catch (e) { /* best effort */ }
+    // restart: tapping frets in quick succession should retrigger, not toggle off
+    return audio.play([NOTE_FILES[m]], 0, { restart: true });
   };
 
   const makeQuestion = () => {
@@ -162,7 +162,7 @@ export default function FretboardGameScreen({ navigation, route }) {
   };
 
   const next = async () => {
-    unloadNote(); // cut the current note the instant we advance/finish
+    audio.stop(); // cut the current note the instant we advance/finish
     if (qNum >= ROUND_LEN) {
       setPhase('done');
       track('fretboard_round_completed', { level, score });
@@ -237,7 +237,7 @@ export default function FretboardGameScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.nav}>
-        <TouchableOpacity onPress={() => { unloadNote(); if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { audio.stop(); if (phase === 'menu') navigation.goBack(); else setPhase('menu'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Fretboard Game</Text>
@@ -267,7 +267,7 @@ export default function FretboardGameScreen({ navigation, route }) {
           </View>
           <Text style={styles.levelHint}>{LEVEL_HINTS[level]}</Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="play" size={18} color="#fff" />
+            <Ionicons name="play" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Start round</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -340,7 +340,7 @@ export default function FretboardGameScreen({ navigation, route }) {
             {rewarded ? `  +${ROUND_POINTS} pts banked.` : ''}
           </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Play again</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setPhase('menu')} hitSlop={{ top: 8, bottom: 8 }}>
@@ -365,10 +365,10 @@ const styles = themedStyles(() => StyleSheet.create({
   seg: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   segOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   segText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
-  segTextOn: { color: '#fff' },
+  segTextOn: { color: COLORS.onPrimary },
   levelHint: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.lg, alignSelf: 'flex-start' },
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
-  startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  startText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },
@@ -392,6 +392,6 @@ const styles = themedStyles(() => StyleSheet.create({
   fretHint: { color: COLORS.textMuted, fontSize: 12, marginTop: SPACING.md },
   swipeHint: { color: COLORS.textMuted, fontSize: 11.5, marginBottom: SPACING.sm },
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
-  nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  nextText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
 }));

@@ -1299,7 +1299,7 @@ export default function SongsScreen({ route, navigation }) {
           </Text>
 
           <TouchableOpacity style={styles.gigNewBtn} activeOpacity={0.85} onPress={() => setShowGigForm(true)}>
-            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Ionicons name="sparkles" size={16} color={COLORS.onPrimary} />
             <Text style={styles.gigNewBtnText}>New gig setlist</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.manualLink} activeOpacity={0.7} onPress={() => setShowManualForm(true)}>
@@ -1374,7 +1374,7 @@ export default function SongsScreen({ route, navigation }) {
               disabled={!newTitle.trim()}
               activeOpacity={0.8}
             >
-              <Ionicons name="add" size={28} color={COLORS.text} />
+              <Ionicons name="add" size={28} color={COLORS.onPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -1484,7 +1484,7 @@ export default function SongsScreen({ route, navigation }) {
                         >
                           <Ionicons
                             name={isLoading ? 'ellipsis-horizontal' : isThisPlaying ? 'pause' : 'play'}
-                            size={22} color="#fff" style={{ marginLeft: isThisPlaying || isLoading ? 0 : 2 }}
+                            size={22} color={COLORS.onPrimary} style={{ marginLeft: isThisPlaying || isLoading ? 0 : 2 }}
                           />
                           <Text style={styles.songExpPlayText}>
                             {isLoading ? 'Loading…' : isThisPlaying ? 'Pause preview' : 'Play preview'}
@@ -1697,7 +1697,7 @@ export default function SongsScreen({ route, navigation }) {
             >
               {generatingSetlist ? (
                 <>
-                  <Ghost color="#fff" size="small" />
+                  <Ghost color={COLORS.onPrimary} size="small" />
                   <Text style={styles.gigGenerateText}>Building your setlist…</Text>
                 </>
               ) : (
@@ -1754,8 +1754,8 @@ export default function SongsScreen({ route, navigation }) {
             />
             <TouchableOpacity style={styles.manualSearchBtn} onPress={runManualSearch} disabled={manualSearching} activeOpacity={0.85}>
               {manualSearching
-                ? <Ghost size="small" color={COLORS.text} />
-                : <Ionicons name="search" size={17} color={COLORS.text} />}
+                ? <Ghost size="small" color={COLORS.onPrimary} />
+                : <Ionicons name="search" size={17} color={COLORS.onPrimary} />}
             </TouchableOpacity>
           </View>
 
@@ -1796,7 +1796,7 @@ export default function SongsScreen({ route, navigation }) {
             onPress={saveManualSetlist}
             activeOpacity={0.85}
           >
-            <Ionicons name="checkmark" size={18} color="#fff" />
+            <Ionicons name="checkmark" size={18} color={COLORS.onPrimary} />
             <Text style={styles.gigGenerateText}>Save setlist</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.openInCancel} onPress={() => setShowManualForm(false)} activeOpacity={0.7}>
@@ -1848,7 +1848,7 @@ export default function SongsScreen({ route, navigation }) {
                 onPress={() => { const sl = viewingSetlist; setViewingSetlist(null); setPerformingSetlist(sl); }}
                 activeOpacity={0.85}
               >
-                <Ionicons name="radio" size={18} color={COLORS.text} />
+                <Ionicons name="radio" size={18} color={COLORS.onPrimary} />
                 <Text style={styles.goLiveText}>Go live — perform this set</Text>
               </TouchableOpacity>
             )}
@@ -1945,7 +1945,7 @@ const styles = themedStyles(() => StyleSheet.create({
   toolBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
   toolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toolBtnText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  toolBtnTextActive: { color: COLORS.text },
+  toolBtnTextActive: { color: COLORS.onPrimary },
 
   // Task
   taskPlaceholder: { height: 100, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border },
@@ -1955,7 +1955,7 @@ const styles = themedStyles(() => StyleSheet.create({
   taskPill: { backgroundColor: COLORS.card, borderRadius: 20, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderWidth: 1, borderColor: COLORS.border },
   taskPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   taskPillText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
-  taskPillTextActive: { color: COLORS.text },
+  taskPillTextActive: { color: COLORS.onPrimary },
   taskCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 4, padding: SPACING.md },
   taskCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   categoryBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: 4 },
@@ -1995,7 +1995,7 @@ const styles = themedStyles(() => StyleSheet.create({
   timeSigBtn: { paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
   timeSigBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   timeSigText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
-  timeSigTextActive: { color: COLORS.text },
+  timeSigTextActive: { color: COLORS.onPrimary },
 
   playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   playBtnActive: { backgroundColor: COLORS.error },
@@ -2020,7 +2020,7 @@ const styles = themedStyles(() => StyleSheet.create({
   instBtn: { flex: 1, paddingVertical: SPACING.sm, alignItems: 'center', borderRadius: 8 },
   instBtnActive: { backgroundColor: COLORS.primary },
   instBtnText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
-  instBtnTextActive: { color: COLORS.text },
+  instBtnTextActive: { color: COLORS.onPrimary },
 
   tunerNoteBlock: { alignItems: 'center', marginTop: SPACING.sm, marginBottom: SPACING.sm },
   tunerBigNote: { fontSize: 76, fontWeight: '900', lineHeight: 84, letterSpacing: 1 },
@@ -2043,7 +2043,7 @@ const styles = themedStyles(() => StyleSheet.create({
 
   tunerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm, marginTop: SPACING.md },
   tunerBtnActive: { backgroundColor: COLORS.error },
-  tunerBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  tunerBtnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '700' },
 
   // Song to practice (in task section)
   songTaskCard: {
@@ -2081,10 +2081,10 @@ const styles = themedStyles(() => StyleSheet.create({
   gigChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   gigChipTextOn: { color: COLORS.primary },
   gigFormBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
-  gigCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  gigCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   gigCancelText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   gigSaveBtn: { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
-  gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  gigSaveText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 14 },
   gigEmptyBox: { alignItems: 'center', paddingVertical: SPACING.xl },
   gigEmptyBoxText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
   gigRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
@@ -2106,7 +2106,7 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
   },
-  gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  gigNewBtnText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 15 },
   manualLink: { alignItems: 'center', paddingVertical: 8, marginTop: 12 },
   manualLinkText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   manualSearchRow: { flexDirection: 'row', gap: SPACING.sm },
@@ -2147,7 +2147,7 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.lg,
   },
-  gigGenerateText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  gigGenerateText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 16 },
 
   // Setlist detail sheet
   detailBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
@@ -2175,7 +2175,7 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
   },
-  goLiveText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
+  goLiveText: { color: COLORS.onPrimary, fontWeight: '800', fontSize: 15 },
   detailDeleteBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     paddingVertical: 12, marginTop: SPACING.sm,
@@ -2201,7 +2201,7 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: SPACING.sm, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primary,
   },
   recAddBtnDone: { backgroundColor: COLORS.success + '22' },
-  recAddText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
+  recAddText: { color: COLORS.onPrimary, fontSize: 12, fontWeight: '700' },
 
   // Per-song controls (preview play/pause + open-in)
   songControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
@@ -2270,7 +2270,7 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 999,
     paddingVertical: 12, paddingHorizontal: 28, marginTop: SPACING.md,
   },
-  songExpPlayText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  songExpPlayText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   songExpActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
   songExpBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

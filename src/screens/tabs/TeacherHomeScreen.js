@@ -423,7 +423,7 @@ export default function TeacherHomeScreen({ navigation }) {
           <View style={styles.actionsCol}>
             <View style={styles.actionsRow}>
               <TouchableOpacity style={styles.actionBtn} onPress={goStudents} activeOpacity={0.85} disabled={editMode}>
-                <Ionicons name="person-add" size={18} color={COLORS.text} />
+                <Ionicons name="person-add" size={18} color={COLORS.onPrimary} />
                 <Text style={styles.actionText}>Add a student</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85} disabled={editMode}>
@@ -655,7 +655,7 @@ export default function TeacherHomeScreen({ navigation }) {
             activeOpacity={0.85}
           >
             <Ionicons name={editMode ? 'checkmark' : 'create-outline'} size={16} color={editMode ? '#fff' : COLORS.primary} />
-            <Text style={[styles.editBtnText, editMode && { color: '#fff' }]}>{editMode ? 'Done' : 'Edit'}</Text>
+            <Text style={[styles.editBtnText, editMode && { color: COLORS.onPrimary }]}>{editMode ? 'Done' : 'Edit'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -767,7 +767,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   actionBtnAlt: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   actionBtnWide: { flex: 0 },
-  actionText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  actionText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '700' },
   tipCard: {
     backgroundColor: COLORS.surface, borderRadius: 16, padding: SPACING.lg,
     borderWidth: 1, borderColor: COLORS.border,

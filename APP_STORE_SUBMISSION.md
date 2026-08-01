@@ -138,7 +138,7 @@ Answer **"Yes, we collect data"**, no tracking, no third-party advertising. Data
 | Usage Data → Product Interaction | Yes | Yes | No | Analytics (PostHog — added after build 4; tick this when the analytics build/OTA ships) |
 | Everything else (location, contacts, browsing, purchases, diagnostics) | No | — | — | — |
 
-Notes: no analytics SDK, no ads, no ATT prompt needed. The parent email a teacher enters counts under Contact Info → Email Address (collected, linked, app functionality).
+Notes: PostHog analytics IS in the app (added 2026-07-13, shipped in build 6) — the Usage Data row above MUST be ticked, and PostHog declared as a third-party processor. No ads, no ATT prompt needed (nothing tracks across apps or websites). The parent email a teacher enters counts under Contact Info → Email Address (collected, linked, app functionality).
 
 ---
 

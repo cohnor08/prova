@@ -109,7 +109,7 @@ export default function YouTubePlayerModal({ visible, query, title, onClose }) {
                     {!!r.thumbnail && <Image source={{ uri: r.thumbnail }} style={styles.thumb} />}
                     {active && (
                       <View style={styles.nowPlaying}>
-                        <Ionicons name="musical-notes" size={12} color="#fff" />
+                        <Ionicons name="musical-notes" size={12} color={COLORS.onPrimary} />
                       </View>
                     )}
                   </View>

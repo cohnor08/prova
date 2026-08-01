@@ -528,7 +528,7 @@ export default function PracticeScreen({ route, navigation }) {
             onPress={() => navigation.navigate('Schedule', { date: nextGig.date })}
           >
             <View style={styles.preGigIcon}>
-              <Ionicons name="megaphone" size={20} color="#fff" />
+              <Ionicons name="megaphone" size={20} color={COLORS.onPrimary} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.preGigLabel}>PRE-GIG MODE · {countdownLabel(daysToNextGig).toUpperCase()}</Text>
@@ -651,7 +651,7 @@ export default function PracticeScreen({ route, navigation }) {
             onPress={togglePlay}
             activeOpacity={0.8}
           >
-            <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.text} />
+            <Ionicons name={isPlaying ? 'stop' : 'play'} size={24} color={COLORS.onPrimary} />
           </TouchableOpacity>
 
           {/* Click voice — opens the full library */}
@@ -814,7 +814,7 @@ export default function PracticeScreen({ route, navigation }) {
                 onPress={isTuning ? stopTuning : startTuning}
                 activeOpacity={0.8}
               >
-                <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.text} style={{ marginRight: 6 }} />
+                <Ionicons name={isTuning ? 'stop-circle' : 'mic'} size={18} color={COLORS.onPrimary} style={{ marginRight: 6 }} />
                 <Text style={styles.tunerBtnText}>{isTuning ? 'Stop' : 'Start Tuning'}</Text>
               </TouchableOpacity>
 
@@ -843,7 +843,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   toolBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
   toolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   toolBtnText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  toolBtnTextActive: { color: COLORS.text },
+  toolBtnTextActive: { color: COLORS.onPrimary },
   libraryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 18, paddingHorizontal: SPACING.md, marginBottom: SPACING.lg },
   libraryRowText: { flex: 1, color: COLORS.text, fontSize: 15, fontWeight: '700' },
   sectionLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: SPACING.sm, marginTop: SPACING.xs },
@@ -879,7 +879,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   soundModalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   soundRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 13, paddingHorizontal: SPACING.sm, borderRadius: 12 },
   soundRowActive: { backgroundColor: COLORS.primary + '18' },
-  soundRowText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  soundRowText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '600' },
 
   bpmDisplay: { alignItems: 'center', marginBottom: SPACING.sm },
   bpmValue: { color: COLORS.text, fontSize: 48, fontWeight: '900', fontVariant: ['tabular-nums'], lineHeight: 52 },
@@ -911,7 +911,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
   instBtn: { flex: 1, paddingVertical: SPACING.sm, alignItems: 'center', borderRadius: 8 },
   instBtnActive: { backgroundColor: COLORS.primary },
   instBtnText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
-  instBtnTextActive: { color: COLORS.text },
+  instBtnTextActive: { color: COLORS.onPrimary },
 
   tunerNoteBlock: { alignItems: 'center', marginTop: SPACING.sm, marginBottom: SPACING.sm },
   tunerBigNote: { fontSize: 76, fontWeight: '900', lineHeight: 84, letterSpacing: 1 },
@@ -934,7 +934,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
 
   tunerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm, marginTop: SPACING.md },
   tunerBtnActive: { backgroundColor: COLORS.error },
-  tunerBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  tunerBtnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '700' },
 
   // Song to practice (in task section)
   songTaskCard: {
@@ -972,10 +972,10 @@ const makeStyles = (COLORS) => StyleSheet.create({
   gigChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   gigChipTextOn: { color: COLORS.primary },
   gigFormBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
-  gigCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  gigCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   gigCancelText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   gigSaveBtn: { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
-  gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  gigSaveText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 14 },
   gigEmptyBox: { alignItems: 'center', paddingVertical: SPACING.xl },
   gigEmptyBoxText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
   gigRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
@@ -997,7 +997,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.xs,
   },
-  gigNewBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  gigNewBtnText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 15 },
   gigEmpty: { color: COLORS.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' },
   setlistRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
@@ -1029,7 +1029,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.lg,
   },
-  gigGenerateText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  gigGenerateText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 16 },
 
   // Setlist detail sheet
   detailBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
@@ -1057,7 +1057,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md,
   },
-  goLiveText: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
+  goLiveText: { color: COLORS.onPrimary, fontWeight: '800', fontSize: 15 },
   detailDeleteBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     paddingVertical: 12, marginTop: SPACING.sm,
@@ -1083,7 +1083,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     marginTop: SPACING.sm, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primary,
   },
   recAddBtnDone: { backgroundColor: COLORS.success + '22' },
-  recAddText: { color: COLORS.text, fontSize: 12, fontWeight: '700' },
+  recAddText: { color: COLORS.onPrimary, fontSize: 12, fontWeight: '700' },
 
   // Per-song controls (preview play/pause + open-in)
   songControls: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },

@@ -425,7 +425,7 @@ export default function ScheduleScreen({ navigation, route }) {
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle} numberOfLines={1}>{prettyDate(selected)}</Text>
           <TouchableOpacity style={styles.addGigBtn} onPress={() => (showAdd ? resetForm() : setShowAdd(true))} activeOpacity={0.85}>
-            <Ionicons name={showAdd ? 'close' : 'add'} size={15} color="#fff" />
+            <Ionicons name={showAdd ? 'close' : 'add'} size={15} color={COLORS.onPrimary} />
             <Text style={styles.addGigText}>{showAdd ? 'Cancel' : 'Add event'}</Text>
           </TouchableOpacity>
         </View>
@@ -647,7 +647,7 @@ export default function ScheduleScreen({ navigation, route }) {
                           disabled={!inviteEmail.trim() || inviting}
                           activeOpacity={0.85}
                         >
-                          <Ionicons name="paper-plane" size={15} color={COLORS.text} />
+                          <Ionicons name="paper-plane" size={15} color={COLORS.onPrimary} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -747,14 +747,14 @@ const styles = themedStyles(() => StyleSheet.create({
   cellInner: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   cellSelected: { backgroundColor: COLORS.primary },
   cellToday: { borderWidth: 1, borderColor: COLORS.primary },
-  cellText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  cellText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '600' },
   dotRow: { flexDirection: 'row', gap: 2, marginTop: 3, height: 5 },
   dot: { width: 5, height: 5, borderRadius: 3 },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm, marginBottom: SPACING.sm },
   dayTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', flex: 1, minWidth: 0 },
   addGigBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
-  addGigText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  addGigText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
 
   gigForm: { gap: SPACING.sm, marginBottom: SPACING.md },
   typeRow: { flexDirection: 'row', gap: SPACING.sm },
@@ -776,7 +776,7 @@ const styles = themedStyles(() => StyleSheet.create({
   sheetCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   sheetCancelText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   sheetSetBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
-  sheetSetText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  sheetSetText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '700' },
   gigChips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   gigChip: { paddingHorizontal: SPACING.md, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, maxWidth: '100%' },
   gigChipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '22' },
@@ -785,7 +785,7 @@ const styles = themedStyles(() => StyleSheet.create({
   gigChipCreateText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   gigChipTextOn: { color: COLORS.primary },
   gigSaveBtn: { paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center', marginTop: SPACING.xs },
-  gigSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  gigSaveText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 14 },
 
   empty: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
   eventCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },

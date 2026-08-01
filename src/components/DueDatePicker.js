@@ -108,7 +108,7 @@ const styles = themedStyles(() => StyleSheet.create({
   dpDaySel: { backgroundColor: COLORS.primary },
   dpDayText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   dpDayPast: { color: COLORS.border },
-  dpDaySelText: { color: '#fff', fontWeight: '800' },
+  dpDaySelText: { color: COLORS.onPrimary, fontWeight: '800' },
   dpTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
   dpTimeLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   dpTimeCtrls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -121,5 +121,5 @@ const styles = themedStyles(() => StyleSheet.create({
   dpClear: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   dpClearText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
   dpSet: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: 'center' },
-  dpSetText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  dpSetText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 14 },
 }));

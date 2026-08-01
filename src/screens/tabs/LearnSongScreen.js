@@ -423,7 +423,7 @@ export default function LearnSongScreen({ navigation }) {
                                     <>
                                       {!!m.preview && (
                                         <TouchableOpacity style={styles.mediaPlay} onPress={() => togglePreview(s)} activeOpacity={0.85}>
-                                          <Ionicons name={playing === s.songKey ? 'pause' : 'play'} size={13} color="#fff" />
+                                          <Ionicons name={playing === s.songKey ? 'pause' : 'play'} size={13} color={COLORS.onPrimary} />
                                           <Text style={styles.mediaPlayText}>{playing === s.songKey ? 'Pause' : 'Preview'}</Text>
                                         </TouchableOpacity>
                                       )}
@@ -451,7 +451,7 @@ export default function LearnSongScreen({ navigation }) {
 
                         {s.steps.length > 0 && (
                           <TouchableOpacity style={styles.startRunBtn} onPress={() => openSongPlayer(s)} activeOpacity={0.85}>
-                            <Ionicons name="play" size={16} color={COLORS.text} />
+                            <Ionicons name="play" size={16} color={COLORS.onPrimary} />
                             <Text style={styles.startRunText}>
                               {s.steps.every((st) => st.done) ? 'Practice again'
                                 : s.steps.some((st) => st.done) ? 'Continue practice'
@@ -503,7 +503,7 @@ export default function LearnSongScreen({ navigation }) {
                                     <Text style={styles.stepPtsHint}>+{isActive ? stepPoints(active.seconds) : STEP_BONUS} pts</Text>
                                     {isActive ? (
                                       <TouchableOpacity style={[styles.stepStartBtn, styles.stepStartBtnActive]} onPress={toggleStepTimer} activeOpacity={0.85}>
-                                        <Ionicons name={active.paused ? 'play' : 'pause'} size={14} color={COLORS.text} />
+                                        <Ionicons name={active.paused ? 'play' : 'pause'} size={14} color={COLORS.onPrimary} />
                                         <Text style={styles.stepStartText}>{active.paused ? 'Resume' : 'Pause'}</Text>
                                       </TouchableOpacity>
                                     ) : (
@@ -665,7 +665,7 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 13,
     marginTop: SPACING.sm, marginBottom: SPACING.md,
   },
-  startRunText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  startRunText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
 
   empty: { alignItems: 'center', paddingVertical: SPACING.xxl, gap: SPACING.sm },
   emptyText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', paddingHorizontal: SPACING.lg },
@@ -693,7 +693,7 @@ const styles = themedStyles(() => StyleSheet.create({
   mediaArtist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   mediaBtns: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm, minHeight: 30 },
   mediaPlay: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
-  mediaPlayText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
+  mediaPlayText: { color: COLORS.onPrimary, fontSize: 12.5, fontWeight: '800' },
   mediaSpotify: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 6, paddingHorizontal: 12 },
   mediaSpotifyText: { color: COLORS.text, fontSize: 12.5, fontWeight: '700' },
 
@@ -716,7 +716,7 @@ const styles = themedStyles(() => StyleSheet.create({
   stepPtsHint: { color: COLORS.primary, fontSize: 12, fontWeight: '800', flex: 1 },
   stepStartBtn: { backgroundColor: COLORS.border, borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
   stepStartBtnActive: { backgroundColor: COLORS.primaryDark },
-  stepStartText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  stepStartText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '600' },
   stepDoneBtn: { backgroundColor: COLORS.success + '1A', borderRadius: 8, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 5 },
   stepDoneBtnLocked: { backgroundColor: COLORS.border + '80' },
   stepDoneText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
@@ -740,6 +740,6 @@ const styles = themedStyles(() => StyleSheet.create({
   genBtnText: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
   capHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACING.sm, marginBottom: SPACING.sm },
   genBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
-  genText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  genText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '600' },
   genHint: { color: COLORS.textMuted, fontSize: 13 },
 }));

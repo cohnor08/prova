@@ -15,6 +15,7 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
+import { useFocusEffect } from '@react-navigation/native';
 import { useMetronome } from '../../lib/MetronomeContext';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
@@ -104,6 +105,17 @@ export default function RhythmTapperScreen({ navigation, route }) {
       accentRef.current?.unloadAsync();
     };
   }, []);
+
+  // Leaving mid-round must not leave the click track running. The unmount
+  // cleanup below only fires when the screen is popped; a tab switch can leave
+  // it mounted, so stop on blur too and drop back to the menu.
+  useFocusEffect(React.useCallback(() => () => {
+    clearTimeout(timeoutRef.current);
+    clearTimeout(fbTimeoutRef.current);
+    tickRef.current?.stopAsync?.().catch(() => {});
+    accentRef.current?.stopAsync?.().catch(() => {});
+    setPhase('menu');
+  }, []));
 
   const playClick = (accent) => {
     const s = accent ? accentRef.current : tickRef.current;
@@ -276,7 +288,7 @@ export default function RhythmTapperScreen({ navigation, route }) {
             {cfg.note} · {cfg.taps} beats{mode === 'hold' ? ' · click drops after one bar' : ''}
           </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="play" size={18} color="#fff" />
+            <Ionicons name="play" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Start round</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -326,7 +338,7 @@ export default function RhythmTapperScreen({ navigation, route }) {
             </View>
           )}
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Play again</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setPhase('menu')} hitSlop={{ top: 8, bottom: 8 }}>
@@ -351,7 +363,7 @@ const styles = themedStyles(() => StyleSheet.create({
   seg: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   segOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   segText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
-  segTextOn: { color: '#fff' },
+  segTextOn: { color: COLORS.onPrimary },
   levelHint: { color: COLORS.textMuted, fontSize: 12, marginBottom: SPACING.lg, alignSelf: 'flex-start' },
   bpmRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, alignSelf: 'flex-start', marginBottom: SPACING.md },
   bpmBtn: { width: 32, height: 32, borderRadius: 9, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
@@ -359,7 +371,7 @@ const styles = themedStyles(() => StyleSheet.create({
   bpmUnit: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
   bpmReset: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
-  startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  startText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   scoreLine: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, marginBottom: SPACING.xl },

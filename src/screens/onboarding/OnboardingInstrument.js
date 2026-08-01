@@ -57,7 +57,7 @@ export default function OnboardingInstrument({ onNext, onBack, data, steps = 4 }
         activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Continue</Text>
-        <Ionicons name="arrow-forward" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
+        <Ionicons name="arrow-forward" size={18} color={COLORS.onPrimary} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
     </View>
   );
@@ -95,5 +95,5 @@ const styles = themedStyles(() => StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  buttonText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '700' },
 }));

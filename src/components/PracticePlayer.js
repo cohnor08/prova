@@ -457,7 +457,7 @@ const styles = themedStyles(() => StyleSheet.create({
   summaryDividerV: { width: 1, height: 34, backgroundColor: COLORS.border },
   summarySub: { color: COLORS.textSecondary, fontSize: 14, marginBottom: SPACING.xl },
   reviewBtn: { backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 15, paddingHorizontal: SPACING.xl, marginBottom: SPACING.sm },
-  reviewBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  reviewBtnText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   finishBtn: { paddingVertical: 12 },
   finishText: { color: COLORS.textMuted, fontSize: 15, fontWeight: '600' },
 }));

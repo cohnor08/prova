@@ -209,7 +209,7 @@ export default function SignupScreen({ navigation, route }) {
             activeOpacity={0.8}
           >
             {loading
-              ? <Ghost color={COLORS.text} size="small" />
+              ? <Ghost color={COLORS.onPrimary} size="small" />
               : <Text style={styles.buttonText}>Get Started</Text>
             }
           </TouchableOpacity>
@@ -308,7 +308,7 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: SPACING.sm,
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
+  buttonText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   linkText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14 },
   linkAccent: { color: COLORS.primary, fontWeight: '600' },
 }));

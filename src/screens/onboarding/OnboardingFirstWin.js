@@ -97,7 +97,7 @@ export default function OnboardingFirstWin({ profile, plan, onFinish }) {
           onPress={() => { setSecondsLeft(WARMUP_SECONDS); setPhase('timer'); }}
           activeOpacity={0.85}
         >
-          <Ionicons name="play" size={18} color="#fff" />
+          <Ionicons name="play" size={18} color={COLORS.onPrimary} />
           <Text style={styles.primaryBtnText}>Start 60-second warm-up</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => onFinish(false)} style={styles.skipBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -157,7 +157,7 @@ export default function OnboardingFirstWin({ profile, plan, onFinish }) {
 
       <TouchableOpacity style={styles.primaryBtn} onPress={() => onFinish(true)} activeOpacity={0.85}>
         <Text style={styles.primaryBtnText}>Enter Prova</Text>
-        <Ionicons name="arrow-forward" size={18} color="#fff" />
+        <Ionicons name="arrow-forward" size={18} color={COLORS.onPrimary} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -211,7 +211,7 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 16, paddingHorizontal: 32,
     alignSelf: 'stretch',
   },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  primaryBtnText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   skipBtn: { paddingVertical: SPACING.md, marginTop: SPACING.sm },
   skipText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
 }));
