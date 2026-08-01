@@ -168,14 +168,16 @@ function taskDueLabel(due) {
   return { text: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), overdue: false };
 }
 
-// "45s" / "12m" / "1h 05m" — how long a student has practiced a task.
+// "45s" / "12m" / "2h" — how long a student has practiced a task. Largest unit
+// only: once it reaches minutes the seconds stop mattering, and once it reaches
+// hours the minutes stop mattering.
 function fmtPractised(sec) {
   const s = Math.round(sec || 0);
   if (s <= 0) return null;
   if (s < 60) return `${s}s`;
   const m = Math.round(s / 60);
   if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+  return `${Math.round(m / 60)}h`;
 }
 
 function getStudentStatus(student) {
@@ -2507,23 +2509,29 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                               >
                                 <Ionicons name="ellipse-outline" size={15} color={COLORS.textMuted} style={{ marginRight: 8 }} />
                                 <Text style={styles.miniTaskText} numberOfLines={1}>{t.title}</Text>
-                                {due?.overdue ? (
-                                  <Text style={[styles.miniDue, styles.miniDueOverdue]}>Overdue</Text>
-                                ) : practised ? (
-                                  <Text style={styles.miniPractised}>{practised}</Text>
-                                ) : due ? (
-                                  <Text style={styles.miniDue}>{due.text}</Text>
-                                ) : null}
+                                {/* Fixed-width slots: every row has the same anatomy, and an
+                                    empty slot still holds its space — otherwise each row packs
+                                    its own trailing elements and nothing lines up vertically. */}
+                                <View style={styles.miniStatusSlot}>
+                                  {due?.overdue ? (
+                                    <Text style={[styles.miniDue, styles.miniDueOverdue]} numberOfLines={1}>Overdue</Text>
+                                  ) : practised ? (
+                                    <Text style={styles.miniPractised} numberOfLines={1}>{practised}</Text>
+                                  ) : due ? (
+                                    <Text style={styles.miniDue} numberOfLines={1}>{due.text}</Text>
+                                  ) : null}
+                                </View>
                                 {/* Proof-submitted signal only — watch it from the overview. */}
-                                {t.proofUrl && (
-                                  <Ionicons
-                                    name={t.proofVerified ? 'checkmark-circle' : 'videocam'}
-                                    size={16}
-                                    color={t.proofVerified ? COLORS.success : COLORS.primary}
-                                    style={{ marginLeft: 8 }}
-                                  />
-                                )}
-                                <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
+                                <View style={styles.miniProofSlot}>
+                                  {t.proofUrl ? (
+                                    <Ionicons
+                                      name={t.proofVerified ? 'checkmark-circle' : 'videocam'}
+                                      size={16}
+                                      color={t.proofVerified ? COLORS.success : COLORS.primary}
+                                    />
+                                  ) : null}
+                                </View>
+                                <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                               </TouchableOpacity>
                             );
                           })}
@@ -3733,7 +3741,7 @@ const styles = themedStyles(() => StyleSheet.create({
 
   miniTask: { flexDirection: 'row', alignItems: 'center' },
   miniTaskMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  miniTaskText: { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
+  miniTaskText: { color: COLORS.text, fontSize: 13, flex: 1, minWidth: 0 },
   miniTaskDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
   proofBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
   proofViewer: { width: '100%', alignItems: 'center' },
@@ -3748,8 +3756,10 @@ const styles = themedStyles(() => StyleSheet.create({
   proofVerifiedText: { color: COLORS.success, fontSize: 14, fontWeight: '800' },
   proofCloseBtn: { paddingVertical: 11, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', marginLeft: 6 },
-  miniPractised: { color: COLORS.accent || COLORS.primary, fontSize: 11, fontWeight: '700', marginLeft: 6, fontVariant: ['tabular-nums'] },
+  miniStatusSlot: { width: 66, alignItems: 'flex-end' },
+  miniProofSlot: { width: 24, alignItems: 'center' },
+  miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  miniPractised: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
   miniDueOverdue: { color: COLORS.error },
 
   // Task overview sheet
