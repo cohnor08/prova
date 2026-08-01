@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../../constants/theme';
 import { useThemeSync, useThemeColors } from '../../lib/ThemeContext';
 import { getRecommendedSongs, getDailySong, fetchSongPreview, fetchSongArtwork, appleMusicSearchUrl, spotifySearchUrl, searchTrack } from '../../constants/songs';
 import { generateSetlist } from '../../lib/claude';
@@ -48,14 +48,6 @@ const BASS_STRINGS = [
   { number: 1, note: 'G', octave: '2', freq: 98.00,  label: '1st string (G)' },
 ];
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
 
 const TIME_SIGNATURES = [2, 3, 4, 6];
 
@@ -1273,8 +1265,12 @@ export default function SongsScreen({ route, navigation }) {
     </View>
   );
 
+  // No 'top' edge: this screen is pushed inside a stack that already shows a
+  // header, so a top safe-area inset here gets applied a SECOND time and the
+  // gap renders as a black band above the content. (Same class of bug as the
+  // one under the tab bar, PR #141.)
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {/* ── Learn a song ── */}
         {role !== 'student' && (

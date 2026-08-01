@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Modal, Animated, StyleSheet, TouchableWithoutFeedback, KeyboardAvoidingView,
+  Modal, Animated, StyleSheet, TouchableWithoutFeedback, KeyboardAvoidingView, Keyboard, Easing,
   Platform, Dimensions,
 } from 'react-native';
 
@@ -14,6 +14,14 @@ import {
 //   cardStyle           — the sheet card's style (bg, radius, padding)
 //   centered            — center the card instead of pinning to the bottom
 //   keyboardAvoiding    — true = KAV both platforms; 'android' = Android only
+//   keyboardLift        — lift the card by the keyboard's own height instead.
+//                         KeyboardAvoidingView measures against the window, and
+//                         inside a Modal on iOS that measurement is wrong often
+//                         enough that the keyboard just covers the field. This
+//                         drives translateY straight off the keyboard event, so
+//                         it uses the keyboard's exact height AND duration and
+//                         moves in step with it. Prefer this for sheets with an
+//                         input; it composes with the slide-in transform.
 //                         (for cards whose iOS keyboard handling lives inside,
 //                         e.g. a ScrollView with automaticallyAdjustKeyboardInsets)
 //   dismissOnBackdrop   — tap the dim to close; off by default so form sheets
@@ -24,7 +32,7 @@ import {
 //                         for this (opening early freezes the screen).
 export default function SheetModal({
   visible, onRequestClose, children, cardStyle,
-  centered = false, keyboardAvoiding = false, dismissOnBackdrop = false, onClosed,
+  centered = false, keyboardAvoiding = false, keyboardLift = false, dismissOnBackdrop = false, onClosed,
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
@@ -46,17 +54,31 @@ export default function SheetModal({
     }
   }, [visible]);
 
+  // Keyboard lift — native-driven so it stays in lockstep with the slide.
+  useEffect(() => {
+    if (!keyboardLift) return undefined;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const move = (to, duration) => Animated.timing(kbLift, {
+      toValue: to, duration: duration || 250, easing: Easing.out(Easing.ease), useNativeDriver: true,
+    }).start();
+    const onShow = (e) => move(-(e.endCoordinates?.height || 300), e.duration);
+    const onHide = (e) => move(0, e?.duration);
+    const subShow = Keyboard.addListener(showEvt, onShow);
+    const subHide = Keyboard.addListener(hideEvt, onHide);
+    return () => { subShow.remove(); subHide.remove(); };
+  }, [keyboardLift]);
+
   if (!mounted) return null;
 
-  const kavEnabled = keyboardAvoiding === true || (keyboardAvoiding === 'android' && Platform.OS === 'android');
-  const slide = {
-    transform: [{
-      translateY: anim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [Dimensions.get('window').height, 0],
-      }),
-    }],
-  };
+  const kavEnabled = !keyboardLift && (keyboardAvoiding === true || (keyboardAvoiding === 'android' && Platform.OS === 'android'));
+  const slideY = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Dimensions.get('window').height, 0],
+  });
+  // Both translateYs live in ONE transform array — RN can't mix a native-driven
+  // and a JS-driven animation on the same node, so both are native.
+  const slide = { transform: keyboardLift ? [{ translateY: slideY }, { translateY: kbLift }] : [{ translateY: slideY }] };
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onRequestClose}>

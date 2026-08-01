@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder, scheduleWrappedNudge } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, CATEGORY_COLORS } from '../../constants/theme';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
@@ -35,14 +35,6 @@ import { TourSpot, useTourScroller, useTourPadding } from '../../components/Tour
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-const CATEGORY_COLORS = {
-  warmup: '#06B6D4',
-  technique: '#3B82F6',
-  theory: '#8B5CF6',
-  ear_training: '#10B981',
-  repertoire: '#0EA5E9',
-  improvisation: '#6366F1',
-};
 
 // Compact one-tap difficulty options shown inline on each completed session.
 // Keys match the values Prova's plan logic already understands (too_hard etc.).
@@ -169,6 +161,60 @@ function NotesChip({ onPress }) {
 // One teacher-assigned task on the student's Today screen. The card is a
 // readable preview — practicing (and its timer) happens in the practice player,
 // which "Practice this" opens at this task.
+// Collapsed session titles show the NAME of the exercise, not its description:
+// "Legato Warmup — build fluidity across the strings" becomes "Legato Warmup".
+// Cut at the first dash/colon/comma/bracket, then cap the length so a title
+// written without any of those still stays short. The full text is one tap away.
+function shortTitle(full) {
+  let t = String(full || '').split(/\s+[\u2014\u2013-]\s+|[:(,]/)[0].trim();
+  const words = t.split(/\s+/);
+  if (words.length > 4) t = words.slice(0, 4).join(' ');
+  return t || String(full || '');
+}
+
+// A one-line title that CUTS rather than ellipsises, and only ever on a whole
+// word. Safety net for the rare title shortTitle can't get under the width.
+//
+// How the measurement works: an invisible copy of the text is rendered with NO
+// numberOfLines, so it wraps normally — and RN wraps at WORD boundaries. Its
+// onTextLayout hands back one entry per line, so lines[0].text is exactly "the
+// words that fit on one line". We then show that. Reading the line back from a
+// truncated Text instead would be unreliable, since what `text` contains for a
+// clipped line isn't guaranteed.
+function ClipTitle({ text, style, containerStyle, expanded }) {
+  const [clipped, setClipped] = useState(null);
+  const measuredFor = useRef(null);
+  useEffect(() => { measuredFor.current = null; setClipped(null); }, [text]);
+
+  if (expanded) return <Text style={style}>{text}</Text>;
+
+  const onTextLayout = (e) => {
+    if (measuredFor.current === text) return;
+    const lines = e.nativeEvent.lines || [];
+    measuredFor.current = text;
+    if (lines.length <= 1) return;                       // fits already
+    const first = (lines[0].text || '').trim();
+    if (first) setClipped(first.replace(/[\s,;:.\u2013\u2014-]+$/, ''));
+  };
+
+  return (
+    <View style={containerStyle}>
+      <Text style={style} numberOfLines={1} ellipsizeMode="clip">
+        {clipped == null ? text : clipped}
+      </Text>
+      {clipped == null && (
+        <Text
+          style={[style, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}
+          onTextLayout={onTextLayout}
+          pointerEvents="none"
+        >
+          {text}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
@@ -448,9 +494,12 @@ function SessionCard({ session, completed, onPractice }) {
           <View style={styles.sessionTitleRow}>
             {/* Collapsed: just the part before the dash ("Fingerstyle Warmup").
                 Expanded: the full title. Kills the wall of "…" in the list. */}
-            <Text style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { flex: 1, marginBottom: 0 }]} numberOfLines={expanded ? undefined : 1}>
-              {expanded ? session.title : (session.title || '').split(/\s+[—–-]\s+/)[0]}
-            </Text>
+            <ClipTitle
+              expanded={expanded}
+              containerStyle={{ flex: 1, minWidth: 0 }}
+              style={[styles.sessionTitle, completed && styles.sessionTitleCompleted, { marginBottom: 0 }]}
+              text={expanded ? session.title : shortTitle(session.title)}
+            />
             {completed && <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
           </View>
@@ -1713,6 +1762,11 @@ export default function TodayScreen({ navigation, route }) {
           });
           return (
             <View key={g.tid} style={styles.teacherCard}>
+              {/* Same coloured left bar the session cards use, so an assigned
+                  section reads as "a thing to do" at a glance even collapsed.
+                  Blue = from a person (your teacher), cyan = from a class. */}
+              <View style={[styles.categoryBar, { backgroundColor: COLORS.primary }]} />
+              <View style={styles.assignedBody}>
               <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                 <Ionicons name="school" size={16} color={COLORS.primary} />
                 <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
@@ -1783,6 +1837,7 @@ export default function TodayScreen({ navigation, route }) {
                   ))}
                 </View>
               )}
+              </View>
             </View>
           );
         })}
@@ -1792,6 +1847,8 @@ export default function TodayScreen({ navigation, route }) {
           const collapsed = collapsedGroups.has(g.key);
           return (
             <View key={g.key} style={styles.teacherCard}>
+              <View style={[styles.categoryBar, { backgroundColor: COLORS.accent }]} />
+              <View style={styles.assignedBody}>
               <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
                 <Ionicons name="people" size={16} color={COLORS.accent} />
                 <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
@@ -1827,6 +1884,7 @@ export default function TodayScreen({ navigation, route }) {
                   myUid={auth.currentUser?.uid}
                 />
               )}
+              </View>
             </View>
           );
         })}
@@ -2302,9 +2360,13 @@ const makeStyles = (COLORS) => StyleSheet.create({
   // Teacher-assigned tasks — sit under one "FROM YOUR TEACHER" header, so they
   // hug together (sm gap) rather than floating as separate big cards.
   teacherCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.sm,
+    backgroundColor: COLORS.card, borderRadius: 16, marginBottom: SPACING.sm,
     borderWidth: 1, borderColor: COLORS.border,
+    // Row + clipped so the coloured left bar runs the full height of the card,
+    // exactly like the session cards. Padding moved onto assignedBody.
+    flexDirection: 'row', overflow: 'hidden',
   },
+  assignedBody: { flex: 1, minWidth: 0, padding: SPACING.lg },
   teacherHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },

@@ -90,6 +90,24 @@ export const FONTS = {
   bold: 'System',
 };
 
+// Session category colours. One definition for the whole app — these used to be
+// copy-pasted into four screens, which is how they drifted.
+//
+// Identity only: a left rail or a small dot. Never a button fill.
+//
+// NOTE: an earthy set (terracotta/sage/lilac/teal/ochre/rose) was tried and
+// reverted — the hues are fine in isolation but read dull against this cold
+// near-black base and clash with the blue accent. Reseparating these properly
+// is part of the base-palette change, not a swap that can be done alone.
+export const CATEGORY_COLORS = {
+  warmup:        '#06B6D4',
+  technique:     '#3B82F6',
+  theory:        '#8B5CF6',
+  ear_training:  '#10B981',
+  repertoire:    '#0EA5E9',
+  improvisation: '#6366F1',
+};
+
 export const SPACING = {
   xs: 4,
   sm: 8,
