@@ -216,10 +216,10 @@ export default function PerformanceMode({
                 <Ionicons name="play-skip-back" size={22} color={index === 0 ? COLORS.textMuted : COLORS.text} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBig]} onPress={() => setRunning((r) => !r)}>
-                <Ionicons name={running ? 'pause' : 'play'} size={26} color={COLORS.text} />
+                <Ionicons name={running ? 'pause' : 'play'} size={26} color={COLORS.onPrimary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.ctrlBtn} onPress={goNext}>
-                <Ionicons name="play-skip-forward" size={22} color={COLORS.text} />
+                <Ionicons name="play-skip-forward" size={22} color={COLORS.onPrimary} />
               </TouchableOpacity>
             </View>
           </>
@@ -270,7 +270,7 @@ export default function PerformanceMode({
                         </View>
                       ) : (
                         <TouchableOpacity style={styles.reqActionBtn} onPress={() => addToSet(r)} activeOpacity={0.8}>
-                          <Ionicons name="add" size={16} color={COLORS.text} />
+                          <Ionicons name="add" size={16} color={COLORS.onPrimary} />
                           <Text style={styles.reqActionText}>Add</Text>
                         </TouchableOpacity>
                       )}
@@ -323,10 +323,10 @@ const styles = themedStyles(() => StyleSheet.create({
   reqRowTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   reqRowArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
   reqCount: { minWidth: 28, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  reqCountText: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
+  reqCountText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '800' },
   reqActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 999, paddingHorizontal: SPACING.md, paddingVertical: 8 },
   reqAddedBtn: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.success + '66' },
-  reqActionText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  reqActionText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
   reqDismiss: { padding: 2 },
   progressTrack: { height: 4, backgroundColor: COLORS.card, marginHorizontal: SPACING.lg, marginTop: SPACING.md, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: COLORS.primary, borderRadius: 2 },
@@ -357,5 +357,5 @@ const styles = themedStyles(() => StyleSheet.create({
   endTitle: { color: COLORS.text, fontSize: 30, fontWeight: '900' },
   endStat: { color: COLORS.textSecondary, fontSize: 17, marginTop: SPACING.sm, fontVariant: ['tabular-nums'] },
   endBtn: { backgroundColor: COLORS.primary, borderRadius: 14, paddingHorizontal: SPACING.xl * 1.5, paddingVertical: SPACING.md, marginTop: SPACING.xl },
-  endBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  endBtnText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
 }));

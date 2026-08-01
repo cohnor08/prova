@@ -71,7 +71,7 @@ export default function OnboardingSchedule({ onNext, onBack, data }) {
         activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Generate My Plan</Text>
-        <Ionicons name="sparkles" size={18} color={COLORS.text} style={{ marginLeft: SPACING.xs }} />
+        <Ionicons name="sparkles" size={18} color={COLORS.onPrimary} style={{ marginLeft: SPACING.xs }} />
       </TouchableOpacity>
     </View>
   );
@@ -132,5 +132,5 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: 'auto',
   },
   buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  buttonText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '700' },
 }));

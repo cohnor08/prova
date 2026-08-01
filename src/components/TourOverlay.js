@@ -487,7 +487,7 @@ const styles = themedStyles(() => StyleSheet.create({
   btnRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   skip: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   nextBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 22 },
-  nextText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  nextText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
   backBtn: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 18, marginRight: 10 },
   backText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   caret: {

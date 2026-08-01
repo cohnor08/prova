@@ -302,8 +302,8 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
             disabled={!text.trim() || sending}
           >
             {sending
-              ? <Ghost color={COLORS.text} size="small" />
-              : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
+              ? <Ghost color={COLORS.onPrimary} size="small" />
+              : <Ionicons name="arrow-up" size={18} color={COLORS.onPrimary} />}
           </TouchableOpacity>
         </Animated.View>
         <ReactionPicker
@@ -534,7 +534,7 @@ export default function MessagesScreen() {
                 >
                   {item.id === firstRowId && <TourSpot id="m-chats" />}
                   <View style={[styles.convoAvatar, styles.convoAvatarTeacher]}>
-                    <Ionicons name="people" size={20} color="#fff" />
+                    <Ionicons name="people" size={20} color={COLORS.onPrimary} />
                   </View>
                   <View style={styles.convoInfo}>
                     <Text style={styles.convoEmail} numberOfLines={1}>{item.name}</Text>
@@ -562,7 +562,7 @@ export default function MessagesScreen() {
               {item.id === firstRowId && <TourSpot id="m-chats" />}
               <View style={[styles.convoAvatar, isTeacher && styles.convoAvatarTeacher]}>
                 {isTeacher
-                  ? <Ionicons name="school" size={20} color="#fff" />
+                  ? <Ionicons name="school" size={20} color={COLORS.onPrimary} />
                   : <Text style={styles.convoAvatarText}>{(name || '?')[0].toUpperCase()}</Text>}
               </View>
               <View style={styles.convoInfo}>
@@ -598,7 +598,7 @@ const styles = themedStyles(() => StyleSheet.create({
   convoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.md },
   convoAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   convoAvatarTeacher: { backgroundColor: COLORS.primary },
-  convoAvatarText: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  convoAvatarText: { color: COLORS.onPrimary, fontSize: 18, fontWeight: '800' },
   convoInfo: { flex: 1, minWidth: 0 },
   convoEmail: { color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 3 },
   convoLast: { color: COLORS.textMuted, fontSize: 13 },
@@ -611,7 +611,7 @@ const styles = themedStyles(() => StyleSheet.create({
   emptyTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
   emptySubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: SPACING.xl },
   emptyBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md },
-  emptyBtnText: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  emptyBtnText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 15 },
 
   // Chat nav header
   chatNavHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md + 2, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface },
@@ -621,7 +621,7 @@ const styles = themedStyles(() => StyleSheet.create({
   progressBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
   chatNavCenter: { flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm },
   chatAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
-  chatAvatarText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  chatAvatarText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   chatNavEmail: { color: COLORS.text, fontSize: 14, fontWeight: '800', flexShrink: 1 },
 
   dayRow: { alignItems: 'center', marginVertical: SPACING.sm },
@@ -654,5 +654,5 @@ const styles = themedStyles(() => StyleSheet.create({
   modalHint: { color: COLORS.textSecondary, fontSize: 13, marginBottom: SPACING.md },
   searchInput: { backgroundColor: COLORS.card, color: COLORS.text, borderRadius: 12, padding: SPACING.md, fontSize: 15, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.md },
   startBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.md, alignItems: 'center' },
-  startBtnText: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  startBtnText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: 15 },
 }));

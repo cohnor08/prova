@@ -128,7 +128,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
         </TouchableOpacity>
         <View style={styles.navCenter}>
           <View style={styles.groupAvatar}>
-            <Ionicons name="people" size={18} color="#fff" />
+            <Ionicons name="people" size={18} color={COLORS.onPrimary} />
           </View>
           <View style={{ flexShrink: 1 }}>
             <Text style={styles.navName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{group.name}</Text>
@@ -229,8 +229,8 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
               disabled={!text.trim() || sending}
             >
               {sending
-                ? <Ghost color={COLORS.text} size="small" />
-                : <Ionicons name="arrow-up" size={18} color={COLORS.text} />}
+                ? <Ghost color={COLORS.onPrimary} size="small" />
+                : <Ionicons name="arrow-up" size={18} color={COLORS.onPrimary} />}
             </TouchableOpacity>
           </Animated.View>
         ) : (

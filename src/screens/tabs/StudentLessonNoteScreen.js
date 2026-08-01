@@ -216,7 +216,7 @@ const styles = themedStyles(() => StyleSheet.create({
   tabPill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   tabPillOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   tabPillText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  tabPillTextOn: { color: '#fff' },
+  tabPillTextOn: { color: COLORS.onPrimary },
   card: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.md },
   cardFocused: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

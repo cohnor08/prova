@@ -29,7 +29,7 @@ export default function EmptyState({
       {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {!!actionLabel && !!onAction && (
         <TouchableOpacity style={styles.btn} onPress={onAction} activeOpacity={0.85}>
-          {isError && <Ionicons name="refresh" size={16} color="#fff" style={{ marginRight: 6 }} />}
+          {isError && <Ionicons name="refresh" size={16} color={COLORS.onPrimary} style={{ marginRight: 6 }} />}
           <Text style={styles.btnText}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
@@ -49,5 +49,5 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: COLORS.primary, borderRadius: 13, paddingVertical: 13, paddingHorizontal: 26, marginTop: SPACING.lg,
   },
-  btnText: { color: '#fff', fontSize: 14.5, fontWeight: '800' },
+  btnText: { color: COLORS.onPrimary, fontSize: 14.5, fontWeight: '800' },
 }));

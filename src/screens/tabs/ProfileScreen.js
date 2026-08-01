@@ -19,7 +19,7 @@ import SheetModal from '../../components/SheetModal';
 import { replayTour } from '../../components/TourOverlay';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { AuthContext } from '../../contexts/AuthContext';
-import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS, ACCENTS, ACCENT_KEYS } from '../../constants/theme';
+import { COLORS, SPACING, LEVELS, INSTRUMENTS, GOALS, SKILLS, PRACTICE_DURATIONS, DAYS, PALETTES, THEME_MODES, accentsFor, accentKeysFor } from '../../constants/theme';
 import { useThemeColors, useTheme } from '../../lib/ThemeContext';
 
 function reminderTimeLabel(value) {
@@ -650,7 +650,7 @@ export default function ProfileScreen({ navigation }) {
                   activeOpacity={0.85}
                 >
                   {linkingTeacher
-                    ? <Ghost size="small" color="#fff" />
+                    ? <Ghost size="small" color={COLORS.onPrimary} />
                     : <Text style={styles.teacherConnectBtnText}>Connect</Text>}
                 </TouchableOpacity>
               </View>
@@ -794,24 +794,29 @@ export default function ProfileScreen({ navigation }) {
           <TourSpot id="pr-appearance" />
           <Text style={styles.sectionTitle}>APPEARANCE</Text>
           <View style={styles.appModeRow}>
-            {[['dark', 'Dark', 'moon'], ['light', 'Light', 'sunny']].map(([m, label, icon]) => (
+            {/* Driven by the PALETTES registry, so a new theme (Caramel, Jungle…)
+                appears here automatically — no change needed on this screen. */}
+            {THEME_MODES.map((m) => (
               <TouchableOpacity
                 key={m}
                 style={[styles.appModeBtn, mode === m && styles.appModeBtnOn]}
                 onPress={() => setMode(m)}
                 activeOpacity={0.85}
               >
-                <Ionicons name={icon} size={16} color={mode === m ? '#fff' : COLORS.textSecondary} />
-                <Text style={[styles.appModeText, mode === m && { color: '#fff' }]}>{label}</Text>
+                <Ionicons name={PALETTES[m].icon} size={16} color={mode === m ? COLORS.onPrimary : COLORS.textSecondary} />
+                <Text style={[styles.appModeText, mode === m && { color: COLORS.onPrimary }]}>{PALETTES[m].label}</Text>
               </TouchableOpacity>
             ))}
           </View>
+
           <Text style={styles.appAccentLabel}>Accent colour</Text>
           <View style={styles.appAccentRow}>
-            {ACCENT_KEYS.map((k) => (
+            {/* Swatches come from the ACTIVE palette's set — soft colours on Sky,
+                saturated ones on Dark — so a preset always suits its ground. */}
+            {accentKeysFor(mode).map((k) => (
               <TouchableOpacity
                 key={k}
-                style={[styles.appSwatch, { backgroundColor: ACCENTS[k].primary }, accent === k && styles.appSwatchOn]}
+                style={[styles.appSwatch, { backgroundColor: accentsFor(mode)[k].primary }, accent === k && styles.appSwatchOn]}
                 onPress={() => setAccent(k)}
                 activeOpacity={0.8}
               >
@@ -911,7 +916,7 @@ export default function ProfileScreen({ navigation }) {
         />
       )}
 
-      <SheetModal visible={usernameModal} onRequestClose={() => setUsernameModal(false)} cardStyle={styles.modalCard} keyboardAvoiding>
+      <SheetModal visible={usernameModal} onRequestClose={() => setUsernameModal(false)} cardStyle={styles.modalCard} keyboardLift>
             <Text style={styles.modalTitle}>Set Username</Text>
             <TextInput
               style={styles.usernameInput}
@@ -934,13 +939,13 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingUsername}
               >
                 {savingUsername
-                  ? <Ghost color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.onPrimary} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
       </SheetModal>
 
-      <SheetModal visible={tipModal} onRequestClose={() => setTipModal(false)} cardStyle={styles.modalCard} keyboardAvoiding>
+      <SheetModal visible={tipModal} onRequestClose={() => setTipModal(false)} cardStyle={styles.modalCard} keyboardLift>
             <Text style={styles.modalTitle}>Tip link</Text>
             <TextInput
               style={styles.usernameInput}
@@ -964,7 +969,7 @@ export default function ProfileScreen({ navigation }) {
                 disabled={savingTip}
               >
                 {savingTip
-                  ? <Ghost color={COLORS.text} size="small" />
+                  ? <Ghost color={COLORS.onPrimary} size="small" />
                   : <Text style={styles.modalSaveText}>Save</Text>}
               </TouchableOpacity>
             </View>
@@ -1000,7 +1005,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary,
     alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
   },
-  avatarText: { color: COLORS.text, fontSize: 32, fontWeight: '800' },
+  avatarText: { color: COLORS.onPrimary, fontSize: 32, fontWeight: '800' },
   email: { color: COLORS.text, fontSize: 16, fontWeight: '600', marginBottom: 4 },
   levelText: { color: COLORS.textSecondary, fontSize: 14 },
 
@@ -1031,7 +1036,7 @@ const makeStyles = (COLORS) => StyleSheet.create({
     letterSpacing: 3, borderWidth: 1, borderColor: COLORS.border,
   },
   teacherConnectBtn: { justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: SPACING.lg },
-  teacherConnectBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  teacherConnectBtnText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '700' },
 
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -1084,5 +1089,5 @@ const makeStyles = (COLORS) => StyleSheet.create({
   },
   modalCancelText: { color: COLORS.textSecondary, fontWeight: '600' },
   modalSaveBtn: { flex: 1, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center' },
-  modalSaveText: { color: COLORS.text, fontWeight: '700' },
+  modalSaveText: { color: COLORS.onPrimary, fontWeight: '700' },
 });

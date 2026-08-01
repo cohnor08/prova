@@ -202,7 +202,7 @@ const styles = themedStyles(() => StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: COLORS.surface },
   chipOn: { backgroundColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  chipTextOn: { color: '#FFFFFF', fontWeight: '700' },
+  chipTextOn: { color: COLORS.onPrimary, fontWeight: '700' },
 
   card: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md, marginBottom: SPACING.sm },
   cardTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },

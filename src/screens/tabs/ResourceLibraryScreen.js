@@ -710,7 +710,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                           onPress={() => { setAssignDrillMode(m.key); setAssignDrillLevel(1); }}
                           activeOpacity={0.8}
                         >
-                          <Text style={[styles.drillLevelText, assignDrillMode === m.key && { color: '#fff' }]}>{m.label}</Text>
+                          <Text style={[styles.drillLevelText, assignDrillMode === m.key && { color: COLORS.onPrimary }]}>{m.label}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -725,7 +725,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                       onPress={() => setAssignDrillLevel(lv)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.drillLevelText, assignDrillLevel === lv && { color: '#fff' }]}>Lvl {lv}</Text>
+                      <Text style={[styles.drillLevelText, assignDrillLevel === lv && { color: COLORS.onPrimary }]}>Lvl {lv}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -819,7 +819,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                   activeOpacity={0.85}
                 >
                   {/* No kite for drills — Ethan wants that row clean. */}
-                  {!assignTarget?.drill && <Ionicons name="paper-plane" size={16} color={COLORS.text} />}
+                  {!assignTarget?.drill && <Ionicons name="paper-plane" size={16} color={COLORS.onPrimary} />}
                   <Text style={styles.assignSendText}>{n > 0 ? `Assign to ${n} student${n === 1 ? '' : 's'}` : 'Assign'}</Text>
                 </TouchableOpacity>
               );
@@ -853,7 +853,7 @@ const styles = themedStyles(() => StyleSheet.create({
   pill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   pillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   pillText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  pillTextActive: { color: COLORS.text },
+  pillTextActive: { color: COLORS.onPrimary },
   section: { marginTop: SPACING.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACING.sm },
   drillHint: { color: COLORS.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: SPACING.sm },
@@ -883,7 +883,7 @@ const styles = themedStyles(() => StyleSheet.create({
   showMoreText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   addCatDone: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   assignSendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14, marginTop: SPACING.md },
-  assignSendText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  assignSendText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   assignDurInput: { flex: 1, textAlign: 'right', color: COLORS.text, fontSize: 14, fontWeight: '700', paddingVertical: 0 },
   assignDurUnit: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   assignDurClear: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
@@ -923,5 +923,5 @@ const styles = themedStyles(() => StyleSheet.create({
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   saveBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
-  saveText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  saveText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
 }));

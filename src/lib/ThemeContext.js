@@ -12,17 +12,17 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { buildColors, applyTheme, COLORS as DEFAULT_COLORS } from '../constants/theme';
+import { buildColors, applyTheme, COLORS as DEFAULT_COLORS, DEFAULT_MODE } from '../constants/theme';
 
 const STORE_KEY = 'prova_theme';
 
 const ThemeContext = createContext({
-  colors: DEFAULT_COLORS, mode: 'dark', accent: 'blue',
+  colors: DEFAULT_COLORS, mode: DEFAULT_MODE, accent: 'blue',
   setMode: () => {}, setAccent: () => {}, ready: false,
 });
 
 export function ThemeProvider({ children }) {
-  const [mode, setModeState] = useState('dark');
+  const [mode, setModeState] = useState(DEFAULT_MODE);
   const [accent, setAccentState] = useState('blue');
   const [ready, setReady] = useState(false);
 

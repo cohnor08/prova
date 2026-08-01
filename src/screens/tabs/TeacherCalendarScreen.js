@@ -273,7 +273,7 @@ export default function TeacherCalendarScreen({ navigation }) {
         <View style={styles.dayHeader}>
           <Text style={styles.dayTitle}>{prettyDate(selected)}</Text>
           <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)} activeOpacity={0.85}>
-            <Ionicons name="add" size={16} color="#fff" />
+            <Ionicons name="add" size={16} color={COLORS.onPrimary} />
             <Text style={styles.addBtnText}>Add lesson</Text>
           </TouchableOpacity>
         </View>
@@ -349,7 +349,7 @@ export default function TeacherCalendarScreen({ navigation }) {
       </ScrollView>
 
       {/* Add lesson modal */}
-      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardAvoiding>
+      <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardLift>
             <Text style={styles.modalTitle}>New lesson</Text>
             <Text style={styles.modalSub}>{prettyDate(selected)}</Text>
 
@@ -456,14 +456,14 @@ const styles = themedStyles(() => StyleSheet.create({
   cellInner: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   cellSelected: { backgroundColor: COLORS.primary },
   cellToday: { borderWidth: 1, borderColor: COLORS.primary },
-  cellText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  cellText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '600' },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.primary, marginTop: 3 },
   dotGap: { height: 8, marginTop: 3 },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
   dayTitle: { color: COLORS.text, fontSize: 15, fontWeight: '800', flex: 1, minWidth: 0 },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
-  addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  addBtnText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
   empty: { color: COLORS.textMuted, fontSize: 13, paddingVertical: SPACING.sm },
 
   lessonCard: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, marginBottom: SPACING.sm },
@@ -506,7 +506,7 @@ const styles = themedStyles(() => StyleSheet.create({
   ampmBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   chipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: COLORS.onPrimary },
   noteInput: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm },
   searchInput: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, padding: 0 },
@@ -514,5 +514,5 @@ const styles = themedStyles(() => StyleSheet.create({
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
   saveBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.primary },
-  saveText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  saveText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
 }));

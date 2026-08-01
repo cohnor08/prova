@@ -5,6 +5,7 @@
 // +20 Prova points and a couple of practice minutes.
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
@@ -33,6 +34,12 @@ export default function TheoryQuizScreen({ navigation, route }) {
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
   const [rewarded, setRewarded] = useState(false);
+
+  // Leaving the game abandons the round: coming back starts fresh at the menu
+  // rather than dropping you back mid-question with a stale score.
+  useFocusEffect(React.useCallback(() => () => {
+    setPhase('menu'); setQNum(0); setQuestion(null); setPicked(null); setScore(0); setRewarded(false);
+  }, []));
   const playScrollRef = useRef(null);
 
   const startRound = async () => {
@@ -122,7 +129,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
           </View>
 
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="play" size={18} color="#fff" />
+            <Ionicons name="play" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Start round</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -174,7 +181,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
             {rewarded ? `  +${ROUND_POINTS} pts banked.` : ''}
           </Text>
           <TouchableOpacity style={styles.startBtn} onPress={startRound} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={COLORS.onPrimary} />
             <Text style={styles.startText}>Play again</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setPhase('menu')} hitSlop={{ top: 8, bottom: 8 }}>
@@ -201,9 +208,9 @@ const styles = themedStyles(() => StyleSheet.create({
   seg: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, alignItems: 'center' },
   segOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   segText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 14 },
-  segTextOn: { color: '#fff' },
+  segTextOn: { color: COLORS.onPrimary },
   startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 15, alignSelf: 'stretch', marginTop: SPACING.md },
-  startText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  startText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   game: { flex: 1, padding: SPACING.xl, alignItems: 'center' },
   gamePlay: { padding: SPACING.xl, alignItems: 'center', flexGrow: 1, paddingBottom: SPACING.xxl },
   qNum: { color: COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
@@ -217,6 +224,6 @@ const styles = themedStyles(() => StyleSheet.create({
   choiceWrong: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
   choiceText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   nextBtn: { marginTop: SPACING.xl, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 60 },
-  nextText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  nextText: { color: COLORS.onPrimary, fontSize: 16, fontWeight: '800' },
   backLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.lg },
 }));

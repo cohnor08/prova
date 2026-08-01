@@ -170,7 +170,7 @@ export default function NotificationsScreen({ navigation }) {
                       <Text style={styles.declineText}>Decline</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.acceptBtn} onPress={() => acceptInvite(n)} disabled={actingId === n.id} activeOpacity={0.85}>
-                      <Ionicons name="checkmark" size={15} color={COLORS.text} />
+                      <Ionicons name="checkmark" size={15} color={COLORS.onPrimary} />
                       <Text style={styles.acceptText}>Accept</Text>
                     </TouchableOpacity>
                   </View>
@@ -210,5 +210,5 @@ const styles = themedStyles(() => StyleSheet.create({
   declineBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   declineText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   acceptBtn: { flex: 1.3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10, backgroundColor: COLORS.primary },
-  acceptText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  acceptText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '700' },
 }));

@@ -386,7 +386,7 @@ export default function PacksScreen({ navigation }) {
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={assignProg ? doAssignProgram : doAssign} disabled={saving}>
-            {saving ? <Ghost color={COLORS.text} size="small" /> : <Text style={styles.saveText}>{assignProg ? 'Start program' : 'Assign'}</Text>}
+            {saving ? <Ghost color={COLORS.onPrimary} size="small" /> : <Text style={styles.saveText}>{assignProg ? 'Start program' : 'Assign'}</Text>}
           </TouchableOpacity>
         </View>
       </SheetModal>
@@ -469,7 +469,7 @@ const styles = themedStyles(() => StyleSheet.create({
   packMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 2 },
   iconBtn: { padding: 4 },
   assignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.sm + 2, marginTop: SPACING.md },
-  assignBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  assignBtnText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '800' },
 
   newBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, paddingVertical: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '12' },
   newBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
@@ -497,8 +497,8 @@ const styles = themedStyles(() => StyleSheet.create({
   pickMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
 
   sheetBtns: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
-  cancelBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  cancelBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: 12, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   cancelText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   saveBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: 12, backgroundColor: COLORS.primary },
-  saveText: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  saveText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
 }));

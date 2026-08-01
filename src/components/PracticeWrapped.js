@@ -183,7 +183,7 @@ export default function PracticeWrapped({ visible, uid, forced = false, onResolv
             </View>
 
             <TouchableOpacity style={styles.shareBtn} onPress={share} activeOpacity={0.85}>
-              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Ionicons name="share-outline" size={18} color={COLORS.onPrimary} />
               <Text style={styles.shareText}>Share my week</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10 }}>
@@ -216,6 +216,6 @@ const styles = themedStyles(() => StyleSheet.create({
   badgeName: { color: COLORS.textSecondary, fontSize: 9.5, textAlign: 'center' },
   brand: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 3, marginTop: 18, fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' },
   shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 44, marginTop: 22 },
-  shareText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  shareText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   doneLink: { color: COLORS.textSecondary, fontSize: 14, marginTop: 16 },
 }));
