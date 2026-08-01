@@ -58,7 +58,7 @@ const SKY_BASE = {
   textSecondary: '#A8B2C4',
   textMuted: '#8A94A8',   // 4.6:1 on a card — clears AA for the 11px all-caps labels it's used on
   success: '#6EE7B7',
-  error: '#FCA5A5',
+  error: '#F58B8B',
   border: '#333B4A',       // clear of BOTH card and surface, so hairlines read on either
   onPrimary: '#FFFFFF',    // white labels on every filled surface
 };

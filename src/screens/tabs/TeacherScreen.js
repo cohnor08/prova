@@ -3162,7 +3162,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     <ScrollView style={{ maxHeight: 420 }}>
                       {done.map((t) => (
                         <View key={t.id} style={styles.completedRow}>
-                          <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                          <Ionicons name="checkmark-circle" size={16} color={COLORS.success} style={styles.completedIcon} />
                           {/* Tap to open the task (e.g. to leave feedback on it). */}
                           <TouchableOpacity
                             style={{ flex: 1, minWidth: 0 }}
@@ -3184,11 +3184,12 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                               // Close this window first — iOS won't stack two Modals.
                               onPress={() => { pendingProofRef.current = { url: t.proofUrl, type: t.proofType || 'video', proofs: t.proofs, studentUid: live.uid, taskId: t.id, verified: !!t.proofVerified, title: t.title }; setCompletedView(null); }}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              style={styles.completedIcon}
                             >
                               <Ionicons name={t.proofVerified ? 'checkmark-circle' : 'videocam'} size={17} color={t.proofVerified ? COLORS.success : COLORS.primary} />
                             </TouchableOpacity>
                           )}
-                          <TouchableOpacity onPress={() => removeAssignedTask(live.uid, t.id, t.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <TouchableOpacity onPress={() => removeAssignedTask(live.uid, t.id, t.title)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.completedIcon}>
                             <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
                           </TouchableOpacity>
                         </View>
@@ -3683,7 +3684,11 @@ const styles = themedStyles(() => StyleSheet.create({
   taskSection: { gap: 6 },
   taskSectionLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   completedLink: { color: COLORS.primary, fontSize: 11, fontWeight: '700' },
-  completedRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  // flex-start, not center: the middle block is two lines (title + meta), so
+  // centring puts the icons level with the GAP between them instead of the
+  // title. completedIcon nudges them onto the title's line.
+  completedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  completedIcon: { marginTop: 1 },
   completedTitle: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   completedMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
 
