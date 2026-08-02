@@ -148,7 +148,7 @@ export default function OnboardingFlow() {
   // A persistent escape hatch so a half-finished signup isn't a dead end — drop
   // back to the login screen to use an existing account.
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 0 }}>
       {content}
       <SafeAreaView style={styles.logoutWrap} pointerEvents="box-none">
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>

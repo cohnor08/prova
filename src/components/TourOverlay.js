@@ -295,7 +295,7 @@ export default function TourOverlay({ role }) {
               <Text style={styles.skip}>Skip</Text>
             </TouchableOpacity>
           )}
-          <View style={{ flex: 1 }} />
+          <View style={{ flex: 1, minWidth: 0 }} />
           {d.idx > 0 && !dIsLast && (
             <TouchableOpacity style={styles.backBtn} onPress={() => jump(d.idx - 1)} activeOpacity={0.85}>
               <Text style={styles.backText}>Back</Text>
@@ -374,7 +374,7 @@ export default function TourOverlay({ role }) {
             <Text style={styles.skip}>Skip</Text>
           </TouchableOpacity>
         )}
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, minWidth: 0 }} />
         {step > 0 && !isLast && (
           <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)} activeOpacity={0.85}>
             <Text style={styles.backText}>Back</Text>

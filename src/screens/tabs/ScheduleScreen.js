@@ -575,7 +575,7 @@ export default function ScheduleScreen({ navigation, route }) {
                 <Ionicons name={done ? 'checkmark' : meta.icon} size={16} color={done ? COLORS.success : meta.color} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.eventTitle, done && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]} numberOfLines={1}>{e.title}</Text>
+                <Text style={[styles.eventTitle, done && { color: COLORS.textMuted, textDecorationLine: 'line-through' }]} numberOfLines={2}>{e.title}</Text>
                 <Text style={styles.eventSub} numberOfLines={1}>
                   {done ? 'Completed' : meta.label}{e.time && timeLabel(e.time) ? ` · ${timeLabel(e.time)}` : ''}{e.sub ? ` · ${e.sub}` : ''}
                 </Text>

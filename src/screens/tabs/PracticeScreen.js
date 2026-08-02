@@ -658,7 +658,7 @@ export default function PracticeScreen({ route, navigation }) {
           <TouchableOpacity style={styles.soundBtn} onPress={() => setSoundPickerOpen(true)} activeOpacity={0.8}>
             <Ionicons name="musical-notes-outline" size={18} color={COLORS.primary} />
             <Text style={styles.soundBtnText}>Sound</Text>
-            <View style={{ flex: 1 }} />
+            <View style={{ flex: 1, minWidth: 0 }} />
             <Text style={styles.soundBtnValue}>{(CLICK_SETS[clickSet] || CLICK_SETS.classic).label}</Text>
             <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
           </TouchableOpacity>
@@ -730,7 +730,7 @@ export default function PracticeScreen({ route, navigation }) {
                 >
                   <Ionicons name={active ? 'volume-high' : 'musical-note-outline'} size={18} color={active ? COLORS.primary : COLORS.textMuted} />
                   <Text style={[styles.soundRowText, active && { color: COLORS.primary, fontWeight: '800' }]}>{set.label}</Text>
-                  <View style={{ flex: 1 }} />
+                  <View style={{ flex: 1, minWidth: 0 }} />
                   {active && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
                 </TouchableOpacity>
               );

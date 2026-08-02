@@ -66,5 +66,5 @@ export default function CreatePlanScreen({ navigation, route }) {
     <OnboardingSchedule key="schedule" onNext={handleNext} onBack={handleBack} data={profile} />,
   ];
 
-  return <View style={{ flex: 1 }}>{screens[step]}</View>;
+  return <View style={{ flex: 1, minWidth: 0 }}>{screens[step]}</View>;
 }

@@ -120,7 +120,7 @@ export default function GroupChatView({ group, myUid, myName, isTeacher, onBack 
   const memberCount = (group.memberUids || []).length;
 
   return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
       <View style={[styles.navHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />

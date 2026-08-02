@@ -1282,7 +1282,7 @@ export default function SongsScreen({ route, navigation }) {
             <View style={styles.learnIcon}>
               <Ionicons name="school" size={20} color={COLORS.primary} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.learnTitle}>Learn a song</Text>
               <Text style={styles.learnSub}>Pick any song → get the step-by-step plan to play it</Text>
             </View>
@@ -1325,9 +1325,9 @@ export default function SongsScreen({ route, navigation }) {
                   <View style={styles.setlistIcon}>
                     <Ionicons name="list" size={18} color={COLORS.primary} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.setlistName} numberOfLines={1}>{sl.name}</Text>
-                    <Text style={styles.setlistMeta} numberOfLines={1}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.setlistName} numberOfLines={2}>{sl.name}</Text>
+                    <Text style={styles.setlistMeta} numberOfLines={2}>
                       {sl.songs.length} songs · {sl.setting}
                     </Text>
                   </View>
@@ -1816,7 +1816,7 @@ export default function SongsScreen({ route, navigation }) {
           <View style={styles.detailSheet}>
             <View style={styles.playerHandle} />
             <View style={styles.detailHeader}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.detailTitle} numberOfLines={2}>{viewingSetlist?.name}</Text>
                 <Text style={styles.detailMeta} numberOfLines={2}>
                   {viewingSetlist?.songs?.length} songs · {viewingSetlist?.setting}
@@ -1832,7 +1832,7 @@ export default function SongsScreen({ route, navigation }) {
                 <View key={s.id || i} style={styles.detailRow}>
                   <Text style={styles.detailNum}>{i + 1}</Text>
                   {renderArtwork(s, 44, 8)}
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.detailSongTitle} numberOfLines={1}>{s.title}</Text>
                     {!!s.artist && <Text style={styles.detailSongArtist} numberOfLines={1}>{s.artist}</Text>}
                     {!!s.note && <Text style={styles.detailSongNote} numberOfLines={1}>{s.note}</Text>}
