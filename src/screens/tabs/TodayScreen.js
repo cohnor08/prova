@@ -166,10 +166,18 @@ function NotesChip({ onPress }) {
 // Cut at the first dash/colon/comma/bracket, then cap the length so a title
 // written without any of those still stays short. The full text is one tap away.
 function shortTitle(full) {
+  // Collapsed session cards are all one line, so the TEXT is shortened to fit
+  // rather than the row stretched to hold it. Word count is the wrong measure —
+  // "Advanced Voicing & Reharmonization" is four words and far too wide — so cap
+  // by characters, which is what actually decides whether a line fits.
+  const MAX = 24;
   let t = String(full || '').split(/\s+[\u2014\u2013-]\s+|[:(,]/)[0].trim();
-  const words = t.split(/\s+/);
-  if (words.length > 4) t = words.slice(0, 4).join(' ');
-  return t || String(full || '');
+  if (t.length <= MAX) return t || String(full || '');
+  // Trim back to the last whole word inside the cap.
+  const cut = t.slice(0, MAX + 1);
+  const sp = cut.lastIndexOf(' ');
+  t = (sp > 8 ? cut.slice(0, sp) : cut.slice(0, MAX)).trim();
+  return t.replace(/[\s,;:.&\u2013\u2014-]+$/, '');
 }
 
 // A title that never cuts mid-word.
@@ -186,7 +194,7 @@ function shortTitle(full) {
 function ClipTitle({ text, style, containerStyle, expanded }) {
   return (
     <View style={containerStyle}>
-      <Text style={style} numberOfLines={expanded ? undefined : 2} ellipsizeMode="tail">
+      <Text style={style} numberOfLines={expanded ? undefined : 1} ellipsizeMode="tail">
         {text}
       </Text>
     </View>
