@@ -155,35 +155,83 @@ export function getDailySong(instrument, level) {
 // avoids re-querying the same cover/preview every time a card re-renders. The
 // cache is intentionally a plain module-level Map — it clears when the app does.
 const _itunesCache = new Map(); // "title|artist" → { artwork, preview }
+const _inflight = new Map();    // key → the in-flight promise, so duplicates share one request
+
+// Apple throttles at roughly 20 calls a minute per IP, and when it throttles it
+// answers with HTML or an empty body rather than JSON — which is why opening a
+// 20-song setlist used to spray "JSON Parse error: Unexpected character: R"
+// across the log. Every card asked at once, Apple refused most of them, and
+// res.json() threw on the refusal page.
+//
+// Three guards, in order of importance:
+//   1. requests are queued with a gap instead of fired in parallel,
+//   2. the body is read as text and only parsed if it actually looks like JSON,
+//   3. a throttle or parse failure starts a cooldown, so we stop hammering an
+//      API that has already said no.
+const ITUNES_GAP_MS = 140;      // ~7 calls/sec ceiling, well under the limit
+const ITUNES_COOLDOWN_MS = 60000;
+let _queue = Promise.resolve();
+let _cooldownUntil = 0;
+
+function _enqueue(fn) {
+  const run = _queue.then(fn, fn);
+  _queue = run.then(() => new Promise((r) => setTimeout(r, ITUNES_GAP_MS)),
+                    () => new Promise((r) => setTimeout(r, ITUNES_GAP_MS)));
+  return run;
+}
+
+// Fetch + parse defensively. Returns null when iTunes didn't give us JSON,
+// rather than throwing a parse error into the caller's console.
+export async function itunesGet(url) {
+  if (Date.now() < _cooldownUntil) return null;
+  const res = await fetch(url);
+  if (!res.ok) {                       // 403/429 = throttled
+    if (res.status === 403 || res.status === 429) _cooldownUntil = Date.now() + ITUNES_COOLDOWN_MS;
+    return null;
+  }
+  const text = await res.text();
+  const body = text.trim();
+  if (!body || (body[0] !== '{' && body[0] !== '[')) {
+    _cooldownUntil = Date.now() + ITUNES_COOLDOWN_MS;   // an HTML error page
+    return null;
+  }
+  try { return JSON.parse(body); } catch (e) { return null; }
+}
 
 async function _lookupSong(title, artist) {
   const key = `${(title || '').toLowerCase().trim()}|${(artist || '').toLowerCase().trim()}`;
   if (_itunesCache.has(key)) return _itunesCache.get(key);
+  if (_inflight.has(key)) return _inflight.get(key);     // same song, one request
 
   const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
   const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`;
-  let result = { artwork: null, preview: null };
-  let ok = false; // only a real response (even "no results") is cacheable
-  try {
-    const res = await fetch(url);
-    const json = await res.json();
-    ok = true;
-    const hit = json?.results?.[0];
-    if (hit) {
-      // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
-      const art = hit.artworkUrl100;
-      result = {
-        artwork: art ? art.replace('100x100bb', '300x300bb') : null,
-        preview: hit.previewUrl || null,
-      };
-    }
-  } catch (e) {
-    console.warn('iTunes lookup failed:', e);
-  }
-  // Don't cache a network failure — that would poison the song's cover/preview
-  // for the whole session. Cache only real responses so failures retry later.
-  if (ok) _itunesCache.set(key, result);
-  return result;
+
+  const p = _enqueue(async () => {
+    let result = { artwork: null, preview: null };
+    let ok = false;                    // only a real response (even "no results") is cacheable
+    try {
+      const json = await itunesGet(url);
+      if (json) {
+        ok = true;
+        const hit = json?.results?.[0];
+        if (hit) {
+          // iTunes returns 100x100; request a crisper 300x300 by swapping the size token.
+          const art = hit.artworkUrl100;
+          result = {
+            artwork: art ? art.replace('100x100bb', '300x300bb') : null,
+            preview: hit.previewUrl || null,
+          };
+        }
+      }
+    } catch (e) { /* network hiccup — leave it uncached so it can retry */ }
+    // Don't cache a failure: that would poison the song's cover for the session.
+    if (ok) _itunesCache.set(key, result);
+    _inflight.delete(key);
+    return result;
+  });
+
+  _inflight.set(key, p);
+  return p;
 }
 
 // Resolve a free-text query (e.g. "good times bad times by led zep") to the
@@ -196,8 +244,8 @@ export async function searchTrack(queryStr) {
   if (!q) return null;
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=1`;
   try {
-    const res = await fetch(url);
-    const json = await res.json();
+    const json = await itunesGet(url);
+    if (!json) return null;
     const hit = json?.results?.[0];
     if (!hit || !hit.trackName) return null;
     const art = hit.artworkUrl100;
