@@ -13,6 +13,7 @@ import { auth, db } from '../../lib/firebase';
 import { scheduleStreakSaver, cancelStreakSaver, notifyNewTasks, rearmDailyReminder, scheduleWrappedNudge } from '../../lib/notifications';
 import { refreshWeeklyPlan } from '../../lib/claude';
 import { COLORS, SPACING, CATEGORY_COLORS } from '../../constants/theme';
+import { shortTitle } from '../../lib/text';
 import { useThemeColors } from '../../lib/ThemeContext';
 import { getDailySong } from '../../constants/songs';
 import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges';
@@ -165,20 +166,6 @@ function NotesChip({ onPress }) {
 // "Legato Warmup — build fluidity across the strings" becomes "Legato Warmup".
 // Cut at the first dash/colon/comma/bracket, then cap the length so a title
 // written without any of those still stays short. The full text is one tap away.
-function shortTitle(full) {
-  // Collapsed session cards are all one line, so the TEXT is shortened to fit
-  // rather than the row stretched to hold it. Word count is the wrong measure —
-  // "Advanced Voicing & Reharmonization" is four words and far too wide — so cap
-  // by characters, which is what actually decides whether a line fits.
-  const MAX = 24;
-  let t = String(full || '').split(/\s+[\u2014\u2013-]\s+|[:(,]/)[0].trim();
-  if (t.length <= MAX) return t || String(full || '');
-  // Trim back to the last whole word inside the cap.
-  const cut = t.slice(0, MAX + 1);
-  const sp = cut.lastIndexOf(' ');
-  t = (sp > 8 ? cut.slice(0, sp) : cut.slice(0, MAX)).trim();
-  return t.replace(/[\s,;:.&\u2013\u2014-]+$/, '');
-}
 
 // A title that never cuts mid-word.
 //

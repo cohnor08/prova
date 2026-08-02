@@ -152,6 +152,28 @@ If `master` is ahead of your branch before you push, rebase:
 git fetch origin && git rebase origin/master
 ```
 
+## Text & truncation rules
+Read `src/lib/text.js` before adding any list. Three rules, learned the hard way:
+
+- **Even-row lists** (today's sessions, assigned tasks, completed tasks) get
+  **one line**, with the text shortened by `shortTitle()` to fit. Rows of equal
+  height read as a list; ragged ones read as a mess.
+- **Everything else** (setlists, song library, song-plan steps) gets **two lines**
+  and a tail ellipsis — a wrapped title beats a truncated one.
+- **Any `Text` inside a flex row needs its container on `flex: 1, minWidth: 0`.**
+  Without `minWidth`, a flex child can't shrink below its content width, so the
+  text clips instead of wrapping *regardless of `numberOfLines`*. This was the
+  root cause of most truncation in the app.
+
+Never use `ellipsizeMode="clip"` on a title — it cuts mid-word with no ellipsis,
+which reads as broken rather than truncated.
+
+Check with:
+```bash
+node scripts/scan-truncation.cjs   # unshrinkable flex children, one-line titles
+node scripts/scan-undef.cjs        # identifiers used but never declared
+```
+
 ## Key Rules
 - All files must be `.js` — never `.ts` or `.tsx`
 - Never use `import ... from 'firebase/analytics'` — analytics is browser-only and crashes React Native

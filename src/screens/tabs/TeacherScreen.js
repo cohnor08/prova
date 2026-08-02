@@ -25,6 +25,7 @@ import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
 import { ReactionChips, ReactionPicker } from '../../components/Reactions';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
+import { shortTitle } from '../../lib/text';
 import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { notifyOverdueTasks } from '../../lib/notifications';
@@ -2508,7 +2509,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                 activeOpacity={0.7}
                               >
                                 <Ionicons name="ellipse-outline" size={15} color={COLORS.textMuted} style={{ marginRight: 8 }} />
-                                <Text style={styles.miniTaskText} numberOfLines={2}>{t.title}</Text>
+                                <Text style={styles.miniTaskText} numberOfLines={1}>{shortTitle(t.title)}</Text>
                                 {/* Fixed-width slots: every row has the same anatomy, and an
                                     empty slot still holds its space — otherwise each row packs
                                     its own trailing elements and nothing lines up vertically. */}
@@ -3169,7 +3170,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                             onPress={() => { setCompletedView(null); setEditTaskCtx({ student: live, task: t }); }}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.completedTitle} numberOfLines={2}>{t.title}</Text>
+                            <Text style={styles.completedTitle} numberOfLines={1}>{shortTitle(t.title)}</Text>
                             <Text style={styles.completedMeta}>
                               {[
                                 t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
