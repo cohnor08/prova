@@ -391,7 +391,7 @@ export default function LearnSongScreen({ navigation }) {
                       onPress={() => setExpandedSong(open ? null : s.songKey)}
                       activeOpacity={0.8}
                     >
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.songTitle} numberOfLines={open ? 3 : 1}>{s.title}</Text>
                         {!!s.artist && <Text style={styles.songArtist}>{s.artist}</Text>}
                         <Text style={styles.songProgress}>{done}/{total} steps · {done === total ? 'Learned 🎉' : 'In progress'}</Text>
@@ -474,7 +474,7 @@ export default function LearnSongScreen({ navigation }) {
                                   />
                                 </TouchableOpacity>
                                 <TouchableOpacity style={styles.stepHeadMain} onPress={() => toggleStepOpen(stepKey)} activeOpacity={0.7}>
-                                  <Text style={[styles.stepTitle, { flex: 1 }, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 1}>
+                                  <Text style={[styles.stepTitle, { flex: 1 }, st.done && styles.stepTitleDone]} numberOfLines={stepOpen ? undefined : 2}>
                                     {i + 1}. {st.title}{st.targetBpm ? `  ·  ${st.targetBpm} BPM` : ''}
                                   </Text>
                                   <Ionicons name={stepOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />

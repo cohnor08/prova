@@ -802,7 +802,7 @@ function AssignSongModal({ student, klass, recipientStudents, visible, onClose, 
                   return (
                     <TouchableOpacity key={s.id} style={styles.songStepRow} onPress={() => toggleStep(s.id)} activeOpacity={0.7}>
                       <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? COLORS.primary : COLORS.textMuted} />
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.songStepTitle}>{i + 1}. {s.title}{s.targetBpm ? `  ·  ${s.targetBpm} BPM` : ''}</Text>
                         {!!s.summary && <Text style={styles.songStepSummary} numberOfLines={2}>{s.summary}</Text>}
                       </View>
@@ -1265,7 +1265,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                       {templates.map((t) => (
                         <View key={t.id} style={styles.tplSheetRow}>
                           <TouchableOpacity
-                            style={{ flex: 1 }}
+                            style={{ flex: 1, minWidth: 0 }}
                             onPress={() => { applyTemplate(t); setShowTemplates(false); }}
                             activeOpacity={0.7}
                           >
@@ -1298,7 +1298,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                       {resources.map((r) => (
                         <View key={r.id} style={styles.tplSheetRow}>
                           <TouchableOpacity
-                            style={{ flex: 1 }}
+                            style={{ flex: 1, minWidth: 0 }}
                             onPress={() => { applyResource(r); setShowResources(false); }}
                             activeOpacity={0.7}
                           >
@@ -1452,7 +1452,7 @@ function InlineChatView({ student, myUid, isDemo, title, subtitle, onBack }) {
   const revMessages = [...messages].reverse();
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 0 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.chatNavBackBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
@@ -2428,7 +2428,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     </View>
                     <View style={styles.studentInfo}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.studentName} numberOfLines={1}>{nm}</Text>
+                        <Text style={styles.studentName} numberOfLines={2}>{nm}</Text>
                       </View>
                       <Text style={styles.studentMeta}>{student.level} · {student.instrument}</Text>
                       <View style={styles.statusRow}>
@@ -2508,7 +2508,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                 activeOpacity={0.7}
                               >
                                 <Ionicons name="ellipse-outline" size={15} color={COLORS.textMuted} style={{ marginRight: 8 }} />
-                                <Text style={styles.miniTaskText} numberOfLines={1}>{t.title}</Text>
+                                <Text style={styles.miniTaskText} numberOfLines={2}>{t.title}</Text>
                                 {/* Fixed-width slots: every row has the same anatomy, and an
                                     empty slot still holds its space — otherwise each row packs
                                     its own trailing elements and nothing lines up vertically. */}
@@ -2616,7 +2616,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                       >
                         <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textMuted} />
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.classCardName} numberOfLines={1}>{c.name}</Text>
+                          <Text style={styles.classCardName} numberOfLines={2}>{c.name}</Text>
                           <Text style={styles.classCardMeta}>{members.length} student{members.length === 1 ? '' : 's'}</Text>
                         </View>
                       </TouchableOpacity>
@@ -2843,8 +2843,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     <View style={[styles.studentAvatar, { backgroundColor: COLORS.accent || COLORS.primary }]}>
                       <Ionicons name="people" size={20} color={COLORS.onPrimary} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.studentName} numberOfLines={1}>{g.name}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.studentName} numberOfLines={2}>{g.name}</Text>
                       {g.lastMessage ? (
                         <Text style={styles.chatPreviewText} numberOfLines={1}>
                           {g.lastSenderUid === myUid ? 'You: ' : ''}{g.lastMessage}
@@ -2899,7 +2899,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                       <Text style={styles.studentAvatarText}>{initial}</Text>
                       <View style={[styles.avatarStatusDot, { backgroundColor: status.color }]} />
                     </View>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.studentName}>{nm}</Text>
                       {lastText ? (
                         <Text style={styles.chatPreviewText} numberOfLines={1}>
@@ -2946,7 +2946,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       />
 
       <Modal visible={!!renameTarget} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <KeyboardAvoidingView style={{ flex: 1, minWidth: 0 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Rename class</Text>
@@ -3169,7 +3169,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                             onPress={() => { setCompletedView(null); setEditTaskCtx({ student: live, task: t }); }}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.completedTitle} numberOfLines={1}>{t.title}</Text>
+                            <Text style={styles.completedTitle} numberOfLines={2}>{t.title}</Text>
                             <Text style={styles.completedMeta}>
                               {[
                                 t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,

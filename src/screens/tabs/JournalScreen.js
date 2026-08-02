@@ -247,7 +247,7 @@ export default function JournalScreen({ navigation }) {
                   </View>
                 )}
                 {!!e.mood && <Text style={[styles.entryMood, { color: MOOD_COLOR[e.mood] || COLORS.textSecondary }]}>{e.mood}</Text>}
-                <View style={{ flex: 1 }} />
+                <View style={{ flex: 1, minWidth: 0 }} />
                 {!!e.editedAt && <Text style={styles.editedTag}>edited</Text>}
                 <Ionicons name="create-outline" size={16} color={COLORS.textMuted} />
               </View>

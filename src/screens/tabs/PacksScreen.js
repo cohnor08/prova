@@ -235,7 +235,7 @@ export default function PacksScreen({ navigation }) {
             <View key={p.id} style={styles.packCard}>
               <View style={styles.packTop}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.packName} numberOfLines={1}>{p.name}</Text>
+                  <Text style={styles.packName} numberOfLines={2}>{p.name}</Text>
                   <Text style={styles.packMeta}>{p.tasks.length} task{p.tasks.length === 1 ? '' : 's'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => openEdit(p)} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -269,7 +269,7 @@ export default function PacksScreen({ navigation }) {
             <View key={pr.id} style={styles.packCard}>
               <View style={styles.packTop}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.packName} numberOfLines={1}>{pr.name}</Text>
+                  <Text style={styles.packName} numberOfLines={2}>{pr.name}</Text>
                   <Text style={styles.packMeta}>{pr.packIds.length} week{pr.packIds.length === 1 ? '' : 's'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => openEditProg(pr)} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

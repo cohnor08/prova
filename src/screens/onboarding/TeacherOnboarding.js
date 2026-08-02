@@ -66,7 +66,7 @@ export default function TeacherOnboarding() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, minWidth: 0 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

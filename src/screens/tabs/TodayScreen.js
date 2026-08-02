@@ -172,45 +172,23 @@ function shortTitle(full) {
   return t || String(full || '');
 }
 
-// A one-line title that CUTS rather than ellipsises, and only ever on a whole
-// word. Safety net for the rare title shortTitle can't get under the width.
+// A title that never cuts mid-word.
 //
-// How the measurement works: an invisible copy of the text is rendered with NO
-// numberOfLines, so it wraps normally — and RN wraps at WORD boundaries. Its
-// onTextLayout hands back one entry per line, so lines[0].text is exactly "the
-// words that fit on one line". We then show that. Reading the line back from a
-// truncated Text instead would be unreliable, since what `text` contains for a
-// clipped line isn't guaranteed.
+// The previous version measured the laid-out line and re-rendered a trimmed
+// string. It relied on onTextLayout giving back lines[].text, which iOS does not
+// always populate — and when it came back empty the component fell through to
+// ellipsizeMode "clip", producing a mid-word chop with no ellipsis at all. Worse
+// than the plain truncation it replaced.
+//
+// This version has nothing to fail: React Native wraps at WORD boundaries, so
+// allowing two lines removes almost all truncation, and anything still too long
+// gets a tail ellipsis at a word boundary rather than through the middle of one.
 function ClipTitle({ text, style, containerStyle, expanded }) {
-  const [clipped, setClipped] = useState(null);
-  const measuredFor = useRef(null);
-  useEffect(() => { measuredFor.current = null; setClipped(null); }, [text]);
-
-  if (expanded) return <Text style={style}>{text}</Text>;
-
-  const onTextLayout = (e) => {
-    if (measuredFor.current === text) return;
-    const lines = e.nativeEvent.lines || [];
-    measuredFor.current = text;
-    if (lines.length <= 1) return;                       // fits already
-    const first = (lines[0].text || '').trim();
-    if (first) setClipped(first.replace(/[\s,;:.\u2013\u2014-]+$/, ''));
-  };
-
   return (
     <View style={containerStyle}>
-      <Text style={style} numberOfLines={1} ellipsizeMode="clip">
-        {clipped == null ? text : clipped}
+      <Text style={style} numberOfLines={expanded ? undefined : 2} ellipsizeMode="tail">
+        {text}
       </Text>
-      {clipped == null && (
-        <Text
-          style={[style, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}
-          onTextLayout={onTextLayout}
-          pointerEvents="none"
-        >
-          {text}
-        </Text>
-      )}
     </View>
   );
 }
@@ -2167,7 +2145,7 @@ export default function TodayScreen({ navigation, route }) {
       {/* End-of-day review — rate every task in one place, then Submit */}
       <SheetModal visible={dayReviewOpen} onRequestClose={skipDayReview} cardStyle={styles.drSheet} keyboardLift>
             <View style={styles.drHeader}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.drTitle}>How did today go?</Text>
                 <Text style={styles.drSubtitle}>Rate each task so Prova can shape next week. Optional — skip any.</Text>
               </View>

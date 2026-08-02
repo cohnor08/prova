@@ -408,7 +408,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                 <View key={r.id} style={styles.item}>
                   <TouchableOpacity style={styles.customRow} onPress={() => setExpandedRes(open ? null : r.id)} activeOpacity={0.7}>
                     <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
-                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>{r.title}</Text>
+                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={2}>{r.title}</Text>
                     {resQuery ? <Text style={styles.resTag}>{r.instrument} · {r.level}</Text> : (r.category ? <Text style={styles.resTag}>{r.category}</Text> : null)}
                   </TouchableOpacity>
                   {open && (
@@ -496,7 +496,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                 <View key={t.id} style={styles.item}>
                   <TouchableOpacity style={styles.customRow} onPress={() => setExpandedTopic(open ? null : t.id)} activeOpacity={0.7}>
                     <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
-                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>{t.title}</Text>
+                    <Text style={[styles.itemTitle, { flex: 1, marginBottom: 0 }]} numberOfLines={2}>{t.title}</Text>
                     <Text style={styles.resTag}>{t.category} · {t.level}</Text>
                   </TouchableOpacity>
                   {open && (
@@ -555,7 +555,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                 >
                   <Ionicons name={d.icon} size={16} color={COLORS.primary} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={1}>{d.title}</Text>
+                    <Text style={[styles.itemTitle, { marginBottom: 0 }]} numberOfLines={2}>{d.title}</Text>
                     <Text style={styles.itemDetail} numberOfLines={1}>
                       {modes.length ? `${modes.length} modes · ` : `${d.levels} levels · `}{d.sub}
                     </Text>

@@ -227,7 +227,7 @@ export default function PerformanceMode({
 
         {showAudience && (
           <View style={styles.audienceOverlay}>
-            <SafeAreaView style={{ flex: 1 }}>
+            <SafeAreaView style={{ flex: 1, minWidth: 0 }}>
               <View style={styles.audienceHeader}>
                 <Text style={styles.audienceTitle}>Audience requests</Text>
                 <TouchableOpacity onPress={() => setShowAudience(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>

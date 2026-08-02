@@ -65,7 +65,7 @@ export default function LessonNoteScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1, minWidth: 0 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={styles.student} numberOfLines={1}>{studentName || 'Lesson'}</Text>
           <Text style={styles.meta}>{prettyDate(dateStr)}{time ? ` · ${timeLabel(time)}` : ''}</Text>

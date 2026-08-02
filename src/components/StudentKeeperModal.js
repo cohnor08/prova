@@ -56,7 +56,7 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
                     size={24}
                     color={on ? COLORS.primary : COLORS.textMuted}
                   />
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.name}>{displayName(s)}</Text>
                     {!!s.email && <Text style={styles.email} numberOfLines={1}>{s.email}</Text>}
                   </View>

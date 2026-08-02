@@ -180,7 +180,7 @@ function ChatView({ chatId, myUid, myEmail, otherEmail, otherName, hideProgress,
   const revMessages = [...messages].reverse();
 
   return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
       <View style={[styles.chatNavHeader, { paddingTop: insets.top + SPACING.sm }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.primary} />

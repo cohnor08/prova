@@ -136,7 +136,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
       )}
 
       {phase === 'playing' && question && (
-        <ScrollView ref={playScrollRef} style={{ flex: 1 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={playScrollRef} style={{ flex: 1, minWidth: 0 }} contentContainerStyle={styles.gamePlay} showsVerticalScrollIndicator={false}>
           <Text style={styles.qNum}>Question {qNum} of {ROUND_LEN}</Text>
           <Text style={styles.scoreLine}>{score} correct</Text>
 
