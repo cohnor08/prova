@@ -1,24 +1,28 @@
 Hello,
 
-Thank you for the follow-up. To answer directly: **Prova is completely free.** There is no In-App Purchase, no subscription, no external purchase path, and no paid tier of any kind in this build. Detailed answers to your three questions are below, and we have proactively flagged the one payment-adjacent feature in the app so you have the full picture.
+Thank you for the follow-up. To answer directly: **Prova is completely free.** There is no In-App Purchase, no subscription, no external purchase path, and no paid tier of any kind in this build. There are therefore no paid services for anyone to use, purchase, restore or unlock. Detailed answers to each of your four questions are below, and we have proactively flagged the one payment-adjacent feature in the app so you have the full picture.
 
 ---
 
-**1. Where can users purchase the content, subscriptions, features, and services that can be accessed in the app?**
+**1. Who are the users that will use the paid services in the app?**
 
-Nowhere. As of this version, Prova sells nothing at all — not inside the app, and not outside it either. There is nothing available to purchase anywhere, by anyone, through any channel.
+There are no paid services in the app, so no user of any type has access to one. All three account types — Student, Personal and Teacher — receive every feature free, with no limits and no paid tier available to them.
+
+Because your message asks us to explain our business model, we set out our *intended* direction in full at the end of this reply. In summary, we plan for individual musicians and individual private teachers to be offered optional subscriptions **through Apple In-App Purchase**, and separately to license Prova to schools and music departments as an institutional product. None of that exists in this build: nothing is on sale to anyone, through any channel.
+
+**2. Where can users purchase the subscriptions that can be accessed in the app?**
+
+Nowhere. There are no subscriptions, so there is nothing to purchase — not inside the app, and not outside it either.
 
 There is no In-App Purchase, no subscription, no website checkout, no payment processor, and no "contact us to upgrade" route. The app contains no purchase surface of any kind: no prices, no plan selector, no upgrade button, and no paywall screen. The binary includes no commerce or billing SDK — no StoreKit purchase code, no RevenueCat, no Stripe, and no third-party payment library.
 
-(We do intend to sell institutional licences to schools in future. Because your message asks about our business model, we have set that out in full at the end of this reply rather than leave it unsaid — but none of it exists today.)
-
-**2. What specific types of previously purchased content, subscriptions, features, and services can a user access in the app?**
+**3. What specific types of previously purchased content and features can a user access in the app?**
 
 None. Prova has never sold anything, so no user has any prior purchase to access or restore. There is deliberately no "Restore Purchases" flow, because nothing has ever been purchasable.
 
-Every account — Student, Personal, and Teacher — is fully unlocked from sign-up. There is no entitlement check, licence key, promo code, or account tier that a user could obtain by paying.
+Every account is fully unlocked from sign-up. There is no entitlement check, licence key, promo code, or account tier that a user could obtain by paying.
 
-**3. What paid content, subscriptions, or features are unlocked within the app that do not use In-App Purchase?**
+**4. What paid content, subscriptions, or features are unlocked within the app that do not use In-App Purchase?**
 
 None. No feature in Prova sits behind a payment of any kind.
 
@@ -28,7 +32,7 @@ Every feature is free for every account, with no limits: AI-generated practice p
 
 **One feature we want to flag proactively**
 
-Prova includes a "Performance Mode" for musicians playing a live show. In it, the app displays a QR code that the audience physically present at the venue can scan to open a web page where they can request a song. If the performer has optionally saved their own third-party payment link in their profile (for example their own PayPal or Venmo), that page also shows that link so an audience member can tip them.
+Prova includes a "Performance Mode" for musicians playing a live show. In it, the app displays a QR code that the audience physically present at the venue can scan to open a web page where they can request a song. If the performer has optionally saved their own third-party payment link in their profile (for example their own PayPal, Venmo or Cash App link), that page also shows that link so an audience member can tip them.
 
 We believe this sits outside In-App Purchase, for these reasons:
 
