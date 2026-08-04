@@ -1886,7 +1886,7 @@ export default function SongsScreen({ route, navigation }) {
               )}
               activeOpacity={0.7}
             >
-              <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+              <Ionicons name="trash-outline" size={15} color={COLORS.textMuted} />
               <Text style={styles.detailDeleteText}>Delete setlist</Text>
             </TouchableOpacity>
           </View>
@@ -2180,7 +2180,10 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
     paddingVertical: 12, marginTop: SPACING.sm,
   },
-  detailDeleteText: { color: COLORS.error, fontWeight: '600', fontSize: 14 },
+  // Deliberately muted, not red: this sat full-width in COLORS.error directly
+  // under the filled "Go live" button, so the destructive action competed with
+  // the one you actually came here for. The red belongs on the confirm dialog.
+  detailDeleteText: { color: COLORS.textMuted, fontWeight: '600', fontSize: 13 },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xl, marginBottom: 4 },
   recHeading: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   recLevelTag: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, marginLeft: 'auto' },

@@ -394,7 +394,7 @@ export default function LearnSongScreen({ navigation }) {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.songTitle} numberOfLines={open ? 3 : 1}>{s.title}</Text>
                         {!!s.artist && <Text style={styles.songArtist}>{s.artist}</Text>}
-                        <Text style={styles.songProgress}>{done}/{total} steps · {done === total ? 'Learned 🎉' : 'In progress'}</Text>
+                        <Text style={styles.songProgress}>{done}/{total} steps · {done === 0 ? 'Not started' : done === total ? 'Learned 🎉' : 'In progress'}</Text>
                       </View>
                       <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
                     </TouchableOpacity>
