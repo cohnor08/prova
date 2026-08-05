@@ -98,7 +98,13 @@ export default function IntroSplash({ onDone }) {
             bounces={false}
             javaScriptEnabled={false}
             originWhitelist={['*']}
-            backgroundColor="#171A21"
+            // iOS paints a WKWebView's own surface OPAQUE WHITE for a frame or
+            // two before the HTML renders, which flashed a white square over
+            // the brand mark at launch. `backgroundColor` alone does not stop
+            // it — the view has to be made non-opaque so the dark parent below
+            // shows through until the SVG paints.
+            opaque={false}
+            backgroundColor="transparent"
           />
         </View>
       </Animated.View>
