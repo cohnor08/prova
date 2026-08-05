@@ -20,7 +20,7 @@
     "android": {
       "package": "com.ethanlam.prova",
       "adaptiveIcon": {
-        "backgroundColor": "#020408",
+        "backgroundColor": "#1E3A8A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
