@@ -16,9 +16,14 @@ import Ghost from './src/components/Ghost';
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = [
-    'body{background:#02040a}',
-    'body>#root{max-width:1080px;width:94%;margin:0 auto}',
-    'body>div:not(#root){position:fixed;inset:0;max-width:1080px;width:94%;margin:0 auto;transform:translateZ(0);pointer-events:none}',
+    // A phone UI stretched to 1080px reads as broken on a desktop; held to a
+    // phone-width column on a darker ground it reads as deliberate. The page
+    // colour is a shade under Sky's background so the column edges show.
+    // NOTE: the same width must apply to the portal boxes below, or modals
+    // stop lining up with the app.
+    'body{background:#101318}',
+    'body>#root{max-width:480px;width:100%;margin:0 auto;box-shadow:0 0 0 1px #333B4A}',
+    'body>div:not(#root){position:fixed;inset:0;max-width:480px;width:100%;margin:0 auto;transform:translateZ(0);pointer-events:none}',
     'body>div:not(#root)>*{pointer-events:auto}',
   ].join(' ');
   document.head.appendChild(style);
