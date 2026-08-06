@@ -589,12 +589,15 @@ function paintStudent() {
     <div id="taskList">${tasks.length ? tasks.map((t, i) => `
       <div class="task ${t.completed ? 'done' : ''}">
         <button class="tick" data-toggle="${i}" title="Toggle">${svg(ICON.check, 3.5)}</button>
-        <span class="t">${esc(t.title)}</span>
+        <span class="t" data-edit-task="${i}" style="cursor:pointer">${esc(t.title)}
+          ${t.durationMin ? `<span class="hint"> · ${t.durationMin} min</span>` : ''}
+          ${t.dueDate ? `<span class="hint"> · due ${esc(t.dueDate)}</span>` : ''}
+          ${t.drill ? `<span class="pill set" style="margin-left:6px">${esc(t.drill)}</span>` : ''}</span>
         <button class="del" data-del="${i}" title="Remove">×</button>
       </div>`).join('') : '<p class="hint" style="margin:0">Nothing assigned yet.</p>'}</div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <input id="newTask" placeholder="Assign a task…" style="flex:1">
-      <button class="btn sm" id="addTask">Assign</button>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn sm" id="addTask" style="flex:1">+ Assign Task</button>
+      <button class="btn sm ghost" id="msgStu" style="flex:1">Message</button>
     </div>`;
 
   const persist = async (next) => {
@@ -602,19 +605,116 @@ function paintStudent() {
     try { await updateDoc(doc(db, 'users', s.uid), { assignedTasks: next }); paintStudent(); }
     catch { toast('Could not save — check your connection'); }
   };
-  el.querySelector('#addTask').onclick = () => {
-    const v = el.querySelector('#newTask').value.trim();
-    if (!v) return;
-    persist([...(s.assignedTasks || []), { id: 't' + Date.now(), title: v, completed: false }]);
-    toast('Task assigned');
-  };
-  el.querySelector('#newTask').addEventListener('keydown', (e) => { if (e.key === 'Enter') el.querySelector('#addTask').click(); });
+  el.querySelector('#addTask').onclick = () => assignSheet(s);
+  el.querySelector('#msgStu').onclick = () => go('messages');
   el.querySelector('#taskList').addEventListener('click', (e) => {
-    const tg = e.target.closest('[data-toggle]'), dl = e.target.closest('[data-del]');
+    const tg = e.target.closest('[data-toggle]'), dl = e.target.closest('[data-del]'),
+          ed = e.target.closest('[data-edit-task]');
     const arr = [...(s.assignedTasks || [])];
+    if (ed) return assignSheet(s, +ed.getAttribute('data-edit-task'));
     if (tg) { const i = +tg.getAttribute('data-toggle'); arr[i] = { ...arr[i], completed: !arr[i].completed }; persist(arr); }
     if (dl) { const i = +dl.getAttribute('data-del'); arr.splice(i, 1); persist(arr); }
   });
+}
+
+// ── Assign task — the sheet from TeacherScreen ───────────────────────────
+// Task shape written to the student's doc:
+// { id,title,description,youtube,song,drill,drillLevel,drillMode,dueDate,
+//   durationMin,completed } — anything else the phone would not understand.
+const DRILL_OPTS = [
+  { key: 'ear',    label: 'Ear training',  levels: 4 },
+  { key: 'rhythm', label: 'Rhythm tapper', levels: 4 },
+  { key: 'fret',   label: 'Fretboard',     levels: 3 },
+  { key: 'theory', label: 'Theory quiz',   levels: 3 },
+];
+function assignSheet(stu, editIdx) {
+  const existing = typeof editIdx === 'number' ? (stu.assignedTasks || [])[editIdx] : null;
+  const TA = existing ? { drill: existing.drill || '', drillLevel: existing.drillLevel || 1 } : { drill: '', drillLevel: 1 };
+  const tpls = Array.isArray(me.taskTemplates) ? me.taskTemplates : [];
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  modal(`
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div><h3 style="margin:0">${existing ? 'Edit task' : 'Assign Task'}</h3>
+        <div class="hint">To: ${esc(displayName(stu))}</div></div>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 18px">
+      <button class="btn sm ghost" id="taTpl">Templates (${tpls.length})</button>
+      <button class="btn sm ghost" id="taSaveTpl">Save as template</button></div>
+    <input id="taTitle" placeholder="Task title" style="${F};margin-bottom:12px" value="${esc(existing?.title || '')}">
+    <textarea id="taDesc" rows="3" placeholder="Description (optional)" style="${F};margin-bottom:12px">${esc(existing?.description || '')}</textarea>
+    <input id="taYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(existing?.youtube || '')}">
+    <input id="taSong" placeholder="Song — e.g. Wonderwall — Oasis (optional)" style="${F};margin-bottom:20px" value="${esc(existing?.song || '')}">
+    <div class="eyebrow" style="padding:0 0 4px">Skill drill</div>
+    <p class="hint" style="margin:0 0 10px">Optionally attach a mini-game the student launches straight from the task.</p>
+    <div id="taDrills" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${DRILL_OPTS.map(d => `<button class="btn sm ghost" data-drill="${d.key}"${
+        TA.drill === d.key ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${d.label}</button>`).join('')}</div>
+    <div id="taLevels" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
+    <div class="eyebrow" style="padding:18px 0 6px">Due</div>
+    <input id="taDue" type="date" style="${F}" value="${esc(existing?.dueDate || '')}">
+    <div class="eyebrow" style="padding:18px 0 4px">Timer</div>
+    <p class="hint" style="margin:0 0 10px">Minutes the student must practice before they can mark it done. Leave blank for no timer.</p>
+    <div style="display:flex;gap:12px;align-items:center">
+      <input id="taMin" type="number" min="1" max="180" placeholder="—" value="${existing?.durationMin || ''}" style="${F};width:110px;text-align:center">
+      <span class="hint">minutes</span><button class="btn sm ghost" id="taClear">Clear</button></div>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="taSave" style="flex:1">${existing ? 'Save changes' : 'Assign task'}</button></div>`);
+
+  const paintLevels = () => {
+    const d = DRILL_OPTS.find(x => x.key === TA.drill);
+    $('#taLevels').innerHTML = d ? Array.from({ length: d.levels }, (_, k) =>
+      `<button class="btn sm ghost" data-dlevel="${k + 1}"${TA.drillLevel === k + 1 ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>Level ${k + 1}</button>`).join('') : '';
+  };
+  paintLevels();
+  $('#taDrills').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-drill]'); if (!b) return;
+    const k = b.getAttribute('data-drill');
+    TA.drill = TA.drill === k ? '' : k; TA.drillLevel = 1;
+    [...$('#taDrills').children].forEach(x => x.setAttribute('style',
+      x.getAttribute('data-drill') === TA.drill ? 'border-color:var(--primary);color:var(--ink)' : ''));
+    paintLevels();
+  });
+  $('#taLevels').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dlevel]'); if (b) { TA.drillLevel = +b.getAttribute('data-dlevel'); paintLevels(); }
+  });
+  $('#taClear').onclick = () => { $('#taMin').value = ''; };
+  $('#taTpl').onclick = () => {
+    if (!tpls.length) { toast('No templates saved yet'); return; }
+    const t = tpls[0];
+    $('#taTitle').value = t.title || ''; $('#taDesc').value = t.description || '';
+    $('#taYt').value = t.youtube || ''; $('#taSong').value = t.song || '';
+    toast(`Filled from "${t.title}"`);
+  };
+  $('#taSaveTpl').onclick = async () => {
+    const title = $('#taTitle').value.trim();
+    if (!title) { toast('Give the task a title first'); return; }
+    const tpl = { id: Date.now().toString(), title, description: $('#taDesc').value.trim(),
+      youtube: $('#taYt').value.trim(), song: $('#taSong').value.trim() };
+    const next = [tpl, ...tpls.filter(x => (x.title || '').toLowerCase() !== title.toLowerCase())].slice(0, 30);
+    try { await saveMe({ taskTemplates: next }); await refreshMe(); toast(`"${title}" saved as a template`); }
+    catch { toast('Could not save the template'); }
+  };
+  $('#taSave').onclick = async () => {
+    const title = $('#taTitle').value.trim();
+    if (!title) { toast('Give the task a title'); return; }
+    const task = {
+      id: existing?.id || Date.now().toString(), title,
+      description: $('#taDesc').value.trim(), youtube: $('#taYt').value.trim(), song: $('#taSong').value.trim(),
+      drill: TA.drill || null, drillLevel: TA.drill ? (TA.drillLevel || 1) : null,
+      drillMode: existing?.drillMode || null,
+      dueDate: $('#taDue').value || '', durationMin: parseInt($('#taMin').value, 10) || 0,
+      completed: existing?.completed || false,
+    };
+    const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
+    if (existing) cur[editIdx] = { ...existing, ...task }; else cur.push(task);
+    $('#taSave').disabled = true;
+    try {
+      await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
+      stu.assignedTasks = cur;
+      closeModal(); paintStudent();
+      toast(existing ? 'Task updated' : `Assigned to ${displayName(stu)}`);
+    } catch { toast('Could not save'); $('#taSave').disabled = false; }
+  };
 }
 
 
