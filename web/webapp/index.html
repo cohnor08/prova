@@ -573,7 +573,8 @@ function render() {
           <text x="36" y="40" text-anchor="middle" font-family="var(--round)" font-weight="600" font-size="17" fill="var(--ink)">${donePlan}/${sessions.length}</text></svg>
         <div class="phcopy"><div class="phline">${all ? 'Done for today' : `${left} minutes left today`}</div>
           <div class="phsub">${doneMin} of ${planned} min practiced</div></div>
-        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practice more' : donePlan ? 'Resume practicing' : 'Start practicing'}</button>
+        <button class="btn${all ? ' ghost' : ''}" data-play="next">${
+          all ? 'Practice more' : hasStartedToday() ? 'Resume practice' : 'Start practice'}</button>
       </div>` : ''}
       <section class="card"><header><h3>Today's sessions</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
@@ -1234,11 +1235,20 @@ const priorKey = () => `prova:prior:${uid}:${todayKey()}`;
 let PRIOR = {};
 function loadPrior() { try { PRIOR = JSON.parse(localStorage.getItem(priorKey()) || '{}'); } catch { PRIOR = {}; } }
 function savePrior() { try { localStorage.setItem(priorKey(), JSON.stringify(PRIOR)); } catch {} }
+// The app's hasStartedToday: once you've opened the player at all today the
+// button reads Resume, and it survives leaving the page.
+const startedKey = () => `prova:started:${uid}:${todayKey()}`;
+const hasStartedToday = () => {
+  try { if (localStorage.getItem(startedKey()) === '1') return true; } catch {}
+  return Object.keys(PRIOR).length > 0 || doneIds().length > 0;
+};
+const markStarted = () => { try { localStorage.setItem(startedKey(), '1'); } catch {} };
 function playList(kind) { return kind === 'plan' ? sessions : assigned(); }
 function openPlayer(kind, i) {
   const item = playList(kind)[i];
   if (!item) return;
   const target = (item.duration || 0) * 60;
+  markStarted();
   PLAY = { kind, i, item, target, elapsed: PRIOR[kind + i] || 0, paused: false, t0: performance.now() };
   drawPlayer(); tick();
 }
