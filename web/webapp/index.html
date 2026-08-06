@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prova</title>
+<link rel="icon" href="/img/icon-192.png">
+<style>
+  :root{
+    --page:#101318;--ground:#171A21;--card:#212630;--raised:#2A303C;--line:#333B4A;
+    --ink:#F4F6FA;--ink-2:#A8B2C4;--ink-3:#8A94A8;--primary:#2A99DB;--primary-dk:#1E7CB5;
+    --teal:#1D93A1;--good:#6EE7B7;--warn:#B8894A;--bad:#F58B8B;--on-primary:#fff;
+    --r-sm:8px;--r-md:12px;--r-lg:18px;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Helvetica,Arial,sans-serif;
+    --round:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;
+    --serif:Georgia,"Iowan Old Style",serif;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.22);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{margin:0;text-wrap:balance}
+  button,input{font:inherit;color:inherit}
+  .hidden{display:none!important}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+  .fig{font-family:var(--round);font-weight:600;font-variant-numeric:tabular-nums}
+
+  .login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .loginbox{width:min(400px,100%);background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:30px;box-shadow:var(--shadow)}
+  .loginbox .word{font-family:var(--serif);font-size:21px;letter-spacing:3.5px}
+  .loginbox p{color:var(--ink-3);font-size:13px;margin:6px 0 22px}
+  label{display:block;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+  input{width:100%;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
+  input:focus{border-color:var(--primary);outline:none}
+  .field{margin-bottom:15px}
+  .err{color:var(--bad);font-size:13px;min-height:19px;margin-top:4px}
+
+  .btn{border:0;cursor:pointer;font-weight:650;background:var(--primary);color:var(--on-primary);border-radius:var(--r-sm);padding:11px 20px}
+  .btn:hover{background:var(--primary-dk)}
+  .btn[disabled]{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+  .btn.sm{padding:7px 13px;font-size:13px}
+  .btn.wide{width:100%}
+
+  .shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:var(--ground)}
+  .rail{border-right:1px solid var(--line);background:var(--page);display:flex;flex-direction:column;padding:20px 13px;gap:22px}
+  .brand{display:flex;align-items:center;gap:11px;padding:0 8px}
+  .brand img{width:30px;height:30px;border-radius:8px}
+  .brand .word{font-family:var(--serif);font-size:18px;letter-spacing:3.5px}
+  .nav{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--r-sm);color:var(--ink-2);font-weight:500;cursor:pointer;background:none;border:0;width:100%;text-align:left}
+  .nav svg{width:17px;height:17px;flex:none;opacity:.85}
+  .nav:hover{background:var(--card);color:var(--ink)}
+  .nav[aria-current="page"]{background:var(--card);color:var(--ink);font-weight:650;box-shadow:inset 2px 0 0 var(--primary)}
+  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink-3);padding:0 10px 7px}
+  .who{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 8px 0;border-top:1px solid var(--line)}
+  .avatar{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11.5px;font-weight:700;background:var(--raised);color:var(--ink-2);font-family:var(--round)}
+  .who .nm{font-size:13px;font-weight:600;line-height:1.25;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who .rl{font-size:11.5px;color:var(--ink-3)}
+
+  .top{display:flex;align-items:center;gap:16px;padding:0 26px;height:64px;border-bottom:1px solid var(--line);background:var(--ground);position:sticky;top:0;z-index:5}
+  .top h1{font-size:16px;font-weight:650}
+  .chips{margin-left:auto;display:flex;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600}
+  .chip .lab{color:var(--ink-3);font-weight:500}
+  .chip .v{font-family:var(--round);font-variant-numeric:tabular-nums}
+
+  .content{padding:26px;display:flex;flex-direction:column;gap:22px}
+  .greet h2{font-size:24px;font-weight:640;letter-spacing:-.3px}
+  .greet p{margin:3px 0 0;color:var(--ink-3);font-size:13.5px}
+  .cols{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(0,1fr);gap:22px;align-items:start}
+  .stack{display:flex;flex-direction:column;gap:22px;min-width:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow)}
+  .card>header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .card h3{font-size:14.5px;font-weight:650}
+  .card header .meta{margin-left:auto;font-size:12.5px;color:var(--ink-3);font-family:var(--round)}
+  .hint{color:var(--ink-3);font-size:12.5px}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;box-shadow:var(--shadow)}
+  .stat .k{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3)}
+  .stat .v{font-family:var(--round);font-weight:600;font-size:28px;line-height:1.15;font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:12.5px;color:var(--ink-3);font-weight:600;margin-left:4px}
+
+  .planhead{display:flex;align-items:center;gap:18px;padding:18px 20px;border-radius:var(--r-lg);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 9%,var(--card)),var(--card));
+    border:1px solid color-mix(in srgb,var(--primary) 26%,var(--line));box-shadow:var(--shadow)}
+  .planhead.complete{background:linear-gradient(180deg,color-mix(in srgb,var(--good) 8%,var(--card)),var(--card));
+    border-color:color-mix(in srgb,var(--good) 26%,var(--line))}
+  .planhead .phcopy{flex:1;min-width:0}
+  .planhead .phline{font-size:19px;font-weight:650;letter-spacing:-.2px}
+  .planhead .phsub{font-size:13px;color:var(--ink-3);margin-top:2px}
+
+  .trow{border-top:1px solid var(--line)}
+  .trow:first-child{border-top:0}
+  .thead2{display:flex;align-items:center;gap:11px;padding:12px 0;cursor:pointer;min-width:0}
+  .chev{width:15px;height:15px;flex:none;color:var(--ink-3);transition:transform .18s}
+  .trow.open .chev{transform:rotate(90deg)}
+  .tbody2{padding:0 0 14px 26px;display:none}
+  .trow.open .tbody2{display:block}
+  .tdesc{color:var(--ink-2);font-size:13px;line-height:1.6;white-space:pre-wrap;margin:0 0 12px}
+  .tick{width:20px;height:20px;border-radius:50%;flex:none;border:1.5px solid var(--line);display:grid;place-items:center}
+  .tick.on{background:var(--good);border-color:var(--good)}
+  .ttl{font-weight:600;font-size:13.5px}
+  .ttl.done{color:var(--ink-3);text-decoration:line-through}
+  .tsub{font-size:12px;color:var(--ink-3)}
+  .dur{font-size:12.5px;color:var(--ink-2);font-family:var(--round);font-weight:600;flex:none}
+  .pill{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
+  .pill.set{background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)}
+  .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
+
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
+  .modal{position:fixed;z-index:41;top:50%;left:50%;transform:translate(-50%,-50%);width:min(460px,94vw);background:var(--ground);border:1px solid var(--line);border-radius:22px;padding:26px;text-align:center;box-shadow:var(--shadow)}
+  .modal .lab{font-size:11px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-3)}
+  .clock{font-family:var(--round);font-weight:600;font-size:44px;font-variant-numeric:tabular-nums;line-height:1}
+  .x{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:20px;padding:4px 8px}
+
+  .celeb-root{position:fixed;inset:0;display:grid;place-items:center;z-index:9999;pointer-events:none}
+  .celeb-card{display:flex;flex-direction:column;align-items:center;background:var(--raised);border-radius:28px;padding:26px 34px;border:1px solid color-mix(in srgb,var(--primary) 18%,transparent);box-shadow:0 12px 24px rgba(0,0,0,.35);animation:cIn .42s cubic-bezier(.2,1.5,.4,1) both}
+  .celeb-root.out .celeb-card{animation:cOut .24s ease forwards}
+  @keyframes cIn{from{opacity:0;transform:scale(.2)}to{opacity:1;transform:scale(1)}}
+  @keyframes cOut{to{opacity:0;transform:scale(.92)}}
+  .celeb-ring{position:absolute;width:76px;height:76px;border-radius:38px;background:var(--teal);animation:cRing .72s cubic-bezier(.22,.61,.36,1) forwards}
+  @keyframes cRing{0%{opacity:.5;transform:scale(.4)}60%{opacity:.12}100%{opacity:0;transform:scale(2.4)}}
+  .celeb-bw{position:relative;display:grid;place-items:center;margin-bottom:14px}
+  .celeb-badge{width:76px;height:76px;border-radius:38px;display:grid;place-items:center;font-size:38px;background:color-mix(in srgb,var(--teal) 13%,transparent);border:1px solid color-mix(in srgb,var(--teal) 33%,transparent)}
+  .celeb-title{font-size:19px;font-weight:800;margin-bottom:4px}
+  .celeb-pts{color:var(--teal);font-family:var(--round);font-size:40px;font-weight:800;line-height:1.1}
+  .celeb-sub{color:var(--ink-3);font-size:13px;margin-top:2px}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:11px 22px;box-shadow:var(--shadow);opacity:0;transition:.22s;z-index:60;font-size:13.5px;font-weight:600}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .empty{text-align:center;padding:30px 20px;color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media (max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}.shell{grid-template-columns:70px minmax(0,1fr)}.rail .word,.nav span,.eyebrow,.who .nm,.who .rl{display:none}.nav{justify-content:center}}
+  @media (max-width:720px){.stats{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="login" id="login">
+  <div class="loginbox">
+    <div class="brand"><img src="/img/icon-192.png" alt="" style="width:34px;height:34px;border-radius:9px">
+      <div class="word">PROVA</div></div>
+    <p>Sign in with your Prova account.</p>
+    <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username"></div>
+    <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+    <button class="btn wide" id="loginBtn">Sign in</button>
+    <div class="err" id="loginErr"></div>
+    <p style="margin-top:18px;font-size:12.5px">Don't have an account? Get Prova on
+      <a href="https://apps.apple.com/app/id6789881436" target="_blank" rel="noopener" style="color:var(--primary)">the App Store</a>.</p>
+  </div>
+</div>
+
+<div class="shell hidden" id="app">
+  <aside class="rail">
+    <div class="brand"><img src="/img/icon-192.png" alt=""><div class="word">PROVA</div></div>
+    <div id="nav"></div>
+    <div class="who"><div class="avatar" id="meAv">–</div>
+      <div style="min-width:0"><div class="nm" id="meNm">…</div><div class="rl" id="meRl"></div></div>
+      <button class="x" id="signout" title="Sign out" style="margin-left:auto">⏻</button></div>
+  </aside>
+  <div>
+    <header class="top"><h1 id="pageTitle">Today</h1>
+      <div class="chips">
+        <span class="chip"><span class="lab">Streak</span><span class="v" id="chipStreak">–</span></span>
+        <span class="chip"><span class="lab">Score</span><span class="v" id="chipScore">–</span></span>
+      </div></header>
+    <div id="screen"></div>
+  </div>
+</div>
+
+<div id="overlays"></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, getDoc, updateDoc, setDoc, increment }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const app = initializeApp({
+  apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
+  authDomain: 'prova-583c9.firebaseapp.com',
+  projectId: 'prova-583c9',
+});
+const auth = getAuth(app), db = getFirestore(app);
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2400); };
+
+// ── The app's own rules, copied verbatim so the numbers match ─────────────
+// src/lib/score.js
+const POINTS_PER_MIN = 2, TASK_BASE = 5, TEACHER_TASK_MULTIPLIER = 3;
+const TASK_DIFFICULTY = { warmup:1.0, theory:1.1, ear_training:1.2, repertoire:1.2, technique:1.3, improvisation:1.4 };
+const taskPoints = (s = {}) => Math.round((s.duration || 0) * POINTS_PER_MIN * (TASK_DIFFICULTY[s.category] || 1.1)) + TASK_BASE;
+const teacherTaskPoints = (sec) => Math.round((Math.max(0, sec) / 60) * POINTS_PER_MIN * TEACHER_TASK_MULTIPLIER);
+// src/lib/displayName.js
+const displayName = (u) => (u?.username?.trim()) || (u?.name?.trim()) || (u?.email ? u.email.split('@')[0] : 'there');
+const initials = (n) => n.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+// src/lib/practiceLog.js uses a UTC date key; sessionProgress uses toDateString()
+const dayKey = () => new Date().toISOString().split('T')[0];
+const todayKey = () => new Date().toDateString();
+const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const TODAY_NAME = DAYS[new Date().getDay()];
+
+let me = null, uid = null, sessions = [], screen = 'today';
+
+// ── auth ─────────────────────────────────────────────────────────────────
+$('#loginBtn').onclick = async () => {
+  $('#loginErr').textContent = ''; $('#loginBtn').disabled = true;
+  try { await signInWithEmailAndPassword(auth, $('#em').value.trim(), $('#pw').value); }
+  catch { $('#loginErr').textContent = 'Sign-in failed — check your email and password.'; }
+  finally { $('#loginBtn').disabled = false; }
+};
+$('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
+$('#signout').onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); return; }
+  uid = user.uid;
+  await load();
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  renderNav(); go('today');
+});
+
+async function load() {
+  me = (await getDoc(doc(db, 'users', uid))).data() || {};
+  sessions = me.practicePlan?.weeklyPlan?.[TODAY_NAME]?.sessions || [];
+  const nm = displayName(me);
+  $('#meNm').textContent = nm; $('#meAv').textContent = initials(nm) || '?';
+  $('#meRl').textContent = [me.instrument, me.level].filter(Boolean).join(' · ');
+  $('#chipStreak').textContent = me.streak || 0;
+  $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
+}
+const doneIds = () => (me.sessionProgress?.date === todayKey() ? (me.sessionProgress.ids || []) : []);
+const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
+
+// ── nav ──────────────────────────────────────────────────────────────────
+const ICON = { home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' };
+const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${p}</svg>`;
+function renderNav() {
+  $('#nav').innerHTML = `<div class="eyebrow">Practise</div>
+    <button class="nav" data-go="today" aria-current="page">${svg(ICON.home)}<span>Today</span></button>`;
+}
+$('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.getAttribute('data-go')); });
+function go(id) { screen = id; $('#pageTitle').textContent = 'Today'; render(); }
+
+// ── celebration, ported from src/components/Celebration.js ───────────────
+const PRAISE = ['Nice work!','Boom!','Great job!','Love it!','Keep going!','On fire!'];
+let celebN = 0;
+function celebrate({ points = 0, title, subtitle, emoji = '🎸' } = {}) {
+  const pts = Math.max(0, Math.round(points));
+  const host = document.createElement('div');
+  host.className = 'celeb-root';
+  host.innerHTML = `<div class="celeb-card"><div class="celeb-bw"><div class="celeb-ring"></div>
+    <div class="celeb-badge">${emoji}</div></div>
+    <div class="celeb-title">${esc(title || PRAISE[celebN++ % PRAISE.length])}</div>
+    ${pts ? `<div class="celeb-pts">+<span class="celeb-n">0</span><span style="color:var(--ink-2);font-size:16px"> pts</span></div>` : ''}
+    ${subtitle ? `<div class="celeb-sub">${esc(subtitle)}</div>` : ''}</div>`;
+  document.body.appendChild(host);
+  if (pts) {
+    const n = host.querySelector('.celeb-n'), t0 = performance.now() + 140;
+    const run = () => { const e = performance.now() - t0;
+      if (e < 0) return requestAnimationFrame(run);
+      const k = Math.min(1, e / 600);
+      n.textContent = Math.round((1 - (1 - k) ** 2) * pts);
+      if (k < 1) requestAnimationFrame(run); };
+    requestAnimationFrame(run);
+    setTimeout(() => { if (n) n.textContent = pts; }, 780);
+  }
+  setTimeout(() => { host.classList.add('out'); setTimeout(() => host.remove(), 260); }, pts ? 1550 : 1150);
+}
+
+// ── render ───────────────────────────────────────────────────────────────
+const OPEN = {}; const SHOWALL = {};
+function rows(list, kind, limit) {
+  const shown = SHOWALL[kind] ? list : list.slice(0, limit);
+  return shown.map((x, i) => {
+    const id = kind + i, isOpen = OPEN[id];
+    const done = kind === 'plan' ? doneIds().includes(x.id) : !!x.completed;
+    return `<div class="trow${isOpen ? ' open' : ''}">
+      <div class="thead2" data-open="${id}">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+        <div class="tick${done ? ' on' : ''}">${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--ground)" stroke-width="3.5" style="width:11px;height:11px"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
+        <div style="flex:1;min-width:0"><div class="ttl${done ? ' done' : ''}">${esc(x.title)}</div>
+          ${x.category ? `<div class="tsub">${esc(String(x.category).replace(/_/g,' '))}</div>` : ''}</div>
+        ${kind === 'assigned' ? '<span class="pill set">Teacher</span>' : ''}
+        ${x.duration ? `<div class="dur">${x.duration} min</div>` : ''}
+      </div>
+      <div class="tbody2">
+        ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
+        ${done ? '<span class="hint">Completed</span>'
+          : `<button class="btn sm" data-play="${kind}:${i}">Practise this</button>`}
+      </div></div>`;
+  }).join('') +
+  (list.length > limit ? `<button class="showmore" data-showall="${kind}">${SHOWALL[kind] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
+}
+
+function render() {
+  const a = assigned(), d = doneIds();
+  const donePlan = sessions.filter(s => d.includes(s.id)).length;
+  const planned = sessions.reduce((t, s) => t + (s.duration || 0), 0);
+  const doneMin = sessions.filter(s => d.includes(s.id)).reduce((t, s) => t + (s.duration || 0), 0);
+  const left = Math.max(0, planned - doneMin);
+  const all = sessions.length > 0 && donePlan === sessions.length;
+  const pct = sessions.length ? Math.round(donePlan / sessions.length * 100) : 0;
+  const C = 176;
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  $('#screen').innerHTML = `<div class="content">
+    <div class="greet"><h2>${greet}, ${esc(displayName(me))}.</h2>
+      <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Streak</div><div class="v">${me.streak || 0}<small>days</small></div></div>
+      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
+    </div>
+    <div class="cols"><div class="stack">
+      ${sessions.length ? `<div class="planhead${all ? ' complete' : ''}">
+        <svg width="72" height="72" viewBox="0 0 72 72" style="flex:none">
+          <circle cx="36" cy="36" r="28" fill="none" stroke="var(--raised)" stroke-width="7"/>
+          <circle cx="36" cy="36" r="28" fill="none" stroke="${all ? 'var(--good)' : 'var(--primary)'}" stroke-width="7"
+            stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C - C * pct / 100}"
+            transform="rotate(-90 36 36)" style="transition:stroke-dashoffset .5s cubic-bezier(.2,.8,.2,1)"/>
+          <text x="36" y="40" text-anchor="middle" font-family="var(--round)" font-weight="600" font-size="17" fill="var(--ink)">${donePlan}/${sessions.length}</text></svg>
+        <div class="phcopy"><div class="phline">${all ? 'Done for today' : `${left} minutes left today`}</div>
+          <div class="phsub">${doneMin} of ${planned} min practised</div></div>
+        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practise more' : donePlan ? 'Resume practice' : 'Start practice'}</button>
+      </div>` : ''}
+      <section class="card"><header><h3>Today's sessions</h3>
+        <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
+        ${sessions.length ? rows(sessions, 'plan', 4)
+          : `<div class="empty">No plan for ${TODAY_NAME}. Generate one in the app, or take a rest day.</div>`}
+      </section>
+      ${a.length ? `<section class="card"><header><h3>Assigned by your teacher</h3>
+        <span class="meta">${a.filter(t => t.completed).length} of ${a.length} done</span></header>
+        ${rows(a, 'assigned', 4)}</section>` : ''}
+    </div><div class="stack">
+      <section class="card"><header><h3>This account</h3></header>
+        <p class="hint" style="margin:0">Signed in as ${esc(me.email || '')}. Everything here is your real data —
+        completing a task writes the same points, minutes and streak the app does.</p></section>
+    </div></div>
+  </div>`;
+}
+
+// ── interactions ─────────────────────────────────────────────────────────
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#overlays')) return;
+  let t;
+  if ((t = e.target.closest('[data-open]'))) {
+    const y = window.scrollY, k = t.getAttribute('data-open');
+    OPEN[k] = !OPEN[k]; render(); window.scrollTo(0, y); return;
+  }
+  if ((t = e.target.closest('[data-showall]'))) {
+    const y = window.scrollY, k = t.getAttribute('data-showall');
+    SHOWALL[k] = !SHOWALL[k]; render(); window.scrollTo(0, y); return;
+  }
+  if ((t = e.target.closest('[data-play]'))) {
+    const v = t.getAttribute('data-play');
+    if (v === 'next') {
+      const d = doneIds();
+      const i = sessions.findIndex(s => !d.includes(s.id));
+      if (i < 0) { toast('Everything in today\'s plan is done'); return; }
+      openPlayer('plan', i);
+    } else { const [kind, i] = v.split(':'); openPlayer(kind, +i); }
+  }
+});
+
+// ── practice player — Done locked until the clock runs out ───────────────
+let PLAY = null, timer = null;
+const PRIOR = {};
+function openPlayer(kind, i) {
+  const item = kind === 'plan' ? sessions[i] : assigned()[i];
+  if (!item) return;
+  const target = (item.duration || 0) * 60;
+  PLAY = { kind, i, item, target, elapsed: PRIOR[kind + i] || 0, paused: false, t0: performance.now() };
+  drawPlayer(); tick();
+}
+function tick() {
+  clearInterval(timer);
+  timer = setInterval(() => {
+    if (!PLAY || PLAY.paused) return;
+    const now = performance.now();
+    PLAY.elapsed += (now - PLAY.t0) / 1000; PLAY.t0 = now;
+    const c = $('#pClock'); if (!c) return;
+    const rem = Math.max(0, PLAY.target - PLAY.elapsed);
+    c.textContent = fmt(rem);
+    const b = $('#pDone'); if (b) b.disabled = PLAY.target > 0 && rem > 0;
+  }, 200);
+}
+const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
+function drawPlayer() {
+  const rem = Math.max(0, PLAY.target - PLAY.elapsed);
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">
+    <div style="display:flex;align-items:center"><span class="lab">Now practising</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 20px;font-size:18px">${esc(PLAY.item.title)}</h3>
+    <div class="clock" id="pClock">${fmt(rem)}</div>
+    <p class="hint" style="margin:12px 0 0">${PLAY.target ? `${PLAY.item.duration} min task` : 'Open-ended'}</p>
+    <div style="display:flex;gap:10px;margin-top:22px">
+      <button class="btn ghost" id="pPause" style="flex:1">${PLAY.paused ? 'Resume' : 'Pause'}</button>
+      <button class="btn" id="pDone" style="flex:1" ${PLAY.target > 0 && rem > 0 ? 'disabled' : ''}>Done</button></div>
+    <p class="hint" style="margin:14px 0 0">Done unlocks when the clock runs out.</p></div>`;
+  $('#pPause').onclick = () => { PLAY.paused = !PLAY.paused; PLAY.t0 = performance.now(); drawPlayer(); };
+  $('#pDone').onclick = finish;
+}
+$('#overlays').addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) {
+    if (PLAY) PRIOR[PLAY.kind + PLAY.i] = PLAY.elapsed;
+    clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; render();
+  }
+});
+
+// The writes. These mirror TodayScreen.handleComplete and practiceLog.js —
+// same fields, same increments, so the phone app reads them correctly.
+async function finish() {
+  const { kind, item } = PLAY;
+  const secs = Math.round(PLAY.elapsed);
+  const mins = Math.max(1, Math.round(secs / 60));
+  $('#pDone').disabled = true;
+  try {
+    if (kind === 'plan') {
+      const prior = doneIds();
+      if (prior.includes(item.id)) { toast('Already completed'); return; }
+      const pts = taskPoints(item);
+      const ids = Array.from(new Set([...prior, item.id]));
+      await updateDoc(doc(db, 'users', uid), {
+        provaScore: typeof me.provaScore === 'number' ? increment(pts) : (me.provaScore || 0) + pts,
+        sessionProgress: { date: todayKey(), ids },
+      });
+      me.provaScore = (me.provaScore || 0) + pts;
+      me.sessionProgress = { date: todayKey(), ids };
+      celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '🎸' });
+    } else {
+      const pts = teacherTaskPoints(secs);
+      const next = assigned().map((t, j) => j === PLAY.i ? { ...t, completed: true } : t);
+      const patch = { assignedTasks: next, provaScore: increment(pts), totalMinutes: increment(mins) };
+      // streak: same today/yesterday rule as src/lib/practiceLog.js
+      const last = me.lastSessionDate ? new Date(me.lastSessionDate) : null;
+      const d0 = new Date(); d0.setHours(0,0,0,0);
+      const lastDay = last ? new Date(last.getFullYear(), last.getMonth(), last.getDate()) : null;
+      const diff = lastDay ? Math.round((d0 - lastDay) / 86400000) : 999;
+      if (diff >= 1) { patch.streak = diff === 1 ? increment(1) : 1; patch.lastSessionDate = new Date().toISOString(); }
+      await updateDoc(doc(db, 'users', uid), patch);
+      await setDoc(doc(db, 'sessionHistory', uid, 'logs', dayKey()),
+        { date: dayKey(), totalMinutes: increment(mins), categories: { teacher: increment(mins) } }, { merge: true });
+      me.assignedTasks = next;
+      me.provaScore = (me.provaScore || 0) + pts;
+      me.totalMinutes = (me.totalMinutes || 0) + mins;
+      if (diff >= 1) { me.streak = diff === 1 ? (me.streak || 0) + 1 : 1; me.lastSessionDate = new Date().toISOString(); }
+      celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '⭐' });
+    }
+    delete PRIOR[kind + PLAY.i];
+    $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
+    $('#chipStreak').textContent = me.streak || 0;
+  } catch (err) {
+    toast('Could not save — check your connection');
+  }
+  clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; render();
+}
+</script>
+</body>
+</html>
