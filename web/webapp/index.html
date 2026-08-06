@@ -536,8 +536,12 @@ function rows(list, kind, limit) {
       </div>
       <div class="tbody2">
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
-        ${done ? '<span class="hint">Completed</span>'
-          : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${done ? '<span class="hint">Completed</span>'
+            : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
+          ${x.youtube ? `<button class="btn sm ghost" data-yt="${esc(x.youtube)}" data-yttitle="${esc(x.title)}">▶ Watch a lesson</button>` : ''}
+          ${x.song ? `<button class="btn sm ghost" data-yt="${esc(x.song)} ${esc(me.instrument || 'guitar')} tutorial" data-yttitle="${esc(x.song)}">🎵 ${esc(x.song)}</button>` : ''}
+        </div>
       </div></div>`;
   }).join('') +
   (list.length > limit ? `<button class="showmore" data-showall="${kind}">${SHOWALL[kind] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
@@ -1109,6 +1113,77 @@ async function askSend(text) {
   }
   viewAsk();
 }
+
+
+// ══ YOUTUBE ════════════════════════════════════════════════════════════
+// Tasks carry `youtube` (a link OR a search phrase) and resources carry `yt`
+// (always a phrase). A link plays straight away; a phrase goes through the
+// searchYouTube function — the same one the app uses — and the results are
+// offered before anything plays.
+function ytId(v) {
+  if (!v) return null;
+  const m = String(v).match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+function ytPlay(videoId, title) {
+  document.querySelector('#overlays').innerHTML = `
+    <div class="scrim" data-close></div>
+    <div class="modal" style="width:min(860px,94vw);padding:0;overflow:hidden;text-align:left">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 18px">
+        <div style="font-weight:650;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title || 'Lesson')}</div>
+        <button class="x" data-close style="margin-left:auto">×</button></div>
+      <div style="aspect-ratio:16/9;background:#000">
+        <iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&autoplay=1"
+          style="width:100%;height:100%;border:0" allow="autoplay; encrypted-media; picture-in-picture"
+          allowfullscreen title="${esc(title || 'Lesson')}"></iframe></div>
+      <div style="padding:12px 18px;display:flex;gap:10px;align-items:center">
+        <a class="btn sm ghost" target="_blank" rel="noopener"
+           href="https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}">Open on YouTube</a></div>
+    </div>`;
+}
+async function openYouTube(value, title) {
+  const direct = ytId(value);
+  if (direct) return ytPlay(direct, title);
+  const q = String(value || title || '').trim();
+  if (!q) return;
+  document.querySelector('#overlays').innerHTML = `
+    <div class="scrim" data-close></div><div class="modal" style="text-align:left">
+      <div style="display:flex;align-items:center"><span class="lab">Finding a lesson</span>
+        <button class="x" data-close style="margin-left:auto">×</button></div>
+      <h3 style="margin:8px 0 16px;font-size:17px">${esc(q)}</h3>
+      <p class="hint" style="margin:0">Searching YouTube…</p></div>`;
+  try {
+    const res = await httpsCallable(fns, 'searchYouTube')({ q, max: 6 });
+    const list = (res?.data?.results) || [];
+    if (!list.length) throw new Error('none');
+    document.querySelector('#overlays').innerHTML = `
+      <div class="scrim" data-close></div><div class="modal" style="text-align:left;width:min(560px,94vw)">
+        <div style="display:flex;align-items:center"><span class="lab">Pick a lesson</span>
+          <button class="x" data-close style="margin-left:auto">×</button></div>
+        <h3 style="margin:8px 0 16px;font-size:17px">${esc(q)}</h3>
+        <div class="rows">${list.map(v => `
+          <button class="prow" data-ytid="${esc(v.videoId)}" data-yttitle="${esc(v.title || '')}"
+            style="width:100%;background:none;border:0;border-top:1px solid var(--line);cursor:pointer;text-align:left">
+            ${v.thumbnail ? `<img src="${esc(v.thumbnail)}" alt="" style="width:96px;border-radius:8px;flex:none">` : ''}
+            <span class="pl"><span class="pt" style="display:block">${esc(v.title || 'Lesson')}</span>
+            <span class="ps">${esc(v.channel || '')}</span></span></button>`).join('')}</div></div>`;
+  } catch {
+    document.querySelector('#overlays').innerHTML = `
+      <div class="scrim" data-close></div><div class="modal" style="text-align:left">
+        <div style="display:flex;align-items:center"><span class="lab">Lesson</span>
+          <button class="x" data-close style="margin-left:auto">×</button></div>
+        <h3 style="margin:8px 0 12px;font-size:17px">${esc(q)}</h3>
+        <p class="hint" style="margin:0 0 18px">Couldn't search from here — open the results on YouTube instead.</p>
+        <a class="btn" target="_blank" rel="noopener"
+           href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}">Search YouTube</a></div>`;
+  }
+}
+document.addEventListener('click', (e) => {
+  const pick = e.target.closest('[data-ytid]');
+  if (pick) { ytPlay(pick.getAttribute('data-ytid'), pick.getAttribute('data-yttitle')); return; }
+  const open = e.target.closest('[data-yt]');
+  if (open) openYouTube(open.getAttribute('data-yt'), open.getAttribute('data-yttitle'));
+});
 
 // ══ MESSAGES ═══════════════════════════════════════════════════════════
 // src/lib/chat.js: chatId is the two uids sorted and joined, the thread
