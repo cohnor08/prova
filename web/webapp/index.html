@@ -7,6 +7,7 @@
 <link rel="icon" href="/img/icon-192.png">
 <style>
   :root{
+    color-scheme:dark;
     --page:#101318;--ground:#171A21;--card:#212630;--raised:#2A303C;--line:#333B4A;
     --ink:#F4F6FA;--ink-2:#A8B2C4;--ink-3:#8A94A8;--primary:#2A99DB;--primary-dk:#1E7CB5;
     --teal:#1D93A1;--good:#6EE7B7;--warn:#B8894A;--bad:#F58B8B;--on-primary:#fff;
@@ -31,6 +32,22 @@
   label{display:block;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
   input{width:100%;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
   input:focus{border-color:var(--primary);outline:none}
+  input::placeholder{color:var(--ink-3)}
+  /* Chrome paints saved-password fields pale blue and ignores background —
+     only an inset shadow the size of the box overrides it. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active{
+    -webkit-text-fill-color:var(--ink);
+    -webkit-box-shadow:0 0 0 1000px var(--raised) inset;
+    box-shadow:0 0 0 1000px var(--raised) inset;
+    caret-color:var(--ink);
+    transition:background-color 9999s ease-out 0s;
+  }
+  select{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--ink)}
+  textarea{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--ink)}
+  input[type=number]::-webkit-inner-spin-button{opacity:.35}
   .field{margin-bottom:15px}
   .err{color:var(--bad);font-size:13px;min-height:19px;margin-top:4px}
   .rolebtn{display:block;width:100%;text-align:left;background:var(--raised);border:1px solid var(--line);
