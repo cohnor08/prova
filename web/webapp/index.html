@@ -76,7 +76,11 @@
   .nav:hover{background:var(--card);color:var(--ink)}
   .nav[aria-current="page"]{background:var(--card);color:var(--ink);font-weight:650;box-shadow:inset 2px 0 0 var(--primary)}
   .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink-3);padding:0 10px 7px}
-  .who{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 8px 0;border-top:1px solid var(--line)}
+  .ask{margin-top:auto;text-align:left;width:100%;cursor:pointer;border:0;border-radius:var(--r-md);
+    padding:12px 14px;background:linear-gradient(150deg,var(--teal),var(--primary));color:#fff}
+  .ask strong{display:block;font-size:13.5px}
+  .ask span{display:block;font-size:11.5px;opacity:.85}
+  .who{display:flex;align-items:center;gap:10px;padding:12px 8px 0;border-top:1px solid var(--line)}
   .avatar{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11.5px;font-weight:700;background:var(--raised);color:var(--ink-2);font-family:var(--round)}
   .who .nm{font-size:13px;font-weight:600;line-height:1.25;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .who .rl{font-size:11.5px;color:var(--ink-3)}
@@ -154,6 +158,14 @@
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:11px 22px;box-shadow:var(--shadow);opacity:0;transition:.22s;z-index:60;font-size:13.5px;font-weight:600}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .empty{text-align:center;padding:30px 20px;color:var(--ink-3)}
+  .opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md);padding:13px 16px;
+    text-align:left;cursor:pointer;font-size:13.5px;font-weight:550;color:inherit}
+  .opt:hover{border-color:var(--primary)}
+  .opt.right{border-color:var(--good);color:var(--good)}
+  .opt.wrong{border-color:var(--bad);color:var(--bad)}
+  .pill{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+  .pill.set{background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)}
+  .pill.warn{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
   .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
   .conv{display:flex;gap:11px;padding:13px 14px;border:0;border-bottom:1px solid var(--line);cursor:pointer;width:100%;text-align:left;background:none;color:inherit;align-items:center}
@@ -244,6 +256,7 @@
   <aside class="rail">
     <div class="brand"><img src="/img/icon-192.png" alt=""><div class="word">PROVA</div></div>
     <div id="nav"></div>
+    <button class="ask" data-go="ask"><strong>Ask Prova</strong><span>Stuck on something? Just ask.</span></button>
     <div class="who"><div class="avatar" id="meAv">–</div>
       <div style="min-width:0"><div class="nm" id="meNm">…</div><div class="rl" id="meRl"></div></div>
       <button class="x" id="signout" title="Sign out" style="margin-left:auto">⏻</button></div>
@@ -274,6 +287,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment, collection, getDocs,
   addDoc, serverTimestamp, onSnapshot, query, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -283,7 +297,7 @@ const app = initializeApp({
   authDomain: 'prova-583c9.firebaseapp.com',
   projectId: 'prova-583c9',
 });
-const auth = getAuth(app), db = getFirestore(app);
+const auth = getAuth(app), db = getFirestore(app), fns = getFunctions(app);
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2400); };
@@ -425,8 +439,8 @@ const NAV = [
   { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
-  progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages', chords:'Chords & scales', library:'Lesson library' };
-const PARENT = { chords:'practice', library:'practice' };
+  progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
+const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice', ask:'practice' };
 function renderNav() {
   $('#nav').innerHTML = NAV.map((x) => x.g
     ? `<div class="eyebrow">${x.g}</div>`
@@ -440,7 +454,7 @@ function go(id) {
   renderNav();
   ({ today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
      progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
-     chords: viewChords, library: viewLibrary })[id]();
+     chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk })[id]();
   window.scrollTo({ top: 0 });
 }
 
@@ -604,8 +618,8 @@ function viewPractice() {
       ${tile(PI.book, 'Lesson library', `${APP.lib.length} topics, beginner through advanced.`, 'Browse →', 'library')}
     </div></div>
     <div>${eye('Games')}<div style="${GRID}">
-      ${tile(PI.ear, 'Ear training', 'Intervals and chord quality by ear, three levels each.', 'In the phone app')}
-      ${tile(PI.music, 'Fretboard game', 'Find the note on the string, naturals to all 12 frets.', 'In the phone app')}
+      ${tile(PI.ear, 'Ear training', 'Intervals and chord quality by ear, three levels each.', 'Play →', 'ear')}
+      ${tile(PI.music, 'Fretboard game', 'Find the note on the string, naturals to all 12 frets.', 'Play →', 'fret')}
       ${tile(PI.metro, 'Rhythm tapper', 'Tap in time to a click, scored on accuracy.', 'In the phone app')}
       ${tile(PI.layers, 'Theory quiz', 'Keys, intervals and harmony, fresh each round.', 'In the phone app')}
     </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practice.</p></div>
@@ -868,6 +882,187 @@ document.addEventListener('change', (e) => {
 });
 paintMetro();
 
+
+
+// ══ GAMES ══════════════════════════════════════════════════════════════
+// Award rules from EarTrainingScreen / FretboardGameScreen: rounds of 10,
+// 20 points, first 3 rewarded rounds a day, +2 minutes logged, and the
+// same streak stamp the app writes.
+const ROUND_LEN = 10, ROUND_POINTS = 20, REWARDED_ROUNDS_PER_DAY = 3;
+// audio context + tone() are defined with the metronome, below.
+const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+function playMidi(m, delay, dur) { const c = actx(); if (c) tone(midiHz(m), c.currentTime + (delay || 0), dur || .75); }
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// The one write both games share.
+async function awardRound(counterField, category, score) {
+  try {
+    const today = todayKey();
+    const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
+    const c = cur[counterField] || {};
+    const rounds = c.date === today ? (c.rounds || 0) : 0;
+    if (rounds >= REWARDED_ROUNDS_PER_DAY) {
+      celebrate({ points: 0, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct · no points left today`, emoji: '🎧' });
+      return;
+    }
+    const patch = { [counterField]: { date: today, rounds: rounds + 1 },
+      provaScore: increment(ROUND_POINTS), totalMinutes: increment(2) };
+    const last = cur.lastSessionDate ? new Date(cur.lastSessionDate) : null;
+    const d0 = new Date(); d0.setHours(0,0,0,0);
+    const lastDay = last ? new Date(last.getFullYear(), last.getMonth(), last.getDate()) : null;
+    const diff = lastDay ? Math.round((d0 - lastDay) / 86400000) : 999;
+    if (diff >= 1) { patch.streak = diff === 1 ? increment(1) : 1; patch.lastSessionDate = new Date().toISOString(); }
+    await updateDoc(doc(db, 'users', uid), patch);
+    await setDoc(doc(db, 'sessionHistory', uid, 'logs', dayKey()),
+      { date: dayKey(), totalMinutes: increment(2), categories: { [category]: increment(2) } }, { merge: true });
+    me.provaScore = (me.provaScore || 0) + ROUND_POINTS;
+    me.totalMinutes = (me.totalMinutes || 0) + 2;
+    if (diff >= 1) { me.streak = diff === 1 ? (me.streak || 0) + 1 : 1; me.lastSessionDate = new Date().toISOString(); }
+    $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
+    $('#chipStreak').textContent = me.streak || 0;
+    celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎧' });
+  } catch { toast('Round finished — could not save the points'); }
+}
+
+// ── Ear training ───────────────────────────────────────────────────────
+const INTERVALS = [[2,'Major 2nd'],[3,'Minor 3rd'],[4,'Major 3rd'],[5,'Perfect 4th'],
+                   [7,'Perfect 5th'],[9,'Major 6th'],[11,'Major 7th'],[12,'Octave']];
+const EAR = { level: 2, q: null, picked: null, score: 0, round: 1 };
+const earPool = () => INTERVALS.slice(0, EAR.level === 1 ? 4 : EAR.level === 2 ? 6 : 8);
+function earNew() {
+  const pool = earPool(), ans = pick(pool);
+  EAR.q = { root: 57 + Math.floor(Math.random() * 6), ans,
+            opts: shuffle(shuffle(pool.filter(x => x[0] !== ans[0])).slice(0, 3).concat([ans])) };
+  EAR.picked = null;
+}
+function earPlay() { if (!EAR.q) earNew(); playMidi(EAR.q.root, 0, .7); playMidi(EAR.q.root + EAR.q.ans[0], .75, .9); }
+function viewEar() {
+  if (!EAR.q) earNew();
+  const names = { 1:'Starter · 4 intervals', 2:'Melodic · 6 intervals', 3:'Complete · 8 intervals' };
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Ear training', `Round ${EAR.round} of ${ROUND_LEN} · ${names[EAR.level]}`)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${[1,2,3].map(l =>
+      `<button class="btn sm ghost" data-earlvl="${l}"${EAR.level===l?' style="border-color:var(--primary);color:var(--ink)"':''}>${names[l]}</button>`).join('')}</div>
+    <div class="cols"><div class="stack">
+      ${card('What interval was that?', `Score ${EAR.score}`,
+        `<div style="text-align:center;padding:6px 0 20px">
+          <button class="btn" data-ear="play" style="padding:16px 30px">▶ Play the interval</button></div>
+        <div style="display:flex;flex-direction:column;gap:10px">${EAR.q.opts.map(o => {
+          const cls = EAR.picked == null ? '' : (o[0] === EAR.q.ans[0] ? 'right' : (o[0] === EAR.picked ? 'wrong' : ''));
+          return `<button class="opt ${cls}" data-ear="ans" data-v="${o[0]}">${o[1]}</button>`;
+        }).join('')}</div>
+        ${EAR.picked != null ? `<button class="btn" data-ear="next" style="width:100%;margin-top:16px">${EAR.round >= ROUND_LEN ? 'Finish round' : 'Next interval'}</button>` : ''}`)}
+    </div><div class="stack">
+      ${card('This round', '', `<div class="hint">Correct ${EAR.score} of ${EAR.round - 1}</div>
+        <div class="track" style="margin-top:8px"><i style="width:${EAR.round / ROUND_LEN * 100}%"></i></div>`)}
+    </div></div></div>`;
+}
+// ── Fretboard ──────────────────────────────────────────────────────────
+const STRINGS = [[64,'high E'],[59,'B'],[55,'G'],[50,'D'],[45,'A'],[40,'low E']];
+const FRET = { level: 2, q: null, picked: null, score: 0, round: 1 };
+const fretMax = () => FRET.level === 1 ? 5 : FRET.level === 2 ? 7 : 12;
+function fretNew() {
+  const si = Math.floor(Math.random() * 6), f = Math.floor(Math.random() * fretMax()) + 1;
+  FRET.q = { si, fret: f, midi: STRINGS[si][0] + f }; FRET.picked = null;
+}
+function viewFret() {
+  if (!FRET.q) fretNew();
+  const max = fretMax(), W = 40 + max * 62;
+  let o = '';
+  for (let st = 0; st < 6; st++) o += `<line x1="30" y1="${16+st*20}" x2="${W-10}" y2="${16+st*20}" stroke="var(--ink-3)"/>`;
+  for (let f = 0; f <= max; f++) o += `<line x1="${30+f*62}" y1="16" x2="${30+f*62}" y2="116" stroke="var(--ink-3)" stroke-width="${f===0?3:1}"/>`;
+  [3,5,7,9].forEach(f => { if (f <= max) o += `<circle cx="${30+(f-.5)*62}" cy="66" r="5" fill="var(--line)"/>`; });
+  for (let st = 0; st < 6; st++) for (let f = 1; f <= max; f++) {
+    const hit = FRET.picked && FRET.picked.si === st && FRET.picked.fret === f;
+    const right = FRET.picked && st === FRET.q.si && f === FRET.q.fret;
+    o += `<rect data-fret="${st}_${f}" x="${30+(f-1)*62}" y="${6+st*20}" width="62" height="20"
+      fill="${right?'var(--good)':hit?'var(--bad)':'transparent'}" opacity="${right||hit?'.55':'1'}" style="cursor:pointer"/>`;
+  }
+  const names = { 1:'Frets 1–5', 2:'Frets 1–7', 3:'All 12 frets' };
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Fretboard game', `Round ${FRET.round} of ${ROUND_LEN} · ${names[FRET.level]}`)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${[1,2,3].map(l =>
+      `<button class="btn sm ghost" data-fretlvl="${l}"${FRET.level===l?' style="border-color:var(--primary);color:var(--ink)"':''}>${names[l]}</button>`).join('')}</div>
+    ${card(`Find <b style="color:var(--primary)">${NOTE_NAMES[FRET.q.midi % 12]}</b> on the <b style="color:var(--primary)">${STRINGS[FRET.q.si][1]}</b> string`,
+      `Score ${FRET.score}`,
+      `<div style="overflow-x:auto"><svg width="${W}" height="130" viewBox="0 0 ${W} 130" style="max-width:100%">${o}</svg></div>
+      ${FRET.picked ? `<div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <span class="pill ${FRET.picked.ok?'set':'warn'}">${FRET.picked.ok ? 'Correct' : 'That was ' + NOTE_NAMES[(STRINGS[FRET.picked.si][0] + FRET.picked.fret) % 12]}</span>
+        <button class="btn sm" data-fretact="next">${FRET.round >= ROUND_LEN ? 'Finish round' : 'Next note'}</button></div>`
+        : '<p class="hint" style="margin:14px 0 0">Click the fret — you will hear what you pick.</p>'}`)}
+  </div>`;
+}
+document.addEventListener('click', async (e) => {
+  let t;
+  if ((t = e.target.closest('[data-earlvl]'))) { EAR.level = +t.getAttribute('data-earlvl'); EAR.round = 1; EAR.score = 0; earNew(); viewEar(); return; }
+  if ((t = e.target.closest('[data-ear]'))) {
+    const a = t.getAttribute('data-ear');
+    if (a === 'play') return earPlay();
+    if (a === 'ans' && EAR.picked == null) {
+      EAR.picked = +t.getAttribute('data-v');
+      if (EAR.picked === EAR.q.ans[0]) EAR.score++;
+      return viewEar();
+    }
+    if (a === 'next') {
+      if (EAR.round >= ROUND_LEN) { await awardRound('earTraining', 'ear', EAR.score);
+        EAR.round = 1; EAR.score = 0; } else EAR.round++;
+      earNew(); viewEar(); setTimeout(earPlay, 250); return;
+    }
+    return;
+  }
+  if ((t = e.target.closest('[data-fretlvl]'))) { FRET.level = +t.getAttribute('data-fretlvl'); FRET.round = 1; FRET.score = 0; fretNew(); viewFret(); return; }
+  if ((t = e.target.closest('[data-fret]'))) {
+    if (FRET.picked) return;
+    const [si, f] = t.getAttribute('data-fret').split('_').map(Number);
+    const ok = si === FRET.q.si && f === FRET.q.fret;
+    FRET.picked = { si, fret: f, ok };
+    playMidi(STRINGS[si][0] + f, 0, .8);
+    if (ok) FRET.score++;
+    return viewFret();
+  }
+  if ((t = e.target.closest('[data-fretact]'))) {
+    if (FRET.round >= ROUND_LEN) { await awardRound('fretGame', 'fretboard', FRET.score); FRET.round = 1; FRET.score = 0; }
+    else FRET.round++;
+    fretNew(); viewFret(); return;
+  }
+});
+
+// ── Ask Prova — the real Cloud Function ────────────────────────────────
+const ASK = [];
+function viewAsk() {
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Ask Prova', 'Your AI coach. Ask anything about playing.')}
+    <section class="card" style="padding:0;overflow:hidden">
+      <div class="bubbles" id="askBub" style="height:420px">${ASK.length
+        ? ASK.map(m => `<div class="bub ${m.role === 'user' ? 'me' : 'them'}">${esc(m.text)}</div>`).join('')
+        : `<div class="bub them">Hi ${esc(displayName(me))}. What are you working on?</div>`}</div>
+      <div class="composer"><input id="askIn" placeholder="Ask anything…" autocomplete="off">
+        <button class="btn sm" id="askSend">Send</button></div></section>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${['Why do my barre chords buzz?','What should I practice today?','Explain the CAGED system']
+        .map(q => `<button class="btn sm ghost" data-askq="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+  </div>`;
+  $('#askSend').onclick = () => askSend($('#askIn').value);
+  $('#askIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') askSend($('#askIn').value); });
+}
+async function askSend(text) {
+  const q = (text || '').trim(); if (!q) return;
+  $('#askIn').value = '';
+  ASK.push({ role: 'user', text: q });
+  ASK.push({ role: 'assistant', text: 'Thinking…' });
+  viewAsk();
+  try {
+    const fn = httpsCallable(fns, 'askProva');
+    const res = await fn({ question: q, instrument: me.instrument || 'Guitar', level: me.level || 'Beginner',
+      history: ASK.slice(-13, -2).map(m => ({ role: m.role, content: m.text })) });
+    ASK[ASK.length - 1] = { role: 'assistant', text: res?.data?.answer || res?.data?.text || String(res?.data || 'No answer came back.') };
+  } catch (err) {
+    ASK[ASK.length - 1] = { role: 'assistant', text: 'Could not reach the coach just now. Try again in a moment.' };
+  }
+  viewAsk();
+}
 
 // ══ MESSAGES ═══════════════════════════════════════════════════════════
 // src/lib/chat.js: chatId is the two uids sorted and joined, the thread
