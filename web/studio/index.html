@@ -8,6 +8,7 @@
 <style>
   /* Sky palette, straight from src/constants/theme.js (SKY_BASE + SOFT_ACCENTS.blue). */
   :root{
+    color-scheme:dark;
     --page:#101318;--ground:#171A21;--card:#212630;--raised:#2A303C;--line:#333B4A;
     --ink:#F4F6FA;--ink-2:#A8B2C4;--ink-3:#8A94A8;
     --primary:#2A99DB;--primary-dk:#1E7CB5;--teal:#1D93A1;
@@ -36,6 +37,18 @@
   label{display:block;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
   input,select,textarea{width:100%;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;font-size:14px}
   input:focus,select:focus,textarea:focus{border-color:var(--primary);outline:none}
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active{
+    -webkit-text-fill-color:var(--ink);
+    -webkit-box-shadow:0 0 0 1000px var(--raised) inset;
+    box-shadow:0 0 0 1000px var(--raised) inset;
+    caret-color:var(--ink);
+    transition:background-color 9999s ease-out 0s;
+  }
+  input::placeholder,textarea::placeholder{color:var(--ink-3)}
+
   .field{margin-bottom:15px}
   .err{color:var(--bad);font-size:13px;min-height:19px;margin-top:4px}
 
@@ -319,7 +332,20 @@ $('#loginBtn').onclick = async () => {
   finally { $('#loginBtn').disabled = false; }
 };
 $('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
-$('#signout').onclick = () => signOut(auth);
+$('#signout').onclick = confirmSignOut;
+function confirmSignOut() {
+  modal(`<h3>Sign out?</h3>
+    <p class="hint" style="margin:0">You'll need your email and password to get back in.</p>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="soYes" style="flex:1">Sign out</button></div>`);
+  $('#soYes').onclick = async () => {
+    closeModal();
+    await signOut(auth);
+    // Nothing of the session is left on the machine.
+    try { Object.keys(localStorage).filter(k => k.startsWith('prova:')).forEach(k => localStorage.removeItem(k)); } catch {}
+    ['#em', '#pw'].forEach(sel => { const el = $(sel); if (el) el.value = ''; });
+  };
+}
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#askBtn')) return;
   modal(`<h3>Ask Prova</h3>
@@ -334,10 +360,11 @@ onAuthStateChanged(auth, async (user) => {
   const snap = await getDoc(doc(db, 'users', user.uid));
   const d = snap.data() || {};
   if (d.role !== 'teacher') {
-    $('#loginErr').innerHTML = `Studio is for teacher accounts. This one is signed up as
-      <b>${esc(d.role || 'a student')}</b> — switch its role to Teacher in the app
-      (Profile → role) and sign in again.`;
-    await signOut(auth);
+    // Mirror of the student app sending teachers here — send them to theirs
+    // rather than telling them their account is wrong.
+    $('#loginErr').style.color = 'var(--ink-3)';
+    $('#loginErr').textContent = 'That is a student account — opening the Prova web app…';
+    location.replace('/webapp/');
     return;
   }
   me = d;
@@ -1051,7 +1078,7 @@ function viewProfile() {
     try { await navigator.clipboard.writeText(code); toast('Code copied'); }
     catch { toast('The code is ' + code); }
   };
-  $('#soBtn2').onclick = () => signOut(auth);
+  $('#soBtn2').onclick = confirmSignOut;
 }
 
 // ── 2. LESSON NOTES ───────────────────────────────────────────────────────

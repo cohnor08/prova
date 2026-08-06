@@ -369,7 +369,21 @@ $('#suBtn').onclick = async () => {
     $('#suBtn').disabled = false;
   }
 };
-$('#signout').onclick = () => signOut(auth);
+$('#signout').onclick = confirmSignOut;
+function confirmSignOut() {
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">
+    <h3 style="font-size:18px;margin-bottom:10px">Sign out?</h3>
+    <p class="hint" style="margin:0">You'll need your email and password to get back in.</p>
+    <div style="display:flex;gap:10px;margin-top:22px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="soYes" style="flex:1">Sign out</button></div></div>`;
+  $('#soYes').onclick = async () => {
+    $('#overlays').innerHTML = '';
+    await signOut(auth);
+    try { Object.keys(localStorage).filter(k => k.startsWith('prova:')).forEach(k => localStorage.removeItem(k)); } catch {}
+    ['#em', '#pw', '#suEm', '#suPw', '#suName'].forEach(sel => { const el = $(sel); if (el) el.value = ''; });
+  };
+}
 
 // Nothing is shown until Firebase has resolved the session — otherwise a
 // signed-in visitor sees the welcome screen flash before their account
@@ -763,7 +777,7 @@ function viewProfile() {
       ${card('Settings live in the app','', `<p class="hint" style="margin:0 0 14px">Theme, reminders, teacher connection and account deletion are all in the phone app for now.</p>
         <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
     </div></div></div>`;
-  $('#soBtn').onclick = () => signOut(auth);
+  $('#soBtn').onclick = confirmSignOut;
 }
 
 document.addEventListener('click', (e) => {
