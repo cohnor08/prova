@@ -591,7 +591,7 @@ function paintStudent() {
         <button class="tick" data-toggle="${i}" title="Toggle">${svg(ICON.check, 3.5)}</button>
         <span class="t" data-edit-task="${i}" style="cursor:pointer">${esc(t.title)}
           ${t.durationMin ? `<span class="hint"> · ${t.durationMin} min</span>` : ''}
-          ${t.dueDate ? `<span class="hint"> · due ${esc(t.dueDate)}</span>` : ''}
+          ${t.dueDate ? `<span class="hint" style="${fmtDue(t.dueDate) === 'overdue' ? 'color:var(--bad)' : ''}"> · ${esc(fmtDue(t.dueDate))}</span>` : ''}
           ${t.drill ? `<span class="pill set" style="margin-left:6px">${esc(t.drill)}</span>` : ''}</span>
         <button class="del" data-del="${i}" title="Remove">×</button>
       </div>`).join('') : '<p class="hint" style="margin:0">Nothing assigned yet.</p>'}</div>
@@ -621,6 +621,28 @@ function paintStudent() {
 // Task shape written to the student's doc:
 // { id,title,description,youtube,song,drill,drillLevel,drillMode,dueDate,
 //   durationMin,completed } — anything else the phone would not understand.
+// dueDate is stored as a full ISO timestamp. <input type="date"> only accepts
+// YYYY-MM-DD, so it has to be converted both ways — and shown as a date, not
+// the raw string.
+function dueToInput(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+// Midday local, so a timezone shift can never move it to the day before.
+const inputToDue = (v) => v ? new Date(v + 'T12:00:00').toISOString() : '';
+function fmtDue(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return String(v);
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) -
+    new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) / 86400000);
+  if (days < 0) return 'overdue';
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  return 'due ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
 const DRILL_OPTS = [
   { key: 'ear',    label: 'Ear training',  levels: 4 },
   { key: 'rhythm', label: 'Rhythm tapper', levels: 4 },
@@ -651,7 +673,7 @@ function assignSheet(stu, editIdx) {
         TA.drill === d.key ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${d.label}</button>`).join('')}</div>
     <div id="taLevels" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
     <div class="eyebrow" style="padding:18px 0 6px">Due</div>
-    <input id="taDue" type="date" style="${F}" value="${esc(existing?.dueDate || '')}">
+    <input id="taDue" type="date" style="${F}" value="${esc(dueToInput(existing?.dueDate))}">
     <div class="eyebrow" style="padding:18px 0 4px">Timer</div>
     <p class="hint" style="margin:0 0 10px">Minutes the student must practice before they can mark it done. Leave blank for no timer.</p>
     <div style="display:flex;gap:12px;align-items:center">
@@ -702,7 +724,7 @@ function assignSheet(stu, editIdx) {
       description: $('#taDesc').value.trim(), youtube: $('#taYt').value.trim(), song: $('#taSong').value.trim(),
       drill: TA.drill || null, drillLevel: TA.drill ? (TA.drillLevel || 1) : null,
       drillMode: existing?.drillMode || null,
-      dueDate: $('#taDue').value || '', durationMin: parseInt($('#taMin').value, 10) || 0,
+      dueDate: inputToDue($('#taDue').value), durationMin: parseInt($('#taMin').value, 10) || 0,
       completed: existing?.completed || false,
     };
     const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
