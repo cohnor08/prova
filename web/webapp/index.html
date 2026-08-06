@@ -172,8 +172,8 @@
       </div>
       <div style="font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:26px 0 12px">Get started</div>
       <button class="rolebtn" data-role="student"><b>I'm a Student</b><span>Learn with a teacher — get assigned tasks and lessons</span></button>
-      <button class="rolebtn" data-role="personal"><b>Personal</b><span>Practise solo with an AI plan and progress tracking</span></button>
-      <button class="rolebtn" data-role="teacher"><b>I'm a Teacher</b><span>Monitor students and assign practise</span></button>
+      <button class="rolebtn" data-role="personal"><b>Personal</b><span>Practice solo with an AI plan and progress tracking</span></button>
+      <button class="rolebtn" data-role="teacher"><b>I'm a Teacher</b><span>Monitor students and assign practice</span></button>
       <button class="linkbtn" id="toLogin">Already have an account? <b>Log in</b></button>
     </div>
 
@@ -363,9 +363,9 @@ const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
 const ICON = { home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' };
 const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${p}</svg>`;
 const NAV = [
-  { g: 'Practise' },
+  { g: 'Practice' },
   { id: 'today',    t: 'Today',    i: '<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' },
-  { id: 'practice', t: 'Practise', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { id: 'practice', t: 'Practice', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
   { id: 'songs',    t: 'Songs',    i: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
   { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
   { g: 'Track' },
@@ -374,7 +374,7 @@ const NAV = [
   { g: 'Account' },
   { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
 ];
-const TITLES = { today:'Today', practice:'Practise', songs:'Songs', schedule:'Schedule',
+const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', chords:'Chords & scales', library:'Lesson library' };
 const PARENT = { chords:'practice', library:'practice' };
 function renderNav() {
@@ -439,7 +439,7 @@ function rows(list, kind, limit) {
       <div class="tbody2">
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
         ${done ? '<span class="hint">Completed</span>'
-          : `<button class="btn sm" data-play="${kind}:${i}">Practise this</button>`}
+          : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
       </div></div>`;
   }).join('') +
   (list.length > limit ? `<button class="showmore" data-showall="${kind}">${SHOWALL[kind] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
@@ -462,7 +462,7 @@ function render() {
       <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div>
     <div class="stats">
       <div class="stat"><div class="k">Streak</div><div class="v">${me.streak || 0}<small>days</small></div></div>
-      <div class="stat"><div class="k">Total practise</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
     <div class="cols"><div class="stack">
@@ -474,8 +474,8 @@ function render() {
             transform="rotate(-90 36 36)" style="transition:stroke-dashoffset .5s cubic-bezier(.2,.8,.2,1)"/>
           <text x="36" y="40" text-anchor="middle" font-family="var(--round)" font-weight="600" font-size="17" fill="var(--ink)">${donePlan}/${sessions.length}</text></svg>
         <div class="phcopy"><div class="phline">${all ? 'Done for today' : `${left} minutes left today`}</div>
-          <div class="phsub">${doneMin} of ${planned} min practised</div></div>
-        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practise more' : donePlan ? 'Resume practising' : 'Start practising'}</button>
+          <div class="phsub">${doneMin} of ${planned} min practiced</div></div>
+        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practice more' : donePlan ? 'Resume practicing' : 'Start practicing'}</button>
       </div>` : ''}
       <section class="card"><header><h3>Today's sessions</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
@@ -548,7 +548,7 @@ const GRID = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1
 function viewPractice() {
   const eye = (t) => `<div class="eyebrow" style="padding:0 0 8px">${t}</div>`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Practise', 'Reference, drills and tools.')}
+    ${head('Practice', 'Reference, drills and tools.')}
     <div>${eye('Learn')}<div style="${GRID}">
       ${tile(PI.grid, 'Chords &amp; scales', `${APP.chords.length} chord shapes and ${APP.scales.length} scales on an interactive fretboard.`, 'Open →', 'chords')}
       ${tile(PI.book, 'Lesson library', `${APP.lib.length} topics, beginner through advanced.`, 'Browse →', 'library')}
@@ -558,7 +558,7 @@ function viewPractice() {
       ${tile(PI.music, 'Fretboard game', 'Find the note on the string, naturals to all 12 frets.', 'In the phone app')}
       ${tile(PI.metro, 'Rhythm tapper', 'Tap in time to a click, scored on accuracy.', 'In the phone app')}
       ${tile(PI.layers, 'Theory quiz', 'Keys, intervals and harmony, fresh each round.', 'In the phone app')}
-    </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practise.</p></div>
+    </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practice.</p></div>
     <div>${eye('Tools')}<div style="${GRID}">
       ${tile(PI.tuner, 'Tuner', 'Standard, drop D, half step down and more.', 'Needs a microphone')}
       ${tile(PI.metro, 'Metronome', 'Runs bottom-right and follows you across every screen.', `${METRO.bpm} bpm · ${METRO.beats}/${METRO.denom}`, null, 'metro')}
@@ -645,7 +645,7 @@ function viewSchedule() {
             <div style="flex:1;min-width:0"><div class="ttl">${esc(s.title)}</div><div class="tsub">${esc(String(s.category||'').replace(/_/g,' '))}</div></div>
             <div class="dur">${s.duration} min</div></div></div>`).join('')
           : '<p class="hint" style="margin:0">Rest day.</p>');
-    }).join('') : empty('No plan yet', 'Generate a practise plan in the app.')}
+    }).join('') : empty('No plan yet', 'Generate a practice plan in the app.')}
   </div>`;
 }
 
@@ -655,7 +655,7 @@ function viewProgress() {
   $('#screen').innerHTML = `<div class="content">
     ${head('Progress', 'Everything you have banked')}
     <div class="stats">
-      <div class="stat"><div class="k">Total practise</div><div class="v">${Math.round((me.totalMinutes||0)/60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes||0)/60)}<small>hrs</small></div></div>
       <div class="stat"><div class="k">Current streak</div><div class="v">${me.streak||0}<small>days</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore||0).toLocaleString()}</div></div>
     </div>
@@ -865,7 +865,7 @@ const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.
 function drawPlayer() {
   const rem = Math.max(0, PLAY.target - PLAY.elapsed);
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">
-    <div style="display:flex;align-items:center"><span class="lab">Now practising</span>
+    <div style="display:flex;align-items:center"><span class="lab">Now practicing</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
     <h3 style="margin:8px 0 12px;font-size:18px">${esc(PLAY.item.title)}</h3>
     ${PLAY.item.description ? `<p style="margin:0 0 20px;color:var(--ink-2);font-size:13px;line-height:1.6;
