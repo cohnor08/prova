@@ -33,6 +33,14 @@
   input:focus{border-color:var(--primary);outline:none}
   .field{margin-bottom:15px}
   .err{color:var(--bad);font-size:13px;min-height:19px;margin-top:4px}
+  .rolebtn{display:block;width:100%;text-align:left;background:var(--raised);border:1px solid var(--line);
+    border-radius:var(--r-md);padding:14px 16px;margin-bottom:10px;cursor:pointer}
+  .rolebtn:hover{border-color:var(--primary)}
+  .rolebtn b{display:block;font-size:14.5px;font-weight:650}
+  .rolebtn span{display:block;font-size:12.5px;color:var(--ink-3);margin-top:2px}
+  .linkbtn{width:100%;background:none;border:0;color:var(--ink-3);font-size:13px;cursor:pointer;padding:10px 0;text-align:center}
+  .linkbtn b{color:var(--primary)}
+  .linkbtn:hover{color:var(--ink)}
 
   .btn{border:0;cursor:pointer;font-weight:650;background:var(--primary);color:var(--on-primary);border-radius:var(--r-sm);padding:11px 20px}
   .btn:hover{background:var(--primary-dk)}
@@ -138,15 +146,46 @@
 
 <div class="login" id="login">
   <div class="loginbox">
-    <div class="brand"><img src="/img/icon-192.png" alt="" style="width:34px;height:34px;border-radius:9px">
-      <div class="word">PROVA</div></div>
-    <p>Sign in with your Prova account.</p>
-    <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username"></div>
-    <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
-    <button class="btn wide" id="loginBtn">Sign in</button>
-    <div class="err" id="loginErr"></div>
-    <p style="margin-top:18px;font-size:12.5px">Don't have an account? Get Prova on
-      <a href="https://apps.apple.com/app/id6789881436" target="_blank" rel="noopener" style="color:var(--primary)">the App Store</a>.</p>
+
+    <div id="welcome">
+      <div style="text-align:center;padding:4px 0 6px">
+        <img src="/img/icon-192.png" alt="" style="width:60px;height:60px;border-radius:16px">
+        <div class="word" style="margin-top:14px">PROVA</div>
+        <div style="font-size:10.5px;letter-spacing:2.6px;text-transform:uppercase;color:var(--primary);font-weight:700;margin-top:4px">Your AI music coach</div>
+      </div>
+      <div style="font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:26px 0 12px">Get started</div>
+      <button class="rolebtn" data-role="student"><b>I'm a Student</b><span>Learn with a teacher — get assigned tasks and lessons</span></button>
+      <button class="rolebtn" data-role="personal"><b>Personal</b><span>Practise solo with an AI plan and progress tracking</span></button>
+      <button class="rolebtn" data-role="teacher"><b>I'm a Teacher</b><span>Monitor students and assign practice</span></button>
+      <button class="linkbtn" id="toLogin">Already have an account? <b>Log in</b></button>
+    </div>
+
+    <div id="signin" class="hidden">
+      <button class="linkbtn" data-back style="text-align:left;margin:0 0 14px">← Back</button>
+      <div class="word">PROVA</div>
+      <p>Welcome back. Sign in to your account.</p>
+      <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username"></div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+      <button class="btn wide" id="loginBtn">Sign in</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+
+    <div id="signup" class="hidden">
+      <button class="linkbtn" data-back style="text-align:left;margin:0 0 14px">← Back</button>
+      <div class="word">PROVA</div>
+      <p>Create your <span id="suRole">student</span> account.</p>
+      <div class="field"><label for="suName">Name</label><input id="suName" autocomplete="name"></div>
+      <div class="field"><label for="suEm">Email</label><input id="suEm" type="email" autocomplete="email"></div>
+      <div class="field"><label for="suPw">Password</label><input id="suPw" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
+      <div class="field" id="suInstWrap"><label>Instrument</label>
+        <div style="display:flex;gap:8px"><button class="btn ghost sm" data-inst="Guitar" style="flex:1;border-color:var(--primary);color:var(--ink)">Guitar</button>
+        <button class="btn ghost sm" data-inst="Bass" style="flex:1">Bass</button></div></div>
+      <button class="btn wide" id="suBtn">Create account</button>
+      <div class="err" id="suErr"></div>
+      <p style="font-size:12px;color:var(--ink-3);margin-top:14px">You'll finish setting up — level, goals and your first plan —
+        in the Prova app on your phone.</p>
+    </div>
+
   </div>
 </div>
 
@@ -173,7 +212,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -206,6 +245,25 @@ const TODAY_NAME = DAYS[new Date().getDay()];
 let me = null, uid = null, sessions = [], screen = 'today';
 
 // ── auth ─────────────────────────────────────────────────────────────────
+// Welcome → sign in, or Welcome → pick a role → sign up. Straight to a login
+// box was a shortcut; the app asks who you are first, so this does too.
+const panes = ['welcome','signin','signup'];
+const show = (id) => panes.forEach(p => $('#' + p).classList.toggle('hidden', p !== id));
+let SIGNUP_ROLE = 'student', SIGNUP_INST = 'Guitar';
+document.querySelectorAll('[data-role]').forEach(b => b.onclick = () => {
+  SIGNUP_ROLE = b.getAttribute('data-role');
+  $('#suRole').textContent = SIGNUP_ROLE === 'teacher' ? 'teacher' : SIGNUP_ROLE === 'personal' ? 'personal' : 'student';
+  $('#suInstWrap').classList.toggle('hidden', SIGNUP_ROLE === 'teacher');
+  show('signup');
+});
+$('#toLogin').onclick = () => show('signin');
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => show('welcome'));
+document.querySelectorAll('[data-inst]').forEach(b => b.onclick = () => {
+  SIGNUP_INST = b.getAttribute('data-inst');
+  document.querySelectorAll('[data-inst]').forEach(x => x.setAttribute('style',
+    'flex:1' + (x === b ? ';border-color:var(--primary);color:var(--ink)' : '')));
+});
+
 $('#loginBtn').onclick = async () => {
   $('#loginErr').textContent = ''; $('#loginBtn').disabled = true;
   try { await signInWithEmailAndPassword(auth, $('#em').value.trim(), $('#pw').value); }
@@ -213,10 +271,33 @@ $('#loginBtn').onclick = async () => {
   finally { $('#loginBtn').disabled = false; }
 };
 $('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
+
+$('#suBtn').onclick = async () => {
+  const nm = $('#suName').value.trim(), em = $('#suEm').value.trim(), pw = $('#suPw').value;
+  $('#suErr').textContent = '';
+  if (!nm || !em || pw.length < 6) { $('#suErr').textContent = 'Name, email, and a password of at least 6 characters.'; return; }
+  $('#suBtn').disabled = true;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, em, pw);
+    // The same fields the app's onboarding writes first — the rest (level,
+    // goals, the generated plan) is finished on the phone.
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      email: em, username: nm, role: SIGNUP_ROLE, createdAt: new Date().toISOString(),
+      onboardingComplete: false, streak: 0, provaScore: 0, totalMinutes: 0,
+      ...(SIGNUP_ROLE === 'teacher' ? {} : { instrument: SIGNUP_INST }),
+    }, { merge: true });
+  } catch (e) {
+    $('#suErr').textContent = /email-already-in-use/.test(e?.code || '')
+      ? 'That email already has an account — log in instead.'
+      : /weak-password/.test(e?.code || '') ? 'Pick a longer password.'
+      : 'Could not create the account. Try again.';
+    $('#suBtn').disabled = false;
+  }
+};
 $('#signout').onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); return; }
+  if (!user) { $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); show('welcome'); return; }
   uid = user.uid;
   await load();
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
@@ -241,7 +322,7 @@ const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const NAV = [
   { g: 'Practise' },
   { id: 'today',    t: 'Today',    i: '<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' },
-  { id: 'practice', t: 'Practice', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { id: 'practice', t: 'Practise', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
   { id: 'songs',    t: 'Songs',    i: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
   { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
   { g: 'Track' },
@@ -250,7 +331,7 @@ const NAV = [
   { g: 'Account' },
   { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
 ];
-const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
+const TITLES = { today:'Today', practice:'Practise', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', chords:'Chords & scales', library:'Lesson library' };
 const PARENT = { chords:'practice', library:'practice' };
 function renderNav() {
@@ -351,7 +432,7 @@ function render() {
           <text x="36" y="40" text-anchor="middle" font-family="var(--round)" font-weight="600" font-size="17" fill="var(--ink)">${donePlan}/${sessions.length}</text></svg>
         <div class="phcopy"><div class="phline">${all ? 'Done for today' : `${left} minutes left today`}</div>
           <div class="phsub">${doneMin} of ${planned} min practised</div></div>
-        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practise more' : donePlan ? 'Resume practice' : 'Start practice'}</button>
+        <button class="btn${all ? ' ghost' : ''}" data-play="next">${all ? 'Practise more' : donePlan ? 'Resume practising' : 'Start practising'}</button>
       </div>` : ''}
       <section class="card"><header><h3>Today's sessions</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
@@ -406,7 +487,7 @@ function viewPractice() {
     <h4 style="margin:0;font-size:14px;font-weight:650">${t}</h4><p class="hint" style="margin:0">${p}</p>
     <div style="font-size:11.5px;font-weight:650;color:var(--primary)">${foot}</div></button>`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Practice', 'Reference and drills. The games run in the phone app.')}
+    ${head('Practise', 'Reference and drills. The games run in the phone app.')}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">
       ${tile('Chords &amp; scales', `${APP.chords.length} chord shapes and ${APP.scales.length} scales.`, 'Open →', 'chords')}
       ${tile('Lesson library', `${APP.lib.length} topics across ${APP.libCats.length} categories.`, 'Browse →', 'library')}
