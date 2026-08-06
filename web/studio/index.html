@@ -299,7 +299,9 @@ onAuthStateChanged(auth, async (user) => {
   const snap = await getDoc(doc(db, 'users', user.uid));
   const d = snap.data() || {};
   if (d.role !== 'teacher') {
-    $('#loginErr').textContent = 'That account is not a teacher account.';
+    $('#loginErr').innerHTML = `Studio is for teacher accounts. This one is signed up as
+      <b>${esc(d.role || 'a student')}</b> — switch its role to Teacher in the app
+      (Profile → role) and sign in again.`;
     await signOut(auth);
     return;
   }
@@ -346,6 +348,20 @@ const byUid = (uid) => students.find((s) => s.uid === uid);
 async function refreshMe() { me = (await getDoc(doc(db, 'users', meUid))).data() || {}; }
 const saveMe = (patch) => updateDoc(doc(db, 'users', meUid), patch);
 
+// A teacher with no join code cannot be found by any student, so nothing in
+// Studio can ever fill up. Same alphabet as src/lib/teacher.js — ambiguous
+// characters (0/O, 1/I) left out so a code can be read aloud.
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+async function ensureTeacherCode() {
+  if (me.teacherCode) return me.teacherCode;
+  let code = '';
+  for (let i = 0; i < 6; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  await saveMe({ teacherCode: code });
+  await refreshMe();
+  $('#chipCode').textContent = code;
+  return code;
+}
+
 // ── nav ───────────────────────────────────────────────────────────────────
 const NAV = [
   { g: 'Teaching' },
@@ -370,9 +386,17 @@ function go(id) {
   ({ students: viewStudents, notes: viewNotes, calendar: viewCalendar, reports: viewReports })[id]();
   window.scrollTo({ top: 0 });
 }
+// One delegated listener for the whole app. Registering these per-render (as
+// this did originally) stacks a fresh listener every time you revisit a screen.
 document.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-go]');
-  if (b) go(b.getAttribute('data-go'));
+  const go_ = e.target.closest('[data-go]');
+  if (go_) { go(go_.getAttribute('data-go')); return; }
+  const ev = e.target.closest('[data-lesson]');
+  if (ev) { occurrenceModal(ev.getAttribute('data-lesson'), ev.getAttribute('data-date')); return; }
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { noteModal(ed.getAttribute('data-edit')); return; }
+  const wr = e.target.closest('[data-write]');
+  if (wr) { noteModal(wr.getAttribute('data-write')); }
 });
 
 // ── shared bits ───────────────────────────────────────────────────────────
@@ -405,6 +429,39 @@ function sparkFor(week) {
 }
 function emptyState(title, sub) {
   return `<div class="empty"><div class="ring">${svg(ICON.users)}</div><div style="font-weight:650;color:var(--ink)">${title}</div><div style="font-size:13px;margin-top:4px">${sub}</div></div>`;
+}
+// Nothing in Studio works without students, so the empty roster is the one
+// screen that has to teach rather than apologise.
+// Shown at the top of any screen that needs students but has none, so a dead
+// button always comes with the reason it is dead.
+function noStudentsNotice(why) {
+  if (students.length) return '';
+  return `<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,var(--card));
+      display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="min-width:0"><div style="font-weight:650">No students connected yet</div>
+      <div class="hint" style="margin-top:2px">${why}</div></div>
+    <button class="btn ghost" data-go="students" style="margin-left:auto">Get your join code</button></div>`;
+}
+function onboardCard() {
+  const code = me.teacherCode;
+  return `<div class="empty" style="text-align:left;padding:8px 0">
+    <div style="font-weight:650;color:var(--ink);font-size:16px">No students yet</div>
+    <p class="hint" style="margin:6px 0 20px">Students connect to you by entering your join code in the
+      Prova app — Profile → “Add my teacher”. Everything here fills in the moment one does.</p>
+    ${code ? `
+      <div style="display:flex;align-items:center;gap:14px;background:var(--raised);border:1px solid var(--line);
+                  border-radius:var(--r-md);padding:16px 18px">
+        <div><div class="k" style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3)">Your join code</div>
+          <div class="fig" style="font-size:29px;letter-spacing:3px">${esc(code)}</div></div>
+        <button class="btn ghost" id="copyCode" style="margin-left:auto">Copy</button>
+      </div>`
+    : `<div style="background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid var(--warn);
+                   border-radius:var(--r-md);padding:16px 18px">
+        <div style="font-weight:650;color:var(--warn)">You don’t have a join code yet</div>
+        <p class="hint" style="margin:6px 0 14px">Without one there is no way for a student to find you.</p>
+        <button class="btn" id="makeCode">Create my join code</button>
+      </div>`}
+  </div>`;
 }
 function modal(html) {
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">${html}</div>`;
@@ -444,12 +501,23 @@ function viewStudents() {
                 stroke="var(--${cls === 'ok' ? 'good' : cls === 'sl' ? 'warn' : 'bad'})" stroke-width="1.8" stroke-linecap="round"/></svg></td>
               <td><span class="state s-${cls}"><span class="dot"></span>${lab}</span></td></tr>`;
           }).join('')}</tbody></table></div>`
-        : emptyState('No students yet', `Share your join code <b>${esc(me.teacherCode || '—')}</b> — students enter it in Profile.`)}
+        : onboardCard()}
       </section>
     </div><div class="stack"><section class="card" id="stuCard"></section></div></div>
   </div>`;
 
   $('#reload').onclick = async () => { $('#reload').textContent = 'Refreshing…'; await loadStudents(); viewStudents(); toast('Refreshed'); };
+  const mk = $('#makeCode');
+  if (mk) mk.onclick = async () => {
+    mk.disabled = true; mk.innerHTML = '<span class="spin"></span> Creating…';
+    try { const c = await ensureTeacherCode(); viewStudents(); toast('Join code ' + c + ' created'); }
+    catch { toast('Could not create a code'); mk.disabled = false; mk.textContent = 'Create my join code'; }
+  };
+  const cp = $('#copyCode');
+  if (cp) cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(me.teacherCode); toast('Code copied'); }
+    catch { toast('Copy failed — the code is ' + me.teacherCode); }
+  };
   const pulse = $('#pulse');
   if (pulse) pulse.addEventListener('click', (e) => {
     const tr = e.target.closest('[data-stu]'); if (!tr) return;
@@ -520,7 +588,8 @@ function viewNotes() {
   const withNotes = recs.filter((r) => (r.note || '').trim());
   $('#screen').innerHTML = `<div class="content">
     <div class="greet"><div><h2>Lesson notes</h2><p>Written after a lesson. Each student sees only their own.</p></div>
-      <button class="btn" id="newNote">Write a note</button></div>
+      <button class="btn" id="newNote"${students.length ? '' : ' disabled title="Connect a student first"'}>Write a note</button></div>
+    ${noStudentsNotice('Notes are written against a student, so you’ll need one first.')}
     <div class="cols"><div class="stack">
       <section class="card"><header><h3>Recent notes</h3><span class="meta">${withNotes.length}</span></header>
       ${withNotes.length ? withNotes.map((r) => `
@@ -551,11 +620,6 @@ function viewNotes() {
     </div></div></div>`;
 
   $('#newNote').onclick = () => noteModal(null);
-  $('#screen').addEventListener('click', (e) => {
-    const ed = e.target.closest('[data-edit]'), wr = e.target.closest('[data-write]');
-    if (ed) noteModal(ed.getAttribute('data-edit'));
-    if (wr) noteModal(wr.getAttribute('data-write'));
-  });
 }
 // Lessons in the past 30 days that have no attendance record at all.
 function pastLessonsWithoutRecord() {
@@ -647,8 +711,9 @@ function viewCalendar() {
         <button class="btn ghost sm" id="prevW">← Previous</button>
         <button class="btn ghost sm" id="thisW">This week</button>
         <button class="btn ghost sm" id="nextW">Next →</button>
-        <button class="btn" id="addLesson">Book a lesson</button>
+        <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Book a lesson</button>
       </div></div>
+    ${noStudentsNotice('You can’t book a lesson until a student has joined.')}
     <section class="card"><div class="cal">
       ${days.map((d) => `<div class="hd">${DOW[(d.getDay() + 6) % 7]}<b>${d.getDate()}</b></div>`).join('')}
       ${days.map((d) => {
@@ -668,10 +733,6 @@ function viewCalendar() {
   $('#nextW').onclick = () => { weekOffset++; viewCalendar(); };
   $('#thisW').onclick = () => { weekOffset = 0; viewCalendar(); };
   $('#addLesson').onclick = lessonModal;
-  $('#screen').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-lesson]');
-    if (b) occurrenceModal(b.getAttribute('data-lesson'), b.getAttribute('data-date'));
-  });
 }
 function lessonModal() {
   if (!students.length) { toast('Add a student first'); return; }
@@ -747,7 +808,8 @@ function viewReports() {
   $('#screen').innerHTML = `<div class="content">
     <div class="greet"><div><h2>Parent reports</h2>
       <p>A weekly summary of practice, streak, tasks and attendance — emailed to parents.</p></div>
-      <button class="btn" id="sendNow"${withEmail && cadence !== 'off' ? '' : ''}>Send this week now</button></div>
+      <button class="btn" id="sendNow"${withEmail ? '' : ' disabled title="Add at least one parent email first"'}>Send this week now</button></div>
+    ${noStudentsNotice('Parent reports are built per student, so you’ll need one first.')}
     <div class="cols"><div class="stack">
       <section class="card"><header><h3>Parent contacts</h3><span class="meta">${withEmail} of ${students.length}</span></header>
         ${students.length ? `<div class="rows" id="contacts">${students.map((s) => `
