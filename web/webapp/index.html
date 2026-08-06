@@ -173,7 +173,7 @@
       <div style="font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:26px 0 12px">Get started</div>
       <button class="rolebtn" data-role="student"><b>I'm a Student</b><span>Learn with a teacher — get assigned tasks and lessons</span></button>
       <button class="rolebtn" data-role="personal"><b>Personal</b><span>Practise solo with an AI plan and progress tracking</span></button>
-      <button class="rolebtn" data-role="teacher"><b>I'm a Teacher</b><span>Monitor students and assign practice</span></button>
+      <button class="rolebtn" data-role="teacher"><b>I'm a Teacher</b><span>Monitor students and assign practise</span></button>
       <button class="linkbtn" id="toLogin">Already have an account? <b>Log in</b></button>
     </div>
 
@@ -462,7 +462,7 @@ function render() {
       <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div>
     <div class="stats">
       <div class="stat"><div class="k">Streak</div><div class="v">${me.streak || 0}<small>days</small></div></div>
-      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Total practise</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
     <div class="cols"><div class="stack">
@@ -558,7 +558,7 @@ function viewPractice() {
       ${tile(PI.music, 'Fretboard game', 'Find the note on the string, naturals to all 12 frets.', 'In the phone app')}
       ${tile(PI.metro, 'Rhythm tapper', 'Tap in time to a click, scored on accuracy.', 'In the phone app')}
       ${tile(PI.layers, 'Theory quiz', 'Keys, intervals and harmony, fresh each round.', 'In the phone app')}
-    </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practice.</p></div>
+    </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practise.</p></div>
     <div>${eye('Tools')}<div style="${GRID}">
       ${tile(PI.tuner, 'Tuner', 'Standard, drop D, half step down and more.', 'Needs a microphone')}
       ${tile(PI.metro, 'Metronome', 'Runs bottom-right and follows you across every screen.', `${METRO.bpm} bpm · ${METRO.beats}/${METRO.denom}`, null, 'metro')}
@@ -645,7 +645,7 @@ function viewSchedule() {
             <div style="flex:1;min-width:0"><div class="ttl">${esc(s.title)}</div><div class="tsub">${esc(String(s.category||'').replace(/_/g,' '))}</div></div>
             <div class="dur">${s.duration} min</div></div></div>`).join('')
           : '<p class="hint" style="margin:0">Rest day.</p>');
-    }).join('') : empty('No plan yet', 'Generate a practice plan in the app.')}
+    }).join('') : empty('No plan yet', 'Generate a practise plan in the app.')}
   </div>`;
 }
 
@@ -655,7 +655,7 @@ function viewProgress() {
   $('#screen').innerHTML = `<div class="content">
     ${head('Progress', 'Everything you have banked')}
     <div class="stats">
-      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes||0)/60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Total practise</div><div class="v">${Math.round((me.totalMinutes||0)/60)}<small>hrs</small></div></div>
       <div class="stat"><div class="k">Current streak</div><div class="v">${me.streak||0}<small>days</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore||0).toLocaleString()}</div></div>
     </div>
