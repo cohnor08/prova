@@ -185,6 +185,15 @@
 
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:11px 22px;box-shadow:var(--shadow);opacity:0;transition:.22s;z-index:60;font-size:13.5px;font-weight:600}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .trow{border-top:1px solid var(--line)}
+  .trow:first-child{border-top:0}
+  .thead2{display:flex;align-items:center;gap:11px;padding:13px 0;cursor:pointer;min-width:0}
+  .chev{width:15px;height:15px;flex:none;color:var(--ink-3);transition:transform .18s}
+  .trow.open .chev{transform:rotate(90deg)}
+  .tbody2{padding:0 0 15px 26px;display:none}
+  .trow.open .tbody2{display:block}
+  .tdesc{color:var(--ink-2);font-size:13px;line-height:1.6;white-space:pre-wrap;margin:0 0 12px}
+  .ttl{font-weight:600;font-size:13.5px}
   .empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
   .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
@@ -1042,6 +1051,7 @@ async function viewMessages() {
 // ── RESOURCES — the app's own library (src/constants/resources.js), plus
 // whatever the teacher has built themselves ─────────────────────────────
 var RF = { inst: 'Guitar', level: 'Beginner' };
+var ROPEN = {};
 function viewResources() {
   const packs = Array.isArray(me.packs) ? me.packs : [];
   const programs = Array.isArray(me.programs) ? me.programs : [];
@@ -1073,11 +1083,20 @@ function viewResources() {
     ${CATS.map(([k, label]) => {
       const items = set[k] || [];
       return `<section class="card"><header><h3>${label}</h3><span class="meta">${items.length}</span></header>
-        ${items.length ? items.map(x => `<div class="prow" style="align-items:flex-start">
-          <div class="pl"><div class="pt">${esc(x.title)}</div>
-            <div class="ps" style="margin-top:4px;line-height:1.6;color:var(--ink-2)">${esc(x.detail)}</div></div>
-          ${x.yt ? `<button class="btn sm ghost" data-yt="${esc(x.yt)}" data-yttitle="${esc(x.title)}">▶ Video</button>` : ''}
-          </div>`).join('') : '<p class="hint" style="margin:0">Nothing at this level.</p>'}</section>`;
+        ${items.length ? items.map((x, ix) => {
+          const rid = k + ix, open = ROPEN[rid];
+          return `<div class="trow${open ? ' open' : ''}">
+            <div class="thead2" data-ropen="${rid}">
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+              <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div></div>
+              ${x.yt ? '<span class="pill set">Video</span>' : ''}</div>
+            <div class="tbody2">
+              <p class="tdesc">${esc(x.detail)}</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                ${x.yt ? `<button class="btn sm ghost" data-yt="${esc(x.yt)}" data-yttitle="${esc(x.title)}">▶ Watch</button>` : ''}
+                <button class="btn sm ghost" data-assignres="${rid}">Assign to a student</button>
+              </div></div></div>`;
+        }).join('') : '<p class="hint" style="margin:0">Nothing at this level.</p>'}</section>`;
     }).join('')}
     <p class="hint" style="margin:-8px 0 0">${total} items for ${esc(RF.inst)} · ${esc(RF.level)}.</p>
 
@@ -1096,8 +1115,35 @@ function viewResources() {
   </div>`;
 
   $('#screen').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-rf]');
-    if (b) { RF[b.getAttribute('data-rf')] = b.getAttribute('data-v'); viewResources(); }
+    const f = e.target.closest('[data-rf]');
+    if (f) { RF[f.getAttribute('data-rf')] = f.getAttribute('data-v'); ROPEN = {}; return viewResources(); }
+    const o = e.target.closest('[data-ropen]');
+    if (o) { const y = window.scrollY, id = o.getAttribute('data-ropen');
+      ROPEN[id] = !ROPEN[id]; viewResources(); window.scrollTo(0, y); return; }
+    const a = e.target.closest('[data-assignres]');
+    if (a) {
+      const [cat, ix] = [a.getAttribute('data-assignres').replace(/\d+$/, ''),
+                         +a.getAttribute('data-assignres').match(/\d+$/)[0]];
+      const item = ((RES.RESOURCES[RF.inst] || {})[RF.level] || {})[cat][ix];
+      if (!students.length) { toast('No students yet'); return; }
+      modal(`<h3>Assign "${esc(item.title)}"</h3>
+        <p class="hint" style="margin:-8px 0 14px">Pick a student — it becomes a task with the description and video attached.</p>
+        <div class="rows">${students.map((s2, si) => `<div class="prow"><div class="pl">
+          <div class="pt">${esc(displayName(s2))}</div></div>
+          <button class="btn sm" data-resto="${si}">Assign</button></div>`).join('')}</div>
+        <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button></div>`);
+      $('#overlays').addEventListener('click', async (ev) => {
+        const b2 = ev.target.closest('[data-resto]'); if (!b2) return;
+        const stu = students[+b2.getAttribute('data-resto')];
+        const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
+        cur.push({ id: Date.now().toString(), title: item.title, description: item.detail,
+          youtube: item.yt || '', song: '', drill: null, drillLevel: null, drillMode: null,
+          dueDate: '', durationMin: 0, completed: false });
+        try { await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
+          stu.assignedTasks = cur; closeModal(); toast(`Assigned to ${displayName(stu)}`); }
+        catch { toast('Could not assign'); }
+      }, { once: true });
+    }
   }, { once: true });
 }
 

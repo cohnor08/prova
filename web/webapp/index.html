@@ -539,7 +539,7 @@ function rows(list, kind, limit) {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${done ? '<span class="hint">Completed</span>'
             : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
-          ${x.youtube ? `<button class="btn sm ghost" data-yt="${esc(x.youtube)}" data-yttitle="${esc(x.title)}">▶ Watch a lesson</button>` : ''}
+          <button class="btn sm ghost" data-yt="${esc(x.youtube || (x.title + ' ' + (me.instrument || 'guitar') + ' tutorial'))}" data-yttitle="${esc(x.title)}">▶ Watch a lesson</button>
           ${x.song ? `<button class="btn sm ghost" data-yt="${esc(x.song)} ${esc(me.instrument || 'guitar')} tutorial" data-yttitle="${esc(x.song)}">🎵 ${esc(x.song)}</button>` : ''}
         </div>
       </div></div>`;
