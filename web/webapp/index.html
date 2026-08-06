@@ -350,6 +350,20 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   uid = user.uid;
+  // Role decides the whole experience, exactly as it does in the app — a
+  // teacher signing in here was getting the student screen with an empty
+  // plan. Studio is the teacher surface.
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    if ((snap.data() || {}).role === 'teacher') {
+      $('#splash').innerHTML = `<div style="text-align:center">
+        <img src="/img/icon-192.png" alt="" style="width:64px;height:64px;border-radius:17px">
+        <div style="font-family:var(--serif);font-size:20px;letter-spacing:3.5px;margin-top:14px">PROVA</div>
+        <div style="color:var(--ink-3);font-size:13px;margin-top:12px">Teacher account — opening Studio…</div></div>`;
+      location.replace('/studio/');
+      return;
+    }
+  } catch { /* fall through to the student view */ }
   loadPrior();
   try { await load(); }
   catch { $('#splash').classList.add('hidden'); $('#login').classList.remove('hidden'); show('welcome'); return; }
