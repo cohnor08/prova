@@ -186,7 +186,17 @@
   @keyframes sp{to{transform:rotate(360deg)}}
   .metro{position:fixed;right:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:12px;
     background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 14px 9px 12px;box-shadow:var(--shadow)}
-  .metro button{background:var(--raised);border:1px solid var(--line);color:var(--ink-2);width:26px;height:26px;border-radius:50%;cursor:pointer;padding:0;line-height:1}
+  .metro{display:none}
+  .metro.ready{display:flex}
+  /* Only the steppers are round — this rule used to hit the BPM button too
+     and squashed it to 26px, clipping the number. */
+  .metro .step{background:var(--raised);border:1px solid var(--line);color:var(--ink-2);
+    width:28px;height:28px;border-radius:50%;cursor:pointer;padding:0;line-height:1;flex:none;font-size:15px}
+  .metro .play{background:var(--raised);border:1px solid var(--line);color:var(--ink-2);
+    border-radius:999px;padding:5px 14px;cursor:pointer;font-size:13px;font-weight:650;flex:none}
+  .metro .open{background:none;border:0;display:flex;align-items:center;gap:11px;cursor:pointer;
+    color:inherit;padding:0 4px 0 0;flex:none}
+  .metro .open .txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05}
   .mbpm{font-family:var(--round);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums;display:block}
   .mlab{font-size:10px;color:var(--ink-3);letter-spacing:.6px;text-transform:uppercase;font-weight:700;display:block}
   .beatbars{display:flex;gap:6px;align-items:flex-end;height:60px;margin-bottom:6px}
@@ -272,13 +282,13 @@
 </div>
 
 <div class="metro" id="metro">
-  <button id="metroOpen" style="background:none;border:0;display:flex;align-items:center;gap:11px;cursor:pointer;color:inherit;padding:0">
+  <button class="open" id="metroOpen" aria-label="Metronome settings">
     <span id="metroDots" style="display:flex;gap:4px;align-items:center"></span>
-    <span style="text-align:left"><span class="mbpm" id="mBpm">80</span><span class="mlab">bpm</span></span>
+    <span class="txt"><span class="mbpm" id="mBpm">80</span><span class="mlab">bpm</span></span>
   </button>
-  <button id="mDown" aria-label="Slower">−</button>
-  <button id="mUp" aria-label="Faster">+</button>
-  <button id="mPlay" style="width:auto;border-radius:999px;padding:0 12px">Play</button>
+  <button class="step" id="mDown" aria-label="Slower">−</button>
+  <button class="step" id="mUp" aria-label="Faster">+</button>
+  <button class="play" id="mPlay">Play</button>
 </div>
 <div id="overlays"></div>
 <div class="toast" id="toast"></div>
@@ -392,6 +402,8 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     $('#splash').classList.add('hidden');
     $('#login').classList.remove('hidden'); $('#app').classList.add('hidden');
+    document.getElementById('metro').classList.remove('ready');
+    if (metroInt) { METRO.playing = false; metroStop(); }
     show('welcome');
     return;
   }
@@ -416,6 +428,7 @@ onAuthStateChanged(auth, async (user) => {
   $('#splash').classList.add('hidden');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   renderNav(); go('today');
+  document.getElementById('metro').classList.add('ready');
 });
 // If Firebase never answers (offline, blocked), don't sit on the splash.
 setTimeout(() => {
