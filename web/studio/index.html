@@ -1062,6 +1062,17 @@ function viewProfile() {
         ${row('Parents on file', Object.keys(me.parentEmails || {}).length)}
         ${row('Last sent', me.lastAutoReportAt ? agoLabel(me.lastAutoReportAt) : 'Never')}
       </div></section>
+      <section class="card"><header><h3>Legal</h3></header><div class="rows">
+        <div class="prow"><div class="pl"><div class="pt">Privacy policy</div>
+          <div class="ps">What we collect, and what we never do with it</div></div>
+          <a class="btn sm ghost" href="/privacy.html" target="_blank" rel="noopener">Open</a></div>
+        <div class="prow"><div class="pl"><div class="pt">Terms of use</div>
+          <div class="ps">The agreement covering your account</div></div>
+          <a class="btn sm ghost" href="/terms.html" target="_blank" rel="noopener">Open</a></div>
+        <div class="prow"><div class="pl"><div class="pt">Support</div>
+          <div class="ps">Get help, or ask for your data to be deleted</div></div>
+          <a class="btn sm ghost" href="/support.html" target="_blank" rel="noopener">Open</a></div>
+      </div></section>
       <section class="card"><header><h3>Session</h3></header>
         <p class="hint" style="margin:0 0 14px">Theme, notifications and account deletion live in the phone app.</p>
         <button class="btn ghost" style="width:100%" id="soBtn2">Sign out</button></section>

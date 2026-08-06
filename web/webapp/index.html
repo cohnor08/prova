@@ -157,6 +157,13 @@
 
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:11px 22px;box-shadow:var(--shadow);opacity:0;transition:.22s;z-index:60;font-size:13.5px;font-weight:600}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .rows{display:flex;flex-direction:column}
+  .prow{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--line)}
+  .prow:first-child{border-top:0;padding-top:0}
+  .prow .pl{flex:1;min-width:0}
+  .prow .pt{font-weight:600;font-size:13.5px}
+  .prow .ps{font-size:12px;color:var(--ink-3)}
+  a.btn{text-decoration:none;display:inline-block}
   .empty{text-align:center;padding:30px 20px;color:var(--ink-3)}
   .opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md);padding:13px 16px;
     text-align:left;cursor:pointer;font-size:13.5px;font-weight:550;color:inherit}
@@ -787,6 +794,17 @@ function viewProfile() {
         ${row('Role', me.role)}${row('Daily target', me.dailyDuration ? me.dailyDuration + ' min' : null)}
         ${row('Member since', me.createdAt ? new Date(me.createdAt).toLocaleDateString() : null)}</div>`)}
     </div><div class="stack">
+      ${card('Legal','', `<div class="rows" style="margin-top:-13px">
+        <div class="prow"><div class="pl"><div class="pt">Privacy policy</div>
+          <div class="ps">What we collect, and what we never do with it</div></div>
+          <a class="btn sm ghost" href="/privacy.html" target="_blank" rel="noopener">Open</a></div>
+        <div class="prow"><div class="pl"><div class="pt">Terms of use</div>
+          <div class="ps">The agreement covering your account</div></div>
+          <a class="btn sm ghost" href="/terms.html" target="_blank" rel="noopener">Open</a></div>
+        <div class="prow"><div class="pl"><div class="pt">Support</div>
+          <div class="ps">Get help, or ask for your data to be deleted</div></div>
+          <a class="btn sm ghost" href="/support.html" target="_blank" rel="noopener">Open</a></div>
+      </div>`)}
       ${card('Settings live in the app','', `<p class="hint" style="margin:0 0 14px">Theme, reminders, teacher connection and account deletion are all in the phone app for now.</p>
         <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
     </div></div></div>`;
