@@ -277,6 +277,8 @@ function stateOf(s) {
   return ['ok','On track'];
 }
 const ICON = {
+  book:'<path d="M4 5h16v14H4z"/><path d="M4 9h16"/>',
+  user:'<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>',
   home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   users:'<circle cx="9" cy="8" r="3.2"/><path d="M2 20a7 7 0 0114 0M17 11a3 3 0 100-6M18 20a6 6 0 00-2-4.5"/>',
   pen:'<path d="M4 20h4L19 9a2.8 2.8 0 10-4-4L4 16z"/>',
@@ -383,10 +385,13 @@ const NAV = [
   { id: 'students', t: 'Students', i: ICON.users, n: () => students.length },
   { id: 'calendar', t: 'Calendar', i: ICON.cal },
   { id: 'notes', t: 'Lesson notes', i: ICON.pen },
+  { id: 'resources', t: 'Resources', i: ICON.book },
   { g: 'Families' },
   { id: 'reports', t: 'Parent reports', i: ICON.mail },
+  { g: 'Account' },
+  { id: 'profile', t: 'Profile', i: ICON.user },
 ];
-const TITLES = { home:'Studio', students:'Students', notes:'Lesson notes', calendar:'Calendar', reports:'Parent reports' };
+const TITLES = { home:'Studio', students:'Students', resources:'Resources', profile:'Profile', notes:'Lesson notes', calendar:'Calendar', reports:'Parent reports' };
 function renderNav() {
   $('#nav').innerHTML = NAV.map((x) => {
     if (x.g) return `<div class="eyebrow">${x.g}</div>`;
@@ -398,7 +403,8 @@ function go(id) {
   screen = id;
   $('#pageTitle').textContent = TITLES[id];
   renderNav();
-  ({ home: viewHome, students: viewStudents, notes: viewNotes, calendar: viewCalendar, reports: viewReports })[id]();
+  ({ home: viewHome, students: viewStudents, notes: viewNotes, calendar: viewCalendar,
+     reports: viewReports, resources: viewResources, profile: viewProfile })[id]();
   window.scrollTo({ top: 0 });
 }
 // One delegated listener for the whole app. Registering these per-render (as
@@ -670,6 +676,91 @@ function lessonsThisWeek() {
     lessonsOn(ds).forEach(l => out.push({ ...l, date: ds }));
   }
   return out.slice(0, 6);
+}
+
+
+// ── RESOURCES — packs, programs and shared files, all on the teacher doc ──
+function viewResources() {
+  const packs = Array.isArray(me.packs) ? me.packs : [];
+  const programs = Array.isArray(me.programs) ? me.programs : [];
+  const files = Array.isArray(me.resources) ? me.resources : [];
+  const classes = Array.isArray(me.classes) ? me.classes : [];
+  const grid = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:14px';
+  const tile = (t, sub, foot) => `<div class="card" style="display:flex;flex-direction:column;gap:8px">
+    <h4 style="margin:0;font-size:14px;font-weight:650">${esc(t)}</h4>
+    <p class="hint" style="margin:0">${esc(sub)}</p>
+    ${foot ? `<div style="font-size:11.5px;font-weight:650;color:var(--primary)">${esc(foot)}</div>` : ''}</div>`;
+  const section = (label, items, render, blank) =>
+    `<div><div class="eyebrow" style="padding:0 0 8px">${label}</div>
+     ${items.length ? `<div style="${grid}">${items.map(render).join('')}</div>`
+       : `<div class="card"><p class="hint" style="margin:0">${blank}</p></div>`}</div>`;
+
+  $('#screen').innerHTML = `<div class="content">
+    <div class="greet"><div><h2>Resources</h2>
+      <p>Packs, programs and material you can assign to a student or a class.</p></div></div>
+    ${section('Packs', packs, (x) => tile(x.title || x.name || 'Pack',
+        `${(x.items || x.lessons || []).length} items`, x.assignedTo ? `Assigned to ${x.assignedTo.length}` : ''),
+      'No packs yet — build one in the app and it appears here.')}
+    ${section('Programs', programs, (x) => tile(x.title || x.name || 'Program',
+        `${(x.weeks || x.items || []).length} weeks`, ''),
+      'No programs yet.')}
+    ${section('Classes', classes, (x) => tile(x.name || 'Class',
+        `${(x.members || []).length} students`, ''),
+      'No classes yet.')}
+    ${section('Shared files', files, (x) => tile(x.title || x.name || 'File',
+        x.type || 'Shared with your students', x.sharedAt ? agoLabel(x.sharedAt) : ''),
+      'Nothing shared yet.')}
+  </div>`;
+}
+
+// ── PROFILE — the teacher's own record, including the join code ──────────
+function viewProfile() {
+  const row = (t, v, action) => `<div class="prow"><div class="pl"><div class="pt">${t}</div>
+    <div class="ps">${esc(v ?? '—')}</div></div>${action || ''}</div>`;
+  const code = me.teacherCode;
+  $('#screen').innerHTML = `<div class="content">
+    <div class="greet"><div><h2>Profile</h2><p>${esc(displayName({ uid: meUid, ...me }))} · teacher</p></div></div>
+    <div class="cols even"><div class="stack">
+      <section class="card"><header><h3>Your join code</h3></header>
+        ${code ? `<div style="display:flex;align-items:center;gap:14px;background:var(--raised);
+            border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px">
+            <div><div class="k" style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3)">Students enter this</div>
+            <div class="fig" style="font-size:29px;letter-spacing:3px">${esc(code)}</div></div>
+            <button class="btn ghost" id="copyCode2" style="margin-left:auto">Copy</button></div>
+          <p class="hint" style="margin:14px 0 0">In the Prova app: Profile → Add my teacher.</p>`
+        : `<p class="hint" style="margin:0 0 14px">You don't have a join code yet — without one no student can find you.</p>
+           <button class="btn" id="makeCode2">Create my join code</button>`}
+      </section>
+      <section class="card"><header><h3>Account</h3></header><div class="rows">
+        ${row('Name', displayName({ uid: meUid, ...me }))}
+        ${row('Email', me.email)}
+        ${row('Role', 'Teacher')}
+        ${row('Students', students.length)}
+        ${row('Member since', me.createdAt ? new Date(me.createdAt).toLocaleDateString() : null)}
+      </div></section>
+    </div><div class="stack">
+      <section class="card"><header><h3>Parent reports</h3></header><div class="rows">
+        ${row('Cadence', me.reportCadence || 'Off', '<button class="btn sm ghost" data-go="reports">Change</button>')}
+        ${row('Parents on file', Object.keys(me.parentEmails || {}).length)}
+        ${row('Last sent', me.lastAutoReportAt ? agoLabel(me.lastAutoReportAt) : 'Never')}
+      </div></section>
+      <section class="card"><header><h3>Session</h3></header>
+        <p class="hint" style="margin:0 0 14px">Theme, notifications and account deletion live in the phone app.</p>
+        <button class="btn ghost" style="width:100%" id="soBtn2">Sign out</button></section>
+    </div></div></div>`;
+
+  const mk = $('#makeCode2');
+  if (mk) mk.onclick = async () => {
+    mk.disabled = true; mk.textContent = 'Creating…';
+    try { const c = await ensureTeacherCode(); viewProfile(); toast('Join code ' + c + ' created'); }
+    catch { toast('Could not create a code'); mk.disabled = false; mk.textContent = 'Create my join code'; }
+  };
+  const cp = $('#copyCode2');
+  if (cp) cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(code); toast('Code copied'); }
+    catch { toast('The code is ' + code); }
+  };
+  $('#soBtn2').onclick = () => signOut(auth);
 }
 
 // ── 2. LESSON NOTES ───────────────────────────────────────────────────────
