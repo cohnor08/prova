@@ -238,12 +238,37 @@ const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
 // ── nav ──────────────────────────────────────────────────────────────────
 const ICON = { home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' };
 const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${p}</svg>`;
+const NAV = [
+  { g: 'Practise' },
+  { id: 'today',    t: 'Today',    i: '<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' },
+  { id: 'practice', t: 'Practice', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { id: 'songs',    t: 'Songs',    i: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
+  { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
+  { g: 'Track' },
+  { id: 'progress', t: 'Progress', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
+  { id: 'journal',  t: 'Journal',  i: '<path d="M4 20h4L19 9a2.8 2.8 0 10-4-4L4 16z"/>' },
+  { g: 'Account' },
+  { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
+];
+const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
+  progress:'Progress', journal:'Journal', profile:'Profile', chords:'Chords & scales', library:'Lesson library' };
+const PARENT = { chords:'practice', library:'practice' };
 function renderNav() {
-  $('#nav').innerHTML = `<div class="eyebrow">Practise</div>
-    <button class="nav" data-go="today" aria-current="page">${svg(ICON.home)}<span>Today</span></button>`;
+  $('#nav').innerHTML = NAV.map((x) => x.g
+    ? `<div class="eyebrow">${x.g}</div>`
+    : `<button class="nav" data-go="${x.id}"${x.id === screen || PARENT[screen] === x.id ? ' aria-current="page"' : ''}>${svg(x.i)}<span>${x.t}</span></button>`
+  ).join('');
 }
 $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.getAttribute('data-go')); });
-function go(id) { screen = id; $('#pageTitle').textContent = 'Today'; render(); }
+function go(id) {
+  screen = id;
+  $('#pageTitle').textContent = TITLES[id] || '';
+  renderNav();
+  ({ today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
+     progress: viewProgress, journal: viewJournal, profile: viewProfile,
+     chords: viewChords, library: viewLibrary })[id]();
+  window.scrollTo({ top: 0 });
+}
 
 // ── celebration, ported from src/components/Celebration.js ───────────────
 const PRAISE = ['Nice work!','Boom!','Great job!','Love it!','Keep going!','On fire!'];
@@ -365,6 +390,171 @@ document.addEventListener('click', (e) => {
       openPlayer('plan', i);
     } else { const [kind, i] = v.split(':'); openPlayer(kind, +i); }
   }
+});
+
+const APP = {"chords":[{"n":"C","r":"C","ty":"Major","f":[-1,3,2,0,1,0],"fg":[0,3,2,0,1,0]},{"n":"Cmaj7","r":"C","ty":"maj7","f":[-1,3,2,0,0,0],"fg":[0,3,2,0,0,0]},{"n":"C7","r":"C","ty":"7","f":[-1,3,2,3,1,0],"fg":[0,3,2,4,1,0]},{"n":"Cm","r":"C","ty":"Minor","f":[-1,3,5,5,4,3],"fg":[0,1,3,4,2,1]},{"n":"C#m","r":"C#","ty":"Minor","f":[-1,4,6,6,5,4],"fg":[0,1,3,4,2,1]},{"n":"D","r":"D","ty":"Major","f":[-1,-1,0,2,3,2],"fg":[0,0,0,1,3,2]},{"n":"Dm","r":"D","ty":"Minor","f":[-1,-1,0,2,3,1],"fg":[0,0,0,2,3,1]},{"n":"D7","r":"D","ty":"7","f":[-1,-1,0,2,1,2],"fg":[0,0,0,2,1,3]},{"n":"Dmaj7","r":"D","ty":"maj7","f":[-1,-1,0,2,2,2],"fg":[0,0,0,1,1,1]},{"n":"Dm7","r":"D","ty":"m7","f":[-1,-1,0,2,1,1],"fg":[0,0,0,2,1,1]},{"n":"Dsus4","r":"D","ty":"sus4","f":[-1,-1,0,2,3,3],"fg":[0,0,0,1,3,4]},{"n":"Dsus2","r":"D","ty":"sus2","f":[-1,-1,0,2,3,0],"fg":[0,0,0,1,2,0]},{"n":"E","r":"E","ty":"Major","f":[0,2,2,1,0,0],"fg":[0,2,3,1,0,0]},{"n":"Em","r":"E","ty":"Minor","f":[0,2,2,0,0,0],"fg":[0,2,3,0,0,0]},{"n":"E7","r":"E","ty":"7","f":[0,2,0,1,0,0],"fg":[0,2,0,1,0,0]},{"n":"Em7","r":"E","ty":"m7","f":[0,2,0,0,0,0],"fg":[0,2,0,0,0,0]},{"n":"Esus4","r":"E","ty":"sus4","f":[0,2,2,2,0,0],"fg":[0,1,2,3,0,0]},{"n":"F","r":"F","ty":"Major","f":[1,3,3,2,1,1],"fg":[1,3,4,2,1,1]},{"n":"Fmaj7","r":"F","ty":"maj7","f":[-1,-1,3,2,1,0],"fg":[0,0,3,2,1,0]},{"n":"Fm","r":"F","ty":"Minor","f":[1,3,3,1,1,1],"fg":[1,3,4,1,1,1]},{"n":"F#m","r":"F#","ty":"Minor","f":[2,4,4,2,2,2],"fg":[1,3,4,1,1,1]},{"n":"G","r":"G","ty":"Major","f":[3,2,0,0,0,3],"fg":[2,1,0,0,0,3]},{"n":"G7","r":"G","ty":"7","f":[3,2,0,0,0,1],"fg":[3,2,0,0,0,1]},{"n":"Gmaj7","r":"G","ty":"maj7","f":[3,2,0,0,0,2],"fg":[3,1,0,0,0,2]},{"n":"Gm","r":"G","ty":"Minor","f":[3,5,5,3,3,3],"fg":[1,3,4,1,1,1]},{"n":"A","r":"A","ty":"Major","f":[-1,0,2,2,2,0],"fg":[0,0,1,2,3,0]},{"n":"Am","r":"A","ty":"Minor","f":[-1,0,2,2,1,0],"fg":[0,0,2,3,1,0]},{"n":"A7","r":"A","ty":"7","f":[-1,0,2,0,2,0],"fg":[0,0,2,0,3,0]},{"n":"Am7","r":"A","ty":"m7","f":[-1,0,2,0,1,0],"fg":[0,0,2,0,1,0]},{"n":"Amaj7","r":"A","ty":"maj7","f":[-1,0,2,1,2,0],"fg":[0,0,2,1,3,0]},{"n":"Asus4","r":"A","ty":"sus4","f":[-1,0,2,2,3,0],"fg":[0,0,1,2,4,0]},{"n":"Asus2","r":"A","ty":"sus2","f":[-1,0,2,2,0,0],"fg":[0,0,1,2,0,0]},{"n":"B","r":"B","ty":"Major","f":[-1,2,4,4,4,2],"fg":[0,1,3,3,3,1]},{"n":"Bm","r":"B","ty":"Minor","f":[-1,2,4,4,3,2],"fg":[0,1,3,4,2,1]},{"n":"B7","r":"B","ty":"7","f":[-1,2,1,2,0,2],"fg":[0,2,1,3,0,4]},{"n":"Bm7","r":"B","ty":"m7","f":[-1,2,0,2,0,2],"fg":[0,2,0,3,0,4]},{"n":"C5","r":"C","ty":"5","f":[-1,3,5,5,-1,-1],"fg":[0,1,3,4,0,0]},{"n":"D5","r":"D","ty":"5","f":[-1,-1,0,2,3,-1],"fg":[0,0,0,1,2,0]},{"n":"E5","r":"E","ty":"5","f":[0,2,2,-1,-1,-1],"fg":[0,1,2,0,0,0]},{"n":"F5","r":"F","ty":"5","f":[1,3,3,-1,-1,-1],"fg":[1,3,4,0,0,0]},{"n":"G5","r":"G","ty":"5","f":[3,5,5,-1,-1,-1],"fg":[1,3,4,0,0,0]},{"n":"A5","r":"A","ty":"5","f":[-1,0,2,2,-1,-1],"fg":[0,0,1,2,0,0]},{"n":"C6","r":"C","ty":"6","f":[-1,3,2,2,1,0],"fg":[0,4,2,3,1,0]},{"n":"D6","r":"D","ty":"6","f":[-1,-1,0,2,0,2],"fg":[0,0,0,2,0,3]},{"n":"E6","r":"E","ty":"6","f":[0,2,2,1,2,0],"fg":[0,2,3,1,4,0]},{"n":"G6","r":"G","ty":"6","f":[3,2,0,0,0,0],"fg":[3,2,0,0,0,0]},{"n":"A6","r":"A","ty":"6","f":[-1,0,2,2,2,2],"fg":[0,0,1,1,1,1]},{"n":"Em6","r":"E","ty":"m6","f":[0,2,2,0,2,0],"fg":[0,2,3,0,4,0]},{"n":"Am6","r":"A","ty":"m6","f":[-1,0,2,2,1,2],"fg":[0,0,2,3,1,4]},{"n":"Dm6","r":"D","ty":"m6","f":[-1,-1,0,2,0,1],"fg":[0,0,0,2,0,1]},{"n":"C9","r":"C","ty":"9","f":[-1,3,2,3,3,3],"fg":[0,2,1,3,3,3]},{"n":"E9","r":"E","ty":"9","f":[0,2,0,1,0,2],"fg":[0,2,0,1,0,3]},{"n":"A9","r":"A","ty":"9","f":[-1,0,2,4,2,3],"fg":[0,0,1,4,2,3]},{"n":"B9","r":"B","ty":"9","f":[-1,2,1,2,2,2],"fg":[0,2,1,3,3,3]},{"n":"Cadd9","r":"C","ty":"add9","f":[-1,3,2,0,3,0],"fg":[0,3,2,0,4,0]},{"n":"Gadd9","r":"G","ty":"add9","f":[3,2,0,2,0,3],"fg":[2,1,0,3,0,4]},{"n":"Cmaj9","r":"C","ty":"maj9","f":[-1,3,2,4,3,0],"fg":[0,2,1,4,3,0]},{"n":"E13","r":"E","ty":"13","f":[0,2,0,1,2,2],"fg":[0,2,0,1,3,4]},{"n":"A13","r":"A","ty":"13","f":[-1,0,2,0,2,2],"fg":[0,0,2,0,3,4]},{"n":"Adim","r":"A","ty":"dim","f":[-1,0,1,2,1,-1],"fg":[0,0,1,3,2,0]},{"n":"Bdim","r":"B","ty":"dim","f":[-1,2,3,4,3,-1],"fg":[0,1,2,4,3,0]},{"n":"Cdim7","r":"C","ty":"dim7","f":[-1,3,4,2,4,-1],"fg":[0,2,3,1,4,0]},{"n":"Ddim7","r":"D","ty":"dim7","f":[-1,-1,0,1,0,1],"fg":[0,0,0,2,0,3]},{"n":"Bdim7","r":"B","ty":"dim7","f":[-1,2,3,1,3,-1],"fg":[0,2,3,1,4,0]},{"n":"Am7b5","r":"A","ty":"m7b5","f":[-1,0,1,0,1,-1],"fg":[0,0,1,0,2,0]},{"n":"Bm7b5","r":"B","ty":"m7b5","f":[-1,2,3,2,3,-1],"fg":[0,1,3,2,4,0]},{"n":"Em7b5","r":"E","ty":"m7b5","f":[0,1,2,0,3,-1],"fg":[0,1,2,0,3,0]},{"n":"Caug","r":"C","ty":"aug","f":[-1,3,2,1,1,0],"fg":[0,4,3,1,2,0]},{"n":"Eaug","r":"E","ty":"aug","f":[0,3,2,1,1,0],"fg":[0,4,3,1,2,0]},{"n":"Gaug","r":"G","ty":"aug","f":[3,2,1,0,0,3],"fg":[3,2,1,0,0,4]},{"n":"F#","r":"F#","ty":"Major","f":[2,4,4,3,2,2],"fg":[1,3,4,2,1,1]},{"n":"G","r":"G","ty":"Major","f":[3,5,5,4,3,3],"fg":[1,3,4,2,1,1]},{"n":"G#","r":"G#","ty":"Major","f":[4,6,6,5,4,4],"fg":[1,3,4,2,1,1]},{"n":"A","r":"A","ty":"Major","f":[5,7,7,6,5,5],"fg":[1,3,4,2,1,1]},{"n":"A#","r":"A#","ty":"Major","f":[6,8,8,7,6,6],"fg":[1,3,4,2,1,1]},{"n":"B","r":"B","ty":"Major","f":[7,9,9,8,7,7],"fg":[1,3,4,2,1,1]},{"n":"C","r":"C","ty":"Major","f":[8,10,10,9,8,8],"fg":[1,3,4,2,1,1]},{"n":"G#m","r":"G#","ty":"Minor","f":[4,6,6,4,4,4],"fg":[1,3,4,1,1,1]},{"n":"Am","r":"A","ty":"Minor","f":[5,7,7,5,5,5],"fg":[1,3,4,1,1,1]},{"n":"A#m","r":"A#","ty":"Minor","f":[6,8,8,6,6,6],"fg":[1,3,4,1,1,1]},{"n":"Bm","r":"B","ty":"Minor","f":[7,9,9,7,7,7],"fg":[1,3,4,1,1,1]},{"n":"Cm","r":"C","ty":"Minor","f":[8,10,10,8,8,8],"fg":[1,3,4,1,1,1]},{"n":"F7","r":"F","ty":"7","f":[1,3,1,2,1,1],"fg":[1,3,1,2,1,1]},{"n":"F#7","r":"F#","ty":"7","f":[2,4,2,3,2,2],"fg":[1,3,1,2,1,1]},{"n":"G7","r":"G","ty":"7","f":[3,5,3,4,3,3],"fg":[1,3,1,2,1,1]},{"n":"G#7","r":"G#","ty":"7","f":[4,6,4,5,4,4],"fg":[1,3,1,2,1,1]},{"n":"A7","r":"A","ty":"7","f":[5,7,5,6,5,5],"fg":[1,3,1,2,1,1]},{"n":"A#7","r":"A#","ty":"7","f":[6,8,6,7,6,6],"fg":[1,3,1,2,1,1]},{"n":"B7","r":"B","ty":"7","f":[7,9,7,8,7,7],"fg":[1,3,1,2,1,1]},{"n":"C7","r":"C","ty":"7","f":[8,10,8,9,8,8],"fg":[1,3,1,2,1,1]},{"n":"Fm7","r":"F","ty":"m7","f":[1,3,1,1,1,1],"fg":[1,3,1,1,1,1]},{"n":"F#m7","r":"F#","ty":"m7","f":[2,4,2,2,2,2],"fg":[1,3,1,1,1,1]},{"n":"Gm7","r":"G","ty":"m7","f":[3,5,3,3,3,3],"fg":[1,3,1,1,1,1]},{"n":"G#m7","r":"G#","ty":"m7","f":[4,6,4,4,4,4],"fg":[1,3,1,1,1,1]},{"n":"Am7","r":"A","ty":"m7","f":[5,7,5,5,5,5],"fg":[1,3,1,1,1,1]},{"n":"A#m7","r":"A#","ty":"m7","f":[6,8,6,6,6,6],"fg":[1,3,1,1,1,1]},{"n":"Bm7","r":"B","ty":"m7","f":[7,9,7,7,7,7],"fg":[1,3,1,1,1,1]},{"n":"Cm7","r":"C","ty":"m7","f":[8,10,8,8,8,8],"fg":[1,3,1,1,1,1]},{"n":"Fmaj7","r":"F","ty":"maj7","f":[1,3,2,2,1,1],"fg":[1,3,2,2,1,1]},{"n":"F#maj7","r":"F#","ty":"maj7","f":[2,4,3,3,2,2],"fg":[1,3,2,2,1,1]},{"n":"Gmaj7","r":"G","ty":"maj7","f":[3,5,4,4,3,3],"fg":[1,3,2,2,1,1]},{"n":"G#maj7","r":"G#","ty":"maj7","f":[4,6,5,5,4,4],"fg":[1,3,2,2,1,1]},{"n":"Amaj7","r":"A","ty":"maj7","f":[5,7,6,6,5,5],"fg":[1,3,2,2,1,1]},{"n":"A#maj7","r":"A#","ty":"maj7","f":[6,8,7,7,6,6],"fg":[1,3,2,2,1,1]},{"n":"Bmaj7","r":"B","ty":"maj7","f":[7,9,8,8,7,7],"fg":[1,3,2,2,1,1]},{"n":"Cmaj7","r":"C","ty":"maj7","f":[8,10,9,9,8,8],"fg":[1,3,2,2,1,1]},{"n":"A#","r":"A#","ty":"Major","f":[-1,1,3,3,3,1],"fg":[0,1,3,3,3,1]},{"n":"C","r":"C","ty":"Major","f":[-1,3,5,5,5,3],"fg":[0,1,3,3,3,1]},{"n":"C#","r":"C#","ty":"Major","f":[-1,4,6,6,6,4],"fg":[0,1,3,3,3,1]},{"n":"D","r":"D","ty":"Major","f":[-1,5,7,7,7,5],"fg":[0,1,3,3,3,1]},{"n":"D#","r":"D#","ty":"Major","f":[-1,6,8,8,8,6],"fg":[0,1,3,3,3,1]},{"n":"E","r":"E","ty":"Major","f":[-1,7,9,9,9,7],"fg":[0,1,3,3,3,1]},{"n":"F","r":"F","ty":"Major","f":[-1,8,10,10,10,8],"fg":[0,1,3,3,3,1]},{"n":"A#m","r":"A#","ty":"Minor","f":[-1,1,3,3,2,1],"fg":[0,1,3,4,2,1]},{"n":"Dm","r":"D","ty":"Minor","f":[-1,5,7,7,6,5],"fg":[0,1,3,4,2,1]},{"n":"D#m","r":"D#","ty":"Minor","f":[-1,6,8,8,7,6],"fg":[0,1,3,4,2,1]},{"n":"Em","r":"E","ty":"Minor","f":[-1,7,9,9,8,7],"fg":[0,1,3,4,2,1]},{"n":"Fm","r":"F","ty":"Minor","f":[-1,8,10,10,9,8],"fg":[0,1,3,4,2,1]},{"n":"A#7","r":"A#","ty":"7","f":[-1,1,3,1,3,1],"fg":[0,1,3,1,4,1]},{"n":"B7","r":"B","ty":"7","f":[-1,2,4,2,4,2],"fg":[0,1,3,1,4,1]},{"n":"C7","r":"C","ty":"7","f":[-1,3,5,3,5,3],"fg":[0,1,3,1,4,1]},{"n":"C#7","r":"C#","ty":"7","f":[-1,4,6,4,6,4],"fg":[0,1,3,1,4,1]},{"n":"D7","r":"D","ty":"7","f":[-1,5,7,5,7,5],"fg":[0,1,3,1,4,1]},{"n":"D#7","r":"D#","ty":"7","f":[-1,6,8,6,8,6],"fg":[0,1,3,1,4,1]},{"n":"E7","r":"E","ty":"7","f":[-1,7,9,7,9,7],"fg":[0,1,3,1,4,1]},{"n":"F7","r":"F","ty":"7","f":[-1,8,10,8,10,8],"fg":[0,1,3,1,4,1]},{"n":"A#m7","r":"A#","ty":"m7","f":[-1,1,3,1,2,1],"fg":[0,1,3,1,2,1]},{"n":"Bm7","r":"B","ty":"m7","f":[-1,2,4,2,3,2],"fg":[0,1,3,1,2,1]},{"n":"Cm7","r":"C","ty":"m7","f":[-1,3,5,3,4,3],"fg":[0,1,3,1,2,1]},{"n":"C#m7","r":"C#","ty":"m7","f":[-1,4,6,4,5,4],"fg":[0,1,3,1,2,1]},{"n":"Dm7","r":"D","ty":"m7","f":[-1,5,7,5,6,5],"fg":[0,1,3,1,2,1]},{"n":"D#m7","r":"D#","ty":"m7","f":[-1,6,8,6,7,6],"fg":[0,1,3,1,2,1]},{"n":"Em7","r":"E","ty":"m7","f":[-1,7,9,7,8,7],"fg":[0,1,3,1,2,1]},{"n":"Fm7","r":"F","ty":"m7","f":[-1,8,10,8,9,8],"fg":[0,1,3,1,2,1]},{"n":"A#maj7","r":"A#","ty":"maj7","f":[-1,1,3,2,3,1],"fg":[0,1,3,2,4,1]},{"n":"Bmaj7","r":"B","ty":"maj7","f":[-1,2,4,3,4,2],"fg":[0,1,3,2,4,1]},{"n":"Cmaj7","r":"C","ty":"maj7","f":[-1,3,5,4,5,3],"fg":[0,1,3,2,4,1]},{"n":"C#maj7","r":"C#","ty":"maj7","f":[-1,4,6,5,6,4],"fg":[0,1,3,2,4,1]},{"n":"Dmaj7","r":"D","ty":"maj7","f":[-1,5,7,6,7,5],"fg":[0,1,3,2,4,1]},{"n":"D#maj7","r":"D#","ty":"maj7","f":[-1,6,8,7,8,6],"fg":[0,1,3,2,4,1]},{"n":"Emaj7","r":"E","ty":"maj7","f":[-1,7,9,8,9,7],"fg":[0,1,3,2,4,1]},{"n":"Fmaj7","r":"F","ty":"maj7","f":[-1,8,10,9,10,8],"fg":[0,1,3,2,4,1]}],"scales":[{"name":"Major","intervals":[0,2,4,5,7,9,11]},{"name":"Minor","intervals":[0,2,3,5,7,8,10]},{"name":"Minor Pentatonic","intervals":[0,3,5,7,10]},{"name":"Major Pentatonic","intervals":[0,2,4,7,9]},{"name":"Blues","intervals":[0,3,5,6,7,10]},{"name":"Major Blues","intervals":[0,2,3,4,7,9]},{"name":"Dorian","intervals":[0,2,3,5,7,9,10]},{"name":"Phrygian","intervals":[0,1,3,5,7,8,10]},{"name":"Lydian","intervals":[0,2,4,6,7,9,11]},{"name":"Mixolydian","intervals":[0,2,4,5,7,9,10]},{"name":"Locrian","intervals":[0,1,3,5,6,8,10]},{"name":"Harmonic Minor","intervals":[0,2,3,5,7,8,11]},{"name":"Melodic Minor","intervals":[0,2,3,5,7,9,11]},{"name":"Phrygian Dominant","intervals":[0,1,4,5,7,8,10]},{"name":"Whole Tone","intervals":[0,2,4,6,8,10]},{"name":"Diminished (W–H)","intervals":[0,2,3,5,6,8,9,11]},{"name":"Diminished (H–W)","intervals":[0,1,3,4,6,7,9,10]}],"lib":[{"t":"Open chords","c":"Chords","l":"Beginner"},{"t":"Barre chords","c":"Chords","l":"Intermediate"},{"t":"Power chords","c":"Chords","l":"Novice"},{"t":"7th chords","c":"Chords","l":"Intermediate"},{"t":"Minor pentatonic scale","c":"Scales","l":"Novice"},{"t":"Major scale","c":"Scales","l":"Intermediate"},{"t":"Modes (Dorian, Mixolydian…)","c":"Scales","l":"Advanced"},{"t":"Alternate picking","c":"Technique","l":"Intermediate"},{"t":"Legato (hammer-ons & pull-offs)","c":"Technique","l":"Advanced"},{"t":"Fingerstyle / fingerpicking","c":"Technique","l":"Intermediate"},{"t":"Slap & pop","c":"Technique","l":"Advanced"},{"t":"Finger independence & warm-ups","c":"Technique","l":"Beginner"},{"t":"Notes on the fretboard","c":"Theory","l":"Novice"},{"t":"Intervals","c":"Theory","l":"Intermediate"},{"t":"How chords are built","c":"Theory","l":"Intermediate"},{"t":"Keys & chord progressions","c":"Theory","l":"Advanced"},{"t":"Strumming patterns","c":"Rhythm","l":"Beginner"},{"t":"Timing & subdivisions","c":"Rhythm","l":"Intermediate"},{"t":"Locking with the drums (bass)","c":"Rhythm","l":"Intermediate"},{"t":"Recognising intervals by ear","c":"Ear Training","l":"Intermediate"},{"t":"Figuring out songs by ear","c":"Ear Training","l":"Advanced"},{"t":"Great first songs (guitar)","c":"Songs","l":"Beginner"},{"t":"Great first songs (bass)","c":"Songs","l":"Beginner"},{"t":"Amp & EQ basics","c":"Gear & Tone","l":"Novice"},{"t":"Changing & caring for strings","c":"Gear & Tone","l":"Beginner"},{"t":"Sweep picking arpeggios","c":"Technique","l":"Elite"},{"t":"Two-hand & 8-finger tapping","c":"Technique","l":"Elite"},{"t":"Economy picking at speed","c":"Technique","l":"Elite"},{"t":"Iconic shred solos","c":"Songs","l":"Elite"},{"t":"Altered & extended jazz chords","c":"Chords","l":"Elite"},{"t":"Melodic minor modes & superlocrian","c":"Scales","l":"Elite"},{"t":"Reharmonization & negative harmony","c":"Theory","l":"Elite"},{"t":"Double-thumb & Wooten technique","c":"Technique","l":"Elite"},{"t":"Fretless & Jaco-style fingerstyle","c":"Technique","l":"Elite"},{"t":"Virtuoso bass benchmarks","c":"Songs","l":"Elite"},{"t":"Improvising over fast changes","c":"Ear Training","l":"Advanced"},{"t":"Drop D power chords & riffs","c":"Chords","l":"Novice"},{"t":"Sus2, sus4 & add9 chords","c":"Chords","l":"Intermediate"},{"t":"Triads on the top strings","c":"Chords","l":"Intermediate"},{"t":"Bass double stops & chords","c":"Chords","l":"Intermediate"},{"t":"Open & alternate tunings","c":"Chords","l":"Advanced"},{"t":"Major pentatonic scale","c":"Scales","l":"Novice"},{"t":"Blues scale","c":"Scales","l":"Intermediate"},{"t":"Natural minor scale","c":"Scales","l":"Novice"},{"t":"Major & minor arpeggios","c":"Scales","l":"Intermediate"},{"t":"Three-note-per-string scales","c":"Scales","l":"Advanced"},{"t":"Harmonic minor scale","c":"Scales","l":"Advanced"},{"t":"String bending & vibrato","c":"Technique","l":"Novice"},{"t":"Slides & glissando","c":"Technique","l":"Novice"},{"t":"Palm muting","c":"Technique","l":"Novice"},{"t":"Hybrid picking","c":"Technique","l":"Advanced"},{"t":"String skipping","c":"Technique","l":"Advanced"},{"t":"Pinch (artificial) harmonics","c":"Technique","l":"Advanced"},{"t":"Two & three-finger plucking","c":"Technique","l":"Novice"},{"t":"Ghost notes & muting","c":"Technique","l":"Intermediate"},{"t":"Building speed with a metronome","c":"Technique","l":"Intermediate"},{"t":"Reading TAB & chord diagrams","c":"Theory","l":"Beginner"},{"t":"Rhythm notation & note values","c":"Theory","l":"Beginner"},{"t":"The CAGED system","c":"Theory","l":"Intermediate"},{"t":"Circle of fifths","c":"Theory","l":"Intermediate"},{"t":"Capo & transposing","c":"Theory","l":"Novice"},{"t":"Syncopation","c":"Rhythm","l":"Intermediate"},{"t":"Triplets & shuffle feel","c":"Rhythm","l":"Intermediate"},{"t":"Odd time signatures","c":"Rhythm","l":"Advanced"},{"t":"Funk 16th-note strumming","c":"Rhythm","l":"Advanced"},{"t":"Hearing major vs minor","c":"Ear Training","l":"Novice"},{"t":"Tuning by ear","c":"Ear Training","l":"Beginner"},{"t":"Transcribing a bassline","c":"Ear Training","l":"Advanced"},{"t":"Campfire acoustic songs","c":"Songs","l":"Novice"},{"t":"Essential rock riffs","c":"Songs","l":"Intermediate"},{"t":"Advanced guitar workouts","c":"Songs","l":"Advanced"},{"t":"Groove bass classics","c":"Songs","l":"Intermediate"},{"t":"Fingerstyle showpieces","c":"Songs","l":"Advanced"},{"t":"Effects pedals 101","c":"Gear & Tone","l":"Intermediate"},{"t":"Setting up your instrument","c":"Gear & Tone","l":"Advanced"},{"t":"Shaping your bass tone","c":"Gear & Tone","l":"Intermediate"},{"t":"Using a looper pedal","c":"Gear & Tone","l":"Advanced"}],"libCats":["Chords","Scales","Technique","Theory","Rhythm","Ear Training","Songs","Gear & Tone"],"libLevels":["Beginner","Novice","Intermediate","Advanced","Elite"],"badges":[{"id":"sess_1","icon":"musical-notes","tier":1,"title":"First Session","desc":"Complete your first practice session"},{"id":"sess_10","icon":"musical-notes","tier":2,"title":"Ten Deep","desc":"Complete 10 practice sessions"},{"id":"sess_30","icon":"musical-notes","tier":3,"title":"Thirty Strong","desc":"Complete 30 practice sessions"},{"id":"sess_100","icon":"musical-notes","tier":4,"title":"Centurion","desc":"Complete 100 practice sessions"},{"id":"streak_3","icon":"flame","tier":1,"title":"On a Roll","desc":"Practice 3 days in a row"},{"id":"streak_7","icon":"flame","tier":2,"title":"Locked In","desc":"Practice 7 days in a row"},{"id":"streak_14","icon":"flame","tier":2,"title":"Fortnight Fire","desc":"Practice 14 days in a row"},{"id":"streak_30","icon":"flame","tier":3,"title":"Unstoppable","desc":"Practice 30 days in a row"},{"id":"streak_100","icon":"flame","tier":4,"title":"Legend","desc":"Practice 100 days in a row"},{"id":"hrs_1","icon":"time","tier":1,"title":"First Hour","desc":"Practice for 1 hour total"},{"id":"hrs_5","icon":"time","tier":1,"title":"Five Alive","desc":"Practice for 5 hours total"},{"id":"hrs_10","icon":"time","tier":2,"title":"Ten Hours In","desc":"Practice for 10 hours total"},{"id":"hrs_25","icon":"time","tier":2,"title":"Night Shifter","desc":"Practice for 25 hours total"},{"id":"hrs_50","icon":"time","tier":3,"title":"Fifty Club","desc":"Practice for 50 hours total"},{"id":"hrs_100","icon":"time","tier":4,"title":"Hundred Hours","desc":"Practice for 100 hours total"},{"id":"score_500","icon":"trophy","tier":2,"title":"Point Getter","desc":"Reach 500 Prova points"},{"id":"score_2500","icon":"trophy","tier":3,"title":"Point Machine","desc":"Reach 2,500 Prova points"},{"id":"score_10000","icon":"trophy","tier":4,"title":"Point Royalty","desc":"Reach 10,000 Prova points"},{"id":"task_1","icon":"school","tier":1,"title":"Teacher's Orders","desc":"Complete your first teacher task"},{"id":"task_25","icon":"school","tier":3,"title":"Star Student","desc":"Complete 25 teacher tasks"},{"id":"song_1","icon":"mic","tier":1,"title":"Song Smith","desc":"Finish a learn-a-song step"},{"id":"song_20","icon":"mic","tier":3,"title":"Repertoire Rising","desc":"Finish 20 learn-a-song steps"},{"id":"sess_250","icon":"musical-notes","tier":4,"title":"The Machine","desc":"Complete 250 practice sessions"},{"id":"sess_500","icon":"musical-notes","tier":4,"title":"Institution","desc":"Complete 500 practice sessions"},{"id":"streak_180","icon":"flame","tier":4,"title":"Half-Year Hero","desc":"Practice 180 days in a row"},{"id":"streak_365","icon":"flame","tier":4,"title":"Year of Fire","desc":"Practice 365 days in a row"},{"id":"hrs_250","icon":"time","tier":4,"title":"Quarter Thousand","desc":"Practice for 250 hours total"},{"id":"hrs_500","icon":"time","tier":4,"title":"Five Hundred","desc":"Practice for 500 hours total"},{"id":"score_25000","icon":"trophy","tier":4,"title":"Point Overlord","desc":"Reach 25,000 Prova points"},{"id":"score_50000","icon":"trophy","tier":4,"title":"Untouchable","desc":"Reach 50,000 Prova points"},{"id":"task_100","icon":"school","tier":4,"title":"Curriculum Crusher","desc":"Complete 100 teacher tasks"},{"id":"goal_10","icon":"flag","tier":3,"title":"Goal Getter","desc":"Achieve 10 of your own goals"}],"tier":{"1":"#7A8AAD","2":"#3B82F6","3":"#22D3EE","4":"#F5C044"},"drills":[{"key":"ear","title":"Ear training","sub":"Name what you hear","icon":"ear-outline","route":"EarTraining","counter":"earTraining","modes":[{"key":"intervals","label":"Intervals","levels":4},{"key":"chords","label":"Chords","levels":4},{"key":"scales","label":"Scales","levels":3}]},{"key":"rhythm","title":"Rhythm tapper","sub":"Lock in your timing","icon":"pulse","route":"RhythmTapper","counter":"rhythmTapper","modes":[{"key":"click","label":"With click","levels":4},{"key":"hold","label":"Hold the time","levels":4}]},{"key":"fret","title":"Fretboard","sub":"Find the note","icon":"locate","route":"FretboardGame","counter":"fretGame","modes":[{"key":"find","label":"Find the note","levels":4},{"key":"name","label":"Name the note","levels":4}]},{"key":"theory","title":"Theory quiz","sub":"Test your knowledge","icon":"school-outline","route":"TheoryQuiz","counter":"theoryQuiz","modes":[],"levels":3}]};
+
+// ── the rest of the screens, all off the same user doc ───────────────────
+const card = (title, meta, body) =>
+  `<section class="card"><header><h3>${title}</h3>${meta ? `<span class="meta">${meta}</span>` : ''}</header>${body}</section>`;
+const empty = (t, s2) => `<div class="empty"><div style="font-weight:650;color:var(--ink)">${t}</div><div style="font-size:13px;margin-top:4px">${s2}</div></div>`;
+const head = (h, sub, right) => `<div class="greet" style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+  <div><h2>${h}</h2><p>${sub}</p></div>${right || ''}</div>`;
+
+function viewPractice() {
+  const tile = (t, p, foot, go2) => `<button class="card" style="text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px"${go2 ? ` data-go="${go2}"` : ''}>
+    <h4 style="margin:0;font-size:14px;font-weight:650">${t}</h4><p class="hint" style="margin:0">${p}</p>
+    <div style="font-size:11.5px;font-weight:650;color:var(--primary)">${foot}</div></button>`;
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Practice', 'Reference and drills. The games run in the phone app.')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">
+      ${tile('Chords &amp; scales', `${APP.chords.length} chord shapes and ${APP.scales.length} scales.`, 'Open →', 'chords')}
+      ${tile('Lesson library', `${APP.lib.length} topics across ${APP.libCats.length} categories.`, 'Browse →', 'library')}
+      ${APP.drills.map(d => tile(d.title, d.sub + '.', 'In the phone app')).join('')}
+    </div></div>`;
+}
+
+let CH = { root: 'All', type: 'All' };
+function chordSvg(c) {
+  const W=92,H=112,L=15,T=24,SP=12.4,FR=18;
+  const pos = c.f.filter(x => x > 0);
+  const base = pos.length && Math.min(...pos) > 4 ? Math.min(...pos) : 1;
+  let o = '';
+  for (let i=0;i<6;i++) o += `<line x1="${L+i*SP}" y1="${T}" x2="${L+i*SP}" y2="${T+4*FR}" stroke="var(--ink-3)"/>`;
+  for (let f=0;f<=4;f++) o += `<line x1="${L}" y1="${T+f*FR}" x2="${L+5*SP}" y2="${T+f*FR}" stroke="var(--ink-3)" stroke-width="${f===0&&base===1?3:1}"/>`;
+  if (base>1) o += `<text x="${L-6}" y="${T+FR-5}" text-anchor="end" font-size="9" fill="var(--ink-3)">${base}</text>`;
+  c.f.forEach((fr,i)=>{ const x=L+i*SP;
+    if (fr===-1) o += `<path d="M${x-3.2} ${T-12}l6.4 6.4M${x+3.2} ${T-12}l-6.4 6.4" stroke="var(--ink-3)" stroke-width="1.5"/>`;
+    else if (fr===0) o += `<circle cx="${x}" cy="${T-8}" r="3.4" fill="none" stroke="var(--ink-3)" stroke-width="1.5"/>`;
+    else { const row=fr-base+1; if(row<1||row>4) return;
+      o += `<circle cx="${x}" cy="${T+(row-.5)*FR}" r="5.5" fill="var(--primary)"/>`;
+      if (c.fg[i]) o += `<text x="${x}" y="${T+(row-.5)*FR+3.2}" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">${c.fg[i]}</text>`; }});
+  return `<div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center">
+    <div style="font-weight:650;font-size:13px;margin-bottom:6px">${esc(c.n)}</div>
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${o}</svg></div>`;
+}
+function viewChords() {
+  const roots = ['All', ...new Set(APP.chords.map(c => c.r))];
+  const types = ['All', ...new Set(APP.chords.map(c => c.ty))];
+  const list = APP.chords.filter(c => (CH.root==='All'||c.r===CH.root) && (CH.type==='All'||c.ty===CH.type));
+  const chip = (k,v,on) => `<button class="btn sm ghost" data-ch="${k}" data-v="${esc(v)}"${on?' style="border-color:var(--primary);color:var(--ink)"':''}>${esc(v)}</button>`;
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Chords &amp; scales', `${APP.chords.length} shapes · ${APP.scales.length} scales`)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${roots.map(r=>chip('root',r,CH.root===r)).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${types.map(t=>chip('type',t,CH.type===t)).join('')}</div>
+    ${card('Shapes', `${list.length} of ${APP.chords.length}`,
+      list.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px">${list.map(chordSvg).join('')}</div>`
+      : '<p class="hint" style="margin:0">Nothing matches those filters.</p>')}
+    ${card('Scales', APP.scales.length, `<div class="hint">${APP.scales.map(x=>esc(x.name)).join(' · ')}</div>`)}
+  </div>`;
+}
+let LB = { cat: 'All', level: 'All' };
+function viewLibrary() {
+  const list = APP.lib.filter(x => (LB.cat==='All'||x.c===LB.cat) && (LB.level==='All'||x.l===LB.level));
+  const chip = (k,v,on) => `<button class="btn sm ghost" data-lb="${k}" data-v="${esc(v)}"${on?' style="border-color:var(--primary);color:var(--ink)"':''}>${esc(v)}</button>`;
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Lesson library', `${APP.lib.length} topics`)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${['All',...APP.libCats].map(c=>chip('cat',c,LB.cat===c)).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${['All',...APP.libLevels].map(c=>chip('level',c,LB.level===c)).join('')}</div>
+    ${card('Topics', `${list.length} of ${APP.lib.length}`, list.length
+      ? list.map(x=>`<div class="trow"><div class="thead2" style="cursor:default"><div style="flex:1"><div class="ttl">${esc(x.t)}</div><div class="tsub">${esc(x.c)} · ${esc(x.l)}</div></div></div></div>`).join('')
+      : '<p class="hint" style="margin:0">Nothing matches.</p>')}
+  </div>`;
+}
+
+function viewSongs() {
+  const lib = Array.isArray(me.songLibrary) ? me.songLibrary : [];
+  const sets = Array.isArray(me.setlists) ? me.setlists : [];
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Songs', `${lib.length} in your library · ${sets.length} setlist${sets.length===1?'':'s'}`)}
+    <div class="cols"><div class="stack">
+      ${card('Library', lib.length, lib.length
+        ? lib.map(x=>`<div class="trow"><div class="thead2" style="cursor:default">
+            <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div><div class="tsub">${esc(x.artist||'')}</div></div></div></div>`).join('')
+        : empty('No songs yet', 'Add songs in the app and they show up here.'))}
+    </div><div class="stack">
+      ${card('Setlists', sets.length, sets.length
+        ? sets.map(x=>`<div class="trow"><div class="thead2" style="cursor:default"><div style="flex:1;min-width:0">
+            <div class="ttl">${esc(x.name)}</div><div class="tsub">${(x.songs||[]).length} songs${x.setting?' · '+esc(x.setting):''}</div></div></div></div>`).join('')
+        : empty('No setlists', 'Build one in the app for your next gig.'))}
+    </div></div></div>`;
+}
+
+function viewSchedule() {
+  const wp = me.practicePlan?.weeklyPlan || {};
+  const order = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  const total = order.reduce((t,d)=>t+((wp[d]?.sessions)||[]).reduce((a,s)=>a+(s.duration||0),0),0);
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Schedule', total ? `${Math.floor(total/60)}h ${total%60}m planned this week` : 'No plan generated yet')}
+    ${Object.keys(wp).length ? order.map(d=>{
+      const ss = (wp[d]?.sessions)||[];
+      const mins = ss.reduce((a,s)=>a+(s.duration||0),0);
+      return card(d[0].toUpperCase()+d.slice(1) + (d===TODAY_NAME?' · today':''), mins?`${mins} min`:'Rest',
+        ss.length ? ss.map(s=>`<div class="trow"><div class="thead2" style="cursor:default">
+            <div style="flex:1;min-width:0"><div class="ttl">${esc(s.title)}</div><div class="tsub">${esc(String(s.category||'').replace(/_/g,' '))}</div></div>
+            <div class="dur">${s.duration} min</div></div></div>`).join('')
+          : '<p class="hint" style="margin:0">Rest day.</p>');
+    }).join('') : empty('No plan yet', 'Generate a practice plan in the app.')}
+  </div>`;
+}
+
+function viewProgress() {
+  const earned = me.badges && typeof me.badges === 'object' ? Object.keys(me.badges) : [];
+  const goals = Array.isArray(me.personalGoals) ? me.personalGoals : [];
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Progress', 'Everything you have banked')}
+    <div class="stats">
+      <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes||0)/60)}<small>hrs</small></div></div>
+      <div class="stat"><div class="k">Current streak</div><div class="v">${me.streak||0}<small>days</small></div></div>
+      <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore||0).toLocaleString()}</div></div>
+    </div>
+    <div class="cols"><div class="stack">
+      ${card('Badges', `${earned.length} of ${APP.badges.length}`,
+        `<div style="display:flex;gap:11px;flex-wrap:wrap">${APP.badges.map(b=>{
+          const on = earned.includes(b.id), c = APP.tier[b.tier];
+          return `<div title="${esc(b.title)} — ${esc(b.desc)}" style="width:44px;height:44px;border-radius:50%;border:2px solid ${on?c:'var(--line)'};color:${on?c:'var(--line)'};display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--round)">${b.tier}</div>`;
+        }).join('')}</div>
+        <p class="hint" style="margin:12px 0 0">Hover a medallion for what it takes.</p>`)}
+    </div><div class="stack">
+      ${card('Goals', goals.length, goals.length
+        ? goals.map(g=>`<div style="margin-bottom:12px"><div style="display:flex;gap:10px;font-size:13px">
+            <span style="flex:1">${esc(g.title)}</span><span class="hint">${g.done?'Done':'In progress'}</span></div></div>`).join('')
+        : empty('No goals yet', 'Set some in the app.'))}
+    </div></div></div>`;
+}
+
+function viewJournal() {
+  const es = Array.isArray(me.journalEntries) ? [...me.journalEntries].reverse() : [];
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Journal', 'Private — your teacher never sees this')}
+    <div class="cols"><div class="stack">
+      ${es.length ? es.map(e=>card(esc(e.date||e.createdAt||'Entry'), e.mood?esc(e.mood):'',
+          `<p class="tdesc" style="margin:0">${esc(e.text||e.note||'')}</p>`)).join('')
+        : card('Entries','', empty('Nothing written yet','Journal entries you write in the app appear here.'))}
+    </div><div class="stack">${card('This account','',`<p class="hint" style="margin:0">${es.length} entr${es.length===1?'y':'ies'}.</p>`)}</div></div></div>`;
+}
+
+function viewProfile() {
+  const row = (t, v) => `<div style="display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--line)">
+    <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${t}</div><div class="hint">${esc(v ?? '—')}</div></div></div>`;
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Profile', esc(displayName(me)))}
+    <div class="cols"><div class="stack">
+      ${card('Account','', `<div style="margin-top:-13px">
+        ${row('Email', me.email)}${row('Instrument', me.instrument)}${row('Level', me.level)}
+        ${row('Role', me.role)}${row('Daily target', me.dailyDuration ? me.dailyDuration + ' min' : null)}
+        ${row('Member since', me.createdAt ? new Date(me.createdAt).toLocaleDateString() : null)}</div>`)}
+    </div><div class="stack">
+      ${card('Settings live in the app','', `<p class="hint" style="margin:0 0 14px">Theme, reminders, teacher connection and account deletion are all in the phone app for now.</p>
+        <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
+    </div></div></div>`;
+  $('#soBtn').onclick = () => signOut(auth);
+}
+
+document.addEventListener('click', (e) => {
+  let t;
+  if ((t = e.target.closest('[data-ch]'))) { CH[t.getAttribute('data-ch')] = t.getAttribute('data-v'); viewChords(); }
+  if ((t = e.target.closest('[data-lb]'))) { LB[t.getAttribute('data-lb')] = t.getAttribute('data-v'); viewLibrary(); }
 });
 
 // ── practice player — Done locked until the clock runs out ───────────────
