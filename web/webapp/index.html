@@ -616,10 +616,11 @@ document.addEventListener('click', (e) => {
   if ((t = e.target.closest('[data-play]'))) {
     const v = t.getAttribute('data-play');
     if (v === 'next') {
-      const d = doneIds();
-      const i = sessions.findIndex(s => !d.includes(s.id));
-      if (i < 0) { toast('Everything in today\'s plan is done'); return; }
-      openPlayer('plan', i);
+      const last = recallLast();                    // resume exactly where they stopped
+      if (last) return openPlayer(last.kind, last.i);
+      const q = queue();
+      if (!q.length) { toast('Everything is done for today'); return; }
+      openPlayer(q[0].kind, q[0].i);
     } else { const [kind, i] = v.split(':'); openPlayer(kind, +i); }
   }
 });
@@ -1480,27 +1481,45 @@ const hasStartedToday = () => {
 };
 const markStarted = () => { try { localStorage.setItem(startedKey(), '1'); } catch {} };
 function playList(kind) { return kind === 'plan' ? sessions : assigned(); }
+// One queue for the whole run — the day's plan, then anything the teacher
+// set — so Next carries you across both, as the app's player does.
+function queue() {
+  const d = doneIds(), a = assigned();
+  return [
+    ...sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id)),
+    ...a.map((x, i) => ({ kind: 'assigned', i })).filter(q => !a[q.i].completed),
+  ];
+}
+// A teacher task's timer is durationMin; a plan session's is duration.
+const targetFor = (kind, item) => ((kind === 'plan' ? item.duration : item.durationMin) || 0) * 60;
+const lastKey = () => `prova:last:${uid}:${todayKey()}`;
+const rememberLast = (kind, i) => { try { localStorage.setItem(lastKey(), kind + ':' + i); } catch {} };
+function recallLast() {
+  try {
+    const v = localStorage.getItem(lastKey()); if (!v) return null;
+    const [kind, i] = v.split(':');
+    const item = playList(kind)[+i]; if (!item) return null;
+    const done = kind === 'plan' ? doneIds().includes(item.id) : !!item.completed;
+    return done ? null : { kind, i: +i };
+  } catch { return null; }
+}
 function openPlayer(kind, i) {
   const item = playList(kind)[i];
   if (!item) return;
-  const target = (item.duration || 0) * 60;
-  markStarted();
-  PLAY = { kind, i, item, target, elapsed: PRIOR[kind + i] || 0, paused: false, t0: performance.now() };
+  markStarted(); rememberLast(kind, i);
+  PLAY = { kind, i, item, target: targetFor(kind, item),
+           elapsed: PRIOR[kind + i] || 0, paused: false, t0: performance.now() };
   drawPlayer(); tick();
 }
 // Leaving a task keeps its clock, then move on — the app's handleSkip.
 function stash() { if (PLAY) { PRIOR[PLAY.kind + PLAY.i] = PLAY.elapsed; savePrior(); } }
 function step(delta) {
   stash();
-  const list = playList(PLAY.kind);
-  let i = PLAY.i;
-  for (let n = 0; n < list.length; n++) {
-    i += delta;
-    if (i < 0 || i >= list.length) { closePlayer(); return; }
-    const done = PLAY.kind === 'plan' ? doneIds().includes(list[i].id) : !!list[i].completed;
-    if (!done) break;
-  }
-  openPlayer(PLAY.kind, i);
+  const q = queue();
+  const at = q.findIndex(x => x.kind === PLAY.kind && x.i === PLAY.i);
+  const next = q[(at < 0 ? 0 : at) + delta];
+  if (!next) { closePlayer(); return; }
+  openPlayer(next.kind, next.i);
 }
 function closePlayer() { stash(); clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; rerender(); }
 function tick() {
@@ -1511,8 +1530,9 @@ function tick() {
     PLAY.elapsed += (now - PLAY.t0) / 1000; PLAY.t0 = now;
     const c = $('#pClock'); if (!c) return;
     const rem = Math.max(0, PLAY.target - PLAY.elapsed);
-    c.textContent = fmt(rem);
-    const b = $('#pDone'); if (b) b.disabled = PLAY.target > 0 && rem > 0;
+    c.textContent = PLAY.target ? fmt(rem) : fmt(PLAY.elapsed);
+    const b = $('#pDone');
+    if (b) b.disabled = PLAY.target > 0 ? rem > 0 : PLAY.elapsed < 30;
   }, 200);
 }
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
@@ -1525,18 +1545,23 @@ function drawPlayer() {
     ${PLAY.item.description ? `<p style="margin:0 0 20px;color:var(--ink-2);font-size:13px;line-height:1.6;
         text-align:left;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);
         border:1px solid var(--line);border-radius:12px;padding:13px 15px">${esc(PLAY.item.description)}</p>` : '<div style="height:8px"></div>'}
-    <div class="clock" id="pClock">${fmt(rem)}</div>
-    <p class="hint" style="margin:12px 0 0">${PLAY.target ? `${PLAY.item.duration} min task` : 'Open-ended'}</p>
+    <div class="clock" id="pClock">${PLAY.target ? fmt(rem) : fmt(PLAY.elapsed)}</div>
+    <p class="hint" style="margin:12px 0 0">${PLAY.target
+      ? `${Math.round(PLAY.target / 60)} min ${PLAY.kind === 'assigned' ? 'teacher task' : 'task'}`
+      : 'No timer — practise for at least 30 seconds'}</p>
     ${PRIOR[PLAY.kind + PLAY.i] ? `<p class="hint" style="margin:8px 0 0">${fmt(PRIOR[PLAY.kind + PLAY.i])} already banked on this task</p>` : ''}
     <button class="btn ghost" id="pWatch" style="width:100%;margin-top:18px">▶ Watch a lesson</button>
     <div style="display:flex;gap:10px;margin-top:10px">
       <button class="btn ghost" id="pPause" style="flex:1">${PLAY.paused ? 'Resume' : 'Pause'}</button>
-      <button class="btn" id="pDone" style="flex:1" ${PLAY.target > 0 && rem > 0 ? 'disabled' : ''}>Done</button></div>
+      <button class="btn" id="pDone" style="flex:1" ${
+        (PLAY.target > 0 ? rem > 0 : PLAY.elapsed < 30) ? 'disabled' : ''}>Done</button></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
-      <button class="btn ghost sm" id="pPrev"${PLAY.i === 0 ? ' disabled' : ''}>‹ Previous</button>
-      <span class="hint">${PLAY.i + 1} of ${playList(PLAY.kind).length}</span>
-      <button class="btn ghost sm" id="pNext">${PLAY.i + 1 < playList(PLAY.kind).length ? 'Next ›' : 'Finish'}</button></div>
-    <p class="hint" style="margin:14px 0 0">Done unlocks when the clock runs out. Move on and your time is kept.</p></div>`;
+      ${(() => { const q = queue(); const at = q.findIndex(x => x.kind === PLAY.kind && x.i === PLAY.i);
+        return `<button class="btn ghost sm" id="pPrev"${at <= 0 ? ' disabled' : ''}>‹ Previous</button>
+          <span class="hint">${at < 0 ? 1 : at + 1} of ${q.length}</span>`; })()}
+      <button class="btn ghost sm" id="pNext">Next ›</button></div>
+    <p class="hint" style="margin:14px 0 0">${PLAY.target
+      ? 'Done unlocks when the clock runs out.' : 'Done unlocks after 30 seconds.'} Move on and your time is kept.</p></div>`;
   $('#pPause').onclick = () => { PLAY.paused = !PLAY.paused; PLAY.t0 = performance.now(); drawPlayer(); };
   $('#pDone').onclick = finish;
   $('#pPrev').onclick = () => step(-1);
@@ -1602,6 +1627,7 @@ async function finish() {
       celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '⭐' });
     }
     delete PRIOR[kind + PLAY.i]; savePrior();
+    try { localStorage.removeItem(lastKey()); } catch {}
     $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
     $('#chipStreak').textContent = me.streak || 0;
   } catch (err) {
