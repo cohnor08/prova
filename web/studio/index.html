@@ -303,6 +303,15 @@ const app = initializeApp({
 const auth = getAuth(app), db = getFirestore(app), fns = getFunctions(app);
 
 const $ = (s) => document.querySelector(s);
+// { once: true } killed these after a single click; adding one per render
+// stacked them. Swap instead: remove the last, register the new.
+let screenHandler = null;
+function onScreen(fn) {
+  const host = $('#screen');
+  if (screenHandler) host.removeEventListener('click', screenHandler);
+  screenHandler = fn;
+  host.addEventListener('click', fn);
+}
 const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2400); };
 
@@ -1336,7 +1345,7 @@ function viewOverview() {
           </div></div>`).join('')}</section>` : ''}
   </div>`;
 
-  $('#screen').addEventListener('click', (e) => {
+  onScreen((e) => {
     const r = e.target.closest('[data-ovr]');
     if (r) { OVR = r.getAttribute('data-ovr'); return viewOverview(); }
     const st = e.target.closest('[data-ovstu]');
@@ -1373,7 +1382,7 @@ function viewOverview() {
     const o = e.target.closest('[data-ovopen]');
     if (o) { const y = window.scrollY, k = 'ov' + o.getAttribute('data-ovopen');
       ROPEN[k] = !ROPEN[k]; viewOverview(); window.scrollTo(0, y); }
-  }, { once: true });
+  });
 }
 
 // ── RESOURCES — the app's own library (src/constants/resources.js), plus
@@ -1456,7 +1465,7 @@ function viewResources() {
     }).join('')}
   </div>`;
 
-  $('#screen').addEventListener('click', async (e) => {
+  onScreen(async (e) => {
     const f = e.target.closest('[data-rf]');
     if (f) { RF[f.getAttribute('data-rf')] = f.getAttribute('data-v'); ROPEN = {}; return viewResources(); }
     const o = e.target.closest('[data-ropen]');
@@ -1482,7 +1491,7 @@ function viewResources() {
       const cat = key.replace(/\d+$/, ''), ix = +key.match(/\d+$/)[0];
       return assignItem(((RES.RESOURCES[RF.inst] || {})[RF.level] || {})[cat][ix]);
     }
-  }, { once: true });
+  });
 }
 async function delFrom(field, i) {
   if (!confirm('Delete this?')) return;
@@ -1547,7 +1556,7 @@ function assignItem(item) {
     try { await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
       stu.assignedTasks = cur; closeModal(); toast(`Assigned to ${displayName(stu)}`); }
     catch { toast('Could not assign'); }
-  }, { once: true });
+  });
 }
 
 // ── PROFILE — the teacher's own record, including the join code ──────────
