@@ -489,9 +489,9 @@ const NAV = [
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
-  calendar:'Calendar', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
+  calendar:'Calendar', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
-  ask:'practice', theory:'practice' };
+  ask:'practice', theory:'practice', gig:'calendar' };
 function renderNav() {
   $('#nav').innerHTML = NAV.map((x) => x.g
     ? `<div class="eyebrow">${x.g}</div>`
@@ -506,7 +506,7 @@ const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedul
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
   calendar: viewCalendar, notifications: viewNotifications,
-  skilltree: viewSkillTree, theory: viewTheory };
+  skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
   screen = id;
@@ -604,25 +604,48 @@ function render() {
         <button class="btn${all ? ' ghost' : ''}" data-play="next">${
           all ? 'Practice more' : hasStartedToday() ? 'Resume practice' : 'Start practice'}</button>
       </div>` : ''}
+      ${(() => {   // the next gig, and how long you have
+        const gigs = (Array.isArray(me.gigs) ? me.gigs : [])
+          .filter(g => g.date >= dayKey(new Date())).sort((a, b) => a.date.localeCompare(b.date));
+        const g = gigs[0]; if (!g) return '';
+        const days = Math.round((new Date(g.date + 'T12:00:00') - new Date(new Date().toDateString())) / 86400000);
+        const when = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+        const set = (me.setlists || []).find(x => x.id === g.setlistId);
+        return `<section class="card" style="border-color:color-mix(in srgb,var(--warn) 28%,var(--line))">
+          <header><span style="width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+            background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);font-size:13px">🎤</span>
+            <h3>${esc(g.name)}</h3><span class="meta" style="color:var(--warn)">${when}</span></header>
+          <div class="hint" style="margin:0 0 12px">${new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,
+            { weekday:'long', day:'numeric', month:'long' })}${g.time ? ' · ' + esc(g.time) : ''}${
+            set ? ` · ${(set.songs || []).length} songs ready` : ' · no setlist attached yet'}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm" data-gig="${esc(g.id)}">${set ? 'Rehearse the set' : 'Attach a setlist'}</button>
+            <button class="btn sm ghost" data-go="calendar">Calendar</button></div></section>`;
+      })()}
       ${(() => { const c = todaysChallenge(); if (!c) return '';
         const done = challengeDone();
-        return `<section class="card" style="${done ? '' : 'border-color:color-mix(in srgb,var(--warn) 30%,var(--line))'}">
-          <header><h3>Daily challenge</h3><span class="meta">+${APPX.chalPts} pts</span></header>
-          <div style="display:flex;gap:14px;align-items:flex-start">
-            <div style="flex:none;text-align:center;background:color-mix(in srgb,var(--warn) 16%,transparent);
-              border-radius:12px;padding:9px 12px">
-              <div style="font-family:var(--round);font-weight:600;font-size:19px;color:var(--warn)">+${APPX.chalPts}</div>
-              <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--warn);font-weight:700">pts</div></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:650;font-size:14px">${esc(c.t)}</div>
-              <div class="hint" style="margin-top:4px;line-height:1.6">${esc(c.d)}</div>
-              ${done ? '<div class="hint" style="margin-top:10px;color:var(--good);font-weight:650">Done today — streak safe</div>'
-                     : '<button class="btn sm" data-chal="1" style="margin-top:12px">Mark as done</button>'}
-            </div></div></section>`; })()}
+        return `<section class="card">
+          <header>
+            <span style="width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+              background:color-mix(in srgb,var(--teal) 16%,transparent);color:var(--teal);font-size:13px">${done ? '✓' : '◆'}</span>
+            <h3>Daily challenge</h3>
+            <span class="meta">${done ? 'Done' : `+${APPX.chalPts} pts`}</span></header>
+          <div style="font-weight:650;font-size:14px${done ? ';color:var(--ink-3)' : ''}">${esc(c.t)}</div>
+          <div class="hint" style="margin-top:5px;line-height:1.65">${esc(c.d)}</div>
+          ${done
+            ? '<div class="hint" style="margin-top:12px;color:var(--good)">Completed today — your streak is safe.</div>'
+            : `<button class="btn sm ghost" data-chal="1" style="margin-top:14px">Mark as done</button>`}
+        </section>`; })()}
       <section class="card"><header><h3>Today's sessions</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
         ${sessions.length ? rows(sessions, 'plan', 4)
-          : `<div class="empty">No plan for ${TODAY_NAME}. Generate one in the app, or take a rest day.</div>`}
+          : `<div class="empty">
+              <div style="font-weight:650;color:var(--ink)">Nothing planned for ${TODAY_NAME}</div>
+              <div style="font-size:13px;margin:4px 0 16px">${me.practicePlan
+                ? 'A rest day, by the look of your plan.'
+                : 'Build a week and Prova fills every day around your goals.'}</div>
+              ${me.practicePlan ? '' : '<button class="btn" id="makePlan">Build my practice plan</button>'}
+            </div>`}
       </section>
       ${a.length ? `<section class="card"><header><h3>Assigned by your teacher</h3>
         <span class="meta">${a.filter(t => t.completed).length} of ${a.length} done</span></header>
@@ -936,7 +959,9 @@ function viewSchedule() {
   const order = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
   const total = order.reduce((t,d)=>t+((wp[d]?.sessions)||[]).reduce((a,s)=>a+(s.duration||0),0),0);
   $('#screen').innerHTML = `<div class="content">
-    ${head('Schedule', total ? `${Math.floor(total/60)}h ${total%60}m planned this week` : 'No plan generated yet')}
+    ${head('Schedule', total ? `${Math.floor(total/60)}h ${total%60}m planned this week` : 'No plan generated yet',
+      `<button class="btn${me.practicePlan ? ' ghost' : ''}" data-plan="1" style="margin-left:auto">${
+        me.practicePlan ? 'Rebuild my plan' : 'Build my plan'}</button>`)}
     ${Object.keys(wp).length ? order.map(d=>{
       const ss = (wp[d]?.sessions)||[];
       const mins = ss.reduce((a,s)=>a+(s.duration||0),0);
@@ -1489,6 +1514,138 @@ document.addEventListener('click', (e) => {
 
 
 
+// ══ PERFORMANCE MODE ═══════════════════════════════════════════════════
+// Rehearse a gig's set in order, one song at a time — the setlist comes
+// first, before the day's plan, which is how the app treats a gig week.
+let GIG = null;
+function viewGig() {
+  const g = (me.gigs || []).find(x => x.id === GIG);
+  if (!g) { go('calendar'); return; }
+  const set = (me.setlists || []).find(x => x.id === g.setlistId);
+  const songs = set ? (set.songs || []) : [];
+  const inst = me.instrument || 'guitar';
+  const days = Math.round((new Date(g.date + 'T12:00:00') - new Date(new Date().toDateString())) / 86400000);
+  $('#screen').innerHTML = `<div class="content">
+    ${head(esc(g.name), `${days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`} · ${songs.length} songs`,
+      songs.length ? '' : `<button class="btn" id="gigAttach" style="margin-left:auto">Attach a setlist</button>`)}
+    ${songs.length ? `<div class="cols"><div class="stack">
+      ${card('Running order', `${songs.length} songs`, songs.map((sg, i) => `
+        <div class="trow"><div class="thead2" style="cursor:default">
+          <span style="width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;
+            background:var(--raised);font-family:var(--round);font-weight:700;font-size:11px">${i + 1}</span>
+          <div style="flex:1;min-width:0"><div class="ttl">${esc(sg.title)}</div>
+            <div class="tsub">${esc(sg.artist || '')}</div></div>
+          <button class="btn sm ghost" data-yt="${esc(sg.title)} ${esc(sg.artist || '')} ${esc(inst)} tutorial"
+            data-yttitle="${esc(sg.title)}">▶</button></div></div>`).join(''))}
+    </div><div class="stack">
+      ${card('Before the gig', '', `<div class="rows">
+        <div class="prow"><div class="pl"><div class="pt">Run the set once, no stopping</div>
+          <div class="ps">Mistakes and all — that is the rehearsal</div></div></div>
+        <div class="prow"><div class="pl"><div class="pt">Check your tuning on the day</div></div></div>
+        <div class="prow"><div class="pl"><div class="pt">Know your first and last song cold</div>
+          <div class="ps">They are the two people remember</div></div></div></div>`)}
+    </div></div>` : `<section class="card">${empty('No setlist yet',
+      'Build one in Songs, then attach it to this gig.')}</section>`}
+  </div>`;
+  const at = $('#gigAttach');
+  if (at) at.onclick = () => {
+    const sets = me.setlists || [];
+    if (!sets.length) { toast('Build a setlist in Songs first'); return; }
+    $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+      <h3 style="font-size:17px;margin-bottom:12px">Attach a setlist</h3>
+      <div class="rows">${sets.map((x, i) => `<div class="prow"><div class="pl"><div class="pt">${esc(x.name)}</div>
+        <div class="ps">${(x.songs || []).length} songs</div></div>
+        <button class="btn sm" data-setpick="${i}">Attach</button></div>`).join('')}</div>
+      <div style="display:flex;gap:10px;margin-top:18px"><button class="btn ghost" data-close style="flex:1">Cancel</button></div></div>`;
+    $('#overlays').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-setpick]'); if (!b) return;
+      const pick = sets[+b.getAttribute('data-setpick')];
+      const next = (me.gigs || []).map(x => x.id === g.id ? { ...x, setlistId: pick.id } : x);
+      try { await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true }); me.gigs = next;
+        $('#overlays').innerHTML = ''; viewGig(); toast('Setlist attached'); }
+      catch { toast('Could not attach'); }
+    }, { once: true });
+  };
+}
+
+// ══ PRACTICE PLAN ══════════════════════════════════════════════════════
+// generatePracticePlan takes the same profile the onboarding collects and
+// returns the week, saved to practicePlan / planGeneratedAt.
+const DAY_NAMES = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+function planSheet() {
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  const chosen = new Set(Array.isArray(me.availableDays) && me.availableDays.length
+    ? me.availableDays : ['monday','wednesday','friday','saturday']);
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Practice plan</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">Build my week</h3>
+    <div class="eyebrow" style="padding:0 0 6px">Instrument</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px" id="plInst">
+      ${['Guitar','Bass'].map(x => `<button class="btn sm ghost" data-pi="${x}" style="flex:1${
+        (me.instrument || 'Guitar') === x ? ';border-color:var(--primary);color:var(--ink)' : ''}">${x}</button>`).join('')}</div>
+    <div class="eyebrow" style="padding:0 0 6px">Level</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="plLevel">
+      ${['Beginner','Novice','Intermediate','Advanced','Elite'].map(x => `<button class="btn sm ghost" data-pl="${x}"${
+        (me.level || 'Beginner') === x ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${x}</button>`).join('')}</div>
+    <div class="eyebrow" style="padding:0 0 6px">Days you can practise</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="plDays">
+      ${DAY_NAMES.map(d => `<button class="btn sm ghost" data-pd="${d}"${chosen.has(d)
+        ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${d.slice(0,3)[0].toUpperCase()+d.slice(1,3)}</button>`).join('')}</div>
+    <div class="eyebrow" style="padding:0 0 6px">Minutes a day</div>
+    <input id="plMins" type="number" min="10" max="240" value="${me.dailyDuration || 30}" style="${F};width:130px">
+    <div class="eyebrow" style="padding:16px 0 6px">What are you working towards?</div>
+    <input id="plGoals" placeholder="e.g. play songs at a party, get faster, learn theory" style="${F}"
+      value="${esc(Array.isArray(me.goals) ? me.goals.join(', ') : '')}">
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="plGo" style="flex:1">Build the plan</button></div>
+    <p class="hint" style="margin:14px 0 0">Takes up to a minute — Prova writes every day of the week around your goals.</p></div>`;
+  let inst = me.instrument || 'Guitar', level = me.level || 'Beginner';
+  const seg = (host, attr, set) => $(host).addEventListener('click', (e) => {
+    const b = e.target.closest(`[${attr}]`); if (!b) return;
+    set(b.getAttribute(attr));
+    [...$(host).children].forEach(x => x.setAttribute('style',
+      (host === '#plInst' ? 'flex:1' : '') +
+      (x.getAttribute(attr) === b.getAttribute(attr) ? ';border-color:var(--primary);color:var(--ink)' : '')));
+  });
+  seg('#plInst', 'data-pi', v => { inst = v; });
+  seg('#plLevel', 'data-pl', v => { level = v; });
+  $('#plDays').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pd]'); if (!b) return;
+    const d = b.getAttribute('data-pd');
+    chosen.has(d) ? chosen.delete(d) : chosen.add(d);
+    b.setAttribute('style', chosen.has(d) ? 'border-color:var(--primary);color:var(--ink)' : '');
+  });
+  $('#plGo').onclick = async () => {
+    if (!chosen.size) { toast('Pick at least one day'); return; }
+    const btn = $('#plGo'); btn.disabled = true; btn.textContent = 'Building…';
+    const profile = {
+      instrument: inst, level,
+      goals: $('#plGoals').value.split(',').map(x => x.trim()).filter(Boolean),
+      skills: Array.isArray(me.skills) ? me.skills : [],
+      availableDays: DAY_NAMES.filter(d => chosen.has(d)),
+      dailyDuration: parseInt($('#plMins').value, 10) || 30,
+    };
+    try {
+      const res = await httpsCallable(fns, 'generatePracticePlan')(profile);
+      const plan = res?.data?.plan || res?.data;
+      if (!plan || !plan.weeklyPlan) throw new Error('empty');
+      await setDoc(doc(db, 'users', uid),
+        { ...profile, practicePlan: plan, planGeneratedAt: new Date().toISOString() }, { merge: true });
+      Object.assign(me, profile);
+      me.practicePlan = plan;
+      sessions = plan.weeklyPlan?.[TODAY_NAME]?.sessions || [];
+      $('#overlays').innerHTML = '';
+      rerender();
+      celebrate({ points: 0, title: 'Your week is ready', subtitle: 'Built around your goals', emoji: '🗓️' });
+    } catch {
+      toast('Could not build the plan. Try again in a moment.');
+      btn.disabled = false; btn.textContent = 'Build the plan';
+    }
+  };
+}
+
 // ══ DAILY CHALLENGE ════════════════════════════════════════════════════
 // src/constants/challenges.js — picked by instrument and level band, worth
 // CHALLENGE_POINTS, and it keeps a streak alive on a day without a session.
@@ -1544,6 +1701,9 @@ function viewTheory() {
     </div></div></div>`;
 }
 document.addEventListener('click', async (e) => {
+  if (e.target.closest('#makePlan') || e.target.closest('[data-plan]')) return planSheet();
+  const gg = e.target.closest('[data-gig]');
+  if (gg) { GIG = gg.getAttribute('data-gig'); return go('gig'); }
   let t;
   if ((t = e.target.closest('[data-quiz]')) && QUIZ.picked == null) {
     QUIZ.picked = +t.getAttribute('data-quiz');
