@@ -466,6 +466,7 @@ const NAV = [
   { id: 'students', t: 'Students', i: ICON.users, n: () => students.length },
   { id: 'calendar', t: 'Calendar', i: ICON.cal },
   { id: 'notes', t: 'Lesson notes', i: ICON.pen },
+  { id: 'overview', t: 'Overview', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
   { id: 'resources', t: 'Resources', i: ICON.book },
   { g: 'Families' },
   { id: 'reports', t: 'Parent reports', i: ICON.mail },
@@ -473,7 +474,7 @@ const NAV = [
   { id: 'messages', t: 'Messages', i: ICON.chat },
   { id: 'profile', t: 'Profile', i: ICON.user },
 ];
-const TITLES = { home:'Studio', students:'Students', resources:'Resources', profile:'Profile', messages:'Messages', notes:'Lesson notes', calendar:'Calendar', reports:'Parent reports' };
+const TITLES = { home:'Studio', students:'Students', resources:'Resources', profile:'Profile', messages:'Messages', overview:'Overview', notes:'Lesson notes', calendar:'Calendar', reports:'Parent reports' };
 function renderNav() {
   $('#nav').innerHTML = NAV.map((x) => {
     if (x.g) return `<div class="eyebrow">${x.g}</div>`;
@@ -487,7 +488,7 @@ function go(id) {
   renderNav();
   ({ home: viewHome, students: viewStudents, notes: viewNotes, calendar: viewCalendar,
      reports: viewReports, resources: viewResources, profile: viewProfile,
-     messages: viewMessages })[id]();
+     messages: viewMessages, overview: viewOverview })[id]();
   window.scrollTo({ top: 0 });
 }
 // One delegated listener for the whole app. Registering these per-render (as
@@ -566,6 +567,23 @@ function onboardCard() {
         <button class="btn" id="makeCode">Create my join code</button>
       </div>`}
   </div>`;
+}
+// mark is a NUMBER 1-5 in the app, drawn as stars — tapping the lit star
+// again clears it, same as the phone.
+function starPick(sel, set) {
+  const host = $(sel); if (!host) return;
+  host.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-star]'); if (!b) return;
+    const n = +b.getAttribute('data-star');
+    const cur = [...host.children].filter(x => x.getAttribute('aria-pressed') === 'true').length;
+    const next = cur === n ? 0 : n;
+    set(next || null);
+    [...host.children].forEach((x, i) => {
+      const on = i + 1 <= next;
+      x.setAttribute('aria-pressed', String(on));
+      x.style.color = on ? 'var(--warn)' : 'var(--line)';
+    });
+  });
 }
 function modal(html) {
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">${html}</div>`;
@@ -1239,6 +1257,84 @@ async function viewMessages() {
   }
 }
 
+// ── OVERVIEW — attendance and marks over a term, a year, or all time ────
+// TeacherOverviewScreen's ranges, computed off the same attendance map.
+const RANGE_DAYS = { Term: 90, Year: 365, All: 100000 };
+let OVR = 'Term';
+function viewOverview() {
+  const cutoff = dayKey(addDays(new Date(), -RANGE_DAYS[OVR]));
+  const recs = attendanceList().filter(r => (r.date || '') >= cutoff);
+  const byStudent = {};
+  recs.forEach(r => {
+    const k = r.studentUid || r.studentName || '—';
+    const b = byStudent[k] || (byStudent[k] = { name: r.studentName || 'Student', present: 0, late: 0,
+      absent: 0, notMarked: 0, marks: [], notes: [] });
+    if (r.status === 'present') b.present++;
+    else if (r.status === 'late') b.late++;
+    else if (r.status === 'absent') b.absent++;
+    else b.notMarked++;
+    if (r.mark) b.marks.push(+r.mark);
+    if ((r.note || '').trim()) b.notes.push({ date: r.date, note: r.note });
+  });
+  const rows = Object.values(byStudent).sort((a, b) => a.name.localeCompare(b.name));
+  const tot = rows.reduce((a, r) => ({ present: a.present + r.present, late: a.late + r.late,
+    absent: a.absent + r.absent, lessons: a.lessons + r.present + r.late + r.absent + r.notMarked }),
+    { present: 0, late: 0, absent: 0, lessons: 0 });
+  const allMarks = rows.flatMap(r => r.marks);
+  const avg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : 0;
+  const stars = (n) => `<span style="color:var(--warn)">${'★'.repeat(Math.round(n))}<span style="color:var(--line)">${'★'.repeat(5 - Math.round(n))}</span></span>`;
+
+  $('#screen').innerHTML = `<div class="content">
+    <div class="greet"><div><h2>Overview</h2>
+      <p>Attendance and marks across your studio.</p></div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        ${Object.keys(RANGE_DAYS).map(k => `<button class="btn ghost sm" data-ovr="${k}"${
+          OVR === k ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${k}</button>`).join('')}</div></div>
+
+    <div class="stats">
+      ${statCard('Lessons', tot.lessons, '', `${OVR === 'All' ? 'All time' : 'Last ' + RANGE_DAYS[OVR] + ' days'}`, '')}
+      ${statCard('Attendance', tot.lessons ? Math.round(tot.present / tot.lessons * 100) : 0, '%',
+        `${tot.present} present · ${tot.late} late · ${tot.absent} absent`,
+        ring(tot.lessons ? tot.present / tot.lessons * 100 : 0, 'var(--good)'))}
+      ${statCard('Average mark', allMarks.length ? avg.toFixed(1) : '—', allMarks.length ? '/5' : '',
+        allMarks.length ? `${allMarks.length} lessons marked` : 'Nothing marked yet', '')}
+    </div>
+
+    ${rows.length ? `<section class="card"><header><h3>By student</h3><span class="meta">${rows.length}</span></header>
+      <div class="tablewrap"><table><thead><tr><th>Student</th><th>Lessons</th><th>Present</th>
+        <th>Late</th><th>Absent</th><th>Average mark</th></tr></thead><tbody>
+        ${rows.map(r => { const n = r.present + r.late + r.absent + r.notMarked;
+          const m = r.marks.length ? r.marks.reduce((a, b) => a + b, 0) / r.marks.length : 0;
+          return `<tr><td class="stu"><span class="avatar">${initials(r.name)}</span>${esc(r.name)}</td>
+            <td class="n">${n}</td><td class="n">${r.present}</td><td class="n">${r.late}</td><td class="n">${r.absent}</td>
+            <td>${r.marks.length ? stars(m) + ` <span class="hint">${m.toFixed(1)}</span>` : '<span class="hint">—</span>'}</td></tr>`;
+        }).join('')}</tbody></table></div></section>`
+      : `<section class="card">${emptyState('Nothing in this range', 'Mark attendance on the calendar and it builds up here.')}</section>`}
+
+    ${rows.some(r => r.notes.length) ? `<section class="card"><header><h3>Lesson notes</h3>
+      <span class="meta">${rows.reduce((a, r) => a + r.notes.length, 0)}</span></header>
+      ${rows.filter(r => r.notes.length).map(r => `
+        <div class="trow${ROPEN['ov' + r.name] ? ' open' : ''}">
+          <div class="thead2" data-ovopen="${esc(r.name)}">
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+            <div style="flex:1;min-width:0"><div class="ttl">${esc(r.name)}</div></div>
+            <div class="dur">${r.notes.length} note${r.notes.length === 1 ? '' : 's'}</div></div>
+          <div class="tbody2">${r.notes.sort((a, b) => String(b.date).localeCompare(String(a.date)))
+            .map(n => `<div style="padding:9px 0;border-top:1px solid var(--line)">
+              <div class="hint">${esc(fmtDay(n.date))}</div>
+              <div style="font-size:13px;color:var(--ink-2);line-height:1.6;margin-top:3px">${esc(n.note)}</div></div>`).join('')}
+          </div></div>`).join('')}</section>` : ''}
+  </div>`;
+
+  $('#screen').addEventListener('click', (e) => {
+    const r = e.target.closest('[data-ovr]');
+    if (r) { OVR = r.getAttribute('data-ovr'); return viewOverview(); }
+    const o = e.target.closest('[data-ovopen]');
+    if (o) { const y = window.scrollY, k = 'ov' + o.getAttribute('data-ovopen');
+      ROPEN[k] = !ROPEN[k]; viewOverview(); window.scrollTo(0, y); }
+  }, { once: true });
+}
+
 // ── RESOURCES — the app's own library (src/constants/resources.js), plus
 // whatever the teacher has built themselves ─────────────────────────────
 var RF = { inst: 'Guitar', level: 'Beginner' };
@@ -1497,7 +1593,7 @@ function viewNotes() {
             <div class="pt">${esc(r.studentName || 'Student')} <span class="hint" style="font-weight:400">· ${esc(fmtDay(r.date || ''))}</span></div>
             <div style="color:var(--ink-2);font-size:13px;margin-top:5px;line-height:1.6">${esc(r.note)}</div>
             ${r.status ? `<span class="pill ${r.status === 'present' ? 'ok' : r.status === 'late' ? 'warn' : 'bad'}" style="margin-top:8px">${esc(r.status)}</span>` : ''}
-            ${r.mark ? `<span class="pill set" style="margin-top:8px;margin-left:6px">${esc(r.mark)}</span>` : ''}
+            ${r.mark ? `<span style="margin-left:8px;color:var(--warn)">${'★'.repeat(+r.mark)}</span>` : ''}
           </div>
           <button class="btn sm ghost" data-edit="${esc(r.key)}">Edit</button>
         </div>`).join('')
@@ -1544,9 +1640,10 @@ function noteModal(key) {
     <div class="field"><label>Attendance</label><div class="seg" id="nStatus">
       ${['present','late','absent'].map((s) => `<button data-v="${s}" aria-pressed="${rec?.status === s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
     </div></div>
-    <div class="field"><label>How did it go?</label><div class="seg" id="nMark">
-      ${['Excellent','Good','Needs work'].map((s) => `<button data-v="${s}" aria-pressed="${rec?.mark === s}">${s}</button>`).join('')}
-    </div></div>
+    <div class="field"><label>How did it go?</label><div class="seg" id="nMark" data-stars="1">
+      ${[1,2,3,4,5].map(n => `<button data-star="${n}" aria-pressed="${(rec?.mark || 0) >= n}"
+        style="font-size:19px;padding:4px 6px;line-height:1;background:none;border:0;color:${(rec?.mark || 0) >= n
+          ? 'var(--warn)' : 'var(--line)'}">★</button>`).join('')}</div></div>
     <div class="field"><label>Note</label><textarea id="nNote" rows="5" placeholder="What you covered, what to practise…">${esc(rec?.note || '')}</textarea></div>
     <div class="acts"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="nSave">Save note</button></div>`);
 
@@ -1561,7 +1658,7 @@ function noteModal(key) {
     });
   };
   seg('nStatus', (v) => (status = v));
-  seg('nMark', (v) => (mark = v));
+  starPick('#nMark', (v) => { mark = v; });
 
   $('#nSave').onclick = async () => {
     const note = $('#nNote').value.trim();
@@ -1675,8 +1772,10 @@ function occurrenceModal(lessonId, ds) {
     <p class="hint" style="margin:-8px 0 18px">${esc(fmtDay(ds))} at ${esc(l.time || '')}${l.repeat === 'weekly' ? ' · repeats weekly' : ''}${l.note ? ' · ' + esc(l.note) : ''}</p>
     <div class="field"><label>Attendance</label><div class="seg" id="oStatus">
       ${['present','late','absent'].map((s) => `<button data-v="${s}" aria-pressed="${rec.status === s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div></div>
-    <div class="field"><label>How did it go?</label><div class="seg" id="oMark">
-      ${['Excellent','Good','Needs work'].map((s) => `<button data-v="${s}" aria-pressed="${rec.mark === s}">${s}</button>`).join('')}</div></div>
+    <div class="field"><label>How did it go?</label><div class="seg" id="oMark" data-stars="1">
+      ${[1,2,3,4,5].map(n => `<button data-star="${n}" aria-pressed="${(rec.mark || 0) >= n}"
+        style="font-size:19px;padding:4px 6px;line-height:1;background:none;border:0;color:${(rec.mark || 0) >= n
+          ? 'var(--warn)' : 'var(--line)'}">★</button>`).join('')}</div></div>
     <div class="field"><label>Lesson note</label><textarea id="oNote" rows="4" placeholder="What you covered, what to practise…">${esc(rec.note || '')}</textarea></div>
     <div class="acts"><button class="btn ghost" id="oDel">Cancel lesson</button><button class="btn" id="oSave">Save</button></div>`);
   let status = rec.status || '', mark = rec.mark || '';
@@ -1686,7 +1785,7 @@ function occurrenceModal(lessonId, ds) {
     [...$('#' + id).children].forEach((x) => x.setAttribute('aria-pressed', String(x.getAttribute('data-v') === v)));
   });
   seg('oStatus', (v) => (status = v));
-  seg('oMark', (v) => (mark = v));
+  starPick('#oMark', (v) => { mark = v; });
   $('#oSave').onclick = async () => {
     const next = { ...(me.attendance || {}) };
     const note = $('#oNote').value.trim();
