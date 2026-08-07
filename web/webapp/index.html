@@ -164,6 +164,16 @@
   .prow .pt{font-weight:600;font-size:13.5px}
   .prow .ps{font-size:12px;color:var(--ink-3)}
   a.btn{text-decoration:none;display:inline-block}
+  .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+  .cal .hd{background:var(--raised);padding:9px 8px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-3)}
+  .cal .hd b{display:block;font-family:var(--round);font-size:15px;color:var(--ink);letter-spacing:0}
+  .cal .cell{background:var(--card);padding:9px 8px;min-height:120px;display:flex;flex-direction:column;gap:6px}
+  .cal .cell.today{background:color-mix(in srgb,var(--primary) 7%,var(--card))}
+  .ev{border-radius:7px;padding:7px 9px;font-size:11.5px;line-height:1.35;text-align:left;border:0;border-left:2px solid;width:100%}
+  .ev b{display:block;font-weight:650} .ev .tm{font-family:var(--round);opacity:.85}
+  .ev.lesson{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);border-left-color:var(--primary)}
+  .ev.gig{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);border-left-color:var(--warn);cursor:pointer}
+  .ev.task{background:color-mix(in srgb,var(--teal) 18%,transparent);color:var(--teal);border-left-color:var(--teal);cursor:pointer}
   .empty{text-align:center;padding:30px 20px;color:var(--ink-3)}
   .opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md);padding:13px 16px;
     text-align:left;cursor:pointer;font-size:13.5px;font-weight:550;color:inherit}
@@ -465,15 +475,18 @@ const NAV = [
   { id: 'practice', t: 'Practice', i: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
   { id: 'songs',    t: 'Songs',    i: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
   { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
+  { id: 'calendar', t: 'Calendar', i: '<path d="M8 3v4M16 3v4M4 9h16M5 5h14v15H5z"/><circle cx="12" cy="14" r="1.6"/>' },
   { g: 'Track' },
   { id: 'progress', t: 'Progress', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
   { id: 'journal',  t: 'Journal',  i: '<path d="M4 20h4L19 9a2.8 2.8 0 10-4-4L4 16z"/>' },
   { g: 'Studio' },
   { id: 'messages', t: 'Messages', i: '<path d="M21 12a8 8 0 01-8 8H4l2-3a8 8 0 1115-5z"/>' },
+  { id: 'notifications', t: 'Notifications', i: '<path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 004 0"/>' },
   { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
-  progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
+  progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
+  calendar:'Calendar', notifications:'Notifications', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice', ask:'practice' };
 function renderNav() {
   $('#nav').innerHTML = NAV.map((x) => x.g
@@ -487,7 +500,8 @@ $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-g
 // tab you were looking at.
 const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
-  chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk };
+  chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
+  calendar: viewCalendar, notifications: viewNotifications };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
   screen = id;
@@ -1346,6 +1360,181 @@ document.addEventListener('click', (e) => {
   const open = e.target.closest('[data-yt]');
   if (open) openYouTube(open.getAttribute('data-yt'), open.getAttribute('data-yttitle'));
 });
+
+
+// ══ CALENDAR ═══════════════════════════════════════════════════════════
+// Three sources, exactly as ScheduleScreen has them: lessons your teacher
+// scheduled (read off their doc, weekly repeats resolved), gigs you add, and
+// personal events. Only the last two are yours to write.
+let TEACHER_LESSONS = [], CALW = 0;
+async function loadTeacherLessons() {
+  const ids = [me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean);
+  const seen = new Set(); TEACHER_LESSONS = [];
+  await Promise.all([...new Set(ids)].map(async (tid) => {
+    try {
+      const d = (await getDoc(doc(db, 'users', tid))).data() || {};
+      (Array.isArray(d.lessons) ? d.lessons : [])
+        .filter(l => l.studentUid === uid)
+        .forEach(l => { if (!seen.has(l.id)) { seen.add(l.id); TEACHER_LESSONS.push({ ...l, teacher: displayName(d) }); } });
+    } catch { /* a teacher we can't read is simply absent */ }
+  }));
+}
+const dayISO = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const addD = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+function lessonsOnDay(ds) {
+  return TEACHER_LESSONS.filter(l => {
+    if (!l.date) return false;
+    if (l.date === ds) return true;
+    if (l.repeat !== 'weekly' || ds < l.date) return false;
+    return new Date(l.date + 'T00:00:00Z').getUTCDay() === new Date(ds + 'T00:00:00Z').getUTCDay();
+  }).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+}
+function eventsOnDay(ds) {
+  const gigs = (Array.isArray(me.gigs) ? me.gigs : []).filter(g => g.date === ds)
+    .map(g => ({ ...g, kind: 'gig', label: g.name }));
+  const pe = (Array.isArray(me.personalEvents) ? me.personalEvents : []).filter(p => p.date === ds)
+    .map(p => ({ ...p, kind: p.type || 'task', label: p.title }));
+  return [...gigs, ...pe];
+}
+async function viewCalendar() {
+  if (!TEACHER_LESSONS.length) await loadTeacherLessons();
+  const monday = (() => { const t = new Date(); const w = (t.getDay() + 6) % 7; return addD(addD(t, -w), CALW * 7); })();
+  const days = Array.from({ length: 7 }, (_, i) => addD(monday, i));
+  const today = dayISO(new Date());
+  const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const count = days.reduce((a, d) => a + lessonsOnDay(dayISO(d)).length + eventsOnDay(dayISO(d)).length, 0);
+
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Calendar', `Week of ${monday.toLocaleDateString(undefined,{day:'numeric',month:'long'})} · ${count} thing${count===1?'':'s'} on`,
+      `<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost sm" data-cal="prev">← Previous</button>
+        <button class="btn ghost sm" data-cal="this">This week</button>
+        <button class="btn ghost sm" data-cal="next">Next →</button>
+        <button class="btn" data-cal="add">Add to calendar</button></div>`)}
+    <section class="card"><div class="cal">
+      ${days.map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}<b>${d.getDate()}</b></div>`).join('')}
+      ${days.map(d => {
+        const ds = dayISO(d);
+        return `<div class="cell${ds === today ? ' today' : ''}">
+          ${lessonsOnDay(ds).map(l => `<div class="ev lesson" title="Set by ${esc(l.teacher)}">
+            <b>Lesson</b><span class="tm">${esc(l.time || '')} · ${esc(l.teacher)}</span></div>`).join('')}
+          ${eventsOnDay(ds).map(e => `<button class="ev ${esc(e.kind)}" data-delev="${esc(e.kind)}:${esc(e.id)}">
+            <b>${esc(e.label)}</b><span class="tm">${esc(e.time || (e.kind === 'gig' ? 'Gig' : e.kind))}</span></button>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="hint" style="margin:14px 0 0">Lessons come from your teacher and can't be edited here. Click anything you added to remove it.</p>
+    </section></div>`;
+}
+function calAddSheet() {
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Add to calendar</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">What are you adding?</h3>
+    <div style="display:flex;gap:8px;margin-bottom:16px" id="caType">
+      <button class="btn sm ghost" data-catype="gig" style="flex:1;border-color:var(--primary);color:var(--ink)">Gig</button>
+      <button class="btn sm ghost" data-catype="lesson" style="flex:1">Lesson</button>
+      <button class="btn sm ghost" data-catype="task" style="flex:1">Task</button></div>
+    <input id="caName" placeholder="Name it" style="${F};margin-bottom:12px">
+    <input id="caDate" type="date" value="${dayISO(new Date())}" style="${F};margin-bottom:12px">
+    <input id="caTime" type="time" style="${F};margin-bottom:12px">
+    <input id="caNote" placeholder="Note (optional)" style="${F}">
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="caGo" style="flex:1">Add</button></div></div>`;
+  let type = 'gig';
+  $('#caType').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-catype]'); if (!b) return;
+    type = b.getAttribute('data-catype');
+    [...$('#caType').children].forEach(x => x.setAttribute('style',
+      'flex:1' + (x.getAttribute('data-catype') === type ? ';border-color:var(--primary);color:var(--ink)' : '')));
+  });
+  $('#caGo').onclick = async () => {
+    const name = $('#caName').value.trim();
+    if (!name) { toast('Give it a name'); return; }
+    const date = $('#caDate').value || dayISO(new Date());
+    const time = $('#caTime').value || '';
+    try {
+      if (type === 'gig') {
+        const next = [...(Array.isArray(me.gigs) ? me.gigs : []),
+          { id: `gig_${Date.now()}`, createdAt: new Date().toISOString(), name: name.slice(0, 60), date, time: time || null, setlistId: null }]
+          .sort((a, b) => a.date.localeCompare(b.date));
+        await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true });
+        me.gigs = next;
+      } else {
+        const next = [...(Array.isArray(me.personalEvents) ? me.personalEvents : []),
+          { id: `pe_${Date.now()}`, createdAt: new Date().toISOString(), type, title: name.slice(0, 80),
+            date, time, note: $('#caNote').value.trim().slice(0, 140) }]
+          .sort((a, b) => a.date.localeCompare(b.date));
+        await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true });
+        me.personalEvents = next;
+      }
+      $('#overlays').innerHTML = ''; viewCalendar(); toast('Added');
+    } catch { toast('Could not save'); }
+  };
+}
+document.addEventListener('click', async (e) => {
+  const c = e.target.closest('[data-cal]');
+  if (c) {
+    const a = c.getAttribute('data-cal');
+    if (a === 'add') return calAddSheet();
+    CALW = a === 'this' ? 0 : a === 'next' ? CALW + 1 : CALW - 1;
+    return viewCalendar();
+  }
+  const del = e.target.closest('[data-delev]');
+  if (del) {
+    const [kind, id] = del.getAttribute('data-delev').split(':');
+    if (!confirm('Remove this from your calendar?')) return;
+    try {
+      if (kind === 'gig') { const next = (me.gigs || []).filter(g => g.id !== id);
+        await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true }); me.gigs = next; }
+      else { const next = (me.personalEvents || []).filter(p => p.id !== id);
+        await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true }); me.personalEvents = next; }
+      viewCalendar(); toast('Removed');
+    } catch { toast('Could not remove'); }
+  }
+});
+
+// ══ NOTIFICATIONS ══════════════════════════════════════════════════════
+async function viewNotifications() {
+  $('#screen').innerHTML = `<div class="content">${head('Notifications', 'Loading…')}</div>`;
+  let items = [];
+  try {
+    const snap = await getDocs(query(collection(db, 'users', uid, 'inbox'), orderBy('createdAt', 'desc'), limit(60)));
+    items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { items = []; }
+  const unread = items.filter(x => !x.read).length;
+  const ICONS = { nudge:'🔔', task_assigned:'⭐', lesson_note:'✏️', reports_sent:'📧',
+                  announcement:'📣', message:'💬', badge:'🏅' };
+  const when = (iso) => {
+    const d = new Date(iso); if (isNaN(d)) return '';
+    const mins = Math.round((Date.now() - d) / 60000);
+    if (mins < 60) return mins + 'm';
+    if (mins < 1440) return Math.round(mins / 60) + 'h';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  };
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Notifications', unread ? `${unread} unread` : 'All caught up',
+      unread ? '<button class="btn ghost" id="markAll" style="margin-left:auto">Mark all read</button>' : '')}
+    ${items.length ? `<section class="card" style="padding:0">${items.map(x => `
+      <div class="prow" style="padding:14px 18px;margin:0;align-items:flex-start;${x.read ? '' : 'background:color-mix(in srgb,var(--primary) 6%,transparent)'}">
+        <div style="font-size:19px;flex:none">${ICONS[x.type] || '🔔'}</div>
+        <div class="pl"><div class="pt">${esc(x.title || 'Notification')}</div>
+          ${x.body ? `<div class="ps" style="margin-top:2px;line-height:1.55">${esc(x.body)}</div>` : ''}</div>
+        <div class="hint" style="flex:none">${when(x.createdAt)}</div></div>`).join('')}</section>`
+      : `<section class="card">${empty('Nothing yet', 'Nudges from your teacher, new tasks and badges land here.')}</section>`}
+  </div>`;
+  const m = $('#markAll');
+  if (m) m.onclick = async () => {
+    m.disabled = true; m.textContent = 'Marking…';
+    try {
+      await Promise.all(items.filter(x => !x.read).map(x =>
+        setDoc(doc(db, 'users', uid, 'inbox', x.id), { read: true }, { merge: true })));
+      viewNotifications();
+    } catch { toast('Could not update'); m.disabled = false; m.textContent = 'Mark all read'; }
+  };
+}
 
 // ══ MESSAGES ═══════════════════════════════════════════════════════════
 // src/lib/chat.js: chatId is the two uids sorted and joined, the thread
