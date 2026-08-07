@@ -603,7 +603,21 @@ function render() {
           <div class="phsub">${doneMin} of ${planned} min practiced</div></div>
         <button class="btn${all ? ' ghost' : ''}" data-play="next">${
           all ? 'Practice more' : hasStartedToday() ? 'Resume practice' : 'Start practice'}</button>
-      </div>` : ''}
+      </div>
+      ${(() => {   // only offered once they're actually practising
+        if (!hasStartedToday()) return '';
+        const gigs = (Array.isArray(me.gigs) ? me.gigs : [])
+          .filter(g => g.date >= dayKey(new Date())).sort((a, b) => a.date.localeCompare(b.date));
+        const g = gigs[0]; if (!g) return '';
+        const set = (me.setlists || []).find(x => x.id === g.setlistId);
+        if (!set || !(set.songs || []).length) return '';
+        const days = Math.round((new Date(g.date + 'T12:00:00') - new Date(new Date().toDateString())) / 86400000);
+        return `<button data-gig="${esc(g.id)}" style="width:100%;margin-top:10px;background:none;border:0;
+          border-top:1px solid var(--line);padding:12px 0 0;cursor:pointer;color:var(--ink-3);font:inherit;
+          font-size:12.5px;text-align:center">
+          Run the set for <b style="color:var(--primary)">${esc(g.name)}</b> first —
+          ${days <= 0 ? 'today' : days === 1 ? 'tomorrow' : days + ' days away'}</button>`;
+      })()}` : ''}
       ${(() => {   // the next gig, and how long you have
         const gigs = (Array.isArray(me.gigs) ? me.gigs : [])
           .filter(g => g.date >= dayKey(new Date())).sort((a, b) => a.date.localeCompare(b.date));
@@ -796,8 +810,12 @@ function viewSongs() {
     return `<div class="trow${open ? ' open' : ''}">
       <div class="thead2" data-open="${id}">
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+        <span data-art="${esc(x.title)}|${esc(x.artist || '')}" style="width:44px;height:44px;border-radius:7px;
+          background:var(--raised);flex:none"></span>
         <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div>
           <div class="tsub">${esc(x.artist || 'Unknown artist')}${steps.length ? ` · ${done} of ${steps.length} steps` : ''}</div></div>
+        <button class="btn sm ghost" data-preview="${esc(x.title)}|${esc(x.artist || '')}"
+          title="30-second preview" style="flex:none">▶</button>
         ${steps.length ? `<div class="dur">${Math.round(done / steps.length * 100)}%</div>` : ''}</div>
       <div class="tbody2">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${steps.length ? '14px' : '0'}">
@@ -843,8 +861,8 @@ function viewSongs() {
                 <div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line)">
                   <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(sg.title)}</div>
                     <div class="tsub">${esc(sg.artist || '')}</div></div>
-                  <button class="btn sm ghost" data-yt="${esc(sg.title)} ${esc(sg.artist || '')} ${esc(inst)} tutorial" data-yttitle="${esc(sg.title)}">▶</button>
-                  <a class="btn sm ghost" target="_blank" rel="noopener" href="${spotify(sg.title, sg.artist)}">Play</a></div>`).join('')
+                  <button class="btn sm ghost" data-preview="${esc(sg.title)}|${esc(sg.artist || '')}" title="30-second preview">▶</button>
+                  <a class="btn sm ghost" target="_blank" rel="noopener" href="${spotify(sg.title, sg.artist)}">Spotify</a></div>`).join('')
                 : '<p class="hint" style="margin:0">No songs in this setlist yet.</p>'}</div></div>`;
           }).join('')
         : empty('No setlists', 'Use “Build a setlist” for your next gig.'))}
@@ -859,6 +877,7 @@ function viewSongs() {
   });
   $('#learnBtn').onclick = learnSongSheet;
   $('#setlistBtn').onclick = setlistSheet;
+  paintArtwork();
 }
 
 const SHEET_F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
@@ -1513,6 +1532,64 @@ document.addEventListener('click', (e) => {
 });
 
 
+
+// ══ SONG PREVIEWS ══════════════════════════════════════════════════════
+// Apple's iTunes Search API, with the throttling PR #150 added: it allows
+// roughly 20 calls a minute and answers HTML when you exceed it, so requests
+// are queued 140ms apart, deduped, and a 403/429 starts a cooldown.
+const ITUNES = { cache: {}, chain: Promise.resolve(), cooldownUntil: 0 };
+function lookupSong(title, artist) {
+  const key = `${title}|${artist || ''}`.toLowerCase();
+  if (ITUNES.cache[key]) return ITUNES.cache[key];
+  const run = ITUNES.chain.then(async () => {
+    if (Date.now() < ITUNES.cooldownUntil) return { preview: null, artwork: null };
+    await new Promise(r => setTimeout(r, 140));
+    try {
+      const term = encodeURIComponent(`${title} ${artist || ''}`.trim());
+      const res = await fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=1`);
+      if (res.status === 403 || res.status === 429) { ITUNES.cooldownUntil = Date.now() + 60000; throw new Error('rate'); }
+      const text = await res.text();
+      if (!text.trim().startsWith('{')) { ITUNES.cooldownUntil = Date.now() + 60000; throw new Error('html'); }
+      const r0 = (JSON.parse(text).results || [])[0] || {};
+      return { preview: r0.previewUrl || null,
+               artwork: r0.artworkUrl100 ? r0.artworkUrl100.replace('100x100', '300x300') : null,
+               track: r0.trackViewUrl || null };
+    } catch { return { preview: null, artwork: null, track: null }; }
+  });
+  ITUNES.cache[key] = run;
+  ITUNES.chain = run.catch(() => {});
+  return run;
+}
+let PREVIEW = null;
+async function togglePreview(btn, title, artist) {
+  if (PREVIEW && PREVIEW.btn === btn) { PREVIEW.audio.pause(); PREVIEW.btn.textContent = '▶'; PREVIEW = null; return; }
+  if (PREVIEW) { PREVIEW.audio.pause(); PREVIEW.btn.textContent = '▶'; PREVIEW = null; }
+  btn.textContent = '…';
+  const { preview } = await lookupSong(title, artist);
+  if (!preview) { btn.textContent = '▶'; toast('No preview for that one'); return; }
+  const audio = new Audio(preview);
+  audio.play().catch(() => {});
+  btn.textContent = '❚❚';
+  PREVIEW = { audio, btn };
+  audio.onended = () => { btn.textContent = '▶'; PREVIEW = null; };
+}
+// Apple Media Services terms: artwork may only be shown alongside a link to
+// the store, so the cover is always wrapped in one.
+async function paintArtwork() {
+  document.querySelectorAll('[data-art]:not([data-art-done])').forEach(async (el) => {
+    el.setAttribute('data-art-done', '1');
+    const [title, artist] = el.getAttribute('data-art').split('|');
+    const { artwork, track } = await lookupSong(title, artist);
+    if (!artwork) return;
+    el.innerHTML = `<a href="${esc(track || appleUrl(title, artist))}" target="_blank" rel="noopener">
+      <img src="${esc(artwork)}" alt="" style="width:44px;height:44px;border-radius:7px;display:block"></a>`;
+  });
+}
+const appleUrl = (t, a) => `https://music.apple.com/search?term=${encodeURIComponent(`${t} ${a || ''}`.trim())}`;
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-preview]');
+  if (b) { const [t, a] = b.getAttribute('data-preview').split('|'); togglePreview(b, t, a); }
+});
 
 // ══ PERFORMANCE MODE ═══════════════════════════════════════════════════
 // Rehearse a gig's set in order, one song at a time — the setlist comes
