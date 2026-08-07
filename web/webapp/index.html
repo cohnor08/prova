@@ -721,6 +721,7 @@ function viewLibrary() {
   </div>`;
 }
 
+let SONGQ = '';
 function viewSongs() {
   const lib = Array.isArray(me.songLibrary) ? me.songLibrary : [];
   const sets = Array.isArray(me.setlists) ? me.setlists : [];
@@ -755,12 +756,21 @@ function viewSongs() {
       </div></div>`;
   };
 
+  const q = (SONGQ || '').trim().toLowerCase();
+  const shown = q ? lib.filter(x => `${x.title} ${x.artist || ''}`.toLowerCase().includes(q)) : lib;
+
   $('#screen').innerHTML = `<div class="content">
-    ${head('Songs', `${lib.length} in your library · ${sets.length} setlist${sets.length === 1 ? '' : 's'}`)}
+    ${head('Songs', `${lib.length} in your library · ${sets.length} setlist${sets.length === 1 ? '' : 's'}`,
+      `<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="learnBtn">Learn a song</button>
+        <button class="btn ghost" id="setlistBtn">Build a setlist</button></div>`)}
+    <input id="songSearch" placeholder="Search your songs…" value="${esc(SONGQ)}"
+      style="width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px">
     <div class="cols"><div class="stack">
-      ${card('Library', lib.length, lib.length
-        ? lib.map(songRow).join('') + '<p class="hint" style="margin:14px 0 0">Click a song for its plan, a tutorial and where to listen.</p>'
-        : empty('No songs yet', 'Add songs in the app and they show up here.'))}
+      ${card('Library', q ? `${shown.length} of ${lib.length}` : lib.length, shown.length
+        ? shown.map(songRow).join('')
+        : (q ? empty('Nothing matches', `No song in your library matches "${esc(SONGQ)}".`)
+             : empty('No songs yet', 'Use “Learn a song” and Prova builds a step-by-step plan.')))}
     </div><div class="stack">
       ${card('Setlists', sets.length, sets.length
         ? sets.map((x, i) => {
