@@ -173,6 +173,9 @@
   .ev.lesson{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);border-left-color:var(--primary)}
   .ev.gig{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);border-left-color:var(--warn);cursor:pointer}
   .ev.task{background:color-mix(in srgb,var(--teal) 18%,transparent);color:var(--teal);border-left-color:var(--teal);cursor:pointer}
+  .tog{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+  .tog button{border:0;background:transparent;color:var(--ink-3);font-size:12.5px;font-weight:600;padding:5px 13px;border-radius:999px;cursor:pointer}
+  .tog button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
   .empty{text-align:center;padding:30px 20px;color:var(--ink-3)}
   .opt{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md);padding:13px 16px;
     text-align:left;cursor:pointer;font-size:13.5px;font-weight:550;color:inherit}
@@ -2018,7 +2021,8 @@ async function saveTheme(mode, accent) {
 // Three sources, exactly as ScheduleScreen has them: lessons your teacher
 // scheduled (read off their doc, weekly repeats resolved), gigs you add, and
 // personal events. Only the last two are yours to write.
-let TEACHER_LESSONS = [], CALW = 0;
+let TEACHER_LESSONS = [], CALW = 0, CALMODE = 'week';
+const CAL_SPAN = { week: 7, fortnight: 14, month: 28 };
 async function loadTeacherLessons() {
   const ids = [me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean);
   const seen = new Set(); TEACHER_LESSONS = [];
@@ -2050,8 +2054,9 @@ function eventsOnDay(ds) {
 }
 async function viewCalendar() {
   if (!TEACHER_LESSONS.length) await loadTeacherLessons();
-  const monday = (() => { const t = new Date(); const w = (t.getDay() + 6) % 7; return addD(addD(t, -w), CALW * 7); })();
-  const days = Array.from({ length: 7 }, (_, i) => addD(monday, i));
+  const span = CAL_SPAN[CALMODE] || 7;
+  const monday = (() => { const t = new Date(); const w = (t.getDay() + 6) % 7; return addD(addD(t, -w), CALW * span); })();
+  const days = Array.from({ length: span }, (_, i) => addD(monday, i));
   const today = dayISO(new Date());
   const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const count = days.reduce((a, d) => a + lessonsOnDay(dayISO(d)).length + eventsOnDay(dayISO(d)).length, 0);
@@ -2062,12 +2067,15 @@ async function viewCalendar() {
         <button class="btn ghost sm" data-cal="prev">← Previous</button>
         <button class="btn ghost sm" data-cal="this">This week</button>
         <button class="btn ghost sm" data-cal="next">Next →</button>
-        <button class="btn" data-cal="add">Add to calendar</button></div>`)}
+        <div class="tog" style="transform:scale(.94)">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
+          .map(([k, l]) => `<button data-calmode="${k}" aria-pressed="${CALMODE === k}">${l}</button>`).join('')}</div>
+        <button class="btn" data-cal="add">Add lesson</button></div>`)}
     <section class="card"><div class="cal">
-      ${days.map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}<b>${d.getDate()}</b></div>`).join('')}
+      ${days.slice(0, 7).map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}</div>`).join('')}
       ${days.map(d => {
         const ds = dayISO(d);
         return `<div class="cell${ds === today ? ' today' : ''}">
+          <div class="hint" style="font-family:var(--round);font-weight:600">${d.getDate()}</div>
           ${lessonsOnDay(ds).map(l => `<div class="ev lesson" title="Set by ${esc(l.teacher)}">
             <b>Lesson</b><span class="tm">${esc(l.time || '')} · ${esc(l.teacher)}</span></div>`).join('')}
           ${eventsOnDay(ds).map(e => `<button class="ev ${esc(e.kind)}" data-delev="${esc(e.kind)}:${esc(e.id)}">
@@ -2127,6 +2135,8 @@ function calAddSheet() {
   };
 }
 document.addEventListener('click', async (e) => {
+  const cm = e.target.closest('[data-calmode]');
+  if (cm) { CALMODE = cm.getAttribute('data-calmode'); CALW = 0; return viewCalendar(); }
   const c = e.target.closest('[data-cal]');
   if (c) {
     const a = c.getAttribute('data-cal');
