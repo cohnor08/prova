@@ -1421,12 +1421,16 @@ function viewResources() {
       ${mine.length ? mine.map((r, i) => `<div class="trow${ROPEN['own' + i] ? ' open' : ''}">
         <div class="thead2" data-ropen="own${i}">
           <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+          ${r.photo ? `<img src="${esc(r.photo)}" alt="" style="width:40px;height:40px;border-radius:7px;object-fit:cover;flex:none">` : ''}
           <div style="flex:1;min-width:0"><div class="ttl">${esc(r.title)}</div>
-            ${r.category ? `<div class="tsub">${esc(r.category)}</div>` : ''}</div>
-          ${r.yt ? '<span class="pill set">Video</span>' : ''}</div>
-        <div class="tbody2"><p class="tdesc">${esc(r.detail || '')}</p>
+            ${[r.category, r.level, r.instrument].filter(Boolean).length
+              ? `<div class="tsub">${[r.category, r.level, r.instrument].filter(Boolean).map(esc).join(' · ')}</div>` : ''}</div>
+          ${r.photo ? '<span class="pill set">Photo</span>' : ''}</div>
+        <div class="tbody2">
+          ${r.photo ? `<img src="${esc(r.photo)}" alt="" style="max-width:100%;border-radius:12px;margin-bottom:12px">` : ''}
+          <p class="tdesc">${esc(r.description || '')}</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${r.yt ? `<button class="btn sm ghost" data-yt="${esc(r.yt)}" data-yttitle="${esc(r.title)}">▶ Watch</button>` : ''}
+            ${r.url ? `<a class="btn sm ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Open link</a>` : ''}
             <button class="btn sm ghost" data-assignown="${i}">Assign to a student</button>
             <button class="btn sm ghost" data-delown="${i}" style="color:var(--bad);border-color:var(--bad)">Delete</button>
           </div></div></div>`).join('')
@@ -1512,7 +1516,7 @@ async function delFrom(field, i) {
   catch { toast('Could not delete'); }
 }
 // One sheet for all three — they differ only in their fields.
-let PROGPICK = [];
+let PROGPICK = [], NTPHOTO = '';
 function newThing(kind, editIdx) {
   const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
   const field = kind === 'pack' ? 'taskPacks' : kind === 'program' ? 'taskPrograms' : 'resources';
@@ -1525,8 +1529,14 @@ function newThing(kind, editIdx) {
     <input id="ntTitle" placeholder="${label} name" style="${F};margin-bottom:12px" value="${esc(ex?.name || ex?.title || '')}">
     <textarea id="ntDetail" rows="3" placeholder="${kind === 'resource'
       ? 'What the student should do' : 'What this covers'}" style="${F};margin-bottom:12px">${esc(ex?.detail || ex?.summary || '')}</textarea>
-    ${kind === 'resource' ? `<input id="ntYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(ex?.yt || '')}">
-      <input id="ntCat" placeholder="Category (optional) — e.g. Technique" style="${F}" value="${esc(ex?.category || '')}">` : ''}
+    ${kind === 'resource' ? `<input id="ntUrl" placeholder="Link (optional) — a tab, a video, a PDF" style="${F};margin-bottom:12px" value="${esc(ex?.url || '')}">
+      <input id="ntCat" placeholder="Category (optional) — e.g. Technique" style="${F};margin-bottom:12px" value="${esc(ex?.category || '')}">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
+        <label class="btn sm ghost" for="ntPhoto" style="cursor:pointer">Add a photo</label>
+        <input id="ntPhoto" type="file" accept="image/*" style="display:none">
+        <span class="hint" id="ntPhotoName">${ex?.photo ? 'Photo attached' : 'None'}</span></div>
+      <div id="ntPhotoWrap">${ex?.photo ? `<img id="ntPhotoImg" src="${esc(ex.photo)}" alt=""
+        style="max-width:160px;border-radius:10px;display:block;margin-top:6px">` : ''}</div>` : ''}
     ${kind === 'pack' ? `<div class="hint" style="margin:-4px 0 8px">One task per line. Add “ | 10” for a timer in minutes.</div>
       <textarea id="ntItems" rows="6" placeholder="Barre chord holds | 10&#10;A minor pentatonic at 80bpm | 5" style="${F}">${
       esc((ex?.tasks || []).map(t => t.title + (t.durationMin ? ' | ' + t.durationMin : '')).join('\n'))}</textarea>` : ''}
@@ -1538,6 +1548,22 @@ function newThing(kind, editIdx) {
         || '<p class="hint" style="margin:0">Build a pack first — a program is made of them.</p>'}</div>` : ''}
     <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
       <button class="btn" id="ntSave" style="flex:1">${ex ? 'Save' : 'Create'}</button></div>`);
+  // Uploads land under chatMedia/resource_{uid}/ — the path the app uses and
+  // the Storage rules already allow, so a photo added here opens on the phone.
+  NTPHOTO = ex?.photo || '';
+  const ph = $('#ntPhoto');
+  if (ph) ph.addEventListener('change', async () => {
+    const f = ph.files && ph.files[0]; ph.value = '';
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { toast('Images only'); return; }
+    $('#ntPhotoName').textContent = 'Uploading…';
+    try {
+      const { url } = await uploadChatMedia(f, 'resource_' + meUid);
+      NTPHOTO = url;
+      $('#ntPhotoName').textContent = 'Photo attached';
+      $('#ntPhotoWrap').innerHTML = `<img src="${url}" alt="" style="max-width:160px;border-radius:10px;display:block;margin-top:6px">`;
+    } catch { $('#ntPhotoName').textContent = 'Upload failed'; toast('Could not upload that photo'); }
+  });
   PROGPICK = (ex?.packIds || []).slice();
   const pl = $('#ntPacks');
   if (pl) pl.addEventListener('click', (e) => {
@@ -1556,7 +1582,9 @@ function newThing(kind, editIdx) {
     let item = kind === 'resource'
     ? { id: ex?.id || Date.now().toString(), title, createdAt: ex?.createdAt || new Date().toISOString() }
     : { id: ex?.id || Date.now().toString(), name: title, createdAt: ex?.createdAt || new Date().toISOString() };
-    if (kind === 'resource') item = { ...item, detail: body, yt: $('#ntYt').value.trim(), category: $('#ntCat').value.trim() };
+    if (kind === 'resource') item = { ...item, description: body, url: $('#ntUrl').value.trim(),
+      category: $('#ntCat').value.trim(), photo: NTPHOTO || '',
+      instrument: ex?.instrument || '', level: ex?.level || '' };
     if (kind === 'pack') item = { ...item, tasks: $('#ntItems').value.split('\n').map(x => x.trim()).filter(Boolean)
       .map(line => { const [t, mins] = line.split('|').map(y => y.trim());
         return { title: t, description: '', youtube: '', durationMin: parseInt(mins, 10) || 0 }; }) };
@@ -1582,8 +1610,9 @@ function assignItem(item) {
     const b = ev.target.closest('[data-resto]'); if (!b) return;
     const stu = students[+b.getAttribute('data-resto')];
     const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
-    cur.push({ id: Date.now().toString(), title: item.title, description: item.detail || item.summary || '',
-      youtube: item.yt || '', song: '', drill: null, drillLevel: null, drillMode: null,
+    cur.push({ id: Date.now().toString(), title: item.title,
+      description: item.description || item.detail || item.summary || '',
+      youtube: item.url || item.yt || '', song: '', drill: null, drillLevel: null, drillMode: null,
       dueDate: '', durationMin: 0, completed: false });
     try { await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
       stu.assignedTasks = cur; closeModal(); toast(`Assigned to ${displayName(stu)}`); }
