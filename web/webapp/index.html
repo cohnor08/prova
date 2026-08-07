@@ -788,8 +788,111 @@ function viewSongs() {
                   <a class="btn sm ghost" target="_blank" rel="noopener" href="${spotify(sg.title, sg.artist)}">Play</a></div>`).join('')
                 : '<p class="hint" style="margin:0">No songs in this setlist yet.</p>'}</div></div>`;
           }).join('')
-        : empty('No setlists', 'Build one in the app for your next gig.'))}
+        : empty('No setlists', 'Use “Build a setlist” for your next gig.'))}
     </div></div></div>`;
+
+  const si = $('#songSearch');
+  si.addEventListener('input', () => {
+    SONGQ = si.value;
+    const pos = si.selectionStart;
+    viewSongs();
+    const n = $('#songSearch'); n.focus(); n.setSelectionRange(pos, pos);
+  });
+  $('#learnBtn').onclick = learnSongSheet;
+  $('#setlistBtn').onclick = setlistSheet;
+}
+
+const SHEET_F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+
+// ── Learn a song — generateSongPlan, saved into songLibrary ──────────────
+function learnSongSheet() {
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Learn a song</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">What do you want to learn?</h3>
+    <input id="lsTitle" placeholder="Song title — e.g. Wonderwall" style="${SHEET_F};margin-bottom:12px">
+    <input id="lsArtist" placeholder="Artist (optional) — e.g. Oasis" style="${SHEET_F};margin-bottom:12px">
+    <input id="lsTuning" placeholder="Tuning (optional) — e.g. Drop D" style="${SHEET_F}">
+    <p class="hint" style="margin:14px 0 0">Built for ${esc(me.instrument || 'guitar')}. If Prova doesn't know the song
+      well enough to teach it properly it will say so, rather than guess at the chords.</p>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="lsGo" style="flex:1">Build the plan</button></div></div>`;
+  $('#lsGo').onclick = async () => {
+    const title = $('#lsTitle').value.trim();
+    if (!title) { toast('Give it a song title'); return; }
+    const btn = $('#lsGo'); btn.disabled = true; btn.textContent = 'Building…';
+    try {
+      const res = await httpsCallable(fns, 'generateSongPlan')({
+        instrument: me.instrument || 'Guitar', title,
+        artist: $('#lsArtist').value.trim(), tuning: $('#lsTuning').value.trim(),
+      });
+      const plan = res?.data?.plan || res?.data;
+      if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) throw new Error('unknown song');
+      const entry = { songKey: plan.key || title.toLowerCase(), title: plan.title || title,
+        artist: plan.artist || $('#lsArtist').value.trim(), instrument: plan.instrument || me.instrument || 'Guitar',
+        overview: plan.overview || '', tuning: plan.tuning || '', capo: plan.capo || '',
+        addedAt: new Date().toISOString(),
+        steps: plan.steps.map(x => ({ ...x, done: false, practicedSec: 0 })) };
+      const lib = Array.isArray(me.songLibrary) ? me.songLibrary : [];
+      const next = [entry, ...lib.filter(x => x.songKey !== entry.songKey)];
+      await setDoc(doc(db, 'users', uid), { songLibrary: next }, { merge: true });
+      me.songLibrary = next;
+      $('#overlays').innerHTML = ''; viewSongs();
+      celebrate({ points: 0, title: 'Plan ready', subtitle: `${entry.steps.length} steps for ${entry.title}`, emoji: '🎸' });
+    } catch (err) {
+      toast(/unknown song/.test(err?.message || '')
+        ? `Prova doesn't know "${title}" well enough to teach it properly.`
+        : 'Could not build that plan. Try again in a moment.');
+      btn.disabled = false; btn.textContent = 'Build the plan';
+    }
+  };
+}
+
+// ── Build a setlist — generateSetlist, saved into setlists ───────────────
+function setlistSheet() {
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Gig setlist</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">Tell Prova about the gig</h3>
+    <input id="glName" placeholder="Name it — e.g. Friday at The Lighthouse" style="${SHEET_F};margin-bottom:12px">
+    <input id="glSetting" placeholder="Setting — e.g. pub, café, house party" style="${SHEET_F};margin-bottom:12px">
+    <input id="glAudience" placeholder="Audience — e.g. mixed crowd" style="${SHEET_F};margin-bottom:12px">
+    <input id="glVibe" placeholder="Vibe — e.g. upbeat singalongs" style="${SHEET_F};margin-bottom:12px">
+    <input id="glArtists" placeholder="Artists to lean on (optional, comma separated)" style="${SHEET_F};margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <input id="glCount" type="number" min="3" max="30" value="12" style="${SHEET_F};width:120px">
+      <span class="hint">songs</span></div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="glGo" style="flex:1">Generate</button></div></div>`;
+  $('#glGo').onclick = async () => {
+    const btn = $('#glGo'); btn.disabled = true; btn.textContent = 'Generating…';
+    const name = $('#glName').value.trim() || 'New setlist';
+    try {
+      const res = await httpsCallable(fns, 'generateSetlist')({
+        instrument: me.instrument || 'Guitar', level: me.level || 'Beginner',
+        setting: $('#glSetting').value.trim(), audience: $('#glAudience').value.trim(),
+        vibe: $('#glVibe').value.trim(),
+        artists: $('#glArtists').value.split(',').map(x => x.trim()).filter(Boolean),
+        songCount: parseInt($('#glCount').value, 10) || 12,
+        library: (me.songLibrary || []).map(x => ({ title: x.title, artist: x.artist })),
+      });
+      const songs = res?.data?.songs || res?.data?.setlist?.songs || [];
+      if (!songs.length) throw new Error('empty');
+      const entry = { id: Date.now().toString(), name, setting: $('#glSetting').value.trim(),
+        audience: $('#glAudience').value.trim(), vibe: $('#glVibe').value.trim(),
+        createdAt: new Date().toISOString(), songs };
+      const next = [entry, ...(Array.isArray(me.setlists) ? me.setlists : [])];
+      await setDoc(doc(db, 'users', uid), { setlists: next }, { merge: true });
+      me.setlists = next;
+      $('#overlays').innerHTML = ''; viewSongs();
+      celebrate({ points: 0, title: 'Setlist ready', subtitle: `${songs.length} songs for ${name}`, emoji: '🎤' });
+    } catch {
+      toast('Could not build that setlist. Try again in a moment.');
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+  };
 }
 
 function viewSchedule() {
