@@ -1404,8 +1404,9 @@ function viewResources() {
   const chip = (k, v, on) => `<button class="btn sm ghost" data-rf="${k}" data-v="${esc(v)}"${
     on ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(v)}</button>`;
   const mine = Array.isArray(me.resources) ? me.resources : [];
-  const packs = Array.isArray(me.packs) ? me.packs : [];
-  const programs = Array.isArray(me.programs) ? me.programs : [];
+  // taskPacks / taskPrograms — the fields PacksScreen actually writes.
+  const packs = Array.isArray(me.taskPacks) ? me.taskPacks : [];
+  const programs = Array.isArray(me.taskPrograms) ? me.taskPrograms : [];
   const grid = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px';
 
   $('#screen').innerHTML = `<div class="content">
@@ -1434,9 +1435,10 @@ function viewResources() {
 
     <div><div class="eyebrow" style="padding:0 0 8px">Packs</div>
       ${packs.length ? `<div style="${grid}">${packs.map((x, i) => `
-        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.title || 'Pack')}</h4>
-          <p class="hint" style="margin:0 0 10px">${(x.items || []).length} item${(x.items || []).length === 1 ? '' : 's'}</p>
-          ${(x.items || []).slice(0, 4).map(it => `<div class="hint" style="padding:3px 0">· ${esc(it.title || it)}</div>`).join('')}
+        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.name || 'Pack')}</h4>
+          <p class="hint" style="margin:0 0 10px">${(x.tasks || []).length} task${(x.tasks || []).length === 1 ? '' : 's'}</p>
+          ${(x.tasks || []).slice(0, 4).map(t => `<div class="hint" style="padding:3px 0">· ${esc(t.title)}${
+            t.durationMin ? ` <span style="opacity:.7">${t.durationMin} min</span>` : ''}</div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn sm ghost" data-editpack="${i}" style="flex:1">Edit</button>
             <button class="btn sm ghost" data-delpack="${i}">×</button></div></div>`).join('')}</div>`
@@ -1444,9 +1446,10 @@ function viewResources() {
 
     <div><div class="eyebrow" style="padding:0 0 8px">Programs</div>
       ${programs.length ? `<div style="${grid}">${programs.map((x, i) => `
-        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.title || 'Program')}</h4>
-          <p class="hint" style="margin:0 0 10px">${x.weeks || (x.items || []).length} week${(x.weeks || 1) === 1 ? '' : 's'}</p>
-          <p class="hint" style="margin:0">${esc(x.summary || '')}</p>
+        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.name || 'Program')}</h4>
+          <p class="hint" style="margin:0 0 10px">${(x.packIds || []).length} week${(x.packIds || []).length === 1 ? '' : 's'} · one pack a week</p>
+          ${(x.packIds || []).map((pid, w) => { const pk = packs.find(q => q.id === pid);
+            return `<div class="hint" style="padding:3px 0">Week ${w + 1} · ${esc(pk ? pk.name : 'missing pack')}</div>`; }).join('')}
           <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn sm ghost" data-editprog="${i}" style="flex:1">Edit</button>
             <button class="btn sm ghost" data-delprog="${i}">×</button></div></div>`).join('')}</div>`
@@ -1487,9 +1490,9 @@ function viewResources() {
     const eg = e.target.closest('[data-editprog]');
     if (eg) return newThing('program', +eg.getAttribute('data-editprog'));
     const dp = e.target.closest('[data-delpack]');
-    if (dp) return delFrom('packs', +dp.getAttribute('data-delpack'));
+    if (dp) return delFrom('taskPacks', +dp.getAttribute('data-delpack'));
     const dg = e.target.closest('[data-delprog]');
-    if (dg) return delFrom('programs', +dg.getAttribute('data-delprog'));
+    if (dg) return delFrom('taskPrograms', +dg.getAttribute('data-delprog'));
     const dr = e.target.closest('[data-delown]');
     if (dr) return delFrom('resources', +dr.getAttribute('data-delown'));
     const ao = e.target.closest('[data-assignown]');
@@ -1509,35 +1512,55 @@ async function delFrom(field, i) {
   catch { toast('Could not delete'); }
 }
 // One sheet for all three — they differ only in their fields.
+let PROGPICK = [];
 function newThing(kind, editIdx) {
   const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
-  const field = kind === 'pack' ? 'packs' : kind === 'program' ? 'programs' : 'resources';
+  const field = kind === 'pack' ? 'taskPacks' : kind === 'program' ? 'taskPrograms' : 'resources';
   const list = Array.isArray(me[field]) ? me[field] : [];
   const ex = typeof editIdx === 'number' ? list[editIdx] : null;
   const label = { resource: 'Resource', pack: 'Pack', program: 'Program' }[kind];
   modal(`<div style="display:flex;align-items:center"><span class="lab">${label}</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
     <h3 style="margin:8px 0 16px;font-size:18px">${ex ? 'Edit' : 'New'} ${label.toLowerCase()}</h3>
-    <input id="ntTitle" placeholder="${label} name" style="${F};margin-bottom:12px" value="${esc(ex?.title || '')}">
+    <input id="ntTitle" placeholder="${label} name" style="${F};margin-bottom:12px" value="${esc(ex?.name || ex?.title || '')}">
     <textarea id="ntDetail" rows="3" placeholder="${kind === 'resource'
       ? 'What the student should do' : 'What this covers'}" style="${F};margin-bottom:12px">${esc(ex?.detail || ex?.summary || '')}</textarea>
     ${kind === 'resource' ? `<input id="ntYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(ex?.yt || '')}">
       <input id="ntCat" placeholder="Category (optional) — e.g. Technique" style="${F}" value="${esc(ex?.category || '')}">` : ''}
-    ${kind === 'pack' ? `<textarea id="ntItems" rows="5" placeholder="One item per line" style="${F}">${
-      esc((ex?.items || []).map(i => i.title || i).join('\n'))}</textarea>` : ''}
-    ${kind === 'program' ? `<input id="ntWeeks" type="number" min="1" max="52" placeholder="Weeks"
-      value="${ex?.weeks || 6}" style="${F};width:120px">` : ''}
+    ${kind === 'pack' ? `<div class="hint" style="margin:-4px 0 8px">One task per line. Add “ | 10” for a timer in minutes.</div>
+      <textarea id="ntItems" rows="6" placeholder="Barre chord holds | 10&#10;A minor pentatonic at 80bpm | 5" style="${F}">${
+      esc((ex?.tasks || []).map(t => t.title + (t.durationMin ? ' | ' + t.durationMin : '')).join('\n'))}</textarea>` : ''}
+    ${kind === 'program' ? `<div class="hint" style="margin:-4px 0 8px">Pick packs in order — one released per week.</div>
+      <div id="ntPacks" style="display:flex;flex-direction:column;gap:6px">${
+        (Array.isArray(me.taskPacks) ? me.taskPacks : []).map(pk =>
+          `<button class="btn sm ghost" data-packpick="${esc(pk.id)}"${(ex?.packIds || []).includes(pk.id)
+            ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(pk.name)}</button>`).join('')
+        || '<p class="hint" style="margin:0">Build a pack first — a program is made of them.</p>'}</div>` : ''}
     <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
       <button class="btn" id="ntSave" style="flex:1">${ex ? 'Save' : 'Create'}</button></div>`);
+  PROGPICK = (ex?.packIds || []).slice();
+  const pl = $('#ntPacks');
+  if (pl) pl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-packpick]'); if (!b) return;
+    const id = b.getAttribute('data-packpick');
+    const at = PROGPICK.indexOf(id);
+    if (at >= 0) PROGPICK.splice(at, 1); else PROGPICK.push(id);   // order = week order
+    [...pl.children].forEach(x => { const i = PROGPICK.indexOf(x.getAttribute('data-packpick'));
+      x.setAttribute('style', i >= 0 ? 'border-color:var(--primary);color:var(--ink)' : '');
+      x.textContent = (i >= 0 ? `Week ${i + 1} · ` : '') + x.textContent.replace(/^Week \d+ · /, ''); });
+  });
   $('#ntSave').onclick = async () => {
     const title = $('#ntTitle').value.trim();
     if (!title) { toast('Give it a name'); return; }
     const body = $('#ntDetail').value.trim();
-    let item = { id: ex?.id || Date.now().toString(), title, createdAt: ex?.createdAt || new Date().toISOString() };
+    let item = kind === 'resource'
+    ? { id: ex?.id || Date.now().toString(), title, createdAt: ex?.createdAt || new Date().toISOString() }
+    : { id: ex?.id || Date.now().toString(), name: title, createdAt: ex?.createdAt || new Date().toISOString() };
     if (kind === 'resource') item = { ...item, detail: body, yt: $('#ntYt').value.trim(), category: $('#ntCat').value.trim() };
-    if (kind === 'pack') item = { ...item, summary: body,
-      items: $('#ntItems').value.split('\n').map(x => x.trim()).filter(Boolean).map(t => ({ title: t })) };
-    if (kind === 'program') item = { ...item, summary: body, weeks: parseInt($('#ntWeeks').value, 10) || 6 };
+    if (kind === 'pack') item = { ...item, tasks: $('#ntItems').value.split('\n').map(x => x.trim()).filter(Boolean)
+      .map(line => { const [t, mins] = line.split('|').map(y => y.trim());
+        return { title: t, description: '', youtube: '', durationMin: parseInt(mins, 10) || 0 }; }) };
+    if (kind === 'program') item = { ...item, packIds: PROGPICK.slice() };
     const next = ex ? list.map((x, k) => k === editIdx ? item : x) : [item, ...list];
     $('#ntSave').disabled = true;
     try { await saveMe({ [field]: next }); await refreshMe(); closeModal(); viewResources();
