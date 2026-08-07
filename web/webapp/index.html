@@ -1464,7 +1464,7 @@ async function viewMessages() {
 }
 
 // ── practice player — Done locked until the clock runs out ───────────────
-let PLAY = null, timer = null;
+let PLAY = null, timer = null, WATCHING = false;
 // Elapsed time on a task you left is kept, exactly like the app's priorSec —
 // and kept in localStorage too, so five seconds is not lost to a refresh.
 const priorKey = () => `prova:prior:${uid}:${todayKey()}`;
@@ -1528,7 +1528,8 @@ function drawPlayer() {
     <div class="clock" id="pClock">${fmt(rem)}</div>
     <p class="hint" style="margin:12px 0 0">${PLAY.target ? `${PLAY.item.duration} min task` : 'Open-ended'}</p>
     ${PRIOR[PLAY.kind + PLAY.i] ? `<p class="hint" style="margin:8px 0 0">${fmt(PRIOR[PLAY.kind + PLAY.i])} already banked on this task</p>` : ''}
-    <div style="display:flex;gap:10px;margin-top:22px">
+    <button class="btn ghost" id="pWatch" style="width:100%;margin-top:18px">▶ Watch a lesson</button>
+    <div style="display:flex;gap:10px;margin-top:10px">
       <button class="btn ghost" id="pPause" style="flex:1">${PLAY.paused ? 'Resume' : 'Pause'}</button>
       <button class="btn" id="pDone" style="flex:1" ${PLAY.target > 0 && rem > 0 ? 'disabled' : ''}>Done</button></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
@@ -1540,9 +1541,25 @@ function drawPlayer() {
   $('#pDone').onclick = finish;
   $('#pPrev').onclick = () => step(-1);
   $('#pNext').onclick = () => step(1);
+  // Watching pauses the clock — the app does the same, so time spent on a
+  // video is never counted as time spent practising.
+  $('#pWatch').onclick = () => {
+    PLAY.paused = true;
+    WATCHING = true;
+    const it = PLAY.item;
+    openYouTube(it.youtube || `${it.title} ${me.instrument || 'guitar'} tutorial`, it.title);
+  };
 }
 $('#overlays').addEventListener('click', (e) => {
-  if (e.target.closest('[data-close]')) { if (PLAY) closePlayer(); else { $('#overlays').innerHTML = ''; } }
+  if (!e.target.closest('[data-close]')) return;
+  if (WATCHING && PLAY) {           // came from the player — go back to it
+    WATCHING = false;
+    PLAY.t0 = performance.now();    // stays paused until they press Resume
+    drawPlayer();
+    return;
+  }
+  WATCHING = false;
+  if (PLAY) closePlayer(); else $('#overlays').innerHTML = '';
 });
 
 // The writes. These mirror TodayScreen.handleComplete and practiceLog.js —
