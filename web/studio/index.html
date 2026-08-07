@@ -204,6 +204,18 @@
   .segview button:hover{color:var(--ink)}
   .segview button[aria-pressed="true"]{background:var(--card);color:var(--ink);
     box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  /* Three figures side by side inside a sheet — the full .stat card was far
+     too heavy for the width and pushed the sheet sideways. */
+  .minis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px}
+  .mini{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 8px;
+    text-align:center;min-width:0}
+  .mini .mk{font-size:9.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-3);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini .mv{font-family:var(--round);font-weight:600;font-size:19px;line-height:1.2;margin-top:3px;
+    font-variant-numeric:tabular-nums}
+  /* nothing in a sheet should ever scroll sideways */
+  .modal{overflow-x:hidden}
+  .modal .tablewrap{max-width:100%}
   .empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
   .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
@@ -1358,13 +1370,10 @@ function viewOverview() {
       modal(`<div style="display:flex;align-items:center"><span class="lab">${esc(OVR)}</span>
           <button class="x" data-close style="margin-left:auto">×</button></div>
         <h3 style="margin:8px 0 16px;font-size:19px">${esc(r.name)}</h3>
-        <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
-          <div class="stat" style="padding:12px"><div class="k">Attendance</div>
-            <div class="v" style="font-size:24px">${rt == null ? '—' : rt + '%'}</div></div>
-          <div class="stat" style="padding:12px"><div class="k">Lessons</div>
-            <div class="v" style="font-size:24px">${r.present + r.late + r.absent + r.notMarked}</div></div>
-          <div class="stat" style="padding:12px"><div class="k">Avg mark</div>
-            <div class="v" style="font-size:24px">${r.marks.length ? m.toFixed(1) : '—'}</div></div>
+        <div class="minis">
+          <div class="mini"><div class="mk">Attendance</div><div class="mv">${rt == null ? '—' : rt + '%'}</div></div>
+          <div class="mini"><div class="mk">Lessons</div><div class="mv">${r.present + r.late + r.absent + r.notMarked}</div></div>
+          <div class="mini"><div class="mk">Avg mark</div><div class="mv">${r.marks.length ? m.toFixed(1) : '—'}</div></div>
         </div>
         <div class="hint" style="margin-bottom:12px">${r.present} present · ${r.late} late · ${r.absent} absent${
           r.notMarked ? ' · ' + r.notMarked + ' unmarked' : ''}</div>
