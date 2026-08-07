@@ -109,14 +109,13 @@
   .stat .v{font-family:var(--round);font-weight:600;font-size:28px;line-height:1.15;font-variant-numeric:tabular-nums}
   .stat .v small{font-size:12.5px;color:var(--ink-3);font-weight:600;margin-left:4px}
 
-  .planhead{display:flex;align-items:center;gap:18px;padding:18px 20px;border-radius:var(--r-lg);
-    background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 9%,var(--card)),var(--card));
-    border:1px solid color-mix(in srgb,var(--primary) 26%,var(--line));box-shadow:var(--shadow)}
-  .planhead.complete{background:linear-gradient(180deg,color-mix(in srgb,var(--good) 8%,var(--card)),var(--card));
-    border-color:color-mix(in srgb,var(--good) 26%,var(--line))}
-  .planhead .phcopy{flex:1;min-width:0}
-  .planhead .phline{font-size:19px;font-weight:650;letter-spacing:-.2px}
-  .planhead .phsub{font-size:13px;color:var(--ink-3);margin-top:2px}
+  .planhead{padding:20px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+  .planhead .phrow{display:flex}
+  .planhead .phstat{flex:1;text-align:center;position:relative}
+  .planhead .phstat+.phstat::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:1px;background:var(--line)}
+  .planhead .phn{font-family:var(--round);font-weight:600;font-size:30px;line-height:1;font-variant-numeric:tabular-nums}
+  .planhead .phsub2{font-size:15px;color:var(--ink-3)}
+  .planhead .phk{font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
 
   .trow{border-top:1px solid var(--line)}
   .trow:first-child{border-top:0}
@@ -592,50 +591,20 @@ function render() {
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
     <div class="cols"><div class="stack">
-      ${sessions.length ? `<div class="planhead${all ? ' complete' : ''}">
-        <svg width="72" height="72" viewBox="0 0 72 72" style="flex:none">
-          <circle cx="36" cy="36" r="28" fill="none" stroke="var(--raised)" stroke-width="7"/>
-          <circle cx="36" cy="36" r="28" fill="none" stroke="${all ? 'var(--good)' : 'var(--primary)'}" stroke-width="7"
-            stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C - C * pct / 100}"
-            transform="rotate(-90 36 36)" style="transition:stroke-dashoffset .5s cubic-bezier(.2,.8,.2,1)"/>
-          <text x="36" y="40" text-anchor="middle" font-family="var(--round)" font-weight="600" font-size="17" fill="var(--ink)">${donePlan}/${sessions.length}</text></svg>
-        <div class="phcopy"><div class="phline">${all ? 'Done for today' : `${left} minutes left today`}</div>
-          <div class="phsub">${doneMin} of ${planned} min practiced</div></div>
-        <button class="btn${all ? ' ghost' : ''}" data-play="next">${
-          all ? 'Practice more' : hasStartedToday() ? 'Resume practice' : 'Start practice'}</button>
-      </div>
-      ${(() => {   // only offered once they're actually practising
-        if (!hasStartedToday()) return '';
-        const gigs = (Array.isArray(me.gigs) ? me.gigs : [])
-          .filter(g => g.date >= dayKey(new Date())).sort((a, b) => a.date.localeCompare(b.date));
-        const g = gigs[0]; if (!g) return '';
-        const set = (me.setlists || []).find(x => x.id === g.setlistId);
-        if (!set || !(set.songs || []).length) return '';
-        const days = Math.round((new Date(g.date + 'T12:00:00') - new Date(new Date().toDateString())) / 86400000);
-        return `<button data-gig="${esc(g.id)}" style="width:100%;margin-top:10px;background:none;border:0;
-          border-top:1px solid var(--line);padding:12px 0 0;cursor:pointer;color:var(--ink-3);font:inherit;
-          font-size:12.5px;text-align:center">
-          Run the set for <b style="color:var(--primary)">${esc(g.name)}</b> first —
-          ${days <= 0 ? 'today' : days === 1 ? 'tomorrow' : days + ' days away'}</button>`;
-      })()}` : ''}
-      ${(() => {   // the next gig, and how long you have
-        const gigs = (Array.isArray(me.gigs) ? me.gigs : [])
-          .filter(g => g.date >= dayKey(new Date())).sort((a, b) => a.date.localeCompare(b.date));
-        const g = gigs[0]; if (!g) return '';
-        const days = Math.round((new Date(g.date + 'T12:00:00') - new Date(new Date().toDateString())) / 86400000);
-        const when = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
-        const set = (me.setlists || []).find(x => x.id === g.setlistId);
-        return `<section class="card" style="border-color:color-mix(in srgb,var(--warn) 28%,var(--line))">
-          <header><span style="width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
-            background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);font-size:13px">🎤</span>
-            <h3>${esc(g.name)}</h3><span class="meta" style="color:var(--warn)">${when}</span></header>
-          <div class="hint" style="margin:0 0 12px">${new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,
-            { weekday:'long', day:'numeric', month:'long' })}${g.time ? ' · ' + esc(g.time) : ''}${
-            set ? ` · ${(set.songs || []).length} songs ready` : ' · no setlist attached yet'}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn sm" data-gig="${esc(g.id)}">${set ? 'Rehearse the set' : 'Attach a setlist'}</button>
-            <button class="btn sm ghost" data-go="calendar">Calendar</button></div></section>`;
-      })()}
+      ${sessions.length ? `<div class="planhead">
+        <div class="phrow">
+          <div class="phstat"><div class="phn">${doneMin}<span class="phsub2">/${planned}</span></div><div class="phk">minutes</div></div>
+          <div class="phstat"><div class="phn">${sessions.length}</div><div class="phk">exercises</div></div>
+          <div class="phstat"><div class="phn">${donePlan}</div><div class="phk">done</div></div>
+        </div>
+        <div class="track" style="margin:16px 0 10px"><i style="width:${pct}%"></i></div>
+        <div class="hint" style="text-align:center">${donePlan} of ${sessions.length} completed · ${pct}%</div>
+        <button class="btn" data-play="next" style="width:100%;margin-top:16px;padding:14px">${
+          all ? '▶ Practice more' : hasStartedToday() ? '▶ Resume practice' : '▶ Start practice'}</button>
+        ${(me.setlists || []).length ? `<button data-setpractice="1" style="width:100%;margin-top:12px;background:none;
+          border:0;color:var(--primary);font:inherit;font-weight:650;font-size:14px;cursor:pointer;padding:4px">
+          ♫ Practice setlist</button>` : ''}
+      </div>` : ''}
       ${(() => { const c = todaysChallenge(); if (!c) return '';
         const done = challengeDone();
         return `<section class="card">
@@ -1591,6 +1560,81 @@ document.addEventListener('click', (e) => {
   if (b) { const [t, a] = b.getAttribute('data-preview').split('|'); togglePreview(b, t, a); }
 });
 
+// ══ SETLIST REHEARSAL ══════════════════════════════════════════════════
+// Practice setlist → pick a song → the player runs it as a gig rehearsal:
+// open practice, the clock counts up and the time still pays.
+let REH = { setId: null };
+const currentSet = () => {
+  const sets = me.setlists || [];
+  return sets.find(x => x.id === REH.setId) || sets[0] || null;
+};
+function setlistPicker() {
+  const sets = me.setlists || [];
+  const cur = currentSet();
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <h3 style="margin:0 0 4px;font-size:20px">Your setlists</h3>
+    <p class="hint" style="margin:0 0 18px">Pick which set to rehearse from.</p>
+    <div class="rows">${sets.map(x => `
+      <button class="prow" data-pickset="${esc(x.id)}" style="width:100%;background:none;border:0;
+        border-top:1px solid var(--line);cursor:pointer;text-align:left">
+        <span style="color:var(--primary);flex:none">▤</span>
+        <span class="pl"><span class="pt" style="display:block">${esc(x.name)}</span>
+          <span class="ps">${(x.songs || []).length} songs${cur && cur.id === x.id ? ' · current' : ''}</span></span>
+        <span class="hint">›</span></button>`).join('')}</div>
+    <button class="btn ghost" data-close style="width:100%;margin-top:18px">Back</button></div>`;
+}
+function rehearsalPicker() {
+  const set = currentSet();
+  if (!set) { toast('Build a setlist in Songs first'); return; }
+  const songs = set.songs || [];
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <h3 style="margin:0;font-size:20px;flex:1">Pick a song to rehearse</h3>
+      <button class="btn sm ghost" data-setswitch="1" style="flex:none">⇄ Setlists</button></div>
+    <p class="hint" style="margin:8px 0 18px">From “${esc(set.name)}” — the clock runs and it counts for points.</p>
+    <div class="rows" style="max-height:46vh;overflow:auto">${songs.length ? songs.map((sg, i) => `
+      <div class="prow" style="border-top:1px solid var(--line)">
+        <span class="hint" style="width:18px;flex:none">${i + 1}</span>
+        <span class="pl"><span class="pt" style="display:block">${esc(sg.title)}</span>
+          <span class="ps">${esc(sg.artist || '')}</span></span>
+        <button class="btn sm" data-rehearse="${i}" style="flex:none;border-radius:50%;width:32px;height:32px;padding:0">▶</button>
+      </div>`).join('') : '<p class="hint" style="margin:0">No songs in this set yet.</p>'}</div>
+    <button data-close style="width:100%;margin-top:18px;background:none;border:0;color:var(--ink-3);
+      font:inherit;font-size:13.5px;cursor:pointer;padding:8px">Skip to today's tasks</button></div>`;
+}
+function openRehearsal(i) {
+  const set = currentSet(); if (!set) return;
+  const sg = (set.songs || [])[i]; if (!sg) return;
+  markStarted();
+  PLAY = { kind: 'gigsong', i, item: { title: sg.title, artist: sg.artist, setName: set.name },
+           target: 0, elapsed: 0, paused: false, t0: performance.now(), songs: set.songs };
+  drawPlayer(); tick();
+}
+// Rehearsal time pays at the normal per-minute rate and logs under songs.
+async function finishRehearsal() {
+  const secs = Math.round(PLAY.elapsed), mins = Math.max(1, Math.round(secs / 60));
+  const pts = Math.round(mins * POINTS_PER_MIN);
+  try {
+    await updateDoc(doc(db, 'users', uid), { provaScore: increment(pts), totalMinutes: increment(mins) });
+    await setDoc(doc(db, 'sessionHistory', uid, 'logs', dayKey()),
+      { date: dayKey(), totalMinutes: increment(mins), categories: { song: increment(mins) } }, { merge: true });
+    me.provaScore = (me.provaScore || 0) + pts; me.totalMinutes = (me.totalMinutes || 0) + mins;
+    $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
+    celebrate({ points: pts, title: 'Nice run', subtitle: PLAY.item.title, emoji: '🎤' });
+  } catch { toast('Could not save that'); }
+  const next = PLAY.i + 1;
+  clearInterval(timer); PLAY = null; $('#overlays').innerHTML = '';
+  if (next < (currentSet()?.songs || []).length) openRehearsal(next); else { rerender(); rehearsalPicker(); }
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-setpractice]')) return rehearsalPicker();
+  if (e.target.closest('[data-setswitch]')) return setlistPicker();
+  const ps = e.target.closest('[data-pickset]');
+  if (ps) { REH.setId = ps.getAttribute('data-pickset'); return rehearsalPicker(); }
+  const r = e.target.closest('[data-rehearse]');
+  if (r) return openRehearsal(+r.getAttribute('data-rehearse'));
+});
+
 // ══ PERFORMANCE MODE ═══════════════════════════════════════════════════
 // Rehearse a gig's set in order, one song at a time — the setlist comes
 // first, before the day's plan, which is how the app treats a gig week.
@@ -2286,7 +2330,12 @@ function drawPlayer() {
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">
     <div style="display:flex;align-items:center"><span class="lab">Now practicing</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
+    ${PLAY.kind === 'gigsong' ? `<div style="text-align:center;margin:2px 0 10px">
+      <span class="pill" style="background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)">Gig rehearsal</span></div>` : ''}
     <h3 style="margin:8px 0 12px;font-size:18px">${esc(PLAY.item.title)}</h3>
+    ${PLAY.kind === 'gigsong' ? `<p class="hint" style="margin:0 0 16px">
+      ${PLAY.item.artist ? 'by ' + esc(PLAY.item.artist) + ' · ' : ''}From your “${esc(PLAY.item.setName)}” set —
+      run it like it's the gig.</p>` : ''}
     ${PLAY.item.description ? `<p style="margin:0 0 20px;color:var(--ink-2);font-size:13px;line-height:1.6;
         text-align:left;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);
         border:1px solid var(--line);border-radius:12px;padding:13px 15px">${esc(PLAY.item.description)}</p>` : '<div style="height:8px"></div>'}
@@ -2301,16 +2350,19 @@ function drawPlayer() {
       <button class="btn" id="pDone" style="flex:1" ${
         (PLAY.target > 0 ? rem > 0 : PLAY.elapsed < 30) ? 'disabled' : ''}>Done</button></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
-      ${(() => { const q = queue(); const at = q.findIndex(x => x.kind === PLAY.kind && x.i === PLAY.i);
+      ${PLAY.kind === 'gigsong' ? `<span></span><span class="hint">${PLAY.i + 1} of ${(PLAY.songs || []).length}</span>` :
+        (() => { const q = queue(); const at = q.findIndex(x => x.kind === PLAY.kind && x.i === PLAY.i);
         return `<button class="btn ghost sm" id="pPrev"${at <= 0 ? ' disabled' : ''}>‹ Previous</button>
           <span class="hint">${at < 0 ? 1 : at + 1} of ${q.length}</span>`; })()}
       <button class="btn ghost sm" id="pNext">Next ›</button></div>
     <p class="hint" style="margin:14px 0 0">${PLAY.target
       ? 'Done unlocks when the clock runs out.' : 'Done unlocks after 30 seconds.'} Move on and your time is kept.</p></div>`;
   $('#pPause').onclick = () => { PLAY.paused = !PLAY.paused; PLAY.t0 = performance.now(); drawPlayer(); };
-  $('#pDone').onclick = finish;
-  $('#pPrev').onclick = () => step(-1);
-  $('#pNext').onclick = () => step(1);
+  $('#pDone').onclick = () => (PLAY.kind === 'gigsong' ? finishRehearsal() : finish());
+  if ($('#pPrev')) $('#pPrev').onclick = () => step(-1);
+  $('#pNext').onclick = () => PLAY.kind === 'gigsong'
+    ? (PLAY.i + 1 < (PLAY.songs || []).length ? openRehearsal(PLAY.i + 1) : closePlayer())
+    : step(1);
   // Watching pauses the clock — the app does the same, so time spent on a
   // video is never counted as time spent practising.
   $('#pWatch').onclick = () => {
