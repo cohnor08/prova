@@ -719,17 +719,60 @@ function viewLibrary() {
 function viewSongs() {
   const lib = Array.isArray(me.songLibrary) ? me.songLibrary : [];
   const sets = Array.isArray(me.setlists) ? me.setlists : [];
+  const inst = me.instrument || 'guitar';
+  // src/constants/songs.js builds these the same way.
+  const spotify = (t, a) => `https://open.spotify.com/search/${encodeURIComponent(`${t} ${a || ''}`.trim())}`;
+  const apple = (t, a) => `https://music.apple.com/search?term=${encodeURIComponent(`${t} ${a || ''}`.trim())}`;
+
+  const songRow = (x, i) => {
+    const id = 'song' + i, open = OPEN[id];
+    const steps = Array.isArray(x.steps) ? x.steps : [];
+    const done = steps.filter(st => st.done).length;
+    return `<div class="trow${open ? ' open' : ''}">
+      <div class="thead2" data-open="${id}">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+        <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div>
+          <div class="tsub">${esc(x.artist || 'Unknown artist')}${steps.length ? ` · ${done} of ${steps.length} steps` : ''}</div></div>
+        ${steps.length ? `<div class="dur">${Math.round(done / steps.length * 100)}%</div>` : ''}</div>
+      <div class="tbody2">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${steps.length ? '14px' : '0'}">
+          <button class="btn sm ghost" data-yt="${esc(x.title)} ${esc(x.artist || '')} ${esc(inst)} tutorial" data-yttitle="${esc(x.title)}">▶ Watch a tutorial</button>
+          <a class="btn sm ghost" target="_blank" rel="noopener" href="${spotify(x.title, x.artist)}">Listen on Spotify</a>
+          <a class="btn sm ghost" target="_blank" rel="noopener" href="${apple(x.title, x.artist)}">Apple Music</a>
+        </div>
+        ${steps.length ? `<div class="eyebrow" style="padding:0 0 6px">The plan</div>
+          ${steps.map((st, k) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)">
+            <div class="tick${st.done ? ' on' : ''}" style="margin-top:2px">${st.done
+              ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--ground)" stroke-width="3.5" style="width:11px;height:11px"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600${st.done ? ';color:var(--ink-3);text-decoration:line-through' : ''}">${esc(st.title || 'Step ' + (k + 1))}</div>
+              ${st.detail ? `<div class="tsub" style="margin-top:2px;line-height:1.55">${esc(st.detail)}</div>` : ''}</div></div>`).join('')}`
+          : '<p class="hint" style="margin:0">No step plan yet — build one in the app to get the eight-step breakdown.</p>'}
+      </div></div>`;
+  };
+
   $('#screen').innerHTML = `<div class="content">
-    ${head('Songs', `${lib.length} in your library · ${sets.length} setlist${sets.length===1?'':'s'}`)}
+    ${head('Songs', `${lib.length} in your library · ${sets.length} setlist${sets.length === 1 ? '' : 's'}`)}
     <div class="cols"><div class="stack">
       ${card('Library', lib.length, lib.length
-        ? lib.map(x=>`<div class="trow"><div class="thead2" style="cursor:default">
-            <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div><div class="tsub">${esc(x.artist||'')}</div></div></div></div>`).join('')
+        ? lib.map(songRow).join('') + '<p class="hint" style="margin:14px 0 0">Click a song for its plan, a tutorial and where to listen.</p>'
         : empty('No songs yet', 'Add songs in the app and they show up here.'))}
     </div><div class="stack">
       ${card('Setlists', sets.length, sets.length
-        ? sets.map(x=>`<div class="trow"><div class="thead2" style="cursor:default"><div style="flex:1;min-width:0">
-            <div class="ttl">${esc(x.name)}</div><div class="tsub">${(x.songs||[]).length} songs${x.setting?' · '+esc(x.setting):''}</div></div></div></div>`).join('')
+        ? sets.map((x, i) => {
+            const id = 'set' + i, open = OPEN[id], songs = x.songs || [];
+            return `<div class="trow${open ? ' open' : ''}">
+              <div class="thead2" data-open="${id}">
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+                <div style="flex:1;min-width:0"><div class="ttl">${esc(x.name)}</div>
+                  <div class="tsub">${songs.length} songs${x.setting ? ' · ' + esc(x.setting) : ''}</div></div></div>
+              <div class="tbody2">${songs.length ? songs.map(sg => `
+                <div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line)">
+                  <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(sg.title)}</div>
+                    <div class="tsub">${esc(sg.artist || '')}</div></div>
+                  <button class="btn sm ghost" data-yt="${esc(sg.title)} ${esc(sg.artist || '')} ${esc(inst)} tutorial" data-yttitle="${esc(sg.title)}">▶</button>
+                  <a class="btn sm ghost" target="_blank" rel="noopener" href="${spotify(sg.title, sg.artist)}">Play</a></div>`).join('')
+                : '<p class="hint" style="margin:0">No songs in this setlist yet.</p>'}</div></div>`;
+          }).join('')
         : empty('No setlists', 'Build one in the app for your next gig.'))}
     </div></div></div>`;
 }
