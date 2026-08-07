@@ -634,7 +634,17 @@ function paintStudent() {
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       <button class="btn sm" id="addTask" style="flex:1">+ Assign Task</button>
       <button class="btn sm ghost" id="msgStu" style="flex:1">Message</button>
-    </div>`;
+    </div>
+    <button class="btn sm ghost" id="assignSong" style="width:100%;margin-top:8px">Assign a song to learn</button>
+    ${(() => {   // proof the student uploaded against a task
+      const withProof = tasks.map((t, i) => ({ t, i })).filter(x => x.t.proofUrl);
+      if (!withProof.length) return '';
+      return `<div style="margin-top:18px"><div class="eyebrow" style="padding:0 0 8px">Proof to review</div>
+        ${withProof.map(x => `<div class="prow"><div class="pl"><div class="pt">${esc(x.t.title)}</div>
+          <div class="ps">Uploaded${x.t.proofAt ? ' ' + agoLabel(x.t.proofAt).toLowerCase() : ''}</div></div>
+          <button class="btn sm ghost" data-proof="${x.i}">Watch</button></div>`).join('')}</div>`;
+    })()}
+    <button class="btn sm ghost" id="removeStu" style="width:100%;margin-top:18px;color:var(--bad);border-color:var(--bad)">Remove this student</button>`;
 
   const persist = async (next) => {
     s.assignedTasks = next;
@@ -643,6 +653,15 @@ function paintStudent() {
   };
   el.querySelector('#addTask').onclick = () => assignSheet(s);
   el.querySelector('#msgStu').onclick = () => go('messages');
+  el.querySelector('#assignSong').onclick = () => assignSongSheet(s);
+  el.querySelector('#removeStu').onclick = () => removeStudent(s);
+  el.querySelectorAll('[data-proof]').forEach(b => b.onclick = () => {
+    const t = (s.assignedTasks || [])[+b.getAttribute('data-proof')];
+    if (!t?.proofUrl) return;
+    modal(`<h3 style="margin-bottom:12px">${esc(t.title)}</h3>
+      <video src="${esc(t.proofUrl)}" controls style="width:100%;border-radius:12px;background:#000"></video>
+      <div class="acts"><button class="btn ghost" data-close style="flex:1">Close</button></div>`);
+  });
   el.querySelector('#taskList').addEventListener('click', (e) => {
     const tg = e.target.closest('[data-toggle]'), dl = e.target.closest('[data-del]'),
           ed = e.target.closest('[data-edit-task]');
@@ -651,6 +670,82 @@ function paintStudent() {
     if (tg) { const i = +tg.getAttribute('data-toggle'); arr[i] = { ...arr[i], completed: !arr[i].completed }; persist(arr); }
     if (dl) { const i = +dl.getAttribute('data-del'); arr.splice(i, 1); persist(arr); }
   });
+}
+
+// ── Assign a song to learn ──────────────────────────────────────────────
+// generateSongPlan then written into the student's own songLibrary, in the
+// entry shape LearnSongScreen reads.
+function assignSongSheet(stu) {
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  modal(`<div style="display:flex;align-items:center"><span class="lab">Assign a song</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 6px;font-size:18px">Assign a song to learn</h3>
+    <p class="hint" style="margin:0 0 16px">To: ${esc(displayName(stu))}</p>
+    <input id="asTitle" placeholder="Song title — e.g. Wonderwall" style="${F};margin-bottom:12px">
+    <input id="asArtist" placeholder="Artist (optional) — e.g. Oasis" style="${F}">
+    <p class="hint" style="margin:14px 0 0">The plan is built for ${esc(stu.instrument || 'guitar')} —
+      this student's instrument. Reused songs don't count against the weekly limit.</p>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="asPlan" style="flex:1">Build the plan</button></div>
+    <button class="btn ghost" id="asOnly" style="width:100%;margin-top:8px">Just assign the song (no plan)</button>`);
+
+  const saveSong = async (entry) => {
+    const lib = Array.isArray(stu.songLibrary) ? stu.songLibrary : [];
+    const next = [entry, ...lib.filter(x => x.songKey !== entry.songKey)];
+    await updateDoc(doc(db, 'users', stu.uid), { songLibrary: next });
+    stu.songLibrary = next;
+    closeModal(); paintStudent(); toast(`Assigned to ${displayName(stu)}`);
+  };
+  $('#asOnly').onclick = async () => {
+    const title = $('#asTitle').value.trim();
+    if (!title) { toast('Give it a title'); return; }
+    try {
+      await saveSong({ songKey: title.toLowerCase(), title, artist: $('#asArtist').value.trim(),
+        instrument: stu.instrument || 'Guitar', addedAt: new Date().toISOString(), steps: [] });
+    } catch { toast('Could not assign'); }
+  };
+  $('#asPlan').onclick = async () => {
+    const title = $('#asTitle').value.trim();
+    if (!title) { toast('Give it a title'); return; }
+    const btn = $('#asPlan'); btn.disabled = true; btn.textContent = 'Building…';
+    try {
+      const res = await httpsCallable(fns, 'generateSongPlan')({
+        instrument: stu.instrument || 'Guitar', title, artist: $('#asArtist').value.trim(), tuning: '' });
+      const plan = res?.data?.plan || res?.data;
+      if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) throw new Error('unknown');
+      await saveSong({ songKey: plan.key || title.toLowerCase(), title: plan.title || title,
+        artist: plan.artist || $('#asArtist').value.trim(), instrument: plan.instrument || stu.instrument || 'Guitar',
+        overview: plan.overview || '', tuning: plan.tuning || '', capo: plan.capo || '',
+        addedAt: new Date().toISOString(),
+        steps: plan.steps.map(x => ({ ...x, done: false, practicedSec: 0 })) });
+    } catch (err) {
+      toast(/unknown/.test(err?.message || '')
+        ? `Prova doesn't know "${title}" well enough to teach it properly.`
+        : 'Could not build that plan.');
+      btn.disabled = false; btn.textContent = 'Build the plan';
+    }
+  };
+}
+
+// ── Remove a student ────────────────────────────────────────────────────
+// Unlinks only: their practice history is theirs and is never touched.
+function removeStudent(stu) {
+  modal(`<h3 style="margin-bottom:10px">Remove ${esc(displayName(stu))}?</h3>
+    <p class="hint" style="margin:0">They stop appearing in your studio and you stop seeing their practice.
+      Their account, history and tasks are untouched, and they can rejoin with your code.</p>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="rmGo" style="flex:1;background:var(--bad)">Remove</button></div>`);
+  $('#rmGo').onclick = async () => {
+    try {
+      const uids = (Array.isArray(stu.teacherUids) ? stu.teacherUids : []).filter(x => x !== meUid);
+      const patch = { teacherUids: uids };
+      if (stu.teacherUid === meUid) patch.teacherUid = uids[0] || null;
+      await updateDoc(doc(db, 'users', stu.uid), patch);
+      students = students.filter(x => x.uid !== stu.uid);
+      selUid = students[0]?.uid || null;
+      closeModal(); viewStudents(); toast(`${displayName(stu)} removed`);
+    } catch { toast('Could not remove — a student can also disconnect from their own Profile'); }
+  };
 }
 
 // ── Assign task — the sheet from TeacherScreen ───────────────────────────
