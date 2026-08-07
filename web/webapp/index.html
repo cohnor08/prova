@@ -2074,10 +2074,10 @@ async function viewCalendar() {
     ${head('Calendar', `Week of ${monday.toLocaleDateString(undefined,{day:'numeric',month:'long'})} · ${count} thing${count===1?'':'s'} on`,
       `<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ghost sm" data-cal="prev">← Previous</button>
-        <button class="btn ghost sm" data-cal="this">This week</button>
+        <div style="display:flex;gap:8px">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
+          .map(([k, l]) => `<button class="btn ghost sm" data-calmode="${k}"${CALMODE === k
+            ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${l}</button>`).join('')}</div>
         <button class="btn ghost sm" data-cal="next">Next →</button>
-        <div class="segview">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
-          .map(([k, l]) => `<button data-calmode="${k}" aria-pressed="${CALMODE === k}">${l}</button>`).join('')}</div>
         <button class="btn" data-cal="add">Add lesson</button></div>`)}
     <section class="card"><div class="cal">
       ${days.slice(0, 7).map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}</div>`).join('')}

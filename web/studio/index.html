@@ -1610,10 +1610,10 @@ function viewCalendar() {
       <p>Week of ${monday.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })} · ${count} lesson${count === 1 ? '' : 's'}</p></div>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button class="btn ghost sm" id="prevW">← Previous</button>
-        <button class="btn ghost sm" id="thisW">This week</button>
+        <div style="display:flex;gap:8px">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
+          .map(([k, l]) => `<button class="btn ghost sm" data-calmode="${k}"${CALMODE === k
+            ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${l}</button>`).join('')}</div>
         <button class="btn ghost sm" id="nextW">Next →</button>
-        <div class="segview">${[['week','Week'],['fortnight','Fortnight'],['month','Month']].map(([k, l]) =>
-            `<button data-calmode="${k}" aria-pressed="${CALMODE === k}">${l}</button>`).join('')}</div>
         <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Add lesson</button>
       </div></div>
     ${noStudentsNotice('You can’t book a lesson until a student has joined.')}
@@ -1639,7 +1639,6 @@ function viewCalendar() {
   });
   $('#prevW').onclick = () => { weekOffset--; viewCalendar(); };
   $('#nextW').onclick = () => { weekOffset++; viewCalendar(); };
-  $('#thisW').onclick = () => { weekOffset = 0; viewCalendar(); };
   $('#addLesson').onclick = lessonModal;
 }
 function lessonModal() {
