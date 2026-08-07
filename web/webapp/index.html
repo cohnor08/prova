@@ -482,13 +482,18 @@ function renderNav() {
   ).join('');
 }
 $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.getAttribute('data-go')); });
+// Every screen's renderer in one place. Expanding a row must repaint the
+// screen you are ON — calling render() directly painted Today over whatever
+// tab you were looking at.
+const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
+  progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
+  chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk };
+const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
   screen = id;
   $('#pageTitle').textContent = TITLES[id] || '';
   renderNav();
-  ({ today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
-     progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
-     chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk })[id]();
+  (VIEWS[id] || render)();
   window.scrollTo({ top: 0 });
 }
 
@@ -602,11 +607,11 @@ document.addEventListener('click', (e) => {
   let t;
   if ((t = e.target.closest('[data-open]'))) {
     const y = window.scrollY, k = t.getAttribute('data-open');
-    OPEN[k] = !OPEN[k]; render(); window.scrollTo(0, y); return;
+    OPEN[k] = !OPEN[k]; rerender(); window.scrollTo(0, y); return;
   }
   if ((t = e.target.closest('[data-showall]'))) {
     const y = window.scrollY, k = t.getAttribute('data-showall');
-    SHOWALL[k] = !SHOWALL[k]; render(); window.scrollTo(0, y); return;
+    SHOWALL[k] = !SHOWALL[k]; rerender(); window.scrollTo(0, y); return;
   }
   if ((t = e.target.closest('[data-play]'))) {
     const v = t.getAttribute('data-play');
@@ -1384,7 +1389,7 @@ function step(delta) {
   }
   openPlayer(PLAY.kind, i);
 }
-function closePlayer() { stash(); clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; render(); }
+function closePlayer() { stash(); clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; rerender(); }
 function tick() {
   clearInterval(timer);
   timer = setInterval(() => {
@@ -1472,7 +1477,7 @@ async function finish() {
   } catch (err) {
     toast('Could not save — check your connection');
   }
-  clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; render();
+  clearInterval(timer); PLAY = null; $('#overlays').innerHTML = ''; rerender();
 }
 </script>
 </body>
