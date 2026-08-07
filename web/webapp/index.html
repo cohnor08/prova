@@ -2071,7 +2071,10 @@ async function viewCalendar() {
   const count = days.reduce((a, d) => a + lessonsOnDay(dayISO(d)).length + eventsOnDay(dayISO(d)).length, 0);
 
   $('#screen').innerHTML = `<div class="content">
-    ${head('Calendar', `Week of ${monday.toLocaleDateString(undefined,{day:'numeric',month:'long'})} · ${count} thing${count===1?'':'s'} on`,
+    ${head('Calendar', `${CALMODE === 'week'
+      ? 'Week of ' + monday.toLocaleDateString(undefined,{day:'numeric',month:'long'})
+      : monday.toLocaleDateString(undefined,{day:'numeric',month:'short'}) + ' – ' +
+        addD(monday, span - 1).toLocaleDateString(undefined,{day:'numeric',month:'short'})} · ${count} thing${count===1?'':'s'} on`,
       `<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ghost sm" data-cal="prev">← Previous</button>
         <div style="display:flex;gap:8px">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]

@@ -1696,7 +1696,9 @@ let weekOffset = 0, CALMODE = 'week';
 const CAL_SPAN = { week: 7, fortnight: 14, month: 28 };
 function viewCalendar() {
   const span = CAL_SPAN[CALMODE] || 7;
-  const monday = addDays(startOfWeek(new Date()), weekOffset * (span / 7));
+  // Step a whole period at a time — this was moving span/7 DAYS, so Week
+  // advanced one day and Month four. Always anchored to a Monday.
+  const monday = addDays(startOfWeek(new Date()), weekOffset * span);
   const days = Array.from({ length: span }, (_, i) => addDays(monday, i));
   const today = dayKey(new Date());
   const att = me.attendance || {};
@@ -1704,7 +1706,10 @@ function viewCalendar() {
 
   $('#screen').innerHTML = `<div class="content">
     <div class="greet"><div><h2>Calendar</h2>
-      <p>Week of ${monday.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })} · ${count} lesson${count === 1 ? '' : 's'}</p></div>
+      <p>${CALMODE === 'week' ? 'Week of ' + monday.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
+        : monday.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' – ' +
+          addDays(monday, span - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+        · ${count} lesson${count === 1 ? '' : 's'}</p></div>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button class="btn ghost sm" id="prevW">← Previous</button>
         <div style="display:flex;gap:8px">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
