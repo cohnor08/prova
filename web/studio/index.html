@@ -195,6 +195,15 @@
   .tdesc{color:var(--ink-2);font-size:13px;line-height:1.6;white-space:pre-wrap;margin:0 0 12px}
   .ttl{font-weight:600;font-size:13.5px}
   @keyframes sp{to{transform:rotate(360deg)}}
+  /* Segmented control — sized to sit level with the small buttons beside it,
+     and quiet: the active segment lifts rather than filling with accent. */
+  .segview{display:inline-flex;background:var(--raised);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:2px;gap:2px;flex:none;align-self:center}
+  .segview button{border:0;background:transparent;color:var(--ink-3);font:inherit;font-size:12.5px;
+    font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;line-height:1.2}
+  .segview button:hover{color:var(--ink)}
+  .segview button[aria-pressed="true"]{background:var(--card);color:var(--ink);
+    box-shadow:0 1px 2px rgba(0,0,0,.25)}
   .empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
   .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
@@ -1603,8 +1612,7 @@ function viewCalendar() {
         <button class="btn ghost sm" id="prevW">← Previous</button>
         <button class="btn ghost sm" id="thisW">This week</button>
         <button class="btn ghost sm" id="nextW">Next →</button>
-        <div class="tog" style="transform:scale(.94)">
-          ${[['week','Week'],['fortnight','Fortnight'],['month','Month']].map(([k, l]) =>
+        <div class="segview">${[['week','Week'],['fortnight','Fortnight'],['month','Month']].map(([k, l]) =>
             `<button data-calmode="${k}" aria-pressed="${CALMODE === k}">${l}</button>`).join('')}</div>
         <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Add lesson</button>
       </div></div>
