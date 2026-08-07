@@ -194,6 +194,7 @@
   .trow.open .tbody2{display:block}
   .tdesc{color:var(--ink-2);font-size:13px;line-height:1.6;white-space:pre-wrap;margin:0 0 12px}
   .ttl{font-weight:600;font-size:13.5px}
+  @keyframes sp{to{transform:rotate(360deg)}}
   .empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
   .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
@@ -228,7 +229,16 @@
 </head>
 <body>
 
-<div class="login" id="login">
+<div id="splash" style="min-height:100vh;display:grid;place-items:center">
+  <div style="text-align:center">
+    <img src="/img/icon-192.png" alt="" style="width:64px;height:64px;border-radius:17px">
+    <div style="font-family:var(--serif);font-size:20px;letter-spacing:3.5px;margin-top:14px">PROVA</div>
+    <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin-top:4px">Studio</div>
+    <div style="margin-top:18px;display:inline-block;width:16px;height:16px;border:2px solid var(--line);
+      border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite"></div>
+  </div>
+</div>
+<div class="login hidden" id="login">
   <div class="loginbox">
     <div class="brand"><img src="/img/icon-192.png" alt="" style="width:34px;height:34px;border-radius:9px">
       <div><div class="word">PROVA</div><div class="sub" style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-3);font-weight:700">Studio</div></div></div>
@@ -364,7 +374,12 @@ document.addEventListener('click', (e) => {
 });
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); return; }
+  if (!user) {
+    $('#splash').classList.add('hidden');
+    $('#login').classList.remove('hidden'); $('#app').classList.add('hidden');
+    ['#em', '#pw'].forEach(sel => { const el = $(sel); if (el) el.value = ''; });
+    return;
+  }
   meUid = user.uid;
   const snap = await getDoc(doc(db, 'users', user.uid));
   const d = snap.data() || {};
@@ -372,11 +387,13 @@ onAuthStateChanged(auth, async (user) => {
     // Mirror of the student app sending teachers here — send them to theirs
     // rather than telling them their account is wrong.
     $('#loginErr').style.color = 'var(--ink-3)';
+    $('#splash').classList.add('hidden');
     $('#loginErr').textContent = 'That is a student account — opening the Prova web app…';
     location.replace('/webapp/');
     return;
   }
   me = d;
+  $('#splash').classList.add('hidden');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#meNm').textContent = displayName({ uid: user.uid, ...d });
   $('#meAv').textContent = initials(displayName({ uid: user.uid, ...d }));
@@ -1218,33 +1235,62 @@ async function viewMessages() {
 var RF = { inst: 'Guitar', level: 'Beginner' };
 var ROPEN = {};
 function viewResources() {
-  const packs = Array.isArray(me.packs) ? me.packs : [];
-  const programs = Array.isArray(me.programs) ? me.programs : [];
-  const files = Array.isArray(me.resources) ? me.resources : [];
-  const classes = Array.isArray(me.classes) ? me.classes : [];
-  const grid = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:14px';
-  const tile = (t, sub, foot) => `<div class="card" style="display:flex;flex-direction:column;gap:8px">
-    <h4 style="margin:0;font-size:14px;font-weight:650">${esc(t)}</h4>
-    <p class="hint" style="margin:0">${esc(sub)}</p>
-    ${foot ? `<div style="font-size:11.5px;font-weight:650;color:var(--primary)">${esc(foot)}</div>` : ''}</div>`;
-  const section = (label, items, render, blank) =>
-    `<div><div class="eyebrow" style="padding:0 0 8px">${label}</div>
-     ${items.length ? `<div style="${grid}">${items.map(render).join('')}</div>`
-       : `<div class="card"><p class="hint" style="margin:0">${blank}</p></div>`}</div>`;
-
   const set = (RES.RESOURCES[RF.inst] || {})[RF.level] || {};
   const CATS = [['exercises','Exercises'],['songs','Songs'],['tips','Teaching tips']];
   const chip = (k, v, on) => `<button class="btn sm ghost" data-rf="${k}" data-v="${esc(v)}"${
     on ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(v)}</button>`;
-  const total = CATS.reduce((a, [k]) => a + (set[k] || []).length, 0);
+  const mine = Array.isArray(me.resources) ? me.resources : [];
+  const packs = Array.isArray(me.packs) ? me.packs : [];
+  const programs = Array.isArray(me.programs) ? me.programs : [];
+  const grid = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px';
 
   $('#screen').innerHTML = `<div class="content">
     <div class="greet"><div><h2>Resources</h2>
-      <p>The Prova library, plus anything you have built yourself.</p></div></div>
+      <p>The Prova library, plus everything you build yourself.</p></div>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" data-new="resource">+ Resource</button>
+        <button class="btn ghost" data-new="pack">+ Pack</button>
+        <button class="btn ghost" data-new="program">+ Program</button></div></div>
 
+    <section class="card"><header><h3>Your resources</h3><span class="meta">${mine.length}</span></header>
+      ${mine.length ? mine.map((r, i) => `<div class="trow${ROPEN['own' + i] ? ' open' : ''}">
+        <div class="thead2" data-ropen="own${i}">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
+          <div style="flex:1;min-width:0"><div class="ttl">${esc(r.title)}</div>
+            ${r.category ? `<div class="tsub">${esc(r.category)}</div>` : ''}</div>
+          ${r.yt ? '<span class="pill set">Video</span>' : ''}</div>
+        <div class="tbody2"><p class="tdesc">${esc(r.detail || '')}</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${r.yt ? `<button class="btn sm ghost" data-yt="${esc(r.yt)}" data-yttitle="${esc(r.title)}">▶ Watch</button>` : ''}
+            <button class="btn sm ghost" data-assignown="${i}">Assign to a student</button>
+            <button class="btn sm ghost" data-delown="${i}" style="color:var(--bad);border-color:var(--bad)">Delete</button>
+          </div></div></div>`).join('')
+      : '<p class="hint" style="margin:0">Nothing of your own yet — add a drill, a tab or a link you use often.</p>'}
+    </section>
+
+    <div><div class="eyebrow" style="padding:0 0 8px">Packs</div>
+      ${packs.length ? `<div style="${grid}">${packs.map((x, i) => `
+        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.title || 'Pack')}</h4>
+          <p class="hint" style="margin:0 0 10px">${(x.items || []).length} item${(x.items || []).length === 1 ? '' : 's'}</p>
+          ${(x.items || []).slice(0, 4).map(it => `<div class="hint" style="padding:3px 0">· ${esc(it.title || it)}</div>`).join('')}
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn sm ghost" data-editpack="${i}" style="flex:1">Edit</button>
+            <button class="btn sm ghost" data-delpack="${i}">×</button></div></div>`).join('')}</div>`
+      : '<div class="card"><p class="hint" style="margin:0">No packs yet. A pack is a set of items you assign together.</p></div>'}</div>
+
+    <div><div class="eyebrow" style="padding:0 0 8px">Programs</div>
+      ${programs.length ? `<div style="${grid}">${programs.map((x, i) => `
+        <div class="card"><h4 style="margin:0 0 6px;font-size:14px;font-weight:650">${esc(x.title || 'Program')}</h4>
+          <p class="hint" style="margin:0 0 10px">${x.weeks || (x.items || []).length} week${(x.weeks || 1) === 1 ? '' : 's'}</p>
+          <p class="hint" style="margin:0">${esc(x.summary || '')}</p>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn sm ghost" data-editprog="${i}" style="flex:1">Edit</button>
+            <button class="btn sm ghost" data-delprog="${i}">×</button></div></div>`).join('')}</div>`
+      : '<div class="card"><p class="hint" style="margin:0">No programs yet. A program is a multi-week plan.</p></div>'}</div>
+
+    <div class="eyebrow" style="padding:8px 0 0">Prova library</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${Object.keys(RES.RESOURCES).map(i => chip('inst', i, RF.inst === i)).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${RES.RESOURCE_LEVELS.map(l => chip('level', l, RF.level === l)).join('')}</div>
-
     ${CATS.map(([k, label]) => {
       const items = set[k] || [];
       return `<section class="card"><header><h3>${label}</h3><span class="meta">${items.length}</span></header>
@@ -1255,60 +1301,106 @@ function viewResources() {
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
               <div style="flex:1;min-width:0"><div class="ttl">${esc(x.title)}</div></div>
               ${x.yt ? '<span class="pill set">Video</span>' : ''}</div>
-            <div class="tbody2">
-              <p class="tdesc">${esc(x.detail)}</p>
+            <div class="tbody2"><p class="tdesc">${esc(x.detail)}</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 ${x.yt ? `<button class="btn sm ghost" data-yt="${esc(x.yt)}" data-yttitle="${esc(x.title)}">▶ Watch</button>` : ''}
                 <button class="btn sm ghost" data-assignres="${rid}">Assign to a student</button>
               </div></div></div>`;
         }).join('') : '<p class="hint" style="margin:0">Nothing at this level.</p>'}</section>`;
     }).join('')}
-    <p class="hint" style="margin:-8px 0 0">${total} items for ${esc(RF.inst)} · ${esc(RF.level)}.</p>
-
-    ${section('Packs', packs, (x) => tile(x.title || x.name || 'Pack',
-        `${(x.items || x.lessons || []).length} items`, x.assignedTo ? `Assigned to ${x.assignedTo.length}` : ''),
-      'No packs yet — build one in the app and it appears here.')}
-    ${section('Programs', programs, (x) => tile(x.title || x.name || 'Program',
-        `${(x.weeks || x.items || []).length} weeks`, ''),
-      'No programs yet.')}
-    ${section('Classes', classes, (x) => tile(x.name || 'Class',
-        `${(x.members || []).length} students`, ''),
-      'No classes yet.')}
-    ${section('Shared files', files, (x) => tile(x.title || x.name || 'File',
-        x.type || 'Shared with your students', x.sharedAt ? agoLabel(x.sharedAt) : ''),
-      'Nothing shared yet.')}
   </div>`;
 
-  $('#screen').addEventListener('click', (e) => {
+  $('#screen').addEventListener('click', async (e) => {
     const f = e.target.closest('[data-rf]');
     if (f) { RF[f.getAttribute('data-rf')] = f.getAttribute('data-v'); ROPEN = {}; return viewResources(); }
     const o = e.target.closest('[data-ropen]');
     if (o) { const y = window.scrollY, id = o.getAttribute('data-ropen');
       ROPEN[id] = !ROPEN[id]; viewResources(); window.scrollTo(0, y); return; }
+    const n = e.target.closest('[data-new]');
+    if (n) return newThing(n.getAttribute('data-new'));
+    const ep = e.target.closest('[data-editpack]');
+    if (ep) return newThing('pack', +ep.getAttribute('data-editpack'));
+    const eg = e.target.closest('[data-editprog]');
+    if (eg) return newThing('program', +eg.getAttribute('data-editprog'));
+    const dp = e.target.closest('[data-delpack]');
+    if (dp) return delFrom('packs', +dp.getAttribute('data-delpack'));
+    const dg = e.target.closest('[data-delprog]');
+    if (dg) return delFrom('programs', +dg.getAttribute('data-delprog'));
+    const dr = e.target.closest('[data-delown]');
+    if (dr) return delFrom('resources', +dr.getAttribute('data-delown'));
+    const ao = e.target.closest('[data-assignown]');
+    if (ao) return assignItem(mine[+ao.getAttribute('data-assignown')]);
     const a = e.target.closest('[data-assignres]');
     if (a) {
-      const [cat, ix] = [a.getAttribute('data-assignres').replace(/\d+$/, ''),
-                         +a.getAttribute('data-assignres').match(/\d+$/)[0]];
-      const item = ((RES.RESOURCES[RF.inst] || {})[RF.level] || {})[cat][ix];
-      if (!students.length) { toast('No students yet'); return; }
-      modal(`<h3>Assign "${esc(item.title)}"</h3>
-        <p class="hint" style="margin:-8px 0 14px">Pick a student — it becomes a task with the description and video attached.</p>
-        <div class="rows">${students.map((s2, si) => `<div class="prow"><div class="pl">
-          <div class="pt">${esc(displayName(s2))}</div></div>
-          <button class="btn sm" data-resto="${si}">Assign</button></div>`).join('')}</div>
-        <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button></div>`);
-      $('#overlays').addEventListener('click', async (ev) => {
-        const b2 = ev.target.closest('[data-resto]'); if (!b2) return;
-        const stu = students[+b2.getAttribute('data-resto')];
-        const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
-        cur.push({ id: Date.now().toString(), title: item.title, description: item.detail,
-          youtube: item.yt || '', song: '', drill: null, drillLevel: null, drillMode: null,
-          dueDate: '', durationMin: 0, completed: false });
-        try { await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
-          stu.assignedTasks = cur; closeModal(); toast(`Assigned to ${displayName(stu)}`); }
-        catch { toast('Could not assign'); }
-      }, { once: true });
+      const key = a.getAttribute('data-assignres');
+      const cat = key.replace(/\d+$/, ''), ix = +key.match(/\d+$/)[0];
+      return assignItem(((RES.RESOURCES[RF.inst] || {})[RF.level] || {})[cat][ix]);
     }
+  }, { once: true });
+}
+async function delFrom(field, i) {
+  if (!confirm('Delete this?')) return;
+  const next = (Array.isArray(me[field]) ? me[field] : []).filter((_, k) => k !== i);
+  try { await saveMe({ [field]: next }); await refreshMe(); viewResources(); toast('Deleted'); }
+  catch { toast('Could not delete'); }
+}
+// One sheet for all three — they differ only in their fields.
+function newThing(kind, editIdx) {
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  const field = kind === 'pack' ? 'packs' : kind === 'program' ? 'programs' : 'resources';
+  const list = Array.isArray(me[field]) ? me[field] : [];
+  const ex = typeof editIdx === 'number' ? list[editIdx] : null;
+  const label = { resource: 'Resource', pack: 'Pack', program: 'Program' }[kind];
+  modal(`<div style="display:flex;align-items:center"><span class="lab">${label}</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">${ex ? 'Edit' : 'New'} ${label.toLowerCase()}</h3>
+    <input id="ntTitle" placeholder="${label} name" style="${F};margin-bottom:12px" value="${esc(ex?.title || '')}">
+    <textarea id="ntDetail" rows="3" placeholder="${kind === 'resource'
+      ? 'What the student should do' : 'What this covers'}" style="${F};margin-bottom:12px">${esc(ex?.detail || ex?.summary || '')}</textarea>
+    ${kind === 'resource' ? `<input id="ntYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(ex?.yt || '')}">
+      <input id="ntCat" placeholder="Category (optional) — e.g. Technique" style="${F}" value="${esc(ex?.category || '')}">` : ''}
+    ${kind === 'pack' ? `<textarea id="ntItems" rows="5" placeholder="One item per line" style="${F}">${
+      esc((ex?.items || []).map(i => i.title || i).join('\n'))}</textarea>` : ''}
+    ${kind === 'program' ? `<input id="ntWeeks" type="number" min="1" max="52" placeholder="Weeks"
+      value="${ex?.weeks || 6}" style="${F};width:120px">` : ''}
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="ntSave" style="flex:1">${ex ? 'Save' : 'Create'}</button></div>`);
+  $('#ntSave').onclick = async () => {
+    const title = $('#ntTitle').value.trim();
+    if (!title) { toast('Give it a name'); return; }
+    const body = $('#ntDetail').value.trim();
+    let item = { id: ex?.id || Date.now().toString(), title, createdAt: ex?.createdAt || new Date().toISOString() };
+    if (kind === 'resource') item = { ...item, detail: body, yt: $('#ntYt').value.trim(), category: $('#ntCat').value.trim() };
+    if (kind === 'pack') item = { ...item, summary: body,
+      items: $('#ntItems').value.split('\n').map(x => x.trim()).filter(Boolean).map(t => ({ title: t })) };
+    if (kind === 'program') item = { ...item, summary: body, weeks: parseInt($('#ntWeeks').value, 10) || 6 };
+    const next = ex ? list.map((x, k) => k === editIdx ? item : x) : [item, ...list];
+    $('#ntSave').disabled = true;
+    try { await saveMe({ [field]: next }); await refreshMe(); closeModal(); viewResources();
+      toast(ex ? 'Saved' : `${label} created`); }
+    catch { toast('Could not save'); $('#ntSave').disabled = false; }
+  };
+}
+// Turn any resource into a real task on a student.
+function assignItem(item) {
+  if (!item) return;
+  if (!students.length) { toast('No students yet'); return; }
+  modal(`<h3 style="margin-bottom:6px">Assign “${esc(item.title)}”</h3>
+    <p class="hint" style="margin:0 0 14px">It becomes a task with the description and video attached.</p>
+    <div class="rows">${students.map((s2, si) => `<div class="prow"><div class="pl">
+      <div class="pt">${esc(displayName(s2))}</div></div>
+      <button class="btn sm" data-resto="${si}">Assign</button></div>`).join('')}</div>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button></div>`);
+  $('#overlays').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('[data-resto]'); if (!b) return;
+    const stu = students[+b.getAttribute('data-resto')];
+    const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
+    cur.push({ id: Date.now().toString(), title: item.title, description: item.detail || item.summary || '',
+      youtube: item.yt || '', song: '', drill: null, drillLevel: null, drillMode: null,
+      dueDate: '', durationMin: 0, completed: false });
+    try { await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
+      stu.assignedTasks = cur; closeModal(); toast(`Assigned to ${displayName(stu)}`); }
+    catch { toast('Could not assign'); }
   }, { once: true });
 }
 
@@ -1494,10 +1586,12 @@ function lessonsOn(ds) {
     return new Date(l.date + 'T00:00:00Z').getUTCDay() === new Date(ds + 'T00:00:00Z').getUTCDay();
   }).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 }
-let weekOffset = 0;
+let weekOffset = 0, CALMODE = 'week';
+const CAL_SPAN = { week: 7, fortnight: 14, month: 28 };
 function viewCalendar() {
-  const monday = addDays(startOfWeek(new Date()), weekOffset * 7);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const span = CAL_SPAN[CALMODE] || 7;
+  const monday = addDays(startOfWeek(new Date()), weekOffset * (span / 7));
+  const days = Array.from({ length: span }, (_, i) => addDays(monday, i));
   const today = dayKey(new Date());
   const att = me.attendance || {};
   const count = days.reduce((a, d) => a + lessonsOn(dayKey(d)).length, 0);
@@ -1509,14 +1603,19 @@ function viewCalendar() {
         <button class="btn ghost sm" id="prevW">← Previous</button>
         <button class="btn ghost sm" id="thisW">This week</button>
         <button class="btn ghost sm" id="nextW">Next →</button>
-        <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Book a lesson</button>
+        <div class="tog" style="transform:scale(.94)">
+          ${[['week','Week'],['fortnight','Fortnight'],['month','Month']].map(([k, l]) =>
+            `<button data-calmode="${k}" aria-pressed="${CALMODE === k}">${l}</button>`).join('')}</div>
+        <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Add lesson</button>
       </div></div>
     ${noStudentsNotice('You can’t book a lesson until a student has joined.')}
     <section class="card"><div class="cal">
-      ${days.map((d) => `<div class="hd">${DOW[(d.getDay() + 6) % 7]}<b>${d.getDate()}</b></div>`).join('')}
+      ${days.slice(0, 7).map((d) => `<div class="hd">${DOW[(d.getDay() + 6) % 7]}</div>`).join('')}
       ${days.map((d) => {
         const ds = dayKey(d);
-        return `<div class="cell ${ds === today ? 'today' : ''}">${lessonsOn(ds).map((l) => {
+        return `<div class="cell ${ds === today ? 'today' : ''}">
+          <div class="hint" style="font-family:var(--round);font-weight:600">${d.getDate()}</div>
+          ${lessonsOn(ds).map((l) => {
           const rec = att[`${l.id}__${ds}`] || {};
           return `<button class="ev ${rec.status ? 'att-' + rec.status : ''}" data-lesson="${esc(l.id)}" data-date="${ds}">
             <b>${esc(l.studentName || 'Student')}</b><span class="tm">${esc(l.time || '')}</span>
@@ -1527,6 +1626,9 @@ function viewCalendar() {
     <p class="hint" style="margin:14px 0 0">Click a lesson to mark attendance, write a note or cancel it.</p></section>
   </div>`;
 
+  document.querySelectorAll('[data-calmode]').forEach(b => b.onclick = () => {
+    CALMODE = b.getAttribute('data-calmode'); weekOffset = 0; viewCalendar();
+  });
   $('#prevW').onclick = () => { weekOffset--; viewCalendar(); };
   $('#nextW').onclick = () => { weekOffset++; viewCalendar(); };
   $('#thisW').onclick = () => { weekOffset = 0; viewCalendar(); };
