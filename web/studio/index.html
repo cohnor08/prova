@@ -839,10 +839,13 @@ function fmtDue(v) {
   if (days === 1) return 'due tomorrow';
   return 'due ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
+// Level counts must match the games themselves: ear 4, rhythm 4, fretboard 4
+// (Starter/Player/Complete/Master) and theory 3 (Basics/Player/Advanced).
+// Fretboard was listed as 3 here, so Master could never be assigned.
 const DRILL_OPTS = [
   { key: 'ear',    label: 'Ear training',  levels: 4 },
   { key: 'rhythm', label: 'Rhythm tapper', levels: 4 },
-  { key: 'fret',   label: 'Fretboard',     levels: 3 },
+  { key: 'fret',   label: 'Fretboard',     levels: 4 },
   { key: 'theory', label: 'Theory quiz',   levels: 3 },
 ];
 function assignSheet(stu, editIdx) {
@@ -1416,6 +1419,20 @@ function viewResources() {
         <button class="btn ghost" data-new="resource">+ Resource</button>
         <button class="btn ghost" data-new="pack">+ Pack</button>
         <button class="btn ghost" data-new="program">+ Program</button></div></div>
+
+    <div><div class="eyebrow" style="padding:0 0 8px">Practice games</div>
+      <div style="${grid}">${[
+        ['ear', 'Ear training', 'Intervals, chords and scales by ear. Four levels each.'],
+        ['fret', 'Fretboard game', 'Find the note or name it, naturals through the whole neck.'],
+        ['rhythm', 'Rhythm tapper', 'Tap in time to a click, scored to the millisecond.'],
+        ['theory', 'Theory quiz', 'Intervals, chords, keys and scales, generated fresh.'],
+      ].map(([id, t, d]) => `<a class="card" href="/webapp/?game=${id}" target="_blank" rel="noopener"
+          style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
+          <h4 style="margin:0;font-size:14px;font-weight:650">${t}</h4>
+          <p class="hint" style="margin:0;line-height:1.5">${d}</p>
+          <span style="font-size:11.5px;font-weight:650;color:var(--primary)">Play it yourself →</span></a>`).join('')}</div>
+      <p class="hint" style="margin:10px 0 0">The same four drills your students play — worth knowing before you assign one.</p>
+    </div>
 
     <section class="card"><header><h3>Your resources</h3><span class="meta">${mine.length}</span></header>
       ${mine.length ? mine.map((r, i) => `<div class="trow${ROPEN['own' + i] ? ' open' : ''}">

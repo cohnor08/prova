@@ -191,6 +191,42 @@
   .opt:hover{border-color:var(--primary)}
   .opt.right{border-color:var(--good);color:var(--good)}
   .opt.wrong{border-color:var(--bad);color:var(--bad)}
+
+  /* ── Games ─────────────────────────────────────────────────────────
+     The setup screen every game opens on. The phone centres a big hero;
+     here it sits in the normal card grid so it belongs to the web app. */
+  .gmenu{display:flex;flex-direction:column;gap:18px;align-items:flex-start}
+  .gmedal{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;flex:none;
+    background:color-mix(in srgb,var(--primary) 15%,transparent);
+    border:1.5px solid color-mix(in srgb,var(--primary) 55%,transparent);color:var(--primary)}
+  .gmedal svg{width:26px;height:26px}
+  .gmenu h2{font-size:21px;font-weight:640;letter-spacing:-.2px}
+  .gmenu>p{margin:-10px 0 0;color:var(--ink-2);font-size:13.5px;max-width:52ch}
+  .gsetup{display:flex;flex-direction:column;gap:18px;width:100%}
+  .gchips{display:flex;gap:8px;flex-wrap:wrap}
+  .gchip{background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:8px 16px;
+    font-size:13px;font-weight:600;color:var(--ink-2);cursor:pointer}
+  .gchip:hover{border-color:var(--primary);color:var(--ink)}
+  .gchip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+  .gscore{display:flex;align-items:baseline;gap:8px;font-size:15px;color:var(--ink-3)}
+  .gscore .fig{font-size:44px;line-height:1;color:var(--ink)}
+  .gstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:14px;width:100%;
+    border-top:1px solid var(--line);padding-top:16px}
+  .gstats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3)}
+  .gstats .v{font-size:19px;margin-top:2px}
+
+  /* The tap pad. It has to be big, obviously hittable, and give feedback
+     without a re-render — the ring is animated straight off rAF. */
+  .rhpad{position:relative;width:100%;min-height:290px;border:1px dashed var(--line);
+    background:var(--raised);border-radius:var(--r-lg);cursor:pointer;display:grid;
+    place-items:center;gap:0;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+  .rhpad:active{border-color:var(--primary)}
+  .rhring{position:absolute;width:170px;height:170px;border-radius:50%;
+    border:2px solid color-mix(in srgb,var(--primary) 70%,transparent);
+    background:color-mix(in srgb,var(--primary) 10%,transparent);will-change:transform,opacity}
+  .rhfeed{position:relative;font-family:var(--round);font-weight:650;font-size:27px;color:var(--ink-2)}
+  .rhhint{position:absolute;bottom:16px;font-size:12px;color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){.rhring{transition:none!important}}
   .pill{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:999px}
   .pill.set{background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)}
   .pill.warn{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
@@ -356,6 +392,13 @@ const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','satur
 const TODAY_NAME = DAYS[new Date().getDay()];
 
 let me = null, uid = null, sessions = [], screen = 'today';
+// ?game=<id> opens one game on its own. It is how a teacher reaches the games
+// from Studio, and it works for any account — nothing here is role-gated.
+const GAME_IDS = ['ear', 'fret', 'rhythm', 'theory'];
+const GAME_PARAM = (() => {
+  const g = new URLSearchParams(location.search).get('game');
+  return GAME_IDS.includes(g) ? g : null;
+})();
 
 // ── auth ─────────────────────────────────────────────────────────────────
 // Welcome → sign in, or Welcome → pick a role → sign up. Straight to a login
@@ -441,7 +484,11 @@ onAuthStateChanged(auth, async (user) => {
   // plan. Studio is the teacher surface.
   try {
     const snap = await getDoc(doc(db, 'users', user.uid));
-    if ((snap.data() || {}).role === 'teacher') {
+    // Teachers get the four games too — the phone puts them under the teacher
+    // Resources tab. Rather than build the whole games engine a second time in
+    // Studio, Studio links here with ?game=, and that one case skips the
+    // redirect and opens the game on its own.
+    if ((snap.data() || {}).role === 'teacher' && !GAME_PARAM) {
       $('#splash').innerHTML = `<div style="text-align:center">
         <img src="/img/icon-192.png" alt="" style="width:64px;height:64px;border-radius:17px">
         <div style="font-family:var(--serif);font-size:20px;letter-spacing:3.5px;margin-top:14px">PROVA</div>
@@ -455,7 +502,8 @@ onAuthStateChanged(auth, async (user) => {
   catch { $('#splash').classList.add('hidden'); $('#login').classList.remove('hidden'); show('welcome'); return; }
   $('#splash').classList.add('hidden');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
-  renderNav(); go('today');
+  renderNav();
+  go(GAME_PARAM || 'today');
   document.getElementById('metro').classList.add('ready');
 });
 // If Firebase never answers (offline, blocked), don't sit on the splash.
@@ -500,14 +548,29 @@ const NAV = [
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
-  calendar:'Calendar', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', ask:'Ask Prova' };
+  calendar:'Calendar', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
-  ask:'practice', theory:'practice', gig:'calendar' };
+  ask:'practice', theory:'practice', rhythm:'practice', gig:'calendar' };
+// Built lazily: PI is declared further down, so reading it at this point in
+// module evaluation would throw before the app ever boots.
+const gameNav = () => [
+  { g: 'Practice games' },
+  { id: 'ear',    t: 'Ear training',   i: PI.ear },
+  { id: 'fret',   t: 'Fretboard game', i: PI.music },
+  { id: 'rhythm', t: 'Rhythm tapper',  i: PI.metro },
+  { id: 'theory', t: 'Theory quiz',    i: PI.layers },
+];
 function renderNav() {
-  $('#nav').innerHTML = NAV.map((x) => x.g
+  // Arriving with ?game= means "just the games" — a teacher has no student
+  // Today or plan to show, so the student nav would only mislead.
+  const items = GAME_PARAM ? gameNav() : NAV;
+  $('#nav').innerHTML = items.map((x) => x.g
     ? `<div class="eyebrow">${x.g}</div>`
     : `<button class="nav" data-go="${x.id}"${x.id === screen || PARENT[screen] === x.id ? ' aria-current="page"' : ''}>${svg(x.i)}<span>${x.t}</span></button>`
-  ).join('');
+  ).join('') + (GAME_PARAM
+    ? `<a class="nav" href="/studio/" style="margin-top:10px;text-decoration:none">${
+        svg('<path d="M15 18l-6-6 6-6"/>')}<span>Back to Studio</span></a>`
+    : '');
 }
 $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.getAttribute('data-go')); });
 // Every screen's renderer in one place. Expanding a row must repaint the
@@ -516,10 +579,13 @@ $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-g
 const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
-  calendar: viewCalendar, notifications: viewNotifications,
+  calendar: viewCalendar, notifications: viewNotifications, rhythm: viewRhythm,
   skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
+  // Leaving a game abandons the round, exactly as the phone does on blur.
+  // Without this the rhythm click track keeps playing over the next screen.
+  if (screen === 'rhythm' && id !== 'rhythm') abandonRhythm();
   screen = id;
   $('#pageTitle').textContent = TITLES[id] || '';
   renderNav();
@@ -716,10 +782,10 @@ function viewPractice() {
       ${tile(PI.book, 'Lesson library', `${APP.lib.length} topics, beginner through advanced.`, 'Browse →', 'library')}
     </div></div>
     <div>${eye('Games')}<div style="${GRID}">
-      ${tile(PI.ear, 'Ear training', 'Intervals and chord quality by ear, three levels each.', 'Play →', 'ear')}
-      ${tile(PI.music, 'Fretboard game', 'Find the note on the string, naturals to all 12 frets.', 'Play →', 'fret')}
-      ${tile(PI.metro, 'Rhythm tapper', 'Tap in time to a click, scored on accuracy.', 'In the phone app')}
-      ${tile(PI.layers, 'Theory quiz', 'Keys, intervals and harmony, fresh each round.', 'Play →', 'theory')}
+      ${tile(PI.ear, 'Ear training', 'Intervals, chord quality and scales by ear. Four levels each.', 'Play →', 'ear')}
+      ${tile(PI.music, 'Fretboard game', 'Find the note or name it, naturals through the whole neck.', 'Play →', 'fret')}
+      ${tile(PI.metro, 'Rhythm tapper', 'Tap in time to a click, scored to the millisecond.', 'Play →', 'rhythm')}
+      ${tile(PI.layers, 'Theory quiz', 'Intervals, chords, keys and scales, generated fresh.', 'Play →', 'theory')}
     </div><p class="hint" style="margin:12px 0 0">First three rounds a day earn Prova Score and count as 2 minutes of practice.</p></div>
     <div>${eye('Tools')}<div style="${GRID}">
       ${tile(PI.tuner, 'Tuner', 'Standard, drop D, half step down and more.', 'Needs a microphone')}
@@ -1385,15 +1451,21 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
-// The one write both games share.
-async function awardRound(counterField, category, score) {
+// The one write every game shares.
+// ⚠️ The counter date is dayKey() (YYYY-MM-DD), NOT todayKey() (toDateString()).
+// Every game screen in the phone app writes `new Date().toISOString().split('T')[0]`.
+// Using toDateString() here meant the web counter never matched the phone's, so the
+// three-rewarded-rounds-a-day cap silently reset when you switched device.
+async function awardRound(counterField, category, score, opts = {}) {
+  const total = opts.total || ROUND_LEN;
+  const emoji = opts.emoji || '🎧';
   try {
-    const today = todayKey();
+    const today = dayKey();
     const cur = (await getDoc(doc(db, 'users', uid))).data() || {};
     const c = cur[counterField] || {};
     const rounds = c.date === today ? (c.rounds || 0) : 0;
     if (rounds >= REWARDED_ROUNDS_PER_DAY) {
-      celebrate({ points: 0, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct · no points left today`, emoji: '🎧' });
+      celebrate({ points: 0, title: 'Round complete!', subtitle: `${score}/${total} correct · no points left today`, emoji });
       return;
     }
     const patch = { [counterField]: { date: today, rounds: rounds + 1 },
@@ -1411,111 +1483,638 @@ async function awardRound(counterField, category, score) {
     if (diff >= 1) { me.streak = diff === 1 ? (me.streak || 0) + 1 : 1; me.lastSessionDate = new Date().toISOString(); }
     $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
     $('#chipStreak').textContent = me.streak || 0;
-    celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${ROUND_LEN} correct`, emoji: '🎧' });
+    celebrate({ points: ROUND_POINTS, title: 'Round complete!', subtitle: `${score}/${total} correct`, emoji });
   } catch { toast('Round finished — could not save the points'); }
 }
 
-// ── Ear training ───────────────────────────────────────────────────────
-const INTERVALS = [[2,'Major 2nd'],[3,'Minor 3rd'],[4,'Major 3rd'],[5,'Perfect 4th'],
-                   [7,'Perfect 5th'],[9,'Major 6th'],[11,'Major 7th'],[12,'Octave']];
-const EAR = { level: 2, q: null, picked: null, score: 0, round: 1 };
-const earPool = () => INTERVALS.slice(0, EAR.level === 1 ? 4 : EAR.level === 2 ? 6 : 8);
-function earNew() {
-  const pool = earPool(), ans = pick(pool);
-  EAR.q = { root: 57 + Math.floor(Math.random() * 6), ans,
-            opts: shuffle(shuffle(pool.filter(x => x[0] !== ans[0])).slice(0, 3).concat([ans])) };
-  EAR.picked = null;
+// ── The shared game shell ──────────────────────────────────────────────
+// Every game is menu → playing → done. The phone shows a hero medallion, a
+// blurb, chip groups and Start round; this is that structure in the web app's
+// own language (cards, eyebrows, .opt) rather than a copy of the phone layout.
+function gameMenu({ icon, title, blurb, groups, hint, start, footer }) {
+  const grp = (g) => `<div>
+    <div class="eyebrow" style="padding:0 0 8px">${g.label}</div>
+    <div class="gchips">${g.items.map((it) => `<button class="gchip" data-${g.attr}="${it.id}"${
+      String(it.id) === String(g.value) ? ' aria-pressed="true"' : ''}>${esc(it.label)}</button>`).join('')}</div>
+    ${g.hint ? `<p class="hint" style="margin:9px 0 0">${esc(g.hint)}</p>` : ''}</div>`;
+  return `<div class="cols"><div class="stack">
+    <section class="card gmenu">
+      <div class="gmedal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">${icon}</svg></div>
+      <h2>${esc(title)}</h2>
+      <p>${esc(blurb)}</p>
+      <div class="gsetup">${groups.map(grp).join('')}</div>
+      ${hint ? `<p class="hint" style="margin:0">${esc(hint)}</p>` : ''}
+      <button class="btn wide" data-gstart="${start}" style="margin-top:4px;padding:13px 20px">▶ Start round</button>
+    </section>
+  </div><div class="stack">
+    ${card('How it works', '', `<p class="hint" style="margin:0">${footer}</p>`)}
+  </div></div>`;
 }
-function earPlay() { if (!EAR.q) earNew(); playMidi(EAR.q.root, 0, .7); playMidi(EAR.q.root + EAR.q.ans[0], .75, .9); }
-function viewEar() {
+// The right-hand progress rail, shared by every game mid-round.
+function gameRail(round, total, score) {
+  return card('This round', `${round} / ${total}`,
+    `<div class="hint">Correct ${score} of ${round - 1}</div>
+     <div class="track" style="margin-top:8px"><i style="width:${Math.round((round - 1) / total * 100)}%"></i></div>
+     <button class="btn sm ghost wide" data-gquit="1" style="margin-top:14px">End round</button>`);
+}
+// The results screen. `stats` is [[label, value], …].
+function gameDone({ title, score, total, stats, again, backTo }) {
+  const pct = total ? Math.round(score / total * 100) : 0;
+  const verdict = pct >= 90 ? 'Outstanding' : pct >= 70 ? 'Strong round' : pct >= 50 ? 'Getting there' : 'Keep at it';
+  return `<div class="cols"><div class="stack">
+    <section class="card gmenu">
+      <div class="gmedal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+        <path d="M20 6L9 17l-5-5"/></svg></div>
+      <h2>${esc(verdict)}</h2>
+      <p>${esc(title)}</p>
+      <div class="gscore"><span class="fig">${score}</span><span>/ ${total}</span></div>
+      ${stats && stats.length ? `<div class="gstats">${stats.map(([k, v]) =>
+        `<div><div class="k">${esc(k)}</div><div class="v fig">${esc(v)}</div></div>`).join('')}</div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn" data-gagain="${again}">Play again</button>
+        <button class="btn ghost" data-go="${backTo}">Back to Practice</button>
+      </div>
+    </section>
+  </div><div class="stack"></div></div>`;
+}
+
+// ── Ear training ───────────────────────────────────────────────────────
+// Ported from src/screens/tabs/EarTrainingScreen.js — three games, four levels
+// each. Scales level 4 is typed rather than multiple-choice, with the same
+// alias + edit-distance matching the phone uses so "dorien" is not marked wrong.
+const EAR_INTERVALS = [
+  { semis: 1, name: 'Minor 2nd' }, { semis: 2, name: 'Major 2nd' },
+  { semis: 3, name: 'Minor 3rd' }, { semis: 4, name: 'Major 3rd' },
+  { semis: 5, name: 'Perfect 4th' }, { semis: 6, name: 'Tritone' },
+  { semis: 7, name: 'Perfect 5th' }, { semis: 8, name: 'Minor 6th' },
+  { semis: 9, name: 'Major 6th' }, { semis: 10, name: 'Minor 7th' },
+  { semis: 11, name: 'Major 7th' }, { semis: 12, name: 'Octave' },
+];
+const EAR_INTERVAL_LEVELS = [
+  { id: 1, label: 'Starter',   semis: [4, 5, 7, 12] },
+  { id: 2, label: 'Melodic',   semis: [2, 3, 4, 5, 7, 9] },
+  { id: 3, label: 'Complete',  semis: [2, 3, 4, 5, 7, 9, 11, 12] },
+  { id: 4, label: 'Chromatic', semis: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+];
+const EAR_CHORDS = [
+  { name: 'Major', offsets: [0, 4, 7] }, { name: 'Minor', offsets: [0, 3, 7] },
+  { name: 'Diminished', offsets: [0, 3, 6] }, { name: 'Augmented', offsets: [0, 4, 8] },
+  { name: 'Sus4', offsets: [0, 5, 7] }, { name: 'Major 7th', offsets: [0, 4, 7, 11] },
+  { name: 'Minor 7th', offsets: [0, 3, 7, 10] }, { name: 'Dom 7th', offsets: [0, 4, 7, 10] },
+];
+const EAR_CHORD_LEVELS = [
+  { id: 1, label: 'Starter',  names: ['Major', 'Minor'] },
+  { id: 2, label: 'Quality',  names: ['Major', 'Minor', 'Diminished'] },
+  { id: 3, label: 'Complete', names: ['Major', 'Minor', 'Diminished', 'Augmented', 'Sus4'] },
+  { id: 4, label: 'Sevenths', names: ['Major 7th', 'Minor 7th', 'Dom 7th', 'Major', 'Minor'] },
+];
+const EAR_SCALES = [
+  { name: 'Major', steps: [0, 2, 4, 5, 7, 9, 11, 12] },
+  { name: 'Natural Minor', steps: [0, 2, 3, 5, 7, 8, 10, 12] },
+  { name: 'Dorian', steps: [0, 2, 3, 5, 7, 9, 10, 12] },
+  { name: 'Mixolydian', steps: [0, 2, 4, 5, 7, 9, 10, 12] },
+  { name: 'Harmonic Minor', steps: [0, 2, 3, 5, 7, 8, 11, 12] },
+  { name: 'Major Pentatonic', steps: [0, 2, 4, 7, 9, 12] },
+  { name: 'Minor Pentatonic', steps: [0, 3, 5, 7, 10, 12] },
+  { name: 'Blues', steps: [0, 3, 5, 6, 7, 10, 12] },
+];
+const ALL_SCALE_NAMES = EAR_SCALES.map((s) => s.name);
+const EAR_SCALE_LEVELS = [
+  { id: 1, label: 'Starter',  names: ['Major', 'Natural Minor'] },
+  { id: 2, label: 'Modes',    names: ['Major', 'Natural Minor', 'Dorian', 'Mixolydian'] },
+  { id: 3, label: 'Complete', names: ALL_SCALE_NAMES },
+  { id: 4, label: 'Expert',   names: ALL_SCALE_NAMES, typed: true },
+];
+const EAR_MODES = [
+  { id: 'intervals', label: 'Intervals', levels: EAR_INTERVAL_LEVELS },
+  { id: 'chords',    label: 'Chords',    levels: EAR_CHORD_LEVELS },
+  { id: 'scales',    label: 'Scales',    levels: EAR_SCALE_LEVELS },
+];
+
+// Typed-answer matching, ported verbatim in behaviour from EarTrainingScreen.
+const normAns = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const SCALE_ALIASES = {
+  'major': ['ionian', 'major scale'],
+  'natural minor': ['minor', 'aeolian', 'nat minor', 'natural min'],
+  'dorian': ['dorian mode'],
+  'mixolydian': ['mixo', 'mixolydian mode'],
+  'harmonic minor': ['harmonic', 'harm minor'],
+  'major pentatonic': ['pentatonic major', 'maj pentatonic', 'major pent', 'pentatonic'],
+  'minor pentatonic': ['pentatonic minor', 'min pentatonic', 'minor pent'],
+  'blues': ['blues scale'],
+};
+function editDistance(a, b) {
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+const slack = (t) => (t.length <= 5 ? 1 : t.length <= 10 ? 2 : 3);
+function answerMatches(input, answer) {
+  const got = normAns(input);
+  if (!got) return false;
+  const want = normAns(answer);
+  // Best edit distance from what they typed to a name or any of its aliases.
+  const score = (name) => {
+    const n = normAns(name);
+    return Math.min(...[n, ...(SCALE_ALIASES[n] || []).map(normAns)].map((t) => editDistance(got, t)));
+  };
+  const mine = score(want);
+  // Guard against slack turning one scale into another: "minor pentatonic" is
+  // only 3 edits from "major pentatonic", so a tolerant match would accept it.
+  // If any OTHER scale name fits at least as well, the answer is ambiguous and
+  // we reject it rather than award a point for naming a different scale.
+  if (Object.keys(SCALE_ALIASES).some((n) => n !== want && score(n) <= mine)) return false;
+  return mine <= slack(want);
+}
+
+// A rounder tone than a bare oscillator — a few decaying partials read as
+// "instrument" rather than "test signal", which matters when you are being
+// asked to identify what you heard.
+function pianoNote(m, delay = 0, dur = 0.9, vol = 0.32) {
+  const c = actx(); if (!c) return;
+  const at = c.currentTime + delay, hz = midiHz(m);
+  [[1, 1], [2, 0.34], [3, 0.16], [4, 0.08]].forEach(([mult, amp], i) => {
+    tone(hz * mult, at, dur * (i === 0 ? 1 : 0.6), vol * amp, i === 0 ? 'triangle' : 'sine');
+  });
+}
+
+const EAR = { mode: 'intervals', level: 1, phase: 'menu', q: null, picked: null,
+              typed: '', score: 0, round: 1 };
+const earMode = () => EAR_MODES.find((m) => m.id === EAR.mode) || EAR_MODES[0];
+const earLevel = () => earMode().levels.find((l) => l.id === EAR.level) || earMode().levels[0];
+
+function earNew() {
+  const lv = earLevel(), root = 57 + Math.floor(Math.random() * 6);
+  EAR.picked = null; EAR.typed = '';
+  if (EAR.mode === 'intervals') {
+    const pool = EAR_INTERVALS.filter((i) => lv.semis.includes(i.semis));
+    const ans = pick(pool);
+    const wrong = shuffle(pool.filter((x) => x.semis !== ans.semis)).slice(0, 3);
+    EAR.q = { root, ans: ans.name, semis: ans.semis, opts: shuffle([ans.name, ...wrong.map((w) => w.name)]) };
+  } else if (EAR.mode === 'chords') {
+    const pool = EAR_CHORDS.filter((c) => lv.names.includes(c.name));
+    const ans = pick(pool);
+    const wrong = shuffle(pool.filter((x) => x.name !== ans.name)).slice(0, 3);
+    // Keep the tallest chord tone inside the C3–C5 sample range, as the app does.
+    const top = Math.max(...ans.offsets);
+    EAR.q = { root: Math.min(root, 72 - top), ans: ans.name, offsets: ans.offsets,
+              opts: shuffle([ans.name, ...wrong.map((w) => w.name)]) };
+  } else {
+    const pool = EAR_SCALES.filter((s) => lv.names.includes(s.name));
+    const ans = pick(pool);
+    const wrong = shuffle(pool.filter((x) => x.name !== ans.name)).slice(0, 3);
+    EAR.q = { root: Math.min(root, 60), ans: ans.name, steps: ans.steps,
+              opts: lv.typed ? [] : shuffle([ans.name, ...wrong.map((w) => w.name)]) };
+  }
+}
+function earPlay() {
   if (!EAR.q) earNew();
-  const names = { 1:'Starter · 4 intervals', 2:'Melodic · 6 intervals', 3:'Complete · 8 intervals' };
+  const q = EAR.q;
+  if (EAR.mode === 'intervals') { pianoNote(q.root, 0, .8); pianoNote(q.root + q.semis, .8, .95); }
+  else if (EAR.mode === 'chords') q.offsets.forEach((o) => pianoNote(q.root + o, 0, 1.5));
+  else q.steps.forEach((s, i) => pianoNote(q.root + s, i * 0.34, .55));
+}
+function viewEar() {
+  const lv = earLevel(), md = earMode();
+  if (EAR.phase === 'menu') {
+    $('#screen').innerHTML = `<div class="content">${head('Ear training', 'Prova plays — you name what you heard.')}
+      ${gameMenu({
+        icon: PI.ear, title: 'Train your ears',
+        blurb: `Prova plays — you name what you heard. ${ROUND_LEN} questions a round; your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
+        groups: [
+          { label: 'Game', attr: 'earmode', value: EAR.mode, items: EAR_MODES.map((m) => ({ id: m.id, label: m.label })) },
+          { label: 'Level', attr: 'earlvl', value: EAR.level, items: md.levels.map((l) => ({ id: l.id, label: l.label })),
+            hint: EAR.mode === 'intervals' ? `${lv.semis.length} intervals`
+                : lv.typed ? 'Every scale · type the name yourself, no choices'
+                : `${lv.names.length} to tell apart` },
+        ],
+        start: 'ear',
+        footer: 'Nothing here needs a microphone. Play the sound as many times as you like before you answer — replaying costs nothing.',
+      })}</div>`;
+    return;
+  }
+  if (EAR.phase === 'done') {
+    $('#screen').innerHTML = `<div class="content">${head('Ear training', `${md.label} · ${lv.label}`)}
+      ${gameDone({ title: `${md.label} · ${lv.label}`, score: EAR.score, total: ROUND_LEN,
+        stats: [['Game', md.label], ['Level', lv.label]], again: 'ear', backTo: 'practice' })}</div>`;
+    return;
+  }
+  if (!EAR.q) earNew();
+  const prompt = EAR.mode === 'intervals' ? 'What interval was that?'
+    : EAR.mode === 'chords' ? 'What chord quality was that?' : 'Which scale was that?';
+  const answered = EAR.picked != null;
+  const body = lv.typed
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap">
+         <input id="earTyped" placeholder="Name the scale…" autocomplete="off" style="flex:1;min-width:180px"${
+           answered ? ' disabled' : ''} value="${esc(EAR.typed)}">
+         ${answered ? '' : '<button class="btn" data-ear="submit">Check</button>'}</div>
+       ${answered ? `<div style="margin-top:14px"><span class="pill ${EAR.picked === EAR.q.ans ? 'set' : 'warn'}">${
+         EAR.picked === EAR.q.ans ? 'Correct' : 'It was ' + esc(EAR.q.ans)}</span></div>` : ''}`
+    : `<div style="display:flex;flex-direction:column;gap:10px">${EAR.q.opts.map((o) => {
+        const cls = !answered ? '' : (o === EAR.q.ans ? 'right' : (o === EAR.picked ? 'wrong' : ''));
+        return `<button class="opt ${cls}" data-ear="ans" data-v="${esc(o)}">${esc(o)}</button>`;
+      }).join('')}</div>`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Ear training', `Round ${EAR.round} of ${ROUND_LEN} · ${names[EAR.level]}`)}
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${[1,2,3].map(l =>
-      `<button class="btn sm ghost" data-earlvl="${l}"${EAR.level===l?' style="border-color:var(--primary);color:var(--ink)"':''}>${names[l]}</button>`).join('')}</div>
+    ${head('Ear training', `${md.label} · ${lv.label} · question ${EAR.round} of ${ROUND_LEN}`)}
     <div class="cols"><div class="stack">
-      ${card('What interval was that?', `Score ${EAR.score}`,
+      ${card(prompt, `Score ${EAR.score}`,
         `<div style="text-align:center;padding:6px 0 20px">
-          <button class="btn" data-ear="play" style="padding:16px 30px">▶ Play the interval</button></div>
-        <div style="display:flex;flex-direction:column;gap:10px">${EAR.q.opts.map(o => {
-          const cls = EAR.picked == null ? '' : (o[0] === EAR.q.ans[0] ? 'right' : (o[0] === EAR.picked ? 'wrong' : ''));
-          return `<button class="opt ${cls}" data-ear="ans" data-v="${o[0]}">${o[1]}</button>`;
-        }).join('')}</div>
-        ${EAR.picked != null ? `<button class="btn" data-ear="next" style="width:100%;margin-top:16px">${EAR.round >= ROUND_LEN ? 'Finish round' : 'Next interval'}</button>` : ''}`)}
-    </div><div class="stack">
-      ${card('This round', '', `<div class="hint">Correct ${EAR.score} of ${EAR.round - 1}</div>
-        <div class="track" style="margin-top:8px"><i style="width:${EAR.round / ROUND_LEN * 100}%"></i></div>`)}
-    </div></div></div>`;
+          <button class="btn" data-ear="play" style="padding:16px 30px">▶ ${EAR.round === 1 && !answered ? 'Play' : 'Play again'}</button></div>
+        ${body}
+        ${answered ? `<button class="btn wide" data-ear="next" style="margin-top:16px">${
+          EAR.round >= ROUND_LEN ? 'Finish round' : 'Next question'}</button>` : ''}`)}
+    </div><div class="stack">${gameRail(EAR.round, ROUND_LEN, EAR.score)}</div></div></div>`;
+  if (lv.typed && !answered) { const f = $('#earTyped'); if (f) f.focus(); }
 }
 // ── Fretboard ──────────────────────────────────────────────────────────
-const STRINGS = [[64,'high E'],[59,'B'],[55,'G'],[50,'D'],[45,'A'],[40,'low E']];
-const FRET = { level: 2, q: null, picked: null, score: 0, round: 1 };
-const fretMax = () => FRET.level === 1 ? 5 : FRET.level === 2 ? 7 : 12;
+// Ported from src/screens/tabs/FretboardGameScreen.js. Instrument-aware
+// (guitar 6 / bass 4) and two ways round: find the fret, or name the note.
+// Strings are listed high-to-low for drawing; the app's arrays are low-to-high.
+const GUITAR_STRINGS = [
+  { midi: 64, label: 'high E' }, { midi: 59, label: 'B' }, { midi: 55, label: 'G' },
+  { midi: 50, label: 'D' }, { midi: 45, label: 'A' }, { midi: 40, label: 'low E' },
+];
+const BASS_STRINGS = [
+  { midi: 43, label: 'G' }, { midi: 38, label: 'D' }, { midi: 33, label: 'A' }, { midi: 28, label: 'E' },
+];
+const FRET_LEVELS = [
+  { id: 1, label: 'Starter',  maxFret: 5,  naturalsOnly: true,  hint: 'Natural notes · frets 1–5' },
+  { id: 2, label: 'Player',   maxFret: 7,  naturalsOnly: true,  hint: 'Natural notes · frets 1–7' },
+  { id: 3, label: 'Complete', maxFret: 12, naturalsOnly: false, hint: 'All notes incl. sharps · frets 1–12' },
+  { id: 4, label: 'Master',   maxFret: 15, naturalsOnly: false, hint: 'All notes · the whole neck, frets 1–15' },
+];
+const FRET_MODES = [{ id: 'find', label: 'Find the note' }, { id: 'name', label: 'Name the note' }];
+const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const INLAYS = [3, 5, 7, 9, 12, 15];
+
+const FRET = { mode: 'find', level: 1, phase: 'menu', q: null, picked: null, score: 0, round: 1 };
+const fretStrings = () => (me.instrument === 'Bass' ? BASS_STRINGS : GUITAR_STRINGS);
+const fretLevel = () => FRET_LEVELS.find((l) => l.id === FRET.level) || FRET_LEVELS[0];
+
 function fretNew() {
-  const si = Math.floor(Math.random() * 6), f = Math.floor(Math.random() * fretMax()) + 1;
-  FRET.q = { si, fret: f, midi: STRINGS[si][0] + f }; FRET.picked = null;
+  const lv = fretLevel(), strings = fretStrings();
+  const si = Math.floor(Math.random() * strings.length);
+  // On the natural-only levels, only offer frets that land on a natural note.
+  const frets = [];
+  for (let f = 1; f <= lv.maxFret; f++) {
+    const nm = NOTE_NAMES[(strings[si].midi + f) % 12];
+    if (!lv.naturalsOnly || NATURALS.includes(nm)) frets.push(f);
+  }
+  const fret = pick(frets.length ? frets : [1]);
+  const midi = strings[si].midi + fret;
+  const name = NOTE_NAMES[midi % 12];
+  let opts = [];
+  if (FRET.mode === 'name') {
+    const pool = lv.naturalsOnly ? NATURALS : NOTE_NAMES;
+    opts = shuffle([name, ...shuffle(pool.filter((n) => n !== name)).slice(0, 3)]);
+  }
+  FRET.q = { si, fret, midi, name, opts }; FRET.picked = null;
+}
+function fretNeck(interactive) {
+  const lv = fretLevel(), strings = fretStrings(), max = lv.maxFret;
+  const FW = max > 12 ? 46 : 58, rowH = 21, top = 12;
+  const H = top + strings.length * rowH + 16, W = 34 + max * FW;
+  let o = '';
+  for (let s = 0; s < strings.length; s++) {
+    const y = top + s * rowH;
+    o += `<line x1="30" y1="${y}" x2="${W - 8}" y2="${y}" stroke="var(--ink-3)" stroke-width="${1 + s * 0.22}"/>`;
+  }
+  const y0 = top - 4, y1 = top + (strings.length - 1) * rowH + 4;
+  for (let f = 0; f <= max; f++) {
+    o += `<line x1="${30 + f * FW}" y1="${y0}" x2="${30 + f * FW}" y2="${y1}" stroke="${
+      f === 0 ? 'var(--ink-2)' : 'var(--line)'}" stroke-width="${f === 0 ? 3.5 : 1.5}"/>`;
+  }
+  INLAYS.forEach((f) => {
+    if (f > max) return;
+    const cx = 30 + (f - 0.5) * FW, cy = (y0 + y1) / 2;
+    if (f === 12) { o += `<circle cx="${cx}" cy="${cy - 9}" r="3.4" fill="var(--line)"/><circle cx="${cx}" cy="${cy + 9}" r="3.4" fill="var(--line)"/>`; }
+    else o += `<circle cx="${cx}" cy="${cy}" r="3.4" fill="var(--line)"/>`;
+    o += `<text x="${cx}" y="${y1 + 13}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${f}</text>`;
+  });
+  strings.forEach((s, i) => {
+    o += `<text x="24" y="${top + i * rowH + 3.5}" text-anchor="end" font-size="9.5" fill="var(--ink-3)">${s.label}</text>`;
+  });
+  const marked = (si, f) => FRET.q && FRET.q.si === si && FRET.q.fret === f;
+  for (let s = 0; s < strings.length; s++) for (let f = 1; f <= max; f++) {
+    const y = top + s * rowH, x = 30 + (f - 1) * FW;
+    const hit = FRET.picked && FRET.picked.si === s && FRET.picked.fret === f;
+    const right = FRET.picked && marked(s, f);
+    let fill = 'transparent';
+    if (right) fill = 'var(--good)'; else if (hit) fill = 'var(--bad)';
+    // In "name the note" the target fret is shown, not hunted for.
+    const showTarget = FRET.mode === 'name' && marked(s, f);
+    if (showTarget) {
+      o += `<circle cx="${x + FW / 2}" cy="${y}" r="8.5" fill="var(--primary)"/>`;
+    } else if (fill !== 'transparent') {
+      o += `<circle cx="${x + FW / 2}" cy="${y}" r="8.5" fill="${fill}" opacity=".85"/>`;
+    }
+    if (interactive) {
+      o += `<rect data-fret="${s}_${f}" x="${x}" y="${y - rowH / 2}" width="${FW}" height="${rowH}"
+        fill="transparent" style="cursor:pointer"/>`;
+    }
+  }
+  return `<div style="overflow-x:auto"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+    style="max-width:100%;min-width:${Math.min(W, 320)}px">${o}</svg></div>`;
 }
 function viewFret() {
-  if (!FRET.q) fretNew();
-  const max = fretMax(), W = 40 + max * 62;
-  let o = '';
-  for (let st = 0; st < 6; st++) o += `<line x1="30" y1="${16+st*20}" x2="${W-10}" y2="${16+st*20}" stroke="var(--ink-3)"/>`;
-  for (let f = 0; f <= max; f++) o += `<line x1="${30+f*62}" y1="16" x2="${30+f*62}" y2="116" stroke="var(--ink-3)" stroke-width="${f===0?3:1}"/>`;
-  [3,5,7,9].forEach(f => { if (f <= max) o += `<circle cx="${30+(f-.5)*62}" cy="66" r="5" fill="var(--line)"/>`; });
-  for (let st = 0; st < 6; st++) for (let f = 1; f <= max; f++) {
-    const hit = FRET.picked && FRET.picked.si === st && FRET.picked.fret === f;
-    const right = FRET.picked && st === FRET.q.si && f === FRET.q.fret;
-    o += `<rect data-fret="${st}_${f}" x="${30+(f-1)*62}" y="${6+st*20}" width="62" height="20"
-      fill="${right?'var(--good)':hit?'var(--bad)':'transparent'}" opacity="${right||hit?'.55':'1'}" style="cursor:pointer"/>`;
+  const lv = fretLevel();
+  const md = FRET_MODES.find((m) => m.id === FRET.mode) || FRET_MODES[0];
+  if (FRET.phase === 'menu') {
+    $('#screen').innerHTML = `<div class="content">${head('Fretboard game', 'Know every note on the neck.')}
+      ${gameMenu({
+        icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+        title: 'Know every note',
+        blurb: `Learn every note on the ${me.instrument === 'Bass' ? 'bass' : 'guitar'} neck. ${ROUND_LEN} questions a round; your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
+        groups: [
+          { label: 'Game', attr: 'fretmode', value: FRET.mode, items: FRET_MODES },
+          { label: 'Level', attr: 'fretlvl', value: FRET.level, items: FRET_LEVELS, hint: lv.hint },
+        ],
+        start: 'fret',
+        footer: `Your neck follows your instrument — ${me.instrument === 'Bass' ? 'four strings, BEAD' : 'six strings, EADGBE'}. Every fret you click plays, so you hear the note as well as place it.`,
+      })}</div>`;
+    return;
   }
-  const names = { 1:'Frets 1–5', 2:'Frets 1–7', 3:'All 12 frets' };
+  if (FRET.phase === 'done') {
+    $('#screen').innerHTML = `<div class="content">${head('Fretboard game', `${md.label} · ${lv.label}`)}
+      ${gameDone({ title: `${md.label} · ${lv.label}`, score: FRET.score, total: ROUND_LEN,
+        stats: [['Game', md.label], ['Level', lv.label]], again: 'fret', backTo: 'practice' })}</div>`;
+    return;
+  }
+  if (!FRET.q) fretNew();
+  const strings = fretStrings();
+  const answered = !!FRET.picked;
+  const prompt = FRET.mode === 'find'
+    ? `Find <b style="color:var(--primary)">${FRET.q.name}</b> on the <b style="color:var(--primary)">${strings[FRET.q.si].label}</b> string`
+    : 'Which note is marked?';
+  const tail = FRET.mode === 'find'
+    ? (answered
+        ? `<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+             <span class="pill ${FRET.picked.ok ? 'set' : 'warn'}">${FRET.picked.ok ? 'Correct'
+               : 'That was ' + NOTE_NAMES[(strings[FRET.picked.si].midi + FRET.picked.fret) % 12]}</span>
+             <button class="btn sm" data-fretact="next">${FRET.round >= ROUND_LEN ? 'Finish round' : 'Next note'}</button></div>`
+        : '<p class="hint" style="margin:14px 0 0">Click the fret — you will hear what you pick.</p>')
+    : `<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">${FRET.q.opts.map((o) => {
+        const cls = !answered ? '' : (o === FRET.q.name ? 'right' : (o === FRET.picked.name ? 'wrong' : ''));
+        return `<button class="opt ${cls}" data-fretname="${esc(o)}">${esc(o)}</button>`;
+      }).join('')}</div>
+      ${answered ? `<button class="btn wide" data-fretact="next" style="margin-top:16px">${
+        FRET.round >= ROUND_LEN ? 'Finish round' : 'Next note'}</button>` : ''}`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Fretboard game', `Round ${FRET.round} of ${ROUND_LEN} · ${names[FRET.level]}`)}
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${[1,2,3].map(l =>
-      `<button class="btn sm ghost" data-fretlvl="${l}"${FRET.level===l?' style="border-color:var(--primary);color:var(--ink)"':''}>${names[l]}</button>`).join('')}</div>
-    ${card(`Find <b style="color:var(--primary)">${NOTE_NAMES[FRET.q.midi % 12]}</b> on the <b style="color:var(--primary)">${STRINGS[FRET.q.si][1]}</b> string`,
-      `Score ${FRET.score}`,
-      `<div style="overflow-x:auto"><svg width="${W}" height="130" viewBox="0 0 ${W} 130" style="max-width:100%">${o}</svg></div>
-      ${FRET.picked ? `<div style="margin-top:14px;display:flex;gap:10px;align-items:center">
-        <span class="pill ${FRET.picked.ok?'set':'warn'}">${FRET.picked.ok ? 'Correct' : 'That was ' + NOTE_NAMES[(STRINGS[FRET.picked.si][0] + FRET.picked.fret) % 12]}</span>
-        <button class="btn sm" data-fretact="next">${FRET.round >= ROUND_LEN ? 'Finish round' : 'Next note'}</button></div>`
-        : '<p class="hint" style="margin:14px 0 0">Click the fret — you will hear what you pick.</p>'}`)}
-  </div>`;
+    ${head('Fretboard game', `${md.label} · ${lv.label} · question ${FRET.round} of ${ROUND_LEN}`)}
+    <div class="cols"><div class="stack">
+      ${card(prompt, `Score ${FRET.score}`, fretNeck(FRET.mode === 'find' && !answered) + tail)}
+    </div><div class="stack">${gameRail(FRET.round, ROUND_LEN, FRET.score)}</div></div></div>`;
 }
+
+// ── Rhythm tapper ──────────────────────────────────────────────────────
+// Ported from src/screens/tabs/RhythmTapperScreen.js. Taps are scored against a
+// DRIFTLESS mathematical beat grid — every beat time is computed from one start
+// stamp, so scheduling jitter can never accumulate. No microphone: this is tap
+// timing, which is why it works on the web at all.
+const RH_LEVELS = [
+  { id: 1, label: 'Steady',  bpm: 70, div: 1, taps: 16, accentEvery: 4, note: 'Quarter notes' },
+  { id: 2, label: 'Groove',  bpm: 96, div: 1, taps: 20, accentEvery: 4, note: 'Quarter notes' },
+  { id: 3, label: 'Eighths', bpm: 84, div: 2, taps: 24, accentEvery: 8, note: 'Eighth notes' },
+  { id: 4, label: '16ths',   bpm: 66, div: 4, taps: 32, accentEvery: 8, note: 'Sixteenth notes' },
+];
+const RH_MODES = [{ id: 'click', label: 'With click' }, { id: 'hold', label: 'Hold the time' }];
+const COUNT_IN = 4, LEAD_MS = 550, MAX_WINDOW = 260;
+function rhGrade(err) {
+  if (err <= 45)  return { key: 'perfect', label: 'Perfect', color: '#16a34a' };
+  if (err <= 90)  return { key: 'great',   label: 'Great',   color: '#22D3EE' };
+  if (err <= 160) return { key: 'good',    label: 'Good',    color: 'var(--primary)' };
+  return { key: 'off', label: 'Off', color: '#F5C044' };
+}
+const RH = { mode: 'click', level: 1, phase: 'menu', beats: [], taps: [], hits: [],
+             last: null, timers: [], startedAt: 0, done: 0 };
+const rhLevel = () => RH_LEVELS.find((l) => l.id === RH.level) || RH_LEVELS[0];
+
+function rhStop() { RH.timers.forEach(clearTimeout); RH.timers = []; }
+// Kill the click track and the pulse loop, and drop back to the menu. Called
+// when you navigate away mid-round — go() reaches this before the screen swaps.
+function abandonRhythm() {
+  rhStop();
+  if (RH.raf) { cancelAnimationFrame(RH.raf); RH.raf = null; }
+  RH.phase = 'menu';
+}
+function rhStart() {
+  rhStop();
+  const lv = rhLevel();
+  const interval = 60000 / lv.bpm / lv.div;
+  const t0 = performance.now() + LEAD_MS;
+  // Count-in clicks are unscored; the scored grid starts after them.
+  RH.beats = []; RH.taps = []; RH.hits = []; RH.last = null; RH.done = 0;
+  RH.interval = interval; RH.startedAt = t0;
+  const countInBeats = COUNT_IN * lv.div;
+  for (let i = 0; i < lv.taps; i++) RH.beats.push(t0 + (countInBeats + i) * interval);
+  const clickCount = RH.mode === 'hold'
+    ? countInBeats + lv.div * 4          // one bar of click, then silence
+    : countInBeats + lv.taps;
+  for (let i = 0; i < clickCount; i++) {
+    const at = t0 + i * interval;
+    const accent = i % lv.accentEvery === 0;
+    RH.timers.push(setTimeout(() => clickNow(accent ? 1 : 0), Math.max(0, at - performance.now())));
+  }
+  // End the round a beat after the last scored beat so a late final tap counts.
+  RH.timers.push(setTimeout(() => rhFinish(), Math.max(0, RH.beats[RH.beats.length - 1] + interval * 1.2 - performance.now())));
+  RH.phase = 'playing';
+  viewRhythm();
+  // Repaint the pulse without re-rendering the whole screen.
+  const tick = () => {
+    if (RH.phase !== 'playing') return;
+    const el = $('#rhPulse');
+    if (el) {
+      const since = (performance.now() - RH.startedAt) % interval;
+      const p = 1 - since / interval;
+      el.style.transform = `scale(${(0.86 + p * 0.22).toFixed(3)})`;
+      el.style.opacity = (0.55 + p * 0.45).toFixed(2);
+    }
+    RH.raf = requestAnimationFrame(tick);
+  };
+  RH.raf = requestAnimationFrame(tick);
+}
+function rhTap() {
+  if (RH.phase !== 'playing') return;
+  const now = performance.now();
+  // Score against the nearest UNCLAIMED beat.
+  let bi = -1, best = Infinity;
+  RH.beats.forEach((b, i) => {
+    if (RH.hits[i] != null) return;
+    const d = Math.abs(b - now);
+    if (d < best) { best = d; bi = i; }
+  });
+  // The window can never be wide enough to overlap the neighbouring beat.
+  const window = Math.min(MAX_WINDOW, RH.interval * 0.5);
+  if (bi < 0 || best > window) { RH.last = { label: 'Miss', color: 'var(--bad)' }; }
+  else { RH.hits[bi] = best; RH.done++; RH.last = rhGrade(best); }
+  RH.taps.push(now);
+  const el = $('#rhFeed');
+  if (el) { el.textContent = RH.last.label; el.style.color = RH.last.color; }
+  const c = $('#rhCount');
+  if (c) c.textContent = `${RH.done} / ${RH.beats.length}`;
+}
+async function rhFinish() {
+  rhStop();
+  if (RH.raf) cancelAnimationFrame(RH.raf);
+  const hit = RH.hits.filter((h) => h != null);
+  RH.score = hit.length;
+  RH.avg = hit.length ? Math.round(hit.reduce((a, b) => a + b, 0) / hit.length) : 0;
+  RH.perfect = hit.filter((h) => h <= 45).length;
+  RH.phase = 'done';
+  viewRhythm();
+  if (RH.score > 0) await awardRound('rhythmTapper', 'rhythm', RH.score, { total: RH.beats.length, emoji: '🥁' });
+}
+function viewRhythm() {
+  const lv = rhLevel();
+  const md = RH_MODES.find((m) => m.id === RH.mode) || RH_MODES[0];
+  if (RH.phase === 'menu') {
+    $('#screen').innerHTML = `<div class="content">${head('Rhythm tapper', 'Tap in time. Scored to the millisecond.')}
+      ${gameMenu({
+        icon: PI.metro, title: 'Lock in your time',
+        blurb: `A click plays and you tap along — every tap is scored against a perfect grid. Your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
+        groups: [
+          { label: 'Game', attr: 'rhmode', value: RH.mode, items: RH_MODES,
+            hint: RH.mode === 'hold' ? 'The click stops after one bar — you keep the pulse alone' : 'The click runs the whole way through' },
+          { label: 'Level', attr: 'rhlvl', value: RH.level, items: RH_LEVELS,
+            hint: `${lv.note} · ${lv.bpm} bpm · ${lv.taps} beats` },
+        ],
+        start: 'rhythm',
+        footer: 'Tap the big pad, press the space bar, or click anywhere on it. There is a four-beat count-in before anything is scored — no microphone needed.',
+      })}</div>`;
+    return;
+  }
+  if (RH.phase === 'done') {
+    $('#screen').innerHTML = `<div class="content">${head('Rhythm tapper', `${md.label} · ${lv.label}`)}
+      ${gameDone({ title: `${md.label} · ${lv.label} · ${lv.bpm} bpm`, score: RH.score || 0, total: RH.beats.length,
+        stats: [['Perfect', RH.perfect || 0], ['Average off', `${RH.avg || 0} ms`], ['Tempo', `${lv.bpm} bpm`]],
+        again: 'rhythm', backTo: 'practice' })}</div>`;
+    return;
+  }
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Rhythm tapper', `${md.label} · ${lv.label} · ${lv.bpm} bpm`)}
+    <div class="cols"><div class="stack">
+      ${card('Tap on every click', `<span id="rhCount">0 / ${RH.beats.length}</span>`,
+        `<button class="rhpad" data-rhtap="1">
+           <span class="rhring" id="rhPulse"></span>
+           <span class="rhfeed" id="rhFeed">Count in…</span>
+           <span class="rhhint">Tap here or press space</span>
+         </button>`)}
+    </div><div class="stack">
+      ${card('This round', lv.note, `<p class="hint" style="margin:0">${
+        RH.mode === 'hold' ? 'The click drops out after one bar. Keep the pulse going on your own — that is the whole exercise.'
+                           : 'Stay with the click. Accuracy is scored in milliseconds, not just right or wrong.'}</p>
+        <button class="btn sm ghost wide" data-gquit="1" style="margin-top:14px">End round</button>`)}
+    </div></div></div>`;
+}
+
+// ── Game controls, all four games ──────────────────────────────────────
+// QUIZ is declared further down; these run on click, long after load.
+const GAME_STARTERS = {
+  ear:    () => { EAR.phase = 'playing'; EAR.round = 1; EAR.score = 0; earNew(); viewEar(); setTimeout(earPlay, 260); },
+  fret:   () => { FRET.phase = 'playing'; FRET.round = 1; FRET.score = 0; fretNew(); viewFret(); },
+  theory: () => { QUIZ.phase = 'playing'; QUIZ.round = 1; QUIZ.score = 0; quizNew(); viewTheory(); },
+  rhythm: () => { actx(); rhStart(); },
+};
 document.addEventListener('click', async (e) => {
   let t;
-  if ((t = e.target.closest('[data-earlvl]'))) { EAR.level = +t.getAttribute('data-earlvl'); EAR.round = 1; EAR.score = 0; earNew(); viewEar(); return; }
+  // Shared shell controls.
+  if ((t = e.target.closest('[data-gstart]'))) { const g = t.getAttribute('data-gstart'); return GAME_STARTERS[g] && GAME_STARTERS[g](); }
+  if ((t = e.target.closest('[data-gagain]'))) { const g = t.getAttribute('data-gagain'); return GAME_STARTERS[g] && GAME_STARTERS[g](); }
+  if (e.target.closest('[data-gquit]')) {
+    if (screen === 'ear') { EAR.phase = 'menu'; return viewEar(); }
+    if (screen === 'fret') { FRET.phase = 'menu'; return viewFret(); }
+    if (screen === 'theory') { QUIZ.phase = 'menu'; return viewTheory(); }
+    if (screen === 'rhythm') { rhStop(); if (RH.raf) cancelAnimationFrame(RH.raf); RH.phase = 'menu'; return viewRhythm(); }
+    return;
+  }
+  // Ear training.
+  if ((t = e.target.closest('[data-earmode]'))) {
+    EAR.mode = t.getAttribute('data-earmode'); EAR.level = 1; return viewEar();
+  }
+  if ((t = e.target.closest('[data-earlvl]'))) { EAR.level = +t.getAttribute('data-earlvl'); return viewEar(); }
   if ((t = e.target.closest('[data-ear]'))) {
     const a = t.getAttribute('data-ear');
     if (a === 'play') return earPlay();
     if (a === 'ans' && EAR.picked == null) {
-      EAR.picked = +t.getAttribute('data-v');
-      if (EAR.picked === EAR.q.ans[0]) EAR.score++;
+      EAR.picked = t.getAttribute('data-v');
+      if (EAR.picked === EAR.q.ans) EAR.score++;
+      return viewEar();
+    }
+    if (a === 'submit' && EAR.picked == null) {
+      const f = $('#earTyped'); const val = f ? f.value : '';
+      if (!val.trim()) return;
+      EAR.typed = val;
+      const ok = answerMatches(val, EAR.q.ans);
+      EAR.picked = ok ? EAR.q.ans : val;
+      if (ok) EAR.score++;
       return viewEar();
     }
     if (a === 'next') {
-      if (EAR.round >= ROUND_LEN) { await awardRound('earTraining', 'ear', EAR.score);
-        EAR.round = 1; EAR.score = 0; } else EAR.round++;
-      earNew(); viewEar(); setTimeout(earPlay, 250); return;
+      if (EAR.round >= ROUND_LEN) {
+        await awardRound('earTraining', 'ear', EAR.score);
+        EAR.phase = 'done'; return viewEar();
+      }
+      EAR.round++; earNew(); viewEar(); setTimeout(earPlay, 250); return;
     }
     return;
   }
-  if ((t = e.target.closest('[data-fretlvl]'))) { FRET.level = +t.getAttribute('data-fretlvl'); FRET.round = 1; FRET.score = 0; fretNew(); viewFret(); return; }
+  // Fretboard.
+  if ((t = e.target.closest('[data-fretmode]'))) { FRET.mode = t.getAttribute('data-fretmode'); return viewFret(); }
+  if ((t = e.target.closest('[data-fretlvl]'))) { FRET.level = +t.getAttribute('data-fretlvl'); return viewFret(); }
   if ((t = e.target.closest('[data-fret]'))) {
-    if (FRET.picked) return;
+    if (FRET.picked || FRET.mode !== 'find') return;
     const [si, f] = t.getAttribute('data-fret').split('_').map(Number);
     const ok = si === FRET.q.si && f === FRET.q.fret;
     FRET.picked = { si, fret: f, ok };
-    playMidi(STRINGS[si][0] + f, 0, .8);
+    pianoNote(fretStrings()[si].midi + f, 0, .8);
     if (ok) FRET.score++;
     return viewFret();
   }
-  if ((t = e.target.closest('[data-fretact]'))) {
-    if (FRET.round >= ROUND_LEN) { await awardRound('fretGame', 'fretboard', FRET.score); FRET.round = 1; FRET.score = 0; }
-    else FRET.round++;
-    fretNew(); viewFret(); return;
+  if ((t = e.target.closest('[data-fretname]'))) {
+    if (FRET.picked) return;
+    const name = t.getAttribute('data-fretname');
+    const ok = name === FRET.q.name;
+    FRET.picked = { name, ok };
+    pianoNote(FRET.q.midi, 0, .8);
+    if (ok) FRET.score++;
+    return viewFret();
   }
+  if (e.target.closest('[data-fretact]')) {
+    if (FRET.round >= ROUND_LEN) {
+      await awardRound('fretGame', 'fretboard', FRET.score);
+      FRET.phase = 'done'; return viewFret();
+    }
+    FRET.round++; fretNew(); return viewFret();
+  }
+  // Rhythm.
+  if ((t = e.target.closest('[data-rhmode]'))) { RH.mode = t.getAttribute('data-rhmode'); return viewRhythm(); }
+  if ((t = e.target.closest('[data-rhlvl]'))) { RH.level = +t.getAttribute('data-rhlvl'); return viewRhythm(); }
+  if (e.target.closest('[data-rhtap]')) return rhTap();
+});
+// The space bar is the natural way to tap, but only while a round is running
+// and never when the caret is in a field.
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || screen !== 'rhythm' || RH.phase !== 'playing') return;
+  const el = document.activeElement;
+  if (el && /INPUT|TEXTAREA/.test(el.tagName)) return;
+  e.preventDefault();
+  rhTap();
+});
+// Typed ear-training answers submit on Enter.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || screen !== 'ear') return;
+  const el = document.activeElement;
+  if (!el || el.id !== 'earTyped') return;
+  e.preventDefault();
+  const b = document.querySelector('[data-ear="submit"]');
+  if (b) b.click();
 });
 
 // ── Ask Prova — the real Cloud Function ────────────────────────────────
@@ -1930,39 +2529,189 @@ async function completeChallenge() {
 }
 
 // ══ THEORY QUIZ ════════════════════════════════════════════════════════
-const QUIZ = { i: 0, picked: null, score: 0, round: 1 };
+// The generators from src/constants/theory.js, ported rather than re-derived.
+// Everything is computed from chromatic indices, so answers are always right;
+// root pools are curated so the sharp spelling is the correct one for the key.
+// This replaces a baked list of 40 questions that repeated and had no levels.
+const CHROMA = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const chIdx = (n) => CHROMA.indexOf(n);
+const chNote = (i) => CHROMA[(((i % 12) + 12) % 12)];
+let RECALL = false;
+function choicesFrom(answer, pool, n = 4) {
+  const cap = RECALL ? pool.length + 1 : n;
+  const set = new Set([answer]);
+  for (const x of shuffle(pool)) { if (set.size >= cap) break; if (x !== answer) set.add(x); }
+  return shuffle([...set]);
+}
+const QUIZ_CATEGORIES = [
+  { id: 'intervals', label: 'Intervals' }, { id: 'chords', label: 'Chords' },
+  { id: 'keys', label: 'Keys' }, { id: 'scales', label: 'Scales' },
+];
+const QUIZ_LEVELS = [{ id: 1, label: 'Basics' }, { id: 2, label: 'Player' }, { id: 3, label: 'Advanced' }];
+const TH_INTERVALS = [
+  { name: 'Minor 2nd', semis: 1 }, { name: 'Major 2nd', semis: 2 }, { name: 'Minor 3rd', semis: 3 },
+  { name: 'Major 3rd', semis: 4 }, { name: 'Perfect 4th', semis: 5 }, { name: 'Tritone', semis: 6 },
+  { name: 'Perfect 5th', semis: 7 }, { name: 'Minor 6th', semis: 8 }, { name: 'Major 6th', semis: 9 },
+  { name: 'Minor 7th', semis: 10 }, { name: 'Major 7th', semis: 11 }, { name: 'Octave', semis: 12 },
+];
+const TH_INTERVAL_SETS = {
+  1: TH_INTERVALS.filter((i) => [3, 4, 5, 7, 12].includes(i.semis)),
+  2: TH_INTERVALS.filter((i) => [2, 3, 4, 5, 7, 9, 12].includes(i.semis)),
+  3: TH_INTERVALS,
+};
+const CLEAN_ROOTS = ['C', 'G', 'D', 'A', 'E', 'F', 'B'];
+function genInterval(level) {
+  const iv = pick(TH_INTERVAL_SETS[level] || TH_INTERVALS), roll = Math.random();
+  if (roll < 0.4) return { prompt: `How many semitones are in a ${iv.name}?`, answer: String(iv.semis),
+    choices: choicesFrom(String(iv.semis), TH_INTERVALS.map((x) => String(x.semis))) };
+  if (level >= 3 && roll < 0.7) {
+    const a = pick(CLEAN_ROOTS), b = chNote(chIdx(a) + iv.semis);
+    return { prompt: `Ascending, the interval from ${a} to ${b} is?`, answer: iv.name,
+      choices: choicesFrom(iv.name, TH_INTERVALS.map((x) => x.name)) };
+  }
+  const root = pick(CLEAN_ROOTS), target = chNote(chIdx(root) + iv.semis);
+  return { prompt: `A ${iv.name} above ${root} is which note?`, answer: target, choices: choicesFrom(target, CHROMA) };
+}
+const TRIADS = { Major: [0, 4, 7], Minor: [0, 3, 7], Diminished: [0, 3, 6], Augmented: [0, 4, 8] };
+const MAJOR_ROOTS = ['C', 'G', 'D', 'A', 'E', 'F'];
+const MINOR_ROOTS = ['A', 'E', 'B', 'D', 'F#', 'C#'];
+const spell = (root, offsets) => offsets.map((o) => chNote(chIdx(root) + o)).join(' – ');
+function genChord(level) {
+  const qualities = level === 1 ? ['Major', 'Minor'] : level === 2 ? ['Major', 'Minor', 'Diminished']
+    : ['Major', 'Minor', 'Diminished', 'Augmented'];
+  const quality = pick(qualities);
+  const rootPool = quality === 'Minor' ? MINOR_ROOTS : MAJOR_ROOTS;
+  const root = pick(rootPool), offsets = TRIADS[quality], roll = Math.random();
+  if (roll < 0.4) {
+    const which = quality === 'Diminished' || Math.random() < 0.5 ? 5 : 3;
+    const target = chNote(chIdx(root) + (which === 3 ? offsets[1] : offsets[2]));
+    return { prompt: `The ${which === 3 ? '3rd' : '5th'} of ${root} ${quality.toLowerCase()} is?`,
+      answer: target, choices: choicesFrom(target, CHROMA) };
+  }
+  if (roll < 0.7) {
+    const target = spell(root, offsets);
+    const wrong = shuffle(rootPool).filter((r) => r !== root).slice(0, 2).map((r) => spell(r, offsets));
+    const otherQ = pick(Object.keys(TRIADS).filter((q) => q !== quality));
+    return { prompt: `Which notes spell a ${root} ${quality.toLowerCase()} triad?`, answer: target,
+      choices: shuffle([target, ...wrong, spell(root, TRIADS[otherQ])]).slice(0, 4) };
+  }
+  const label = `${root} ${quality.toLowerCase()}`;
+  const wrongLabels = shuffle([...new Set([...MAJOR_ROOTS, ...MINOR_ROOTS])]).filter((r) => r !== root)
+    .slice(0, 3).map((r) => `${r} ${quality.toLowerCase()}`);
+  return { prompt: `${spell(root, offsets)} — which chord is this?`, answer: label,
+    choices: shuffle([label, ...wrongLabels]) };
+}
+const SHARP_KEYS = [['G', 1], ['D', 2], ['A', 3], ['E', 4], ['B', 5], ['F#', 6]];
+const FLAT_KEYS = [['F', 1], ['Bb', 2], ['Eb', 3], ['Ab', 4], ['Db', 5]];
+const RELMINOR_KEYS = ['C', 'G', 'D', 'A', 'E', 'F', 'Bb'];
+function genKey(level) {
+  const roll = Math.random();
+  if (level >= 3 && roll < 0.45) {
+    const key = pick(RELMINOR_KEYS);
+    const rootIdx = key === 'Bb' ? 10 : chIdx(key);
+    const ans = `${chNote(rootIdx - 3)} minor`;
+    return { prompt: `The relative minor of ${key} major is?`, answer: ans,
+      choices: choicesFrom(ans, CHROMA.map((n) => `${n} minor`)) };
+  }
+  if (level >= 2 && roll < 0.5) {
+    const [key, n] = pick(FLAT_KEYS);
+    return { prompt: `How many flats are in the key of ${key} major?`, answer: String(n),
+      choices: choicesFrom(String(n), ['0','1','2','3','4','5','6']) };
+  }
+  if (roll < 0.75) {
+    const [key, n] = pick(SHARP_KEYS.slice(0, level === 1 ? 3 : 6));
+    return { prompt: `How many sharps are in the key of ${key} major?`, answer: String(n),
+      choices: choicesFrom(String(n), ['0','1','2','3','4','5','6']) };
+  }
+  const [key, n] = pick(SHARP_KEYS.slice(0, level === 1 ? 3 : 6));
+  return { prompt: `Which major key has ${n} sharp${n === 1 ? '' : 's'}?`, answer: key,
+    choices: choicesFrom(key, SHARP_KEYS.map((k) => k[0])) };
+}
+const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+const DEGREE_NAMES = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
+const SCALE_ROOTS = ['C', 'G', 'D', 'A', 'E', 'B'];
+function genScale(level) {
+  const root = pick(SCALE_ROOTS.slice(0, level === 1 ? 3 : 6));
+  const inScale = MAJOR_SCALE.map((s) => chNote(chIdx(root) + s));
+  if (Math.random() < 0.5) {
+    const outNote = pick(CHROMA.filter((n) => !inScale.includes(n)));
+    return { prompt: `Which note is NOT in the ${root} major scale?`, answer: outNote,
+      choices: shuffle([outNote, ...shuffle(inScale).slice(0, 3)]) };
+  }
+  const deg = 1 + Math.floor(Math.random() * (level === 1 ? 4 : 6));
+  const target = inScale[deg];
+  return { prompt: `The ${DEGREE_NAMES[deg]} degree of ${root} major is?`, answer: target,
+    choices: choicesFrom(target, CHROMA) };
+}
+const GENERATORS = { intervals: genInterval, chords: genChord, keys: genKey, scales: genScale };
+function makeTheoryQuestion(categoryId, level) {
+  RECALL = level >= 3;
+  const q = (GENERATORS[categoryId] || genInterval)(level);
+  q.recall = RECALL && q.choices.length > 4;
+  return q;
+}
+
+const QUIZ = { cat: 'intervals', level: 1, phase: 'menu', q: null, picked: null, score: 0, round: 1 };
+const quizCat = () => QUIZ_CATEGORIES.find((c) => c.id === QUIZ.cat) || QUIZ_CATEGORIES[0];
+const quizLevel = () => QUIZ_LEVELS.find((l) => l.id === QUIZ.level) || QUIZ_LEVELS[0];
+function quizNew() { QUIZ.q = makeTheoryQuestion(QUIZ.cat, QUIZ.level); QUIZ.picked = null; }
 function viewTheory() {
-  const q = APPX.theory[QUIZ.i % APPX.theory.length];
-  const ans = q.choices.indexOf(q.answer);
+  const cat = quizCat(), lv = quizLevel();
+  if (QUIZ.phase === 'menu') {
+    $('#screen').innerHTML = `<div class="content">${head('Theory quiz', 'Fresh questions every round.')}
+      ${gameMenu({
+        icon: PI.layers, title: 'Know your theory',
+        blurb: `${ROUND_LEN} questions a round across intervals, chords, keys and scales. Your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
+        groups: [
+          { label: 'Topic', attr: 'quizcat', value: QUIZ.cat, items: QUIZ_CATEGORIES },
+          { label: 'Level', attr: 'quizlvl', value: QUIZ.level, items: QUIZ_LEVELS,
+            hint: QUIZ.level >= 3 ? 'Recall mode — name it from the whole pool, not four choices' : 'Four choices a question' },
+        ],
+        start: 'theory',
+        footer: 'Every question is generated fresh from music theory rather than drawn from a fixed list, so no two rounds are the same.',
+      })}</div>`;
+    return;
+  }
+  if (QUIZ.phase === 'done') {
+    $('#screen').innerHTML = `<div class="content">${head('Theory quiz', `${cat.label} · ${lv.label}`)}
+      ${gameDone({ title: `${cat.label} · ${lv.label}`, score: QUIZ.score, total: ROUND_LEN,
+        stats: [['Topic', cat.label], ['Level', lv.label]], again: 'theory', backTo: 'practice' })}</div>`;
+    return;
+  }
+  if (!QUIZ.q) quizNew();
+  const q = QUIZ.q, answered = QUIZ.picked != null;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Theory quiz', `Round ${QUIZ.round} of ${ROUND_LEN} · score ${QUIZ.score}`)}
+    ${head('Theory quiz', `${cat.label} · ${lv.label} · question ${QUIZ.round} of ${ROUND_LEN}`)}
     <div class="cols"><div class="stack">
       ${card(esc(q.prompt), `Score ${QUIZ.score}`,
-        `<div style="display:flex;flex-direction:column;gap:10px">${q.choices.map((o, i) => {
-          const cls = QUIZ.picked == null ? '' : (i === ans ? 'right' : (i === QUIZ.picked ? 'wrong' : ''));
-          return `<button class="opt ${cls}" data-quiz="${i}" data-ok="${i === ans ? 1 : 0}">${esc(o)}</button>`;
-        }).join('')}</div>
-        ${QUIZ.picked != null ? `<button class="btn" data-quiznext="1" style="width:100%;margin-top:16px">${
+        `<div style="display:${q.recall ? 'grid' : 'flex'};${q.recall
+            ? 'grid-template-columns:repeat(auto-fill,minmax(120px,1fr))' : 'flex-direction:column'};gap:10px">${
+          q.choices.map((o) => {
+            const cls = !answered ? '' : (o === q.answer ? 'right' : (o === QUIZ.picked ? 'wrong' : ''));
+            return `<button class="opt ${cls}" data-quiz="${esc(o)}">${esc(o)}</button>`;
+          }).join('')}</div>
+        ${answered ? `<button class="btn wide" data-quiznext="1" style="margin-top:16px">${
           QUIZ.round >= ROUND_LEN ? 'Finish round' : 'Next question'}</button>` : ''}`)}
-    </div><div class="stack">
-      ${card('This round','', `<div class="hint">Correct ${QUIZ.score} of ${QUIZ.round - 1}</div>
-        <div class="track" style="margin-top:8px"><i style="width:${QUIZ.round / ROUND_LEN * 100}%"></i></div>`)}
-    </div></div></div>`;
+    </div><div class="stack">${gameRail(QUIZ.round, ROUND_LEN, QUIZ.score)}</div></div></div>`;
 }
 document.addEventListener('click', async (e) => {
   if (e.target.closest('#makePlan') || e.target.closest('[data-plan]')) return planSheet();
   const gg = e.target.closest('[data-gig]');
   if (gg) { GIG = gg.getAttribute('data-gig'); return go('gig'); }
   let t;
+  if ((t = e.target.closest('[data-quizcat]'))) { QUIZ.cat = t.getAttribute('data-quizcat'); return viewTheory(); }
+  if ((t = e.target.closest('[data-quizlvl]'))) { QUIZ.level = +t.getAttribute('data-quizlvl'); return viewTheory(); }
   if ((t = e.target.closest('[data-quiz]')) && QUIZ.picked == null) {
-    QUIZ.picked = +t.getAttribute('data-quiz');
-    if (t.getAttribute('data-ok') === '1') QUIZ.score++;
+    QUIZ.picked = t.getAttribute('data-quiz');
+    if (QUIZ.picked === QUIZ.q.answer) QUIZ.score++;
     return viewTheory();
   }
   if (e.target.closest('[data-quiznext]')) {
-    if (QUIZ.round >= ROUND_LEN) { await awardRound('theoryQuiz', 'theory', QUIZ.score); QUIZ.round = 1; QUIZ.score = 0; }
-    else QUIZ.round++;
-    QUIZ.i++; QUIZ.picked = null; return viewTheory();
+    if (QUIZ.round >= ROUND_LEN) {
+      await awardRound('theoryQuiz', 'theory', QUIZ.score);
+      QUIZ.phase = 'done'; return viewTheory();
+    }
+    QUIZ.round++; quizNew(); return viewTheory();
   }
   if (e.target.closest('[data-chal]')) return completeChallenge();
 });
