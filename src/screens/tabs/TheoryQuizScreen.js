@@ -12,7 +12,7 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
-import { CATEGORIES, makeTheoryQuestion } from '../../constants/theory';
+import { CATEGORIES, makeTheoryRound } from '../../constants/theory';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
 import { useCelebration } from '../../components/Celebration';
 import { track } from '../../lib/analytics';
@@ -30,6 +30,9 @@ export default function TheoryQuizScreen({ navigation, route }) {
   const [level, setLevel] = useState(route?.params?.level || 1);
   const [phase, setPhase] = useState('menu');          // menu | playing | done
   const [qNum, setQNum] = useState(0);
+  // The whole round is drawn up front so it can be de-duplicated — asking the
+  // same question twice in ten was the single most common complaint.
+  const [round, setRound] = useState([]);              // [{ prompt, answer, choices }]
   const [question, setQuestion] = useState(null);      // { prompt, answer, choices }
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
@@ -38,7 +41,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
   // Leaving the game abandons the round: coming back starts fresh at the menu
   // rather than dropping you back mid-question with a stale score.
   useFocusEffect(React.useCallback(() => () => {
-    setPhase('menu'); setQNum(0); setQuestion(null); setPicked(null); setScore(0); setRewarded(false);
+    setPhase('menu'); setQNum(0); setRound([]); setQuestion(null); setPicked(null); setScore(0); setRewarded(false);
   }, []));
   const playScrollRef = useRef(null);
 
@@ -47,8 +50,9 @@ export default function TheoryQuizScreen({ navigation, route }) {
       personalUpsell(navigation, "You've played today's free round — Prova Personal unlocks unlimited theory quizzes.");
       return;
     }
+    const qs = makeTheoryRound(category, level, ROUND_LEN);
     setScore(0); setQNum(1); setPicked(null); setRewarded(false);
-    setQuestion(makeTheoryQuestion(category, level)); setPhase('playing');
+    setRound(qs); setQuestion(qs[0]); setPhase('playing');
   };
 
   const answer = (choice) => {
@@ -91,7 +95,7 @@ export default function TheoryQuizScreen({ navigation, route }) {
       return;
     }
     setQNum((n) => n + 1); setPicked(null);
-    setQuestion(makeTheoryQuestion(category, level));
+    setQuestion(round[qNum]);   // qNum is 1-based, so this is the next one
   };
 
   return (
