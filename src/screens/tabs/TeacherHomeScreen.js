@@ -246,14 +246,18 @@ export default function TeacherHomeScreen({ navigation }) {
   const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
   const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
 
+  const [teacherPro, setTeacherPro] = useState(true);    // optimistic — real value loads with the doc
+  const [keeperOpen, setKeeperOpen] = useState(false);   // free plan + over the student cap -> pick who stays
+
   // Free plan holding more students than it includes (e.g. after a Studio
   // downgrade): the teacher picks who stays connected. Fires here because
-  // Home is the landing tab; the Students tab runs the same check.
+  // Home is the landing tab.
+  // Must stay below the two useState lines above: the dependency array is
+  // evaluated during render, so declaring it first put `teacherPro` in the
+  // temporal dead zone and threw on every teacher's first paint.
   useEffect(() => {
     if (!DEMO_MODE && !teacherPro && students.length > TEACHER_FREE_STUDENT_LIMIT) setKeeperOpen(true);
   }, [teacherPro, students.length]);
-  const [teacherPro, setTeacherPro] = useState(true);    // optimistic — real value loads with the doc
-  const [keeperOpen, setKeeperOpen] = useState(false);   // free plan + over the student cap -> pick who stays
 
   // Live unread count for the teacher's bell (e.g. "parent reports sent").
   useEffect(() => {
