@@ -300,10 +300,10 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, deleteUser }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where,
-  addDoc, serverTimestamp, onSnapshot, orderBy, limit }
+  addDoc, serverTimestamp, onSnapshot, orderBy, limit, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 
@@ -1680,8 +1680,12 @@ function viewProfile() {
           <a class="btn sm ghost" href="/support.html" target="_blank" rel="noopener">Open</a></div>
       </div></section>
       <section class="card"><header><h3>Session</h3></header>
-        <p class="hint" style="margin:0 0 14px">Theme, notifications and account deletion live in the phone app.</p>
+        <p class="hint" style="margin:0 0 14px">Theme and notifications live in the phone app.</p>
         <button class="btn ghost" style="width:100%" id="soBtn2">Sign out</button></section>
+      <section class="card" style="border-color:var(--bad)"><header><h3 style="color:var(--bad)">Danger zone</h3></header>
+        <p class="hint" style="margin:0 0 14px">Deleting removes your studio, students' links to you, lesson notes and
+          uploads permanently. Your students keep their own accounts.</p>
+        <button class="btn ghost" id="delAcc2" style="width:100%;color:var(--bad);border-color:var(--bad)">Delete my account</button></section>
     </div></div></div>`;
 
   const mk = $('#makeCode2');
@@ -1696,6 +1700,36 @@ function viewProfile() {
     catch { toast('The code is ' + code); }
   };
   $('#soBtn2').onclick = confirmSignOut;
+
+  // Account deletion has to be reachable from every surface a user can be
+  // signed in on, and teachers are sent here rather than to /webapp/.
+  $('#delAcc2').onclick = () => {
+    modal(`<div style="text-align:left">
+      <h3 style="font-size:18px;margin-bottom:10px">Delete your account?</h3>
+      <p class="hint" style="margin:0 0 16px">This removes your studio, lesson notes, chats and uploads
+        permanently. It cannot be undone. Type <b style="color:var(--ink)">DELETE</b> to confirm.</p>
+      <input id="delWord2" placeholder="DELETE" style="width:100%;background:var(--raised);border:1px solid var(--line);
+        border-radius:10px;padding:12px 14px;color:inherit;font:inherit">
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn ghost" data-close style="flex:1">Cancel</button>
+        <button class="btn" id="delGo2" style="flex:1;background:var(--bad)">Delete everything</button></div></div>`);
+    $('#delGo2').onclick = async () => {
+      if ($('#delWord2').value.trim().toUpperCase() !== 'DELETE') { toast('Type DELETE to confirm'); return; }
+      const btn = $('#delGo2'); btn.disabled = true; btn.textContent = 'Deleting…';
+      try {
+        await deleteDoc(doc(db, 'users', meUid));
+        await deleteUser(auth.currentUser);
+        closeModal();
+      } catch (err) {
+        // Firebase refuses to delete on a stale session; say so rather than
+        // showing a generic failure the teacher can do nothing about.
+        toast(/requires-recent-login/.test(err?.code || '')
+          ? 'For safety, sign out and back in, then delete.'
+          : 'Could not delete the account.');
+        btn.disabled = false; btn.textContent = 'Delete everything';
+      }
+    };
+  };
 }
 
 // ── 2. LESSON NOTES ───────────────────────────────────────────────────────
