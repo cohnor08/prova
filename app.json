@@ -2,7 +2,7 @@
   "expo": {
     "name": "prova",
     "slug": "prova",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "scheme": "prova",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
