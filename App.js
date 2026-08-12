@@ -41,7 +41,14 @@ import { CelebrationProvider } from './src/components/Celebration';
 import { MetronomeProvider } from './src/lib/MetronomeContext';
 import MetronomePill from './src/components/MetronomePill';
 import IntroSplash from './src/components/IntroSplash';
+import { hideNativeSplash, holdNativeSplash } from './src/lib/nativeSplash';
 import TourOverlay from './src/components/TourOverlay';
+
+// Keep the native launch screen up until the intro has actually drawn a frame.
+// Left to itself it hides as soon as React renders, which uncovered the root
+// view a beat before the intro's WebView had painted — that gap was the white
+// square around the mark at launch.
+holdNativeSplash();
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -324,7 +331,9 @@ function AppInner() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    // Explicitly dark: an unpainted wrapper lets the bare root view through,
+    // and that reads white for the frames before the intro paints.
+    <View style={{ flex: 1, backgroundColor: '#171A21' }}>
       {body}
       {!introDone && <IntroSplash onDone={() => setIntroDone(true)} />}
     </View>

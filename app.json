@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#171A21",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ethanlam.prova",
@@ -15,7 +16,8 @@
         "NSPhotoLibraryUsageDescription": "Prova lets you attach photos and videos to your chats.",
         "NSCameraUsageDescription": "Prova uses the camera to take photos and record videos for your chats.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "backgroundColor": "#171A21"
     },
     "android": {
       "package": "com.ethanlam.prova",
