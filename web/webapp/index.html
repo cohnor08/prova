@@ -2830,7 +2830,7 @@ async function viewCalendar() {
           .map(([k, l]) => `<button class="btn ghost sm" data-calmode="${k}"${CALMODE === k
             ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${l}</button>`).join('')}</div>
         <button class="btn ghost sm" data-cal="next">Next →</button>
-        <button class="btn" data-cal="add">Add lesson</button></div>`)}
+        <button class="btn" data-cal="add">Add to calendar</button></div>`)}
     <section class="card"><div class="cal">
       ${days.slice(0, 7).map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}</div>`).join('')}
       ${days.map(d => {
@@ -2839,32 +2839,80 @@ async function viewCalendar() {
           <div class="hint" style="font-family:var(--round);font-weight:600">${d.getDate()}</div>
           ${lessonsOnDay(ds).map(l => `<div class="ev lesson" title="Set by ${esc(l.teacher)}">
             <b>Lesson</b><span class="tm">${esc(l.time || '')} · ${esc(l.teacher)}</span></div>`).join('')}
-          ${eventsOnDay(ds).map(e => `<button class="ev ${esc(e.kind)}" data-delev="${esc(e.kind)}:${esc(e.id)}">
+          ${eventsOnDay(ds).map(e => `<button class="ev ${esc(e.kind)}" data-openev="${esc(e.kind)}:${esc(e.id)}">
             <b>${esc(e.label)}</b><span class="tm">${esc(e.time || (e.kind === 'gig' ? 'Gig' : e.kind))}</span></button>`).join('')}
         </div>`;
       }).join('')}
     </div>
-    <p class="hint" style="margin:14px 0 0">Lessons come from your teacher and can't be edited here. Click anything you added to remove it.</p>
+    <p class="hint" style="margin:14px 0 0">Lessons come from your teacher and can't be edited here. Click anything you added to open it.</p>
     </section></div>`;
 }
-function calAddSheet() {
-  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+
+const TYPE_WORD = { gig: 'Gig', lesson: 'Lesson', task: 'Task' };
+
+// Clicking your own event opens it — the app shows details with Edit and
+// Remove, and going straight to a delete confirm made the calendar read
+// write-once. Lessons stay read-only; they belong to the teacher's doc.
+function calEventSheet(kind, id) {
+  const ev = kind === 'gig'
+    ? (me.gigs || []).find(g => g.id === id)
+    : (me.personalEvents || []).find(p => p.id === id);
+  if (!ev) { viewCalendar(); return; }
+  const title = kind === 'gig' ? ev.name : ev.title;
+  const when = new Date((ev.date || '') + 'T00:00:00')
+    .toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const setlist = kind === 'gig' && ev.setlistId
+    ? (me.setlists || []).find(s => s.id === ev.setlistId) : null;
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
-    <div style="display:flex;align-items:center"><span class="lab">Add to calendar</span>
+    <div style="display:flex;align-items:center"><span class="lab">${esc(TYPE_WORD[kind] || kind)}</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
-    <h3 style="margin:8px 0 16px;font-size:18px">What are you adding?</h3>
-    <div style="display:flex;gap:8px;margin-bottom:16px" id="caType">
-      <button class="btn sm ghost" data-catype="gig" style="flex:1;border-color:var(--primary);color:var(--ink)">Gig</button>
-      <button class="btn sm ghost" data-catype="lesson" style="flex:1">Lesson</button>
-      <button class="btn sm ghost" data-catype="task" style="flex:1">Task</button></div>
-    <input id="caName" placeholder="Name it" style="${F};margin-bottom:12px">
-    <input id="caDate" type="date" value="${dayISO(new Date())}" style="${F};margin-bottom:12px">
-    <input id="caTime" type="time" style="${F};margin-bottom:12px">
-    <input id="caNote" placeholder="Note (optional)" style="${F}">
+    <h3 style="margin:8px 0 4px;font-size:18px">${esc(title || '')}</h3>
+    <p class="hint" style="margin:0 0 6px">${esc(when)}${ev.time ? ' · ' + esc(ev.time) : ' · no time set'}</p>
+    ${setlist ? `<p class="hint" style="margin:0 0 6px">Setlist: ${esc(setlist.name)}</p>` : ''}
+    ${ev.note ? `<p style="margin:10px 0 0">${esc(ev.note)}</p>` : ''}
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" id="evDel" style="flex:1;border-color:var(--danger,#F43F5E);color:#FCA5A5">Remove</button>
+      <button class="btn" id="evEdit" style="flex:1">Edit</button></div></div>`;
+  $('#evEdit').onclick = () => calAddSheet({ kind, id });
+  $('#evDel').onclick = async () => {
+    if (!confirm(`Remove "${title}" from your calendar?`)) return;
+    try {
+      if (kind === 'gig') {
+        const next = (me.gigs || []).filter(g => g.id !== id);
+        await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true }); me.gigs = next;
+      } else {
+        const next = (me.personalEvents || []).filter(p => p.id !== id);
+        await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true }); me.personalEvents = next;
+      }
+      $('#overlays').innerHTML = ''; viewCalendar(); toast('Removed');
+    } catch { toast('Could not remove'); }
+  };
+}
+// `edit` is { kind, id } when reopening an existing event, null when adding.
+function calAddSheet(edit) {
+  const cur = !edit ? null : edit.kind === 'gig'
+    ? (me.gigs || []).find(g => g.id === edit.id)
+    : (me.personalEvents || []).find(p => p.id === edit.id);
+  if (edit && !cur) { viewCalendar(); return; }
+  const startType = cur ? edit.kind : 'gig';
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  const sel = (k) => 'flex:1' + (k === startType ? ';border-color:var(--primary);color:var(--ink)' : '');
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">${cur ? 'Edit event' : 'Add to calendar'}</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 16px;font-size:18px">${cur ? 'Change the details' : 'What are you adding?'}</h3>
+    <div style="display:flex;gap:8px;margin-bottom:16px${cur ? ';opacity:.5;pointer-events:none' : ''}" id="caType">
+      <button class="btn sm ghost" data-catype="gig" style="${sel('gig')}">Gig</button>
+      <button class="btn sm ghost" data-catype="lesson" style="${sel('lesson')}">Lesson</button>
+      <button class="btn sm ghost" data-catype="task" style="${sel('task')}">Task</button></div>
+    <input id="caName" placeholder="Name it" value="${esc((cur ? (edit.kind === 'gig' ? cur.name : cur.title) : '') || '')}" style="${F};margin-bottom:12px">
+    <input id="caDate" type="date" value="${esc((cur && cur.date) || dayISO(new Date()))}" style="${F};margin-bottom:12px">
+    <input id="caTime" type="time" value="${esc((cur && cur.time) || '')}" style="${F};margin-bottom:12px">
+    <input id="caNote" placeholder="Note (optional)" value="${esc((cur && cur.note) || '')}" style="${F}">
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="btn ghost" data-close style="flex:1">Cancel</button>
-      <button class="btn" id="caGo" style="flex:1">Add</button></div></div>`;
-  let type = 'gig';
+      <button class="btn" id="caGo" style="flex:1">${cur ? 'Save changes' : 'Add'}</button></div></div>`;
+  let type = startType;
   $('#caType').addEventListener('click', (e) => {
     const b = e.target.closest('[data-catype]'); if (!b) return;
     type = b.getAttribute('data-catype');
@@ -2876,22 +2924,29 @@ function calAddSheet() {
     if (!name) { toast('Give it a name'); return; }
     const date = $('#caDate').value || dayISO(new Date());
     const time = $('#caTime').value || '';
+    const note = $('#caNote').value.trim().slice(0, 140);
+    const byDate = (a, b) => a.date.localeCompare(b.date);
     try {
       if (type === 'gig') {
-        const next = [...(Array.isArray(me.gigs) ? me.gigs : []),
-          { id: `gig_${Date.now()}`, createdAt: new Date().toISOString(), name: name.slice(0, 60), date, time: time || null, setlistId: null }]
-          .sort((a, b) => a.date.localeCompare(b.date));
+        const list = Array.isArray(me.gigs) ? me.gigs : [];
+        // Editing keeps the id, so a setlist already attached to this gig
+        // survives the edit instead of being dropped on the floor.
+        const next = (cur
+          ? list.map(g => (g.id === cur.id ? { ...g, name: name.slice(0, 60), date, time: time || null } : g))
+          : [...list, { id: `gig_${Date.now()}`, createdAt: new Date().toISOString(), name: name.slice(0, 60), date, time: time || null, setlistId: null }]
+        ).sort(byDate);
         await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true });
         me.gigs = next;
       } else {
-        const next = [...(Array.isArray(me.personalEvents) ? me.personalEvents : []),
-          { id: `pe_${Date.now()}`, createdAt: new Date().toISOString(), type, title: name.slice(0, 80),
-            date, time, note: $('#caNote').value.trim().slice(0, 140) }]
-          .sort((a, b) => a.date.localeCompare(b.date));
+        const list = Array.isArray(me.personalEvents) ? me.personalEvents : [];
+        const next = (cur
+          ? list.map(p => (p.id === cur.id ? { ...p, type, title: name.slice(0, 80), date, time, note } : p))
+          : [...list, { id: `pe_${Date.now()}`, createdAt: new Date().toISOString(), type, title: name.slice(0, 80), date, time, note }]
+        ).sort(byDate);
         await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true });
         me.personalEvents = next;
       }
-      $('#overlays').innerHTML = ''; viewCalendar(); toast('Added');
+      $('#overlays').innerHTML = ''; viewCalendar(); toast(cur ? 'Saved' : 'Added');
     } catch { toast('Could not save'); }
   };
 }
@@ -2905,17 +2960,11 @@ document.addEventListener('click', async (e) => {
     CALW = a === 'this' ? 0 : a === 'next' ? CALW + 1 : CALW - 1;
     return viewCalendar();
   }
-  const del = e.target.closest('[data-delev]');
-  if (del) {
-    const [kind, id] = del.getAttribute('data-delev').split(':');
-    if (!confirm('Remove this from your calendar?')) return;
-    try {
-      if (kind === 'gig') { const next = (me.gigs || []).filter(g => g.id !== id);
-        await setDoc(doc(db, 'users', uid), { gigs: next }, { merge: true }); me.gigs = next; }
-      else { const next = (me.personalEvents || []).filter(p => p.id !== id);
-        await setDoc(doc(db, 'users', uid), { personalEvents: next }, { merge: true }); me.personalEvents = next; }
-      viewCalendar(); toast('Removed');
-    } catch { toast('Could not remove'); }
+  const open = e.target.closest('[data-openev]');
+  if (open) {
+    const raw = open.getAttribute('data-openev');
+    const i = raw.indexOf(':');
+    return calEventSheet(raw.slice(0, i), raw.slice(i + 1));
   }
 });
 
