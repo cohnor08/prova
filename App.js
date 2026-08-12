@@ -57,9 +57,10 @@ import IntroSplash from './src/components/IntroSplash';
 import { hideNativeSplash, holdNativeSplash } from './src/lib/nativeSplash';
 import TourOverlay from './src/components/TourOverlay';
 
-// Keep the native launch screen up until the intro has actually been laid out.
+// Keep the native launch screen up until the intro has actually drawn a frame.
 // Left to itself it hides as soon as React renders, which uncovered the root
-// view a beat before the intro had painted.
+// view a beat before the intro's WebView had painted — that gap was the white
+// square around the mark at launch.
 holdNativeSplash();
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';

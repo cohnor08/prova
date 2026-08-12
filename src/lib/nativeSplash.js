@@ -7,9 +7,9 @@
 // view showed through, and an unpainted root view is white: the white square
 // around the brand mark at launch.
 //
-// So: hold the native splash, and only drop it once the intro reports it has
-// been laid out. The timeout is the important half — if that signal never
-// arrives (the maintenance screen renders instead of the intro, say), the
+// So: hold the native splash, and only drop it once the intro says it has
+// something on screen. The timeout is the important half — if that signal never
+// arrives (WebView fails, maintenance screen renders instead of the intro), the
 // splash must still come down or the app looks frozen at launch.
 import { Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
