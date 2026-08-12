@@ -1,69 +1,80 @@
-// Animated startup intro — the CD ring draws itself in, the rings spin up, and
-// PROVA lands with the tagline (~3s total, tap to skip), then fades into the app.
-// Rendered ABOVE the whole app so auth/data load underneath while it plays.
-//
-// This used to render the brand mark as CSS-animated SVG inside a WebView, and
-// that was the source of the grey/white square that flashed for the first frames
-// of every launch: a WKWebView paints its OWN surface before the page inside it
-// paints, and no combination of `opaque={false}`, `backgroundColor` or a dark
-// parent stops the surface itself from showing. Two attempts at suppressing it
-// failed. There is no web view here any more — it's react-native-svg drawing
-// straight onto the native view, so there is no second surface to flash.
+// Animated startup intro — the CD ring draws itself in, the celebration
+// burst fires, and PROVA lands with the tagline (~3s total, tap to skip),
+// then fades into the app. CSS-animated brand SVG rendered in a WebView,
+// overlaid ABOVE the whole app so auth/data load underneath while it plays.
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, TouchableWithoutFeedback } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { View, StyleSheet, Animated, TouchableWithoutFeedback } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { hideNativeSplash } from '../lib/nativeSplash';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-// Matches the old timeline: last element lands ~2.7s, then a hold on the
-// finished logo before fading into the app.
+// Total runtime of the SVG's timeline (last element lands ~2.7s) + a good
+// hold on the finished logo before fading into the app.
 const INTRO_MS = 3500;
 const FADE_MS = 420;
 
-const BOX = 200;          // drawing box for the mark
-const C = BOX / 2;
-const R_OUTER = 62;
-const R_MID = 57;
-const R_HOLE = 9;
-const R_IN = 78;
-const R_OUT = 92;
-const CIRC = 2 * Math.PI * R_OUTER;
-const CIRC_MID = 2 * Math.PI * R_MID;
+const SVG = `
+<svg width="400" height="680" viewBox="0 0 400 680" xmlns="http://www.w3.org/2000/svg">
+<style>
+.bg { fill: #171A21; }
+.cd-group { opacity:0; animation:groupIn 0.01s ease forwards; animation-delay:0.15s; transform:translateY(-14px) scale(1.32); transform-origin:200px 275px; }
+@keyframes groupIn { to { opacity:1; } }
+.cd-outer  { fill:#1E222B; stroke:#5FC4F5; stroke-width:9; stroke-dasharray:251; stroke-dashoffset:251; animation:drawCircle 0.9s ease forwards; animation-delay:0.15s; }
+.cd-mid    { fill:none; stroke:#2E7FB8; stroke-width:3; stroke-dasharray:233; stroke-dashoffset:233; animation:drawCircle 1.0s ease forwards; animation-delay:0.25s; }
+.cd-hole   { fill:#171A21; stroke:#5FC4F5; stroke-width:2; opacity:0; animation:fadeIn 0.4s ease forwards; animation-delay:0.95s; }
+.ring-in   { fill:none; stroke:#8FCCEF; stroke-width:1; stroke-dasharray:5 15; opacity:0; transform-origin:200px 275px; animation:spinIn 10s linear infinite; animation-delay:0.75s; }
+.ring-out  { fill:none; stroke:#7FA0DD; stroke-width:1; stroke-dasharray:3 12; opacity:0; transform-origin:200px 275px; animation:spinRev 14s linear infinite; animation-delay:0.85s; }
+@keyframes drawCircle { to { stroke-dashoffset:0; } }
+@keyframes fadeIn     { to { opacity:1; } }
+@keyframes spinIn     { 0%{opacity:0;transform:rotate(0deg)} 8%{opacity:1} 100%{opacity:1;transform:rotate(360deg)} }
+@keyframes spinRev    { 0%{opacity:0;transform:rotate(0deg)} 8%{opacity:1} 100%{opacity:1;transform:rotate(-360deg)} }
+.word    { animation:wordIn 0.9s cubic-bezier(.2,.7,.3,1) forwards; animation-delay:1.15s; opacity:0; }
+@keyframes wordIn { from{opacity:0;letter-spacing:44px;transform:translateY(10px)} to{opacity:1;letter-spacing:14px;transform:translateY(0)} }
+.theline { animation:lineIn 0.9s ease forwards; animation-delay:1.3s; opacity:0; transform-origin:200px 408px; }
+@keyframes lineIn { from{opacity:0;transform:scaleX(0.2)} to{opacity:0.8;transform:scaleX(1)} }
+.tag     { animation:tagIn 0.7s ease forwards; animation-delay:1.85s; opacity:0; }
+@keyframes tagIn { from{opacity:0;letter-spacing:11px} to{opacity:1;letter-spacing:5px} }
+.dots    { animation:fadeUp 0.5s ease forwards; animation-delay:2.15s; opacity:0; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.glow  { opacity:0; animation:fadeIn 1.4s ease forwards; animation-delay:0.55s; }
+.burst { fill:none; stroke:#5FC4F5; stroke-width:2; opacity:0; transform-origin:200px 261px; animation:burst 0.9s ease-out forwards; animation-delay:1.05s; }
+@keyframes burst { 0%{opacity:0.7;transform:scale(0.55)} 100%{opacity:0;transform:scale(1.9)} }
+.dotmid { animation:dotPulse 1.8s ease-in-out infinite; animation-delay:2.6s; }
+@keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+<rect width="400" height="680" class="bg" rx="16"/>
+<defs>
+  <radialGradient id="glowGrad">
+    <stop offset="0" stop-color="#5FC4F5" stop-opacity="0.20"/>
+    <stop offset="1" stop-color="#5FC4F5" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<circle class="glow" cx="200" cy="261" r="150" fill="url(#glowGrad)"/>
+<g class="cd-group">
+  <circle cx="200" cy="275" r="40" class="cd-outer"/>
+  <circle cx="200" cy="275" r="37" class="cd-mid"/>
+  <circle cx="200" cy="275" r="6"  class="cd-hole"/>
+  <circle cx="200" cy="275" r="50" class="ring-in"/>
+  <circle cx="200" cy="275" r="62" class="ring-out"/>
+</g>
+<circle class="burst" cx="200" cy="261" r="92"/>
+<rect x="75" y="408" width="250" height="1" fill="#5FC4F5" opacity="0.8" class="theline"/>
+<text x="200" y="400" text-anchor="middle" fill="#F4F7FD" font-family="Georgia, serif" font-size="52" font-weight="400" letter-spacing="14" class="word">PROVA</text>
+<text x="200" y="432" text-anchor="middle" fill="#8FCCEF" font-family="Arial, sans-serif" font-size="10" letter-spacing="5" class="tag">PLAY. PRACTICE. PERFORM.</text>
+<g class="dots">
+  <circle cx="160" cy="458" r="2" fill="#2E7FB8"/>
+  <circle cx="200" cy="458" r="2" fill="#5FC4F5" class="dotmid"/>
+  <circle cx="240" cy="458" r="2" fill="#2E7FB8"/>
+</g>
+</svg>`;
 
-// A dotted ring, spun by an Animated transform on its wrapper. Two of them,
-// counter-rotating, same as the original.
-function SpinRing({ r, colour, dash, spin, reverse }) {
-  const rotate = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: reverse ? ['0deg', '-360deg'] : ['0deg', '360deg'],
-  });
-  return (
-    <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate }] }]} pointerEvents="none">
-      <Svg width={BOX} height={BOX}>
-        <Circle cx={C} cy={C} r={r} fill="none" stroke={colour} strokeWidth={1} strokeDasharray={dash} />
-      </Svg>
-    </Animated.View>
-  );
-}
+const HTML = `<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>html,body{margin:0;height:100%;background:#171A21;display:flex;align-items:center;justify-content:center;overflow:hidden}svg{width:82vw;max-width:420px;height:auto}</style>
+</head><body>${SVG}</body></html>`;
 
 export default function IntroSplash({ onDone }) {
   const fade = useRef(new Animated.Value(1)).current;
   const doneRef = useRef(false);
-
-  // strokeDashoffset can't run on the native driver, so the two ring draws are
-  // the only JS-driven values here; everything else is native.
-  const draw = useRef(new Animated.Value(1)).current;      // 1 -> 0 = ring draws
-  const drawMid = useRef(new Animated.Value(1)).current;
-  const markIn = useRef(new Animated.Value(0)).current;    // mark fade/scale
-  const holeIn = useRef(new Animated.Value(0)).current;
-  const ringsIn = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
-  const burst = useRef(new Animated.Value(0)).current;
-  const wordIn = useRef(new Animated.Value(0)).current;
-  const lineIn = useRef(new Animated.Value(0)).current;
-  const tagIn = useRef(new Animated.Value(0)).current;
-  const dotsIn = useRef(new Animated.Value(0)).current;
 
   const finish = () => {
     if (doneRef.current) return;
@@ -73,120 +84,32 @@ export default function IntroSplash({ onDone }) {
   };
 
   useEffect(() => {
-    const ease = Easing.out(Easing.cubic);
-    const at = (v, delay, duration, toValue = 1, native = true) =>
-      Animated.timing(v, { toValue, delay, duration, easing: ease, useNativeDriver: native });
-
-    Animated.parallel([
-      at(markIn, 150, 220),
-      at(draw, 150, 900, 0, false),
-      at(drawMid, 250, 1000, 0, false),
-      at(holeIn, 950, 400),
-      at(ringsIn, 750, 500),
-      at(burst, 1050, 900),
-      at(wordIn, 1150, 900),
-      at(lineIn, 1300, 900),
-      at(tagIn, 1850, 700),
-      at(dotsIn, 2150, 500),
-    ]).start();
-
-    // Continuous, so it must live outside the parallel block above.
-    const loop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 10000, easing: Easing.linear, useNativeDriver: true }),
-    );
-    loop.start();
-
     const t = setTimeout(finish, INTRO_MS);
-    return () => { clearTimeout(t); loop.stop(); };
+    return () => clearTimeout(t);
   }, []);
 
   return (
     <TouchableWithoutFeedback onPress={finish}>
-      {/* Hand the native launch screen over only once this view has been laid
-          out, so there is never an uncovered frame between the two. */}
-      <Animated.View style={[styles.root, { opacity: fade }]} onLayout={hideNativeSplash}>
-        <View style={styles.centre} pointerEvents="none">
-          <Animated.View
-            style={{
-              width: BOX,
-              height: BOX,
-              opacity: markIn,
-              transform: [{ scale: markIn.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }],
-            }}
-          >
-            <Svg width={BOX} height={BOX}>
-              <Defs>
-                <RadialGradient id="glow" cx="50%" cy="50%" r="50%">
-                  <Stop offset="0" stopColor="#5FC4F5" stopOpacity="0.20" />
-                  <Stop offset="1" stopColor="#5FC4F5" stopOpacity="0" />
-                </RadialGradient>
-              </Defs>
-              <Circle cx={C} cy={C} r={98} fill="url(#glow)" />
-              <AnimatedCircle
-                cx={C} cy={C} r={R_OUTER} fill="#1E222B" stroke="#5FC4F5" strokeWidth={9}
-                strokeDasharray={CIRC}
-                strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [0, CIRC] })}
-              />
-              <AnimatedCircle
-                cx={C} cy={C} r={R_MID} fill="none" stroke="#2E7FB8" strokeWidth={3}
-                strokeDasharray={CIRC_MID}
-                strokeDashoffset={drawMid.interpolate({ inputRange: [0, 1], outputRange: [0, CIRC_MID] })}
-              />
-            </Svg>
-
-            <Animated.View style={[StyleSheet.absoluteFill, { opacity: ringsIn }]} pointerEvents="none">
-              <SpinRing r={R_IN} colour="#8FCCEF" dash="5,15" spin={spin} />
-              <SpinRing r={R_OUT} colour="#7FA0DD" dash="3,12" spin={spin} reverse />
-            </Animated.View>
-
-            {/* The burst ring expands out of the mark and fades. */}
-            <Animated.View
-              style={[StyleSheet.absoluteFill, {
-                opacity: burst.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
-                transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1.9] }) }],
-              }]}
-              pointerEvents="none"
-            >
-              <Svg width={BOX} height={BOX}>
-                <Circle cx={C} cy={C} r={R_OUTER + 8} fill="none" stroke="#5FC4F5" strokeWidth={2} />
-              </Svg>
-            </Animated.View>
-
-            <Animated.View style={[StyleSheet.absoluteFill, { opacity: holeIn }]} pointerEvents="none">
-              <Svg width={BOX} height={BOX}>
-                <Circle cx={C} cy={C} r={R_HOLE} fill="#171A21" stroke="#5FC4F5" strokeWidth={2} />
-              </Svg>
-            </Animated.View>
-          </Animated.View>
-
-          <Animated.Text
-            style={[styles.word, {
-              opacity: wordIn,
-              transform: [{ translateY: wordIn.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-            }]}
-          >
-            PROVA
-          </Animated.Text>
-
-          <Animated.View
-            style={[styles.line, {
-              opacity: lineIn.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
-              transform: [{ scaleX: lineIn.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }],
-            }]}
+      <Animated.View style={[styles.root, { opacity: fade }]}>
+        <View style={styles.inner} pointerEvents="none">
+          <WebView
+            source={{ html: HTML }}
+            style={styles.web}
+            scrollEnabled={false}
+            bounces={false}
+            javaScriptEnabled={false}
+            originWhitelist={['*']}
+            // iOS paints a WKWebView's own surface OPAQUE WHITE for a frame or
+            // two before the HTML renders, which flashed a white square over
+            // the brand mark at launch. `backgroundColor` alone does not stop
+            // it — the view has to be made non-opaque so the dark parent below
+            // shows through until the SVG paints.
+            opaque={false}
+            backgroundColor="transparent"
+            // Only now is there something dark on screen to hand over to, so
+            // this is the moment the native launch screen can safely come down.
+            onLoadEnd={hideNativeSplash}
           />
-
-          <Animated.Text style={[styles.tag, { opacity: tagIn }]}>PLAY. PRACTICE. PERFORM.</Animated.Text>
-
-          <Animated.View
-            style={[styles.dots, {
-              opacity: dotsIn,
-              transform: [{ translateY: dotsIn.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
-            }]}
-          >
-            <View style={[styles.dot, { backgroundColor: '#2E7FB8' }]} />
-            <View style={[styles.dot, { backgroundColor: '#5FC4F5' }]} />
-            <View style={[styles.dot, { backgroundColor: '#2E7FB8' }]} />
-          </Animated.View>
         </View>
       </Animated.View>
     </TouchableWithoutFeedback>
@@ -195,13 +118,6 @@ export default function IntroSplash({ onDone }) {
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#171A21', zIndex: 9999 },
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  word: {
-    color: '#F4F7FD', fontFamily: 'Georgia', fontSize: 46, letterSpacing: 14,
-    marginTop: 34, marginLeft: 14, // letterSpacing pads the right edge; nudge back to centre
-  },
-  line: { width: 210, height: 1, backgroundColor: '#5FC4F5', marginTop: 14 },
-  tag: { color: '#8FCCEF', fontSize: 10, letterSpacing: 5, marginTop: 16, marginLeft: 5 },
-  dots: { flexDirection: 'row', gap: 36, marginTop: 22 },
-  dot: { width: 4, height: 4, borderRadius: 2 },
+  inner: { flex: 1 },
+  web: { flex: 1, backgroundColor: '#171A21' },
 });
