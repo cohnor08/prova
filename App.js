@@ -13,6 +13,19 @@ import Ghost from './src/components/Ghost';
 // fixed, click-transparent viewport box the width of the column: its
 // position:fixed modal content then fills that box, so modals still respect
 // the column AND actually appear. Empty (closed) portals pass clicks through.
+// On a computer this build is the wrong product: /webapp/ is the real
+// full-screen web app, and /webapp/ sends teachers on to /studio/ itself. So
+// desktop never sees the phone column — this export stays the phone-browser
+// build only. `?phone=1` forces it through for testing.
+// Both conditions matter: width alone catches a phone held sideways, and a
+// coarse pointer rules that out.
+if (Platform.OS === 'web' && typeof window !== 'undefined'
+    && !new URLSearchParams(window.location.search).has('phone')
+    && window.innerWidth >= 900
+    && window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
+  window.location.replace('/webapp/');
+}
+
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = [
