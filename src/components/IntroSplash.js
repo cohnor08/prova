@@ -5,6 +5,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, TouchableWithoutFeedback } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { hideNativeSplash } from '../lib/nativeSplash';
 
 // Total runtime of the SVG's timeline (last element lands ~2.7s) + a good
 // hold on the finished logo before fading into the app.
@@ -105,6 +106,9 @@ export default function IntroSplash({ onDone }) {
             // shows through until the SVG paints.
             opaque={false}
             backgroundColor="transparent"
+            // Only now is there something dark on screen to hand over to, so
+            // this is the moment the native launch screen can safely come down.
+            onLoadEnd={hideNativeSplash}
           />
         </View>
       </Animated.View>

@@ -13,6 +13,19 @@ import Ghost from './src/components/Ghost';
 // fixed, click-transparent viewport box the width of the column: its
 // position:fixed modal content then fills that box, so modals still respect
 // the column AND actually appear. Empty (closed) portals pass clicks through.
+// On a computer this build is the wrong product: /webapp/ is the real
+// full-screen web app, and /webapp/ sends teachers on to /studio/ itself. So
+// desktop never sees the phone column — this export stays the phone-browser
+// build only. `?phone=1` forces it through for testing.
+// Both conditions matter: width alone catches a phone held sideways, and a
+// coarse pointer rules that out.
+if (Platform.OS === 'web' && typeof window !== 'undefined'
+    && !new URLSearchParams(window.location.search).has('phone')
+    && window.innerWidth >= 900
+    && window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
+  window.location.replace('/webapp/');
+}
+
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = [
@@ -41,7 +54,14 @@ import { CelebrationProvider } from './src/components/Celebration';
 import { MetronomeProvider } from './src/lib/MetronomeContext';
 import MetronomePill from './src/components/MetronomePill';
 import IntroSplash from './src/components/IntroSplash';
+import { hideNativeSplash, holdNativeSplash } from './src/lib/nativeSplash';
 import TourOverlay from './src/components/TourOverlay';
+
+// Keep the native launch screen up until the intro has actually drawn a frame.
+// Left to itself it hides as soon as React renders, which uncovered the root
+// view a beat before the intro's WebView had painted — that gap was the white
+// square around the mark at launch.
+holdNativeSplash();
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -324,7 +344,9 @@ function AppInner() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    // Explicitly dark: an unpainted wrapper lets the bare root view through,
+    // and that reads white for the frames before the intro paints.
+    <View style={{ flex: 1, backgroundColor: '#171A21' }}>
       {body}
       {!introDone && <IntroSplash onDone={() => setIntroDone(true)} />}
     </View>
