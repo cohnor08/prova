@@ -1191,6 +1191,7 @@ async function loadBoards() {
   BOARDS = out;
 }
 let LB_SHOW_ALL = false;
+let LB_Q = '';
 const LB_COLLAPSED = 5;
 
 // An explicit grid rather than the generic .prow: rank, name and score each get
@@ -1208,6 +1209,47 @@ function lbRow(r, i) {
   </div>`;
 }
 
+// Rows are built separately from the page so a search keystroke can repaint
+// just the list. Ranks are the position on the REAL board, so filtering never
+// renumbers anyone — search for a name and you see the rank they actually hold.
+function lbRowsHtml(rows) {
+  const q = LB_Q.trim().toLowerCase();
+  if (!rows.length) {
+    return empty(LB_TAB === 'friends' ? 'No friends yet' : 'Nothing here yet',
+      LB_TAB === 'friends' ? 'Add someone by their Prova email to compare scores.' : 'Practise to get on the board.');
+  }
+  const ranked = rows.map((r, i) => ({ r, i }));
+  const hits = q ? ranked.filter(({ r }) => displayName(r).toLowerCase().includes(q)) : ranked;
+  if (!hits.length) return empty('No one found', `Nobody matching “${esc(LB_Q.trim())}” on this board.`);
+
+  // Searching shows every match; the five-row collapse only applies at rest.
+  const shown = (q || LB_SHOW_ALL) ? hits : hits.slice(0, LB_COLLAPSED);
+  const myIdx = rows.findIndex((r) => r.uid === uid);
+  const pinMe = !q && myIdx >= shown.length;
+  const hidden = hits.length - shown.length;
+
+  return `<div style="display:flex;flex-direction:column;gap:2px">
+      ${shown.map(({ r, i }) => lbRow(r, i)).join('')}
+      ${pinMe ? `<div style="text-align:center;color:var(--ink-3);padding:2px 0">···</div>${lbRow(rows[myIdx], myIdx)}` : ''}</div>
+    ${q ? `<p class="hint" style="margin:12px 0 0">${hits.length} match${hits.length === 1 ? '' : 'es'}</p>`
+      : (hidden > 0 || LB_SHOW_ALL) ? `<button class="btn sm ghost" id="lbMore" style="width:100%;margin-top:14px">
+          ${LB_SHOW_ALL ? 'Show less' : `Show all ${rows.length}`}</button>` : ''}`;
+}
+function bindLbRows(rows) {
+  const more = $('#lbMore');
+  if (more) more.onclick = () => { LB_SHOW_ALL = !LB_SHOW_ALL; repaintLbRows(rows); };
+}
+function repaintLbRows(rows) {
+  const box = $('#lbRows'); if (!box) return;
+  box.innerHTML = lbRowsHtml(rows);
+  bindLbRows(rows);
+  // The clear × lives outside #lbRows and is always in the DOM, so showing it
+  // is a style flip rather than a re-render — typing must never rebuild the
+  // input or the caret jumps to the end.
+  const clear = $('#lbClear');
+  if (clear) clear.style.display = LB_Q ? '' : 'none';
+}
+
 async function viewLeaderboard() {
   if (!BOARDS) {
     $('#screen').innerHTML = `<div class="content">${head('Leaderboard', 'Loading…')}</div>`;
@@ -1219,12 +1261,6 @@ async function viewLeaderboard() {
   if (LB_TAB === 'class' && !inClass) LB_TAB = 'world';
   const rows = LB_TAB === 'world' ? b.world : LB_TAB === 'class' ? b.klass : b.friends;
   const tabs = [['world', 'World'], ['friends', 'Friends'], ...(inClass ? [['class', b.className || 'Class']] : [])];
-  const myIdx = rows.findIndex((r) => r.uid === uid);
-  const shown = LB_SHOW_ALL ? rows : rows.slice(0, LB_COLLAPSED);
-  // Outside the visible five? Pin your row underneath, so the board always
-  // answers "where am I?" without having to expand it.
-  const pinMe = myIdx >= shown.length;
-  const hidden = rows.length - shown.length;
   const sub = LB_TAB === 'world' ? 'Top players by Prova Score'
     : LB_TAB === 'class' ? `Everyone in ${b.className || 'your class'}`
       : 'You and the friends you have added';
@@ -1235,17 +1271,17 @@ async function viewLeaderboard() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
         ${tabs.map(([k, l]) => `<button class="btn sm ghost" data-lbtab="${k}"${LB_TAB === k
           ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(l)}</button>`).join('')}</div>
+      <div style="position:relative;margin-bottom:14px">
+        <input id="lbSearch" placeholder="Search players…" value="${esc(LB_Q)}" autocomplete="off"
+          style="width:100%;box-sizing:border-box;background:var(--raised);border:1px solid var(--line);
+          border-radius:10px;padding:10px 34px 10px 12px;color:inherit;font:inherit">
+        <button class="x" id="lbClear" aria-label="Clear search"
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);${LB_Q ? '' : 'display:none'}">×</button>
+      </div>
       <div style="display:grid;grid-template-columns:34px 1fr auto;gap:14px;padding:0 12px 8px;
         font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-3);font-weight:700">
         <span style="text-align:center">#</span><span>Player</span><span>Score</span></div>
-      ${rows.length
-        ? `<div style="display:flex;flex-direction:column;gap:2px">
-            ${shown.map((r, i) => lbRow(r, i)).join('')}
-            ${pinMe ? `<div style="text-align:center;color:var(--ink-3);padding:2px 0">···</div>${lbRow(rows[myIdx], myIdx)}` : ''}</div>
-          ${hidden > 0 || LB_SHOW_ALL ? `<button class="btn sm ghost" id="lbMore" style="width:100%;margin-top:14px">
-            ${LB_SHOW_ALL ? 'Show less' : `Show all ${rows.length}`}</button>` : ''}`
-        : empty(LB_TAB === 'friends' ? 'No friends yet' : 'Nothing here yet',
-            LB_TAB === 'friends' ? 'Add someone by their Prova email to compare scores.' : 'Practise to get on the board.')}
+      <div id="lbRows">${lbRowsHtml(rows)}</div>
       ${LB_TAB === 'friends' ? `<div style="display:flex;gap:8px;margin-top:16px">
         <input id="lbEmail" placeholder="their@email.com" style="flex:1;min-width:0;background:var(--raised);
           border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:inherit;font:inherit">
@@ -1255,8 +1291,20 @@ async function viewLeaderboard() {
   document.querySelectorAll('[data-lbtab]').forEach((t) => {
     t.onclick = () => { LB_TAB = t.getAttribute('data-lbtab'); LB_SHOW_ALL = false; viewLeaderboard(); };
   });
-  const more = $('#lbMore');
-  if (more) more.onclick = () => { LB_SHOW_ALL = !LB_SHOW_ALL; viewLeaderboard(); };
+  bindLbRows(rows);
+  const search = $('#lbSearch');
+  if (search) {
+    // Only the list is repainted on input — re-rendering the whole view would
+    // rebuild the input and throw away focus and the caret on every keystroke.
+    search.oninput = () => { LB_Q = search.value; LB_SHOW_ALL = false; repaintLbRows(rows); };
+    if (LB_Q) { search.focus(); search.setSelectionRange(LB_Q.length, LB_Q.length); }
+  }
+  const clear = $('#lbClear');
+  if (clear) clear.onclick = () => {
+    LB_Q = '';
+    if (search) { search.value = ''; search.focus(); }
+    repaintLbRows(rows);
+  };
   const add = $('#lbAdd');
   if (add) add.onclick = async () => {
     const email = ($('#lbEmail').value || '').trim().toLowerCase();
