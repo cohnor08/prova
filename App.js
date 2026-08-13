@@ -63,6 +63,7 @@ import TourOverlay from './src/components/TourOverlay';
 holdNativeSplash();
 
 import MaintenanceScreen from './src/screens/MaintenanceScreen';
+import VerifyEmailScreen from './src/screens/auth/VerifyEmailScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import SignupScreen from './src/screens/auth/SignupScreen';
@@ -276,7 +277,8 @@ export default function App() {
 }
 
 function AppInner() {
-  const { user, onboardingComplete, setOnboardingComplete, role, loading } = useAuth();
+  const { user, onboardingComplete, setOnboardingComplete, role, loading,
+    needsEmailVerification, setNeedsEmailVerification } = useAuth();
   const { isUnderMaintenance, message, loading: maintenanceLoading } = useMaintenance();
   const { colors, mode } = useTheme();
   const statusBarStyle = mode === 'light' ? 'dark' : 'light';
@@ -311,6 +313,14 @@ function AppInner() {
           <StatusBar style={statusBarStyle} />
           {!user ? (
             <AuthStack />
+          ) : needsEmailVerification ? (
+            // Sits in front of onboarding, so a new account confirms the
+            // address before it can put anything into the app.
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="VerifyEmail">
+                {() => <VerifyEmailScreen onVerified={() => setNeedsEmailVerification(false)} />}
+              </Stack.Screen>
+            </Stack.Navigator>
           ) : !onboardingComplete ? (
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen

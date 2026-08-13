@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { linkTeacherByCode, unlinkTeacher, teacherIdsOf } from '../../lib/teacher';
+import { clearSavedLogin } from '../../lib/savedLogin';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
 import { track } from '../../lib/analytics';
@@ -515,7 +516,14 @@ export default function ProfileScreen({ navigation }) {
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => signOut(auth) },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        // Forget the remembered email and password too, so the Login screen
+        // comes up empty for whoever signs in next instead of pre-filled with
+        // the last person's details.
+        onPress: async () => { await clearSavedLogin(); signOut(auth); },
+      },
     ]);
   };
 

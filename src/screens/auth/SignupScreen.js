@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Ghost from '../../components/Ghost';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
@@ -75,7 +75,14 @@ export default function SignupScreen({ navigation, route }) {
         role,
         createdAt: new Date().toISOString(),
         onboardingComplete: false,
+        // Only accounts made from here on are gated. Everyone who signed up
+        // before this shipped has no such field and is never asked, so an
+        // existing user can't be locked out by a rule added under them.
+        requiresEmailVerification: true,
       });
+      // Best-effort: a failure here is recoverable from the verify screen,
+      // which has its own Resend.
+      sendEmailVerification(user).catch(() => {});
     } catch (error) {
       const message = FIREBASE_ERRORS[error.code] || 'Sign up failed. Please try again.';
       Alert.alert('Sign Up Failed', message);

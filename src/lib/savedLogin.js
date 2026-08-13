@@ -30,6 +30,17 @@ export async function loadSavedLogin() {
   }
 }
 
+// Wipe everything remembered. Called on an explicit log out: "Remember me"
+// is there so quitting and reopening the app doesn't ask you to type it all
+// again — it is NOT meant to survive someone deliberately signing out, which
+// on a shared phone left the next person deleting the last one's details.
+export async function clearSavedLogin() {
+  try {
+    await AsyncStorage.multiRemove([EMAIL_KEY, REMEMBER_KEY]);
+    if (SecureStore) await SecureStore.deleteItemAsync(PW_KEY);
+  } catch (e) { /* best-effort — never block signing out on this */ }
+}
+
 // Call after a successful sign-in. Remember off = clear everything saved.
 export async function saveLogin(email, password, remember) {
   try {

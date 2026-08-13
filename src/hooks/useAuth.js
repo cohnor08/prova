@@ -9,6 +9,7 @@ export function useAuth() {
   const [user, setUser] = useState(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [role, setRole] = useState(null);
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,6 +48,9 @@ export function useAuth() {
           const isComplete = data.onboardingComplete === true;
           setOnboardingComplete(isComplete);
           setRole(data.role || null);
+          // Gated only if the account was created with the flag AND Firebase
+          // still says the address is unconfirmed.
+          setNeedsEmailVerification(data.requiresEmailVerification === true && !auth.currentUser?.emailVerified);
           // Analytics identity: uid only (no email), plus a few traits.
           identifyUser(firebaseUser.uid, data);
           if (isComplete) {
@@ -67,6 +71,7 @@ export function useAuth() {
         setUser(null);
         setOnboardingComplete(false);
         setRole(null);
+        setNeedsEmailVerification(false);
         setLoading(false);
         resetAnalytics();
       }
@@ -80,5 +85,6 @@ export function useAuth() {
     };
   }, []);
 
-  return { user, onboardingComplete, setOnboardingComplete, role, loading };
+  return { user, onboardingComplete, setOnboardingComplete, role, loading,
+    needsEmailVerification, setNeedsEmailVerification };
 }
