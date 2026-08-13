@@ -549,6 +549,7 @@ const NAV = [
   { id: 'lessonnotes', t: 'Lesson notes', i: '<path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>' },
   { g: 'Track' },
   { id: 'progress', t: 'Progress', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
+  { id: 'leaderboard', t: 'Leaderboard', i: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0z"/><path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3"/>' },
   { id: 'skilltree', t: 'Skill tree', i: '<path d="M12 3v7M12 14v7M6 10h12M6 10v4M18 10v4"/>' },
   { id: 'journal',  t: 'Journal',  i: '<path d="M4 20h4L19 9a2.8 2.8 0 10-4-4L4 16z"/>' },
   { g: 'Studio' },
@@ -558,7 +559,7 @@ const NAV = [
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
-  calendar:'Calendar', lessonnotes:'Lesson notes', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
+  calendar:'Calendar', lessonnotes:'Lesson notes', leaderboard:'Leaderboard', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
   ask:'practice', theory:'practice', rhythm:'practice', gig:'calendar' };
 // Built lazily: PI is declared further down, so reading it at this point in
@@ -589,7 +590,7 @@ $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-g
 const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
-  calendar: viewCalendar, lessonnotes: viewLessonNotes, notifications: viewNotifications, rhythm: viewRhythm,
+  calendar: viewCalendar, lessonnotes: viewLessonNotes, leaderboard: viewLeaderboard, notifications: viewNotifications, rhythm: viewRhythm,
   skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
@@ -1151,11 +1152,7 @@ function viewProgress() {
           <div class="fig">${Math.max(0, ...days.map(x => week[x.k] || 0))} min</div></div>
         <div class="prow"><div class="pl"><div class="pt">Sessions banked</div></div>
           <div class="fig">${doneIds().length}</div></div></div>`)}
-    </div>
-    <section class="card" id="lbCard"><header><h3>Leaderboard</h3></header>
-      <p class="hint" style="margin:0">Loading…</p></section>
-    </div></div>`;
-  paintBoards();
+    </div></div></div>`;
 }
 
 // ── Leaderboards ─────────────────────────────────────────────────────────
@@ -1193,42 +1190,73 @@ async function loadBoards() {
   } catch { /* not in a class, or can't read the teacher */ }
   BOARDS = out;
 }
-async function paintBoards() {
-  const card = $('#lbCard'); if (!card) return;
-  if (!BOARDS) await loadBoards();
-  if (!$('#lbCard')) return;                    // navigated away while loading
+let LB_SHOW_ALL = false;
+const LB_COLLAPSED = 5;
+
+// An explicit grid rather than the generic .prow: rank, name and score each get
+// their own column, so a long name truncates instead of squeezing the rank and
+// the score out of shape.
+function lbRow(r, i) {
+  const isMe = r.uid === uid;
+  const medal = ['#F5C451', '#C9D1E0', '#CE8A5B'][i] || '';
+  return `<div style="display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:14px;
+      padding:11px 12px;border-radius:10px;${isMe ? 'background:color-mix(in srgb,var(--primary) 12%,transparent);' : ''}">
+    <span style="font-weight:800;font-family:var(--round);text-align:center;color:${medal || 'var(--ink-3)'}">${i + 1}</span>
+    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${isMe ? '750' : '550'}">
+      ${esc(displayName(r))}${isMe ? ' <span class="hint" style="font-weight:500">(you)</span>' : ''}</span>
+    <span style="font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap">${lbScore(r).toLocaleString()}</span>
+  </div>`;
+}
+
+async function viewLeaderboard() {
+  if (!BOARDS) {
+    $('#screen').innerHTML = `<div class="content">${head('Leaderboard', 'Loading…')}</div>`;
+    await loadBoards();
+    if (screen !== 'leaderboard') return;          // navigated away while loading
+  }
   const b = BOARDS;
   const inClass = b.klass.length > 0;
   if (LB_TAB === 'class' && !inClass) LB_TAB = 'world';
   const rows = LB_TAB === 'world' ? b.world : LB_TAB === 'class' ? b.klass : b.friends;
   const tabs = [['world', 'World'], ['friends', 'Friends'], ...(inClass ? [['class', b.className || 'Class']] : [])];
-  const mine = rows.findIndex((r) => r.uid === uid);
+  const myIdx = rows.findIndex((r) => r.uid === uid);
+  const shown = LB_SHOW_ALL ? rows : rows.slice(0, LB_COLLAPSED);
+  // Outside the visible five? Pin your row underneath, so the board always
+  // answers "where am I?" without having to expand it.
+  const pinMe = myIdx >= shown.length;
+  const hidden = rows.length - shown.length;
+  const sub = LB_TAB === 'world' ? 'Top players by Prova Score'
+    : LB_TAB === 'class' ? `Everyone in ${b.className || 'your class'}`
+      : 'You and the friends you have added';
 
-  const row = (r, i) => `<div class="prow"${r.uid === uid ? ' style="background:color-mix(in srgb,var(--primary) 10%,transparent);border-radius:8px"' : ''}>
-      <div class="pl" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
-        <span style="width:26px;text-align:center;font-weight:800;color:${i < 3 ? 'var(--warn)' : 'var(--ink-3)'}">${i + 1}</span>
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          ${esc(displayName(r))}${r.uid === uid ? ' <span class="hint">(you)</span>' : ''}</span>
-      </div>
-      <div class="fig">${lbScore(r).toLocaleString()}</div></div>`;
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Leaderboard', sub)}
+    <section class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        ${tabs.map(([k, l]) => `<button class="btn sm ghost" data-lbtab="${k}"${LB_TAB === k
+          ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(l)}</button>`).join('')}</div>
+      <div style="display:grid;grid-template-columns:34px 1fr auto;gap:14px;padding:0 12px 8px;
+        font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-3);font-weight:700">
+        <span style="text-align:center">#</span><span>Player</span><span>Score</span></div>
+      ${rows.length
+        ? `<div style="display:flex;flex-direction:column;gap:2px">
+            ${shown.map((r, i) => lbRow(r, i)).join('')}
+            ${pinMe ? `<div style="text-align:center;color:var(--ink-3);padding:2px 0">···</div>${lbRow(rows[myIdx], myIdx)}` : ''}</div>
+          ${hidden > 0 || LB_SHOW_ALL ? `<button class="btn sm ghost" id="lbMore" style="width:100%;margin-top:14px">
+            ${LB_SHOW_ALL ? 'Show less' : `Show all ${rows.length}`}</button>` : ''}`
+        : empty(LB_TAB === 'friends' ? 'No friends yet' : 'Nothing here yet',
+            LB_TAB === 'friends' ? 'Add someone by their Prova email to compare scores.' : 'Practise to get on the board.')}
+      ${LB_TAB === 'friends' ? `<div style="display:flex;gap:8px;margin-top:16px">
+        <input id="lbEmail" placeholder="their@email.com" style="flex:1;min-width:0;background:var(--raised);
+          border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:inherit;font:inherit">
+        <button class="btn sm" id="lbAdd">Add friend</button></div>` : ''}
+    </section></div>`;
 
-  $('#lbCard').innerHTML = `<header><h3>Leaderboard</h3>
-      <span class="meta">Ranked by Prova Score</span></header>
-    <div style="display:flex;gap:8px;margin:-4px 0 14px;flex-wrap:wrap">
-      ${tabs.map(([k, l]) => `<button class="btn sm ghost" data-lbtab="${k}"${LB_TAB === k
-        ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(l)}</button>`).join('')}</div>
-    ${rows.length > 1 || LB_TAB !== 'friends'
-      ? `<div class="rows">${rows.slice(0, 20).map(row).join('')}
-          ${mine >= 20 ? `<div class="prow"><div class="pl hint">…</div></div>${row(rows[mine], mine)}` : ''}</div>`
-      : empty('No friends yet', 'Add someone by their Prova email to compare scores.')}
-    ${LB_TAB === 'friends' ? `<div style="display:flex;gap:8px;margin-top:14px">
-      <input id="lbEmail" placeholder="their@email.com" style="flex:1;background:var(--raised);border:1px solid var(--line);
-        border-radius:10px;padding:10px 12px;color:inherit;font:inherit">
-      <button class="btn sm" id="lbAdd">Add friend</button></div>` : ''}`;
-
-  $('#lbCard').querySelectorAll('[data-lbtab]').forEach((t) => {
-    t.onclick = () => { LB_TAB = t.getAttribute('data-lbtab'); paintBoards(); };
+  document.querySelectorAll('[data-lbtab]').forEach((t) => {
+    t.onclick = () => { LB_TAB = t.getAttribute('data-lbtab'); LB_SHOW_ALL = false; viewLeaderboard(); };
   });
+  const more = $('#lbMore');
+  if (more) more.onclick = () => { LB_SHOW_ALL = !LB_SHOW_ALL; viewLeaderboard(); };
   const add = $('#lbAdd');
   if (add) add.onclick = async () => {
     const email = ($('#lbEmail').value || '').trim().toLowerCase();
@@ -1242,8 +1270,8 @@ async function paintBoards() {
       if ((me.friends || []).includes(fid)) { toast('Already friends'); return; }
       await updateDoc(doc(db, 'users', uid), { friends: arrayUnion(fid) });
       me.friends = [...(me.friends || []), fid];
-      BOARDS = null;                              // refetch so they show up
-      toast('Friend added'); paintBoards();
+      BOARDS = null;                                // refetch so they show up
+      toast('Friend added'); viewLeaderboard();
     } catch { toast('Could not add that friend'); }
     finally { add.disabled = false; }
   };
