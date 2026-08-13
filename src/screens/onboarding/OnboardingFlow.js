@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
+import { clearSavedLogin } from '../../lib/savedLogin';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
@@ -120,7 +121,9 @@ export default function OnboardingFlow() {
       'Sign out and go back to the login screen to use a different account.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Log out', style: 'destructive', onPress: () => signOut(auth).catch(() => {}) },
+        // Clears the remembered email/password too, same as Profile — every
+        // way out of the app has to forget you, not just the main one.
+        { text: 'Log out', style: 'destructive', onPress: async () => { await clearSavedLogin(); signOut(auth).catch(() => {}); } },
       ]
     );
   };
