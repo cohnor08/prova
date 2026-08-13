@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -53,7 +53,6 @@ import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { CelebrationProvider } from './src/components/Celebration';
 import { MetronomeProvider } from './src/lib/MetronomeContext';
 import MetronomePill from './src/components/MetronomePill';
-import IntroSplash from './src/components/IntroSplash';
 import { hideNativeSplash, holdNativeSplash } from './src/lib/nativeSplash';
 import TourOverlay from './src/components/TourOverlay';
 
@@ -282,14 +281,11 @@ function AppInner() {
   const { colors, mode } = useTheme();
   const statusBarStyle = mode === 'light' ? 'dark' : 'light';
   const navTheme = { ...NAV_THEME, colors: { ...NAV_THEME.colors, background: colors.background, card: colors.background } };
-  // Animated brand intro on cold start — overlays every app state (auth and
-  // data keep loading underneath it), then fades into whatever is ready.
-  const [introDone, setIntroDone] = useState(false);
+  // No JS intro any more: the launch screen IS the intro. It's held on screen
+  // for a beat (see src/lib/nativeSplash.js) and then fades straight into
+  // whatever is ready, so there's no second animation and nothing to restart.
+  useEffect(() => { hideNativeSplash(); }, []);
 
-  // The body swaps between loading / maintenance / the real app, but the
-  // intro overlay must live at ONE stable position in the tree — if it sits
-  // inside each branch, the branch swap remounts it and the WebView replays
-  // the animation from the start (the visible "restart" glitch).
   let body;
   if (loading || maintenanceLoading) {
     body = (
@@ -345,11 +341,8 @@ function AppInner() {
 
   return (
     // Explicitly dark: an unpainted wrapper lets the bare root view through,
-    // and that reads white for the frames before the intro paints.
-    <View style={{ flex: 1, backgroundColor: '#171A21' }}>
-      {body}
-      {!introDone && <IntroSplash onDone={() => setIntroDone(true)} />}
-    </View>
+    // and that reads white for the frames before the app paints.
+    <View style={{ flex: 1, backgroundColor: '#171A21' }}>{body}</View>
   );
 }
 
