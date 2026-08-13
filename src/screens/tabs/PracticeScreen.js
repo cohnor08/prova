@@ -510,6 +510,16 @@ export default function PracticeScreen({ route, navigation }) {
             <Text style={styles.learnCardSub}>Intervals, keys & more</Text>
           </TouchableOpacity>
         </View>
+        {/* Lesson notes sat three taps deep behind a task; it's what the teacher
+            wrote for you, so it gets the same billing as the journal. */}
+        <TouchableOpacity style={[styles.journalCard, { marginBottom: 0 }]} onPress={() => navigation.navigate('LessonNotes')} activeOpacity={0.85}>
+          <View style={styles.learnIcon}><Ionicons name="document-text-outline" size={20} color={COLORS.primary} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.learnCardText}>Lesson notes</Text>
+            <Text style={styles.learnCardSub}>What your teacher wrote</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.journalCard} onPress={() => navigation.navigate('Journal')} activeOpacity={0.85}>
           <View style={styles.learnIcon}><Ionicons name="book-outline" size={20} color={COLORS.primary} /></View>
           <View style={{ flex: 1, minWidth: 0 }}>
