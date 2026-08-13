@@ -1682,7 +1682,7 @@ function viewProfile() {
       <section class="card"><header><h3>Session</h3></header>
         <p class="hint" style="margin:0 0 14px">Theme and notifications live in the phone app.</p>
         <button class="btn ghost" style="width:100%" id="soBtn2">Sign out</button></section>
-      <section class="card" style="border-color:var(--bad)"><header><h3 style="color:var(--bad)">Danger zone</h3></header>
+      <section class="card"><header><h3 style="color:var(--bad)">Danger zone</h3></header>
         <p class="hint" style="margin:0 0 14px">Deleting removes your studio, students' links to you, lesson notes and
           uploads permanently. Your students keep their own accounts.</p>
         <button class="btn ghost" id="delAcc2" style="width:100%;color:var(--bad);border-color:var(--bad)">Delete my account</button></section>
@@ -1946,6 +1946,17 @@ function occurrenceModal(lessonId, ds) {
         style="font-size:19px;padding:4px 6px;line-height:1;background:none;border:0;color:${(rec.mark || 0) >= n
           ? 'var(--warn)' : 'var(--line)'}">★</button>`).join('')}</div></div>
     <div class="field"><label>Lesson note</label><textarea id="oNote" rows="4" placeholder="What you covered, what to practise…">${esc(rec.note || '')}</textarea></div>
+    <div class="field"><label>Attachments</label>
+      <div id="oAtts"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn sm ghost" id="oAddPhoto">📷 Photo</button>
+        <button class="btn sm ghost" id="oAddLink">🔗 Link</button>
+        <button class="btn sm ghost" id="oAddSong">🎵 Song</button>
+      </div>
+      <input type="file" id="oFile" accept="image/*,video/*" style="display:none">
+      <div id="oUpWrap" style="display:none;height:3px;background:var(--line);border-radius:3px;margin-top:10px">
+        <div id="oUpBar" style="height:100%;width:0;background:var(--primary);border-radius:3px;transition:width .2s"></div></div>
+    </div>
     <div class="acts"><button class="btn ghost" id="oDel">Cancel lesson</button><button class="btn" id="oSave">Save</button></div>`);
   let status = rec.status || '', mark = rec.mark || '';
   const seg = (id, set) => $('#' + id).addEventListener('click', (e) => {
@@ -1955,11 +1966,60 @@ function occurrenceModal(lessonId, ds) {
   });
   seg('oStatus', (v) => (status = v));
   starPick('#oMark', (v) => { mark = v; });
+
+  // Attachments: photos/video upload to Storage, links and songs are just
+  // typed in. Held in memory and written with the record on Save, so backing
+  // out of the modal doesn't leave orphaned entries on the lesson.
+  let atts = Array.isArray(rec.attachments) ? rec.attachments.slice() : [];
+  const ATT_ICON = { photo: '📷', video: '🎥', link: '🔗', song: '🎵' };
+  function paintAtts() {
+    const box = $('#oAtts');
+    if (!atts.length) { box.innerHTML = '<p class="hint" style="margin:0">Nothing attached yet.</p>'; return; }
+    box.innerHTML = atts.map((a, i) => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <span>${ATT_ICON[a.type] || '📎'}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title || a.url || '')}</span>
+      <button class="x" data-attdel="${i}" aria-label="Remove">×</button></div>`).join('');
+    box.querySelectorAll('[data-attdel]').forEach((b2) => {
+      b2.onclick = () => { atts.splice(+b2.getAttribute('data-attdel'), 1); paintAtts(); };
+    });
+  }
+  paintAtts();
+
+  $('#oAddPhoto').onclick = () => $('#oFile').click();
+  $('#oFile').onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/^(image|video)\//.test(file.type)) { toast('Photos and video only'); return; }
+    if (file.size > MAX_UPLOAD_BYTES) { toast('That file is over 150 MB'); return; }
+    const wrap = $('#oUpWrap'), bar = $('#oUpBar');
+    wrap.style.display = 'block'; bar.style.width = '0';
+    try {
+      // chatMedia/lesson_… is already writable under storage.rules (only the
+      // proof_* prefix is locked down), so this needs no rules change.
+      const m = await uploadChatMedia(file, 'lesson_' + meUid, (pr) => { bar.style.width = Math.round(pr * 100) + '%'; });
+      atts.push({ type: m.type === 'video' ? 'video' : 'photo', url: m.url, title: file.name });
+      paintAtts();
+    } catch { toast('Upload failed'); }
+    wrap.style.display = 'none';
+  };
+  $('#oAddLink').onclick = () => attPrompt('link');
+  $('#oAddSong').onclick = () => attPrompt('song');
+  function attPrompt(kind) {
+    const isSong = kind === 'song';
+    const url = prompt(isSong ? 'Link to the song (YouTube, Spotify… optional)' : 'Link (https://…)') || '';
+    if (!isSong && !url.trim()) return;
+    const title = prompt(isSong ? 'Song — title and artist' : 'What to call it') || '';
+    if (isSong && !title.trim()) return;
+    atts.push({ type: kind, url: url.trim(), title: (title.trim() || url.trim()).slice(0, 120) });
+    paintAtts();
+  }
   $('#oSave').onclick = async () => {
     const next = { ...(me.attendance || {}) };
     const note = $('#oNote').value.trim();
-    if (!status && !mark && !note) delete next[key];
-    else next[key] = { ...rec, studentUid: l.studentUid, studentName: l.studentName, date: ds, status, mark, note };
+    if (!status && !mark && !note && !atts.length) delete next[key];
+    else next[key] = { ...rec, studentUid: l.studentUid, studentName: l.studentName, date: ds,
+      status, mark, note, attachments: atts };
     $('#oSave').disabled = true;
     try { await saveMe({ attendance: next }); await refreshMe(); closeModal(); viewCalendar(); toast('Saved'); }
     catch { toast('Could not save'); $('#oSave').disabled = false; }
