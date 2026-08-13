@@ -17,7 +17,7 @@
 import { Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 
-const MIN_VISIBLE_MS = 1000;   // how long the mark sits there
+const MIN_VISIBLE_MS = 600;    // how long the mark sits there
 const FADE_MS = 350;
 const FAILSAFE_MS = 6000;
 
