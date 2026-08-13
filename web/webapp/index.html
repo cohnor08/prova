@@ -132,6 +132,10 @@
   .tsub{font-size:12px;color:var(--ink-3)}
   .dur{font-size:12.5px;color:var(--ink-2);font-family:var(--round);font-weight:600;flex:none}
   .pill{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
+  /* Attendance, same colour language as the teacher's calendar. */
+  .pill.att-present{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+  .pill.att-late{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+  .pill.att-absent{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
   .pill.set{background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
@@ -248,8 +252,12 @@
   .composer input{flex:1;background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
 
   @keyframes sp{to{transform:rotate(360deg)}}
+  /* Draggable: touch-action none so a finger drag moves the dock instead of
+     scrolling the page behind it. */
   .metro{position:fixed;right:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:12px;
+    cursor:grab;touch-action:none;user-select:none;
     background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 14px 9px 12px;box-shadow:var(--shadow)}
+  .metro.dragging{cursor:grabbing;box-shadow:0 10px 32px rgba(0,0,0,.45)}
   .metro{display:none}
   .metro.ready{display:flex}
   /* Only the steppers are round — this rule used to hit the BPM button too
@@ -538,6 +546,7 @@ const NAV = [
   { id: 'songs',    t: 'Songs',    i: '<path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>' },
   { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
   { id: 'calendar', t: 'Calendar', i: '<path d="M8 3v4M16 3v4M4 9h16M5 5h14v15H5z"/><circle cx="12" cy="14" r="1.6"/>' },
+  { id: 'lessonnotes', t: 'Lesson notes', i: '<path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>' },
   { g: 'Track' },
   { id: 'progress', t: 'Progress', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
   { id: 'skilltree', t: 'Skill tree', i: '<path d="M12 3v7M12 14v7M6 10h12M6 10v4M18 10v4"/>' },
@@ -549,7 +558,7 @@ const NAV = [
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
-  calendar:'Calendar', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
+  calendar:'Calendar', lessonnotes:'Lesson notes', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
   ask:'practice', theory:'practice', rhythm:'practice', gig:'calendar' };
 // Built lazily: PI is declared further down, so reading it at this point in
@@ -580,7 +589,7 @@ $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-g
 const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
-  calendar: viewCalendar, notifications: viewNotifications, rhythm: viewRhythm,
+  calendar: viewCalendar, lessonnotes: viewLessonNotes, notifications: viewNotifications, rhythm: viewRhythm,
   skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
@@ -1405,6 +1414,80 @@ $('#metroOpen').onclick = metroSheet;
 $('#mUp').onclick = () => { METRO.bpm = Math.min(240, METRO.bpm + 1); if (METRO.playing) metroStart(); paintMetro(); };
 $('#mDown').onclick = () => { METRO.bpm = Math.max(30, METRO.bpm - 1); if (METRO.playing) metroStart(); paintMetro(); };
 $('#mPlay').onclick = () => { METRO.playing = !METRO.playing; METRO.playing ? metroStart() : metroStop(); paintMetro(); };
+
+// ── the dock is draggable ─────────────────────────────────────────────────
+// Drag from anywhere on it, including over the buttons: a press only becomes a
+// drag past DRAG_MIN px, and once it does we swallow the click that pointerup
+// would otherwise fire, so moving the dock never also hits Play.
+(() => {
+  const el = $('#metro');
+  const KEY = 'prova:metroPos';
+  const DRAG_MIN = 4;
+  let startX = 0, startY = 0, baseL = 0, baseT = 0, live = false, moved = false;
+
+  // Keep it on screen — after a drag, and after a resize or rotate.
+  const clamp = (l, t) => [
+    Math.max(8, Math.min(l, window.innerWidth - el.offsetWidth - 8)),
+    Math.max(8, Math.min(t, window.innerHeight - el.offsetHeight - 8)),
+  ];
+  const place = (l, t) => {
+    const [cl, ct] = clamp(l, t);
+    el.style.left = cl + 'px'; el.style.top = ct + 'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    return [cl, ct];
+  };
+
+  // Applied straight away, NOT inside requestAnimationFrame: rAF does not fire
+  // in a background tab, so the saved position silently never got restored.
+  // The dock is display:none at this point so offsetWidth is 0 and clamping
+  // would be meaningless — reclamp on load instead, once it has a real size.
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && Number.isFinite(saved.l) && Number.isFinite(saved.t)) {
+      el.style.left = saved.l + 'px'; el.style.top = saved.t + 'px';
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+      window.addEventListener('load', () => place(saved.l, saved.t), { once: true });
+    }
+  } catch { /* a bad saved value just means the default corner */ }
+
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;
+    const r = el.getBoundingClientRect();
+    startX = e.clientX; startY = e.clientY; baseL = r.left; baseT = r.top;
+    live = true; moved = false;
+    el.setPointerCapture?.(e.pointerId);
+  });
+
+  el.addEventListener('pointermove', (e) => {
+    if (!live) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) < DRAG_MIN) return;
+    if (!moved) { moved = true; el.classList.add('dragging'); }
+    e.preventDefault();
+    place(baseL + dx, baseT + dy);
+  });
+
+  const end = (e) => {
+    if (!live) return;
+    live = false;
+    el.releasePointerCapture?.(e.pointerId);
+    if (!moved) return;
+    el.classList.remove('dragging');
+    const r = el.getBoundingClientRect();
+    try { localStorage.setItem(KEY, JSON.stringify({ l: r.left, t: r.top })); } catch {}
+    // Eat exactly the click this pointerup produces, so a drag that ends over
+    // Play doesn't start the metronome.
+    const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    el.addEventListener('click', eat, { capture: true, once: true });
+    setTimeout(() => el.removeEventListener('click', eat, { capture: true }), 0);
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+
+  window.addEventListener('resize', () => {
+    if (el.style.left) place(parseFloat(el.style.left), parseFloat(el.style.top));
+  });
+})();
 document.addEventListener('click', (e) => {
   let t;
   if (e.target.closest('[data-act="metro"]')) { metroSheet(); return; }
@@ -2858,6 +2941,65 @@ document.addEventListener('click', async (e) => {
     return calEventSheet(raw.slice(0, i), raw.slice(i + 1));
   }
 });
+
+// ══ LESSON NOTES ═══════════════════════════════════════════════════════
+// The student side of the teacher's lesson record. Attendance and the note
+// only — the 1–5 mark the teacher gives is deliberately not shown here; it's
+// their private read on the lesson, not a grade for the student.
+//
+// The records live on the TEACHER's doc under `attendance`, keyed
+// `lessonId__YYYY-MM-DD`, so this reads every connected teacher's doc and keeps
+// the entries belonging to this student.
+let LESSON_NOTES = null;
+async function loadLessonNotes() {
+  const ids = [me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean);
+  const out = [];
+  await Promise.all([...new Set(ids)].map(async (tid) => {
+    try {
+      const d = (await getDoc(doc(db, 'users', tid))).data() || {};
+      const att = d.attendance && typeof d.attendance === 'object' ? d.attendance : {};
+      Object.entries(att).forEach(([key, r]) => {
+        if (!r || r.studentUid !== uid) return;
+        if (!r.status && !r.note) return;          // nothing worth showing
+        out.push({ key, date: r.date || key.split('__')[1] || '', status: r.status || '',
+          note: r.note || '', teacher: displayName(d) });
+      });
+    } catch { /* a teacher we can't read is simply absent */ }
+  }));
+  LESSON_NOTES = out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+const ATT_WORD = { present: 'Present', late: 'Late', absent: 'Absent' };
+async function viewLessonNotes() {
+  if (!LESSON_NOTES) {
+    $('#screen').innerHTML = `<div class="content">${head('Lesson notes', 'Loading…')}</div>`;
+    await loadLessonNotes();
+  }
+  const rows = LESSON_NOTES;
+  const present = rows.filter((r) => r.status === 'present').length;
+  const marked = rows.filter((r) => r.status).length;
+
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Lesson notes', rows.length
+      ? `${rows.length} lesson${rows.length === 1 ? '' : 's'}${marked ? ` · ${present}/${marked} present` : ''}`
+      : 'What your teacher wrote after each lesson')}
+    ${rows.length ? `<section class="card"><div class="rows">
+      ${rows.map((r) => `<div class="prow" style="align-items:flex-start">
+        <div class="pl" style="flex:1;min-width:0">
+          <div class="pt">${esc(fmtNoteDay(r.date))}${r.teacher ? ` · ${esc(r.teacher)}` : ''}</div>
+          <div class="ps" style="white-space:pre-wrap">${r.note ? esc(r.note) : 'No note for this lesson.'}</div>
+        </div>
+        ${r.status ? `<span class="pill att-${esc(r.status)}">${esc(ATT_WORD[r.status] || r.status)}</span>` : ''}
+      </div>`).join('')}
+    </div></section>`
+    : `<section class="card">${empty('No lesson notes yet',
+        'When your teacher marks you present and writes up a lesson, it shows here.')}</section>`}
+  </div>`;
+}
+function fmtNoteDay(ds) {
+  const d = new Date((ds || '') + 'T00:00:00');
+  return isNaN(d) ? (ds || '—')
+    : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 // ══ NOTIFICATIONS ══════════════════════════════════════════════════════
 async function viewNotifications() {

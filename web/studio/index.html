@@ -1935,8 +1935,10 @@ function occurrenceModal(lessonId, ds) {
   const l = lessonsAll().find((x) => x.id === lessonId); if (!l) return;
   const key = `${lessonId}__${ds}`;
   const rec = (me.attendance || {})[key] || {};
-  modal(`<h3>${esc(l.studentName || 'Lesson')}</h3>
-    <p class="hint" style="margin:-8px 0 18px">${esc(fmtDay(ds))} at ${esc(l.time || '')}${l.repeat === 'weekly' ? ' · repeats weekly' : ''}${l.note ? ' · ' + esc(l.note) : ''}</p>
+  modal(`<div style="display:flex;align-items:flex-start;gap:12px">
+      <h3 style="margin:0;flex:1;min-width:0">${esc(l.studentName || 'Lesson')}</h3>
+      <button class="x" data-close aria-label="Close">×</button></div>
+    <p class="hint" style="margin:6px 0 18px">${esc(fmtDay(ds))} at ${esc(l.time || '')}${l.repeat === 'weekly' ? ' · repeats weekly' : ''}${l.note ? ' · ' + esc(l.note) : ''}</p>
     <div class="field"><label>Attendance</label><div class="seg" id="oStatus">
       ${['present','late','absent'].map((s) => `<button data-v="${s}" aria-pressed="${rec.status === s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div></div>
     <div class="field"><label>How did it go?</label><div class="seg" id="oMark" data-stars="1">
