@@ -17,10 +17,7 @@
         "NSCameraUsageDescription": "Prova uses the camera to take photos and record videos for your chats.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "backgroundColor": "#171A21",
-      "associatedDomains": [
-        "webcredentials:prova-583c9.web.app"
-      ]
+      "backgroundColor": "#171A21"
     },
     "android": {
       "package": "com.ethanlam.prova",
