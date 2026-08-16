@@ -166,15 +166,52 @@
   .prow .pl{flex:1;min-width:0}
   .prow .pt{font-weight:600;font-size:13.5px}
   .prow .ps{font-size:12px;color:var(--ink-3)}
+  .lnrow:hover{background:var(--raised)} .lnrow:hover .chev{color:var(--ink-2)}
+  .lnrow:first-of-type{border-top:0!important}
   a.btn{text-decoration:none;display:inline-block}
   .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
   .cal .hd{background:var(--raised);padding:9px 8px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-3)}
   .cal .hd b{display:block;font-family:var(--round);font-size:15px;color:var(--ink);letter-spacing:0}
-  .cal .cell{background:var(--card);padding:9px 8px;min-height:120px;display:flex;flex-direction:column;gap:6px}
+  .cal .cell{background:var(--card);padding:7px 7px 9px;min-height:112px;display:flex;flex-direction:column;gap:6px}
   .cal .cell.today{background:color-mix(in srgb,var(--primary) 7%,var(--card))}
+  .cal .cell.out{background:color-mix(in srgb,var(--raised) 55%,var(--card))}
+  .cal .cell.out .dnum{opacity:.4}
+  /* the day number is the "add here" target, so it fills the cell's slack */
+  .daybtn{flex:1;display:flex;align-items:flex-start;justify-content:space-between;gap:6px;background:none;
+    border:0;padding:2px 2px 0;margin:0;cursor:pointer;color:inherit;font:inherit;min-height:22px;border-radius:8px}
+  .daybtn .dnum{font-family:var(--round);font-weight:600;font-size:12.5px;color:var(--ink-3);line-height:1.3}
+  .cell.today .daybtn .dnum{color:var(--primary)}
+  .daybtn .dplus{opacity:0;font-size:13px;color:var(--ink-3);line-height:1.2;transition:opacity .13s}
+  .daybtn:hover{background:var(--raised)} .daybtn:hover .dplus{opacity:1}
+  .daybtn:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+  /* compact month navigator */
+  .mnav{display:flex;align-items:center;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .mnav b{font-size:13.5px;font-weight:650;min-width:132px;text-align:center}
+  .mnav button{border:0;background:none;color:var(--ink-2);cursor:pointer;font-size:17px;line-height:1;
+    width:28px;height:28px;border-radius:50%;display:grid;place-items:center}
+  .mnav button:hover{background:var(--raised);color:var(--ink)}
+  /* the little month box you pick a date out of */
+  .dpfield::after{content:'▾';float:right;color:var(--ink-3)}
+  .dpbox{max-height:0;overflow:hidden;transition:max-height .18s ease;margin-top:0}
+  .dpbox.open{max-height:340px;margin-top:10px}
+  .dphead{display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px}
+  .dphead b{font-size:13.5px;font-weight:650}
+  .dphead button{border:0;background:none;color:var(--ink-2);cursor:pointer;font-size:17px;width:28px;height:28px;
+    border-radius:50%;display:grid;place-items:center}
+  .dphead button:hover{background:var(--raised);color:var(--ink)}
+  .dpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;background:var(--raised);
+    border:1px solid var(--line);border-radius:12px;padding:8px}
+  .dpdow{text-align:center;font-size:10.5px;font-weight:700;color:var(--ink-3);padding:2px 0 5px}
+  .dpday{border:0;background:none;color:var(--ink);font:inherit;font-size:12.5px;cursor:pointer;
+    aspect-ratio:1;border-radius:9px;display:grid;place-items:center;line-height:1}
+  .dpday:hover{background:var(--card)}
+  .dpday.out{color:var(--ink-3);opacity:.45}
+  .dpday.now{box-shadow:inset 0 0 0 1px var(--line);font-weight:700}
+  .dpday.sel{background:var(--primary);color:var(--on-primary);font-weight:700}
+  .dpday.sel:hover{background:var(--primary)}
   .ev{border-radius:7px;padding:7px 9px;font-size:11.5px;line-height:1.35;text-align:left;border:0;border-left:2px solid;width:100%}
   .ev b{display:block;font-weight:650} .ev .tm{font-family:var(--round);opacity:.85}
-  .ev.lesson{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);border-left-color:var(--primary)}
+  .ev.lesson{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);border-left-color:var(--primary);cursor:pointer}
   .ev.gig{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);border-left-color:var(--warn);cursor:pointer}
   .ev.task{background:color-mix(in srgb,var(--teal) 18%,transparent);color:var(--teal);border-left-color:var(--teal);cursor:pointer}
   .tog{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
@@ -250,6 +287,26 @@
   .bub.me{background:var(--primary);color:var(--on-primary);border-bottom-right-radius:5px;align-self:flex-end}
   .composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;align-items:center}
   .composer input{flex:1;background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+
+  /* reactions — the bubble and its reaction row share one column so the two
+     stay aligned to the same edge of the thread */
+  .msgrow{display:flex;flex-direction:column;gap:4px;max-width:74%;position:relative}
+  .msgrow.me{align-self:flex-end;align-items:flex-end}
+  .msgrow.them{align-self:flex-start;align-items:flex-start}
+  .msgrow .bub{max-width:100%}
+  .rx{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:0 3px;min-height:19px}
+  .rxchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink-2);border-radius:999px;padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6}
+  .rxchip.mine{border-color:var(--primary);color:var(--ink)}
+  .rxadd{opacity:0;border:1px solid var(--line);background:var(--card);color:var(--ink-3);border-radius:999px;
+    padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6;transition:opacity .14s}
+  .msgrow:hover .rxadd,.rxadd.on{opacity:1}
+  @media (hover:none){.rxadd{opacity:1}}
+  .rxpick{position:absolute;bottom:100%;margin-bottom:6px;display:flex;gap:2px;background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:5px 8px;box-shadow:var(--shadow);z-index:5}
+  .msgrow.me .rxpick{right:0} .msgrow.them .rxpick{left:0}
+  .rxpick button{border:0;background:transparent;font-size:17px;cursor:pointer;padding:2px 4px;border-radius:8px;line-height:1}
+  .rxpick button:hover{background:var(--raised)}
 
   @keyframes sp{to{transform:rotate(360deg)}}
   /* Draggable: touch-action none so a finger drag moves the dock instead of
@@ -395,7 +452,11 @@ const teacherTaskPoints = (sec) => Math.round((Math.max(0, sec) / 60) * POINTS_P
 const displayName = (u) => (u?.username?.trim()) || (u?.name?.trim()) || (u?.email ? u.email.split('@')[0] : 'there');
 const initials = (n) => n.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
 // src/lib/practiceLog.js uses a UTC date key; sessionProgress uses toDateString()
-const dayKey = () => new Date().toISOString().split('T')[0];
+// UTC date key, matching what the app writes in src/lib/practiceLog.js. It
+// used to ignore its argument, so every dayKey(someDate) in the charts came
+// back as *today* — the week bars and the practice calendar were painting
+// today's minutes into all 7 (and all 35) slots.
+const dayKey = (d = new Date()) => new Date(d).toISOString().split('T')[0];
 const todayKey = () => new Date().toDateString();
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const TODAY_NAME = DAYS[new Date().getDay()];
@@ -735,8 +796,17 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#overlays')) return;
   let t;
   if ((t = e.target.closest('[data-open]'))) {
-    const y = window.scrollY, k = t.getAttribute('data-open');
-    OPEN[k] = !OPEN[k]; rerender(); window.scrollTo(0, y); return;
+    // Opening a row used to rerender() the entire screen and then restore the
+    // scroll position — rebuilding several hundred rows of innerHTML to flip
+    // one class. On the songs and practice screens that was a visible stall
+    // before the row moved. The row owns its own open state in CSS, so toggle
+    // the class and leave the rest of the document alone.
+    const k = t.getAttribute('data-open');
+    OPEN[k] = !OPEN[k];
+    const row = t.closest('.trow');
+    if (row) row.classList.toggle('open', OPEN[k]);
+    else { const y = window.scrollY; rerender(); window.scrollTo(0, y); }
+    return;
   }
   if ((t = e.target.closest('[data-showall]'))) {
     const y = window.scrollY, k = t.getAttribute('data-showall');
@@ -878,8 +948,12 @@ function viewSongs() {
   const spotify = (t, a) => `https://open.spotify.com/search/${encodeURIComponent(`${t} ${a || ''}`.trim())}`;
   const apple = (t, a) => `https://music.apple.com/search?term=${encodeURIComponent(`${t} ${a || ''}`.trim())}`;
 
+  // Keyed by the song itself, not its index in the list — filtering the
+  // library reorders it, and an index key would move an open row's state
+  // onto whichever song happened to land in that slot.
+  const songKey = (x, i) => 'song' + (x.id || `${x.title}|${x.artist || ''}` || i);
   const songRow = (x, i) => {
-    const id = 'song' + i, open = OPEN[id];
+    const id = songKey(x, i), open = OPEN[id];
     const steps = Array.isArray(x.steps) ? x.steps : [];
     const done = steps.filter(st => st.done).length;
     return `<div class="trow${open ? ' open' : ''}">
@@ -908,6 +982,11 @@ function viewSongs() {
       </div></div>`;
   };
 
+  const libListHtml = (list, qq) => list.length
+    ? list.map(songRow).join('')
+    : (qq ? empty('Nothing matches', `No song in your library matches “${esc(SONGQ)}”.`)
+          : empty('No songs yet', 'Use “Learn a song” and Prova builds a step-by-step plan.'));
+
   const q = (SONGQ || '').trim().toLowerCase();
   const shown = q ? lib.filter(x => `${x.title} ${x.artist || ''}`.toLowerCase().includes(q)) : lib;
 
@@ -919,10 +998,8 @@ function viewSongs() {
     <input id="songSearch" placeholder="Search your songs…" value="${esc(SONGQ)}"
       style="width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px">
     <div class="cols"><div class="stack">
-      ${card('Library', q ? `${shown.length} of ${lib.length}` : lib.length, shown.length
-        ? shown.map(songRow).join('')
-        : (q ? empty('Nothing matches', `No song in your library matches "${esc(SONGQ)}".`)
-             : empty('No songs yet', 'Use “Learn a song” and Prova builds a step-by-step plan.')))}
+      ${card('Library', `<span id="libCount">${q ? `${shown.length} of ${lib.length}` : lib.length}</span>`,
+        `<div id="libList">${libListHtml(shown, q)}</div>`)}
     </div><div class="stack">
       ${card('Setlists', sets.length, sets.length
         ? sets.map((x, i) => {
@@ -943,12 +1020,17 @@ function viewSongs() {
         : empty('No setlists', 'Use “Build a setlist” for your next gig.'))}
     </div></div></div>`;
 
+  // Typing used to call viewSongs() per keystroke — a whole-screen rebuild
+  // plus a fresh artwork pass — then put the caret back. Only the list can
+  // change while you type, so only the list is rebuilt.
   const si = $('#songSearch');
   si.addEventListener('input', () => {
     SONGQ = si.value;
-    const pos = si.selectionStart;
-    viewSongs();
-    const n = $('#songSearch'); n.focus(); n.setSelectionRange(pos, pos);
+    const qq = SONGQ.trim().toLowerCase();
+    const next = qq ? lib.filter(x => `${x.title} ${x.artist || ''}`.toLowerCase().includes(qq)) : lib;
+    $('#libList').innerHTML = libListHtml(next, qq);
+    $('#libCount').textContent = qq ? `${next.length} of ${lib.length}` : String(lib.length);
+    paintArtwork();
   });
   $('#learnBtn').onclick = learnSongSheet;
   $('#setlistBtn').onclick = setlistSheet;
@@ -1068,6 +1150,76 @@ function viewSchedule() {
   </div>`;
 }
 
+// ── Practice trend — the same chart as ProgressScreen.js in the app ──────
+// Twelve Monday-aligned weeks of practice hours, drawn as a smooth area. The
+// app is the reference: same window, same rounding, same "Xh total · peak
+// Yh/week" footer, so the two never disagree about the same account.
+const TREND_WEEKS = 12;
+
+function buildWeeklySeries(weeks = TREND_WEEKS) {
+  const today = new Date();
+  const monStart = new Date(today);
+  monStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  monStart.setHours(0, 0, 0, 0);
+  const out = [];
+  for (let w = weeks - 1; w >= 0; w--) {
+    let mins = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(monStart);
+      day.setDate(monStart.getDate() - w * 7 + d);
+      if (day <= today) mins += HISTORY.week[dayKey(day)] || 0;
+    }
+    out.push(Math.round(mins / 60 * 10) / 10);
+  }
+  return out;
+}
+
+// Cubic through the points with flat handles at each segment's midpoint —
+// ported from smoothLinePath in ProgressScreen.js.
+function smoothLinePath(pts) {
+  if (!pts.length) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    const cx = (x0 + x1) / 2;
+    d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
+  }
+  return d;
+}
+
+function practiceTrendCard() {
+  const hours = buildWeeklySeries();
+  const meta = `Last ${TREND_WEEKS} weeks`;
+  if (!hours.some(h => h > 0)) {
+    return card('Practice trend', meta,
+      empty('Your trend is taking shape', `Log a few sessions and your ${TREND_WEEKS}-week practice trend appears here.`));
+  }
+  const W = 300, H = 110, PAD_TOP = 14, PAD_BOTTOM = 10;
+  const maxH = Math.max(1, ...hours);
+  const totalH = Math.round(hours.reduce((s, h) => s + h, 0) * 10) / 10;
+  const peak = Math.round(maxH * 10) / 10;
+  const stepX = hours.length > 1 ? (W - 8) / (hours.length - 1) : 0;
+  const pts = hours.map((h, i) => [
+    +(4 + i * stepX).toFixed(1),
+    +(PAD_TOP + (1 - h / maxH) * (H - PAD_TOP - PAD_BOTTOM)).toFixed(1),
+  ]);
+  const line = smoothLinePath(pts);
+  const last = pts[pts.length - 1];
+  return card('Practice trend', meta,
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:120px;overflow:visible" role="img"
+       aria-label="Practice hours over the last ${TREND_WEEKS} weeks">
+      ${[0.25, 0.5, 0.75].map(f => `<line x1="0" y1="${(H * f).toFixed(1)}" x2="${W}" y2="${(H * f).toFixed(1)}"
+        stroke="var(--line)" stroke-width="1"/>`).join('')}
+      <path d="${line} L ${last[0]} ${H} L ${pts[0][0]} ${H} Z" fill="color-mix(in srgb,var(--primary) 16%,transparent)"/>
+      <path d="${line}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${last[0]}" cy="${last[1]}" r="8" fill="var(--primary)" opacity="0.2"/>
+      <circle cx="${last[0]}" cy="${last[1]}" r="4" fill="var(--primary)"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;margin-top:6px" class="hint">
+      <span>${TREND_WEEKS} wks ago</span><span>this week</span></div>
+    <p class="hint" style="margin:10px 0 0">${totalH}h total · peak ${peak}h/week</p>`);
+}
+
 function viewProgress() {
   const earned = me.badges && typeof me.badges === 'object' ? Object.keys(me.badges) : [];
   const goals = Array.isArray(me.personalGoals) ? me.personalGoals : [];
@@ -1107,27 +1259,7 @@ function viewProgress() {
               <span style="flex:1">${esc(CATNAME[k] || k)}</span><span class="hint">${v} min</span></div>
               <div class="track" style="margin-top:6px"><i style="width:${Math.round(v / catTotal * 100)}%"></i></div></div>`).join('')
         : '<p class="hint" style="margin:0">Nothing logged yet.</p>')}
-      ${(() => {   // weekly totals as a trend line
-        const weeks = [];
-        for (let w = 4; w >= 0; w--) {
-          let t = 0;
-          for (let d = 0; d < 7; d++) t += HISTORY.week[dayKey(new Date(Date.now() - (w * 7 + d) * 86400000))] || 0;
-          weeks.push(t);
-        }
-        const max = Math.max(1, ...weeks), W = 300, H = 90;
-        const pts = weeks.map((v, i) => [i * (W / 4), H - (v / max) * (H - 12)]);
-        const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-        return card('Weekly trend', `${weeks[4]} min this week`,
-          `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:110px;overflow:visible">
-            ${[0.25,0.5,0.75].map(f => `<line x1="0" y1="${H * f}" x2="${W}" y2="${H * f}" stroke="var(--line)" stroke-width="1"/>`).join('')}
-            <path d="${line} L${W} ${H} L0 ${H} Z" fill="color-mix(in srgb,var(--primary) 14%,transparent)"/>
-            <path d="${line}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            ${pts.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i === 4 ? 5 : 3}"
-              fill="${i === 4 ? 'var(--primary)' : 'var(--ground)'}" stroke="var(--primary)" stroke-width="2"/>`).join('')}
-          </svg>
-          <div style="display:flex;justify-content:space-between;margin-top:6px" class="hint">
-            ${['4 wks ago','3','2','last','this week'].map(l => `<span>${l}</span>`).join('')}</div>`);
-      })()}
+      ${practiceTrendCard()}
       ${card('Practice calendar', 'Last 5 weeks',
         `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">
           ${cal.map(c => `<div title="${c.k} · ${c.m} min" style="aspect-ratio:1;border-radius:4px;background:${
@@ -1326,16 +1458,25 @@ async function viewLeaderboard() {
 }
 // sessionHistory drives every chart on Progress — read once per sign-in.
 let HISTORY = { week: {}, cats: {}, cal: [] };
+// 90 days back: the practice trend spans 12 Monday-aligned weeks, so the
+// oldest day it can need is 83 days ago plus up to 6 for the week alignment.
+const HISTORY_DAYS = 90;
 async function loadHistory() {
   const out = { week: {}, cats: {}, cal: [] };
   try {
-    const cutoff = dayKey(new Date(Date.now() - 34 * 86400000));
+    const cutoff = dayKey(new Date(Date.now() - HISTORY_DAYS * 86400000));
     const snap = await getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), where('date', '>=', cutoff)));
+    // `cats` still means the last five weeks — the window widened for the
+    // trend, and left unbounded the "Where the time goes" card would quietly
+    // start reporting three months under a "Last 5 weeks" heading.
+    const catCutoff = dayKey(new Date(Date.now() - 34 * 86400000));
     snap.forEach(docSnap => {
       const v = docSnap.data() || {};
       const k = v.date || docSnap.id, m = Number(v.totalMinutes) || 0;
       out.week[k] = m;
-      Object.entries(v.categories || {}).forEach(([c, n]) => { out.cats[c] = (out.cats[c] || 0) + (Number(n) || 0); });
+      if (k >= catCutoff) {
+        Object.entries(v.categories || {}).forEach(([c, n]) => { out.cats[c] = (out.cats[c] || 0) + (Number(n) || 0); });
+      }
     });
   } catch { /* a new account simply has none */ }
   for (let i = 34; i >= 0; i--) {
@@ -1362,7 +1503,10 @@ function viewJournal() {
              <div class="track" style="margin-top:6px"><i style="width:${e.rating * 20}%"></i></div></div>` : ''}
            ${(e.focus || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
              ${e.focus.map(f => `<span class="pill set">${esc(f)}</span>`).join('')}</div>` : ''}
-           <button class="btn sm ghost" data-jdel="${i}" style="margin-top:14px">Delete</button>`)).join('')
+           ${e.editedAt ? `<div class="hint" style="margin-top:12px;font-size:12px">Edited ${esc(fmt(e.editedAt))}</div>` : ''}
+           <div style="display:flex;gap:8px;margin-top:14px">
+             <button class="btn sm ghost" data-jedit="${i}">Edit</button>
+             <button class="btn sm ghost" data-jdel="${i}">Delete</button></div>`)).join('')
         : card('Entries','', empty('Nothing written yet', 'A short note after a session is worth more than you would think.'))}
     </div><div class="stack">
       ${card('This month','', `<div class="rows">
@@ -1373,37 +1517,44 @@ function viewJournal() {
         obvious. Nobody else can read this — not your teacher, not in a report.</p>`)}
     </div></div></div>`;
 
-  $('#jNew').onclick = () => {
+  // One sheet for both writing and editing. `at` is the index of the entry
+  // being changed, or null for a new one — an entry you can't correct is a
+  // worse record than no entry, so a saved one stays open to revision.
+  const journalSheet = (at) => {
+    const cur = at == null ? null : es[at];
+    if (at != null && !cur) return;
     const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
-    let mood = null, rating = null;
-    const focus = new Set();
+    let mood = cur ? (cur.mood || null) : null;
+    let rating = cur ? (cur.rating || null) : null;
+    const focus = new Set(cur && Array.isArray(cur.focus) ? cur.focus : []);
     const FOCI = ['Technique','Chords','Songs','Theory','Ear','Timing','Improvising'];
+    const on = ';border-color:var(--primary);color:var(--ink)';
     $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
       <div style="display:flex;align-items:center"><span class="lab">Journal</span>
         <button class="x" data-close style="margin-left:auto">×</button></div>
-      <h3 style="margin:8px 0 16px;font-size:18px">How did that go?</h3>
-      <textarea id="jText" rows="5" placeholder="What worked, what didn't, what to fix next time…" style="${F}"></textarea>
+      <h3 style="margin:8px 0 16px;font-size:18px">${cur ? 'Edit this entry' : 'How did that go?'}</h3>
+      <textarea id="jText" rows="5" placeholder="What worked, what didn't, what to fix next time…" style="${F}">${esc(cur ? cur.text || '' : '')}</textarea>
       <div class="eyebrow" style="padding:16px 0 8px">Mood</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="jMood">
-        ${MOODS.map(m => `<button class="btn sm ghost" data-jm="${esc(m)}">${m}</button>`).join('')}</div>
+        ${MOODS.map(m => `<button class="btn sm ghost" data-jm="${esc(m)}"${m === mood ? ` style="${on.slice(1)}"` : ''}>${m}</button>`).join('')}</div>
       <div class="eyebrow" style="padding:16px 0 8px">How productive, 1 to 5</div>
       <div style="display:flex;gap:8px" id="jRate">
-        ${[1,2,3,4,5].map(n => `<button class="btn sm ghost" data-jr="${n}" style="flex:1">${n}</button>`).join('')}</div>
+        ${[1,2,3,4,5].map(n => `<button class="btn sm ghost" data-jr="${n}" style="flex:1${n === rating ? on : ''}">${n}</button>`).join('')}</div>
       <div class="eyebrow" style="padding:16px 0 8px">What did you work on?</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="jFocus">
-        ${FOCI.map(f => `<button class="btn sm ghost" data-jf="${f}">${f}</button>`).join('')}</div>
+        ${FOCI.map(f => `<button class="btn sm ghost" data-jf="${f}"${focus.has(f) ? ` style="${on.slice(1)}"` : ''}>${f}</button>`).join('')}</div>
       <div style="display:flex;gap:10px;margin-top:20px">
         <button class="btn ghost" data-close style="flex:1">Cancel</button>
-        <button class="btn" id="jSave" style="flex:1">Save entry</button></div></div>`;
+        <button class="btn" id="jSave" style="flex:1">${cur ? 'Save changes' : 'Save entry'}</button></div></div>`;
     const pick = (host, attr, set, multi) => $(host).addEventListener('click', (e) => {
       const b = e.target.closest(`[${attr}]`); if (!b) return;
       const v = b.getAttribute(attr);
       if (multi) { focus.has(v) ? focus.delete(v) : focus.add(v);
-        b.setAttribute('style', (host === '#jRate' ? 'flex:1' : '') + (focus.has(v) ? ';border-color:var(--primary);color:var(--ink)' : ''));
+        b.setAttribute('style', (host === '#jRate' ? 'flex:1' : '') + (focus.has(v) ? on : ''));
         return; }
       set(v);
       [...$(host).children].forEach(x => x.setAttribute('style',
-        (host === '#jRate' ? 'flex:1' : '') + (x === b ? ';border-color:var(--primary);color:var(--ink)' : '')));
+        (host === '#jRate' ? 'flex:1' : '') + (x === b ? on : '')));
     });
     pick('#jMood', 'data-jm', v => { mood = v; });
     pick('#jRate', 'data-jr', v => { rating = +v; });
@@ -1412,15 +1563,27 @@ function viewJournal() {
       const text = $('#jText').value.trim();
       if (!text) { toast('Write something first'); return; }
       const btn = $('#jSave'); btn.disabled = true;
-      const entry = { id: String(Date.now()), date: new Date().toISOString(), text, mood, rating, focus: [...focus] };
       try {
-        const next = [entry, ...es];
+        let next;
+        if (cur) {
+          // Keep the original id and date — this is the same entry, corrected,
+          // not a new one written today.
+          const edited = { ...cur, text, mood, rating, focus: [...focus], editedAt: new Date().toISOString() };
+          next = es.map((x, k) => (k === at ? edited : x));
+        } else {
+          next = [{ id: String(Date.now()), date: new Date().toISOString(), text, mood, rating, focus: [...focus] }, ...es];
+        }
         await updateDoc(doc(db, 'users', uid), { journalEntries: next });
         me.journalEntries = next;
-        $('#overlays').innerHTML = ''; viewJournal(); toast('Saved — only you can see it');
+        $('#overlays').innerHTML = ''; viewJournal();
+        toast(cur ? 'Entry updated' : 'Saved — only you can see it');
       } catch { toast('Could not save'); btn.disabled = false; }
     };
   };
+
+  $('#jNew').onclick = () => journalSheet(null);
+  document.querySelectorAll('[data-jedit]').forEach(b =>
+    b.onclick = () => journalSheet(+b.getAttribute('data-jedit')));
   document.querySelectorAll('[data-jdel]').forEach(b => b.onclick = async () => {
     if (!confirm('Delete this entry?')) return;
     const next = es.filter((_, k) => k !== +b.getAttribute('data-jdel'));
@@ -2924,8 +3087,9 @@ async function saveTheme(mode, accent) {
 // Three sources, exactly as ScheduleScreen has them: lessons your teacher
 // scheduled (read off their doc, weekly repeats resolved), gigs you add, and
 // personal events. Only the last two are yours to write.
-let TEACHER_LESSONS = [], CALW = 0, CALMODE = 'week';
-const CAL_SPAN = { week: 7, fortnight: 14, month: 28 };
+// One view: a whole month, navigated a month at a time. The week/fortnight/
+// month switcher plus prev/next was four controls to answer "what's on?".
+let TEACHER_LESSONS = [], CALM = 0;
 async function loadTeacherLessons() {
   const ids = [me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean);
   const seen = new Set(); TEACHER_LESSONS = [];
@@ -2955,42 +3119,81 @@ function eventsOnDay(ds) {
     .map(p => ({ ...p, kind: p.type || 'task', label: p.title }));
   return [...gigs, ...pe];
 }
+// A calendar month, padded out to whole Monday-start weeks so the grid is
+// always rectangular. CALM is the offset in months from the current one.
+function monthGrid(offset) {
+  const base = new Date();
+  base.setDate(1);
+  base.setMonth(base.getMonth() + offset);
+  base.setHours(0, 0, 0, 0);
+  const first = new Date(base);
+  const start = addD(first, -(((first.getDay() + 6) % 7)));       // back to Monday
+  const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+  const end = addD(last, 6 - ((last.getDay() + 6) % 7));          // forward to Sunday
+  const days = [];
+  for (let d = start; d <= end; d = addD(d, 1)) days.push(new Date(d));
+  return { first, days };
+}
+
 async function viewCalendar() {
   if (!TEACHER_LESSONS.length) await loadTeacherLessons();
-  const span = CAL_SPAN[CALMODE] || 7;
-  const monday = (() => { const t = new Date(); const w = (t.getDay() + 6) % 7; return addD(addD(t, -w), CALW * span); })();
-  const days = Array.from({ length: span }, (_, i) => addD(monday, i));
+  const { first, days } = monthGrid(CALM);
+  const month = first.getMonth();
   const today = dayISO(new Date());
   const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const count = days.reduce((a, d) => a + lessonsOnDay(dayISO(d)).length + eventsOnDay(dayISO(d)).length, 0);
+  const count = days.reduce((a, d) => (d.getMonth() === month
+    ? a + lessonsOnDay(dayISO(d)).length + eventsOnDay(dayISO(d)).length : a), 0);
 
   $('#screen').innerHTML = `<div class="content">
-    ${head('Calendar', `${CALMODE === 'week'
-      ? 'Week of ' + monday.toLocaleDateString(undefined,{day:'numeric',month:'long'})
-      : monday.toLocaleDateString(undefined,{day:'numeric',month:'short'}) + ' – ' +
-        addD(monday, span - 1).toLocaleDateString(undefined,{day:'numeric',month:'short'})} · ${count} thing${count===1?'':'s'} on`,
-      `<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn ghost sm" data-cal="prev">← Previous</button>
-        <div style="display:flex;gap:8px">${[['week','Week'],['fortnight','Fortnight'],['month','Month']]
-          .map(([k, l]) => `<button class="btn ghost sm" data-calmode="${k}"${CALMODE === k
-            ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${l}</button>`).join('')}</div>
-        <button class="btn ghost sm" data-cal="next">Next →</button>
+    ${head('Calendar', `${count} thing${count === 1 ? '' : 's'} on this month`,
+      `<div style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="mnav">
+          <button data-cal="prev" aria-label="Previous month">‹</button>
+          <b>${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</b>
+          <button data-cal="next" aria-label="Next month">›</button>
+        </div>
+        ${CALM ? '<button class="btn ghost sm" data-cal="this">Today</button>' : ''}
         <button class="btn" data-cal="add">Add to calendar</button></div>`)}
     <section class="card"><div class="cal">
-      ${days.slice(0, 7).map(d => `<div class="hd">${DOW[(d.getDay()+6)%7]}</div>`).join('')}
+      ${DOW.map(d => `<div class="hd">${d}</div>`).join('')}
       ${days.map(d => {
         const ds = dayISO(d);
-        return `<div class="cell${ds === today ? ' today' : ''}">
-          <div class="hint" style="font-family:var(--round);font-weight:600">${d.getDate()}</div>
-          ${lessonsOnDay(ds).map(l => `<div class="ev lesson" title="Set by ${esc(l.teacher)}">
-            <b>Lesson</b><span class="tm">${esc(l.time || '')} · ${esc(l.teacher)}</span></div>`).join('')}
+        const out = d.getMonth() !== month;
+        // The day itself is the button — tapping empty space anywhere in a
+        // cell starts a new event on that date, which is what you reach for
+        // far more often than the toolbar.
+        return `<div class="cell${ds === today ? ' today' : ''}${out ? ' out' : ''}">
+          <button class="daybtn" data-addon="${ds}" aria-label="Add something on ${ds}">
+            <span class="dnum">${d.getDate()}</span><span class="dplus">＋</span></button>
+          ${lessonsOnDay(ds).map(l => `<button class="ev lesson" data-openlesson="${esc(l.id)}|${ds}"
+            title="Lesson with ${esc(l.teacher)}"><b>Lesson</b><span class="tm">${
+            esc(l.time || 'time TBC')} · ${esc(l.teacher)}</span></button>`).join('')}
           ${eventsOnDay(ds).map(e => `<button class="ev ${esc(e.kind)}" data-openev="${esc(e.kind)}:${esc(e.id)}">
             <b>${esc(e.label)}</b><span class="tm">${esc(e.time || (e.kind === 'gig' ? 'Gig' : e.kind))}</span></button>`).join('')}
         </div>`;
       }).join('')}
     </div>
-    <p class="hint" style="margin:14px 0 0">Lessons come from your teacher and can't be edited here. Click anything you added to open it.</p>
+    <p class="hint" style="margin:14px 0 0">Tap any day to add something. Lessons are set by your teacher — tap one to see the details.</p>
     </section></div>`;
+}
+
+// Teacher lessons are read-only here: they live on the teacher's doc, so the
+// student gets the details and nothing that implies they can change them.
+function lessonSheet(id, ds) {
+  const l = TEACHER_LESSONS.find(x => String(x.id) === String(id));
+  if (!l) return;
+  const when = new Date((ds || l.date || '') + 'T00:00:00')
+    .toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Lesson</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 4px;font-size:18px">Lesson${l.teacher ? ` with ${esc(l.teacher)}` : ''}</h3>
+    <p class="hint" style="margin:0 0 6px">${esc(when)}${l.time ? ' · ' + esc(l.time) : ' · no time set'}</p>
+    ${l.repeat === 'weekly' ? '<p class="hint" style="margin:0 0 6px">Repeats every week</p>' : ''}
+    ${l.note ? `<div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;
+      padding:13px 15px;margin-top:12px;white-space:pre-wrap;line-height:1.6;font-size:14px">${linkify(l.note)}</div>` : ''}
+    <p class="hint" style="margin:16px 0 0;font-size:12px">Set by your teacher — ask them if this needs to change.</p>
+    <button class="btn ghost" data-close style="width:100%;margin-top:16px">Close</button></div>`;
 }
 
 const TYPE_WORD = { gig: 'Gig', lesson: 'Lesson', task: 'Task' };
@@ -3033,13 +3236,66 @@ function calEventSheet(kind, id) {
     } catch { toast('Could not remove'); }
   };
 }
+// A small month grid you pick a day out of. `type="date"` renders a different
+// control in every browser — a text box with a tiny icon in some, nothing at
+// all in others — and none of them match the app.
+const PICK_DOW = ['M','T','W','T','F','S','S'];
+function datePickerHtml(sel) {
+  const [y, m] = sel.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const start = addD(first, -(((first.getDay() + 6) % 7)));
+  const last = new Date(y, m, 0);
+  const end = addD(last, 6 - ((last.getDay() + 6) % 7));
+  const today = dayISO(new Date());
+  const cells = [];
+  for (let d = start; d <= end; d = addD(d, 1)) {
+    const ds = dayISO(d);
+    cells.push(`<button type="button" class="dpday${ds === sel ? ' sel' : ''}${
+      ds === today ? ' now' : ''}${d.getMonth() !== m - 1 ? ' out' : ''}" data-dpick="${ds}">${d.getDate()}</button>`);
+  }
+  return `<div class="dphead">
+      <button type="button" data-dpmove="-1" aria-label="Previous month">‹</button>
+      <b>${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</b>
+      <button type="button" data-dpmove="1" aria-label="Next month">›</button></div>
+    <div class="dpgrid">${PICK_DOW.map(d => `<span class="dpdow">${d}</span>`).join('')}${cells.join('')}</div>`;
+}
+
+// Wires a picker box to the field that opens it. Keeps the chosen date in a
+// closure and hands it back through `get()`.
+function mountDatePicker(fieldId, boxId, initial) {
+  let value = initial;
+  const field = $('#' + fieldId), box = $('#' + boxId);
+  const label = () => new Date(value + 'T00:00:00')
+    .toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+  const paint = () => { field.textContent = label(); box.innerHTML = datePickerHtml(value); };
+  paint();
+  field.onclick = () => box.classList.toggle('open');
+  box.addEventListener('click', (e) => {
+    const mv = e.target.closest('[data-dpmove]');
+    if (mv) {
+      const [y, m, d] = value.split('-').map(Number);
+      const n = new Date(y, m - 1 + Number(mv.getAttribute('data-dpmove')), 1);
+      // Clamp to the last day when the target month is shorter (31 Jan → Feb).
+      n.setDate(Math.min(d, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()));
+      value = dayISO(n); paint(); box.classList.add('open'); return;
+    }
+    const day = e.target.closest('[data-dpick]');
+    if (!day) return;
+    value = day.getAttribute('data-dpick');
+    paint(); box.classList.remove('open');
+  });
+  return { get: () => value };
+}
+
 // `edit` is { kind, id } when reopening an existing event, null when adding.
-function calAddSheet(edit) {
+// `presetDate` is the day that was tapped in the grid.
+function calAddSheet(edit, presetDate) {
   const cur = !edit ? null : edit.kind === 'gig'
     ? (me.gigs || []).find(g => g.id === edit.id)
     : (me.personalEvents || []).find(p => p.id === edit.id);
   if (edit && !cur) { viewCalendar(); return; }
   const startType = cur ? edit.kind : 'gig';
+  const startDate = (cur && cur.date) || presetDate || dayISO(new Date());
   const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
   const sel = (k) => 'flex:1' + (k === startType ? ';border-color:var(--primary);color:var(--ink)' : '');
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
@@ -3051,13 +3307,15 @@ function calAddSheet(edit) {
       <button class="btn sm ghost" data-catype="lesson" style="${sel('lesson')}">Lesson</button>
       <button class="btn sm ghost" data-catype="task" style="${sel('task')}">Task</button></div>
     <input id="caName" placeholder="Name it" value="${esc((cur ? (edit.kind === 'gig' ? cur.name : cur.title) : '') || '')}" style="${F};margin-bottom:12px">
-    <input id="caDate" type="date" value="${esc((cur && cur.date) || dayISO(new Date()))}" style="${F};margin-bottom:12px">
-    <input id="caTime" type="time" value="${esc((cur && cur.time) || '')}" style="${F};margin-bottom:12px">
+    <button type="button" id="caDate" class="dpfield" style="${F};margin-bottom:0;text-align:left;cursor:pointer"></button>
+    <div id="caDateBox" class="dpbox"></div>
+    <input id="caTime" type="time" value="${esc((cur && cur.time) || '')}" style="${F};margin:12px 0 12px">
     <input id="caNote" placeholder="Note (optional)" value="${esc((cur && cur.note) || '')}" style="${F}">
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="btn ghost" data-close style="flex:1">Cancel</button>
       <button class="btn" id="caGo" style="flex:1">${cur ? 'Save changes' : 'Add'}</button></div></div>`;
   let type = startType;
+  const datePick = mountDatePicker('caDate', 'caDateBox', startDate);
   $('#caType').addEventListener('click', (e) => {
     const b = e.target.closest('[data-catype]'); if (!b) return;
     type = b.getAttribute('data-catype');
@@ -3067,7 +3325,7 @@ function calAddSheet(edit) {
   $('#caGo').onclick = async () => {
     const name = $('#caName').value.trim();
     if (!name) { toast('Give it a name'); return; }
-    const date = $('#caDate').value || dayISO(new Date());
+    const date = datePick.get() || dayISO(new Date());
     const time = $('#caTime').value || '';
     const note = $('#caNote').value.trim().slice(0, 140);
     const byDate = (a, b) => a.date.localeCompare(b.date);
@@ -3096,13 +3354,11 @@ function calAddSheet(edit) {
   };
 }
 document.addEventListener('click', async (e) => {
-  const cm = e.target.closest('[data-calmode]');
-  if (cm) { CALMODE = cm.getAttribute('data-calmode'); CALW = 0; return viewCalendar(); }
   const c = e.target.closest('[data-cal]');
   if (c) {
     const a = c.getAttribute('data-cal');
     if (a === 'add') return calAddSheet();
-    CALW = a === 'this' ? 0 : a === 'next' ? CALW + 1 : CALW - 1;
+    CALM = a === 'this' ? 0 : a === 'next' ? CALM + 1 : CALM - 1;
     return viewCalendar();
   }
   const open = e.target.closest('[data-openev]');
@@ -3111,6 +3367,14 @@ document.addEventListener('click', async (e) => {
     const i = raw.indexOf(':');
     return calEventSheet(raw.slice(0, i), raw.slice(i + 1));
   }
+  const les = e.target.closest('[data-openlesson]');
+  if (les) {
+    const raw = les.getAttribute('data-openlesson');
+    const i = raw.lastIndexOf('|');
+    return lessonSheet(raw.slice(0, i), raw.slice(i + 1));
+  }
+  const add = e.target.closest('[data-addon]');
+  if (add) return calAddSheet(null, add.getAttribute('data-addon'));
 });
 
 // ══ LESSON NOTES ═══════════════════════════════════════════════════════
@@ -3155,24 +3419,70 @@ async function viewLessonNotes() {
       ? `${rows.length} lesson${rows.length === 1 ? '' : 's'}${marked ? ` · ${present}/${marked} present` : ''}`
       : 'What your teacher wrote after each lesson')}
     ${rows.length ? `<section class="card"><div class="rows">
-      ${rows.map((r) => `<div class="prow" style="align-items:flex-start">
-        <div class="pl" style="flex:1;min-width:0">
-          <div class="pt">${esc(fmtNoteDay(r.date))}${r.teacher ? ` · ${esc(r.teacher)}` : ''}</div>
-          <div class="ps" style="white-space:pre-wrap">${r.note ? esc(r.note) : 'No note for this lesson.'}</div>
-          ${r.atts.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
-            ${r.atts.map((a) => a.type === 'photo'
-              ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title || 'Lesson photo')}"
-                   style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"></a>`
-              : `<a class="btn sm ghost" href="${esc(a.url || '#')}" target="_blank" rel="noopener"
-                   ${a.url ? '' : 'style="pointer-events:none;opacity:.7"'}>${a.type === 'song' ? '🎵' : a.type === 'video' ? '🎥' : '🔗'} ${esc(a.title || a.url || '')}</a>`
-            ).join('')}</div>` : ''}
-        </div>
-        ${r.status ? `<span class="pill att-${esc(r.status)}">${esc(ATT_WORD[r.status] || r.status)}</span>` : ''}
-      </div>`).join('')}
+      ${rows.map((r, i) => {
+        const preview = (r.note || '').replace(/\s+/g, ' ').trim();
+        return `<button class="prow lnrow" data-note="${i}" style="align-items:flex-start;width:100%;text-align:left;
+          background:none;border:0;border-top:1px solid var(--line);cursor:pointer;font:inherit;color:inherit">
+          <div class="pl" style="flex:1;min-width:0">
+            <div class="pt">${esc(fmtNoteDay(r.date))}${r.teacher ? ` · ${esc(r.teacher)}` : ''}</div>
+            <div class="ps" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
+              preview ? esc(preview) : 'No note for this lesson.'}</div>
+            ${r.atts.length ? `<div class="hint" style="font-size:12px;margin-top:5px">📎 ${r.atts.length} attachment${
+              r.atts.length === 1 ? '' : 's'}</div>` : ''}
+          </div>
+          ${r.status ? `<span class="pill att-${esc(r.status)}">${esc(ATT_WORD[r.status] || r.status)}</span>` : ''}
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+            style="transform:none;margin-top:3px"><path d="M9 5l7 7-7 7"/></svg>
+        </button>`;
+      }).join('')}
     </div></section>`
     : `<section class="card">${empty('No lesson notes yet',
         'When your teacher marks you present and writes up a lesson, it shows here.')}</section>`}
   </div>`;
+
+  document.querySelectorAll('[data-note]').forEach((b) =>
+    b.onclick = () => lessonNoteSheet(rows[+b.getAttribute('data-note')]));
+}
+
+// Turn bare URLs in a teacher's note into real links. Teachers paste YouTube
+// links into these constantly and a note is the one place in the app where
+// the text is somebody else's, so it is escaped first and only then linked —
+// the anchors are built from the escaped string, never from raw input.
+function linkify(text) {
+  return esc(text || '').replace(/\bhttps?:\/\/[^\s<]+/g, (raw) => {
+    const url = raw.replace(/[.,;:!?)\]]+$/, '');           // don't eat sentence punctuation
+    const tail = raw.slice(url.length);
+    const label = url.replace(/^https?:\/\/(www\.)?/, '');
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${
+      label.length > 52 ? label.slice(0, 50) + '…' : label}</a>${tail}`;
+  });
+}
+
+function lessonNoteSheet(r) {
+  if (!r) return;
+  const ytLinks = (r.note || '').match(/\bhttps?:\/\/[^\s<]*(?:youtube\.com|youtu\.be)\/[^\s<]*/gi) || [];
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center;gap:10px"><span class="lab">Lesson note</span>
+      ${r.status ? `<span class="pill att-${esc(r.status)}">${esc(ATT_WORD[r.status] || r.status)}</span>` : ''}
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 2px;font-size:18px">${esc(fmtNoteDay(r.date))}</h3>
+    ${r.teacher ? `<p class="hint" style="margin:0 0 14px">Written by ${esc(r.teacher)}</p>` : '<div style="height:12px"></div>'}
+    <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+      white-space:pre-wrap;line-height:1.65;font-size:14px;max-height:46vh;overflow-y:auto">${
+      r.note ? linkify(r.note) : '<span class="hint">Your teacher didn’t leave a written note for this lesson.</span>'}</div>
+    ${ytLinks.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      ${ytLinks.map((u) => `<button class="btn sm" data-yt="${esc(u)}" data-yttitle="Lesson video">▶ Watch here</button>`).join('')}
+      </div>` : ''}
+    ${r.atts.length ? `<div class="eyebrow" style="padding:18px 0 8px">Attachments</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${r.atts.map((a) => a.type === 'photo'
+          ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title || 'Lesson photo')}"
+               style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"></a>`
+          : `<a class="btn sm ghost" href="${esc(a.url || '#')}" target="_blank" rel="noopener"
+               ${a.url ? '' : 'style="pointer-events:none;opacity:.7"'}>${
+               a.type === 'song' ? '🎵' : a.type === 'video' ? '🎥' : '🔗'} ${esc(a.title || a.url || '')}</a>`
+        ).join('')}</div>` : ''}
+    <button class="btn ghost" data-close style="width:100%;margin-top:20px">Close</button></div>`;
 }
 function fmtNoteDay(ds) {
   const d = new Date((ds || '') + 'T00:00:00');
@@ -3291,10 +3601,34 @@ async function nameFor(uid, fallback) {
   return NAMES[uid];
 }
 
+// Every teacher this student is connected to. This app is the student side —
+// teachers are bounced to /studio/ at sign-in — so these are the only people
+// a student is allowed to message.
+const myTeacherUids = () =>
+  [...new Set([me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean))];
+
 async function loadConvs() {
+  const teachers = myTeacherUids();
   const snap = await getDocs(collection(db, 'userChats', uid, 'conversations'));
   CONVS = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // School-safe: students get their teachers and nobody else. Peer DMs are
+    // off in the app (MessagesScreen shows student→teacher only) and a stale
+    // student-to-student thread in Firestore must not resurface here.
+    .filter(c => teachers.includes(c.otherUid))
     .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+
+  // A thread only exists once somebody has sent something, so a student who
+  // has never been messaged had no row to click and therefore no way to write
+  // the first message. Stand the row up from the teacher link instead; the
+  // thread document is created on send.
+  const have = new Set(CONVS.map(c => c.otherUid));
+  for (const tid of teachers) {
+    if (have.has(tid)) continue;
+    let email = '';
+    try { email = ((await getDoc(doc(db, 'users', tid))).data() || {}).email || ''; } catch { /* keep blank */ }
+    CONVS.push({ id: makeChatId(uid, tid), otherUid: tid, otherEmail: email, lastMessage: '', pending: true });
+  }
+
   await Promise.all(CONVS.map(async c => { c.name = await nameFor(c.otherUid, c.otherEmail); }));
 }
 
@@ -3314,6 +3648,39 @@ function openThread(chatId) {
   setDoc(doc(db, 'chats', chatId), { lastRead: { [uid]: new Date().toISOString() } }, { merge: true }).catch(() => {});
 }
 
+// Reactions live on the message as { emoji: [uids] }, the same shape the app
+// writes in src/lib/chat.js — so a reaction added here shows up on the phone.
+const QUICK_RX = ['👍', '❤️', '😂', '🔥', '🎸', '👏'];
+
+function rxHtml(m) {
+  const map = m.reactions && typeof m.reactions === 'object' ? m.reactions : {};
+  const used = Object.keys(map).filter(e => (map[e] || []).length);
+  return `<div class="rx">
+    ${used.map(e => `<button class="rxchip${(map[e] || []).includes(uid) ? ' mine' : ''}"
+      data-rx="${esc(m.id)}|${esc(e)}">${e}<span>${(map[e] || []).length}</span></button>`).join('')}
+    <button class="rxadd" data-rxopen="${esc(m.id)}" title="Add a reaction" aria-label="Add a reaction">🙂﹢</button>
+  </div>`;
+}
+
+async function toggleReaction(messageId, emoji) {
+  if (!CUR) return;
+  const m = MSGS.find(x => x.id === messageId);
+  if (!m) return;
+  const cur = m.reactions && typeof m.reactions === 'object' ? m.reactions : {};
+  const next = {};
+  Object.keys(cur).forEach(k => { next[k] = [...(cur[k] || [])]; });
+  const list = next[emoji] || [];
+  if (list.includes(uid)) {
+    const rest = list.filter(u => u !== uid);
+    if (rest.length) next[emoji] = rest; else delete next[emoji];
+  } else {
+    next[emoji] = [...list, uid];
+  }
+  try {
+    await updateDoc(doc(db, 'chats', CUR.id, 'messages', messageId), { reactions: next });
+  } catch { toast('Could not react'); }
+}
+
 // The bubbles alone — safe to call as often as messages change.
 function paintBubbles() {
   const b = document.querySelector('#thBub'); if (!b) return;
@@ -3322,15 +3689,44 @@ function paintBubbles() {
       const mine = m.senderUid === uid;
       const when = m.timestamp?.seconds
         ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      if (m.mediaUrl) return `<div class="bub ${mine ? 'me' : 'them'}" style="padding:6px">
-        ${m.mediaType === 'video'
-          ? `<video src="${esc(m.mediaUrl)}" controls style="max-width:230px;border-radius:12px;display:block"></video>`
-          : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`;
-      return `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
-        <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
+      const body = m.mediaUrl
+        ? `<div class="bub ${mine ? 'me' : 'them'}" style="padding:6px">
+            ${m.mediaType === 'video'
+              ? `<video src="${esc(m.mediaUrl)}" controls style="max-width:230px;border-radius:12px;display:block"></video>`
+              : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`
+        : `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
+            <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
+      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${rxHtml(m)}</div>`;
     }).join('') : '<div class="empty">No messages yet — say hello.</div>';
   if (atBottom) b.scrollTop = b.scrollHeight;      // don't yank someone reading back
 }
+
+// One delegated handler for the whole thread: toggle an existing reaction,
+// open the picker, or pick from it. Clicking anywhere else closes the picker.
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-rx]');
+  if (chip) {
+    const raw = chip.getAttribute('data-rx');
+    const i = raw.lastIndexOf('|');
+    toggleReaction(raw.slice(0, i), raw.slice(i + 1));
+    return;
+  }
+  const pick = e.target.closest('[data-rxpick]');
+  if (pick) {
+    const raw = pick.getAttribute('data-rxpick');
+    const i = raw.lastIndexOf('|');
+    document.querySelectorAll('.rxpick').forEach(p => p.remove());
+    toggleReaction(raw.slice(0, i), raw.slice(i + 1));
+    return;
+  }
+  const open = e.target.closest('[data-rxopen]');
+  document.querySelectorAll('.rxpick').forEach(p => p.remove());
+  if (!open) return;
+  const id = open.getAttribute('data-rxopen');
+  const row = open.closest('.msgrow'); if (!row) return;
+  row.insertAdjacentHTML('beforeend', `<div class="rxpick">${QUICK_RX
+    .map(x => `<button data-rxpick="${esc(id)}|${esc(x)}" aria-label="React ${x}">${x}</button>`).join('')}</div>`);
+});
 
 function paintThread() {
   const host = document.querySelector('#thread'); if (!host) return;
@@ -3392,11 +3788,11 @@ async function viewMessages() {
         <button class="conv" data-conv="${esc(c.id)}" aria-selected="${i === 0}">
           <span class="avatar">${initials(c.name || '?')}</span>
           <span style="min-width:0"><span class="cn">${esc(c.name)}</span>
-          <span class="cp">${esc(c.lastMessage || 'No messages yet')}</span></span></button>`).join('')}</div>
+          <span class="cp">${esc(c.lastMessage || 'Say hello to your teacher')}</span></span></button>`).join('')}</div>
       <div class="thread" id="thread"></div></div>`
       : `<section class="card"><div class="empty">
-          <div style="font-weight:650;color:var(--ink)">No conversations</div>
-          <div style="font-size:13px;margin-top:4px">Threads appear here once you're connected to a teacher or a student.</div>
+          <div style="font-weight:650;color:var(--ink)">Connect your teacher</div>
+          <div style="font-size:13px;margin-top:4px">Enter your teacher's join code in the app and your thread with them appears here.</div>
         </div></section>`}
   </div>`;
   const list = document.querySelector('#convList');

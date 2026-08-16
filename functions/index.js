@@ -470,10 +470,175 @@ Return only a valid JSON array, no markdown.`;
   }
 );
 
+// ─── Song verification ────────────────────────────────────────────────────────
+// "Do NOT invent songs" in a prompt is a request, not a guarantee: setlists came
+// back with songs that don't exist and real songs credited to the wrong artist.
+// So every suggestion is checked against Apple's catalogue before it is returned.
+// Anything with no match is dropped; a real song with the wrong artist is
+// corrected rather than thrown away.
+
+// Normalise for comparison: strip accents, "feat." tails, "(2011 Remaster)" and
+// "- Live" suffixes, and punctuation — the same song is spelled a dozen ways.
+const songStrip = (s) => String(s || '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase()
+  .replace(/\b(feat|ft|featuring)\b[\s\S]*$/g, '')
+  .replace(/[([][^)\]]*(remaster|remix|live|version|edit|mono|stereo|deluxe|mix|radio|single|album|explicit|bonus|anniversary|unplugged|acoustic|session|riff|intro|solo|bassline)[^)\]]*[)\]]/g, '')
+  .replace(/\s-\s.*(remaster|live|version|edit|mix|single|unplugged|acoustic).*$/g, '')
+  .replace(/&/g, ' and ')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const songNorm = (s) => songStrip(s).replace(/^(the|a|an)\s+/, '');
+
+// 1 is identical. Containment scales with how much of the longer string the
+// shorter one covers, so "Creep" is not accepted as "Negative Creep".
+function songSimilar(a, b) {
+  a = songNorm(a); b = songNorm(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) {
+    return 0.5 + 0.4 * (Math.min(a.length, b.length) / Math.max(a.length, b.length));
+  }
+  const aw = new Set(a.split(' ')), bw = new Set(b.split(' '));
+  let hit = 0;
+  for (const w of aw) if (bw.has(w)) hit++;
+  return hit / Math.max(aw.size, bw.size);
+}
+
+const TITLE_MATCH = 0.85;
+const ARTIST_MATCH = 0.6;
+
+// Searching a title alone surfaces karaoke and tribute records alongside the
+// original, and taking one of those as the answer would replace a correct
+// artist with "The Karaoke Crew". Prefer the plain studio recording.
+const JUNK_TITLE = /\b(karaoke|tribute|cover|instrumental|backing track|made popular by|in the style of)\b/i;
+const VARIANT_TITLE = /\b(live|remaster|remastered|remix|demo|acoustic|radio edit|edit|version|mix)\b/i;
+
+function recordingPenalty(r) {
+  const title = String(r.trackName || '');
+  const album = String(r.collectionName || '');
+  const artist = String(r.artistName || '');
+  let p = 0;
+  if (JUNK_TITLE.test(title) || JUNK_TITLE.test(album) || JUNK_TITLE.test(artist)) p += 1.5;
+  if (VARIANT_TITLE.test(title)) p += 0.35;
+  return p;
+}
+const VERIFY_BUDGET_MS = 15000;   // well inside the 60s function timeout
+const VERIFY_CONCURRENCY = 5;
+
+// 25 rather than a handful: for an album track Apple ranks the artist's hits
+// above the actual title match, so "Aeroplane · Red Hot Chili Peppers" is not
+// in the first few results for its own name and artist.
+async function itunesSearch(term, signal) {
+  const url = 'https://itunes.apple.com/search?media=music&entity=song&limit=25&term='
+    + encodeURIComponent(term);
+  const res = await fetch(url, { signal });
+  // Apple answers an HTML error page when you go over its ~20 calls/minute.
+  if (res.status === 403 || res.status === 429) { const e = new Error('rate-limited'); e.rateLimited = true; throw e; }
+  if (!res.ok) throw new Error('itunes ' + res.status);
+  const text = await res.text();
+  if (!text.trim().startsWith('{')) { const e = new Error('not-json'); e.rateLimited = true; throw e; }
+  return JSON.parse(text).results || [];
+}
+
+// Confirm a title/artist pair against Apple's catalogue.
+//
+// It only ever confirms — it never substitutes a different artist. Apple's
+// search cannot tell "the model credited the wrong artist" apart from "this is
+// a deep cut Apple ranks below more popular songs of the same name": searching
+// "Wonderwall Coldplay" and "Aeroplane Red Hot Chili Peppers" both return that
+// artist's hits and no track of that title, yet the first is wrong and the
+// second is real. Rewriting the credit on that evidence would sometimes invent
+// a wrong one, so anything unconfirmed is dropped instead. Over-generating the
+// setlist is what pays for the occasional real song lost that way.
+//
+// → { status: 'ok' | 'unknown', title, artist }
+async function verifyOneSong(title, artist, signal) {
+  const pick = (results) => {
+    let best = null, bestScore = -Infinity;
+    results.forEach((r, i) => {
+      const ts = songSimilar(r.trackName, title);
+      if (ts < TITLE_MATCH) return;
+      const as = artist ? songSimilar(r.artistName, artist) : 1;
+      if (as < ARTIST_MATCH) return;
+      const score = ts * 2 + as - recordingPenalty(r) - i * 0.01;
+      if (score > bestScore) { bestScore = score; best = r; }
+    });
+    return best;
+  };
+
+  // Pass 1 — the title with the artist the model claimed.
+  let hit = pick(await itunesSearch(`${title} ${artist || ''}`.trim(), signal));
+  // Pass 2 — the title alone, in case Apple ranked the artist's hits above the
+  // track actually being asked about. Still only looking for the same pair.
+  if (!hit && artist) hit = pick(await itunesSearch(title, signal));
+
+  return hit
+    ? { status: 'ok', title: hit.trackName, artist: hit.artistName }
+    : { status: 'unknown' };
+}
+
+// Verifies a list of { title, artist, note }. Returns the songs worth keeping
+// plus a count of what happened, for the usage log.
+//
+// Apple rate-limits, and a setlist is worth more than a perfectly verified one:
+// if the catalogue can't be reached the songs pass through untouched. The only
+// thing that removes a song is Apple actively not having it.
+const DROP = Symbol('drop');
+
+async function verifySongs(songs) {
+  const stats = { checked: 0, dropped: 0, skipped: 0 };
+  // undefined = never reached, DROP = Apple doesn't have it, object = keep.
+  const out = new Array(songs.length);
+  const deadline = Date.now() + VERIFY_BUDGET_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VERIFY_BUDGET_MS);
+  let stop = false;
+  let next = 0;
+
+  const worker = async () => {
+    for (;;) {
+      if (stop) return;
+      const i = next++;
+      if (i >= songs.length) return;
+      const s = songs[i];
+      if (Date.now() > deadline) { stop = true; return; }
+      try {
+        const v = await verifyOneSong(s.title, s.artist, controller.signal);
+        stats.checked++;
+        if (v.status === 'unknown') { stats.dropped++; out[i] = DROP; }
+        // Same recording, Apple's spelling of it.
+        else out[i] = { ...s, title: v.title, artist: v.artist };
+      } catch (err) {
+        // Rate limit or network trouble: stop checking and keep the rest.
+        if (err.rateLimited || err.name === 'AbortError') stop = true;
+        out[i] = s;
+        stats.skipped++;
+      }
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, songs.length) }, worker));
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const kept = [];
+  for (let i = 0; i < songs.length; i++) {
+    if (out[i] === DROP) continue;
+    if (out[i] === undefined) stats.skipped++;   // budget ran out before this one
+    kept.push(out[i] === undefined ? songs[i] : out[i]);
+  }
+  return { songs: kept, stats };
+}
+
 // ─── generateSetlist ──────────────────────────────────────────────────────────
 // Builds an ordered gig setlist from a description of the gig. Prioritises songs
 // already in the user's library, then fills the rest with well-known suggestions
-// that fit the setting and audience.
+// that fit the setting and audience. Every song is checked against Apple's
+// catalogue before it goes back to the client.
 exports.generateSetlist = onCall(
   { ...BASE_OPTIONS, timeoutSeconds: 60, memory: '256MiB' },
   async (request) => {
@@ -517,6 +682,11 @@ exports.generateSetlist = onCall(
     // at least 25% of the set must be songs BY those artists (min 2).
     const artistQuota = artists ? Math.max(2, Math.round((Number(songCount) || 10) * 0.25)) : 0;
 
+    // Ask for more than we need. Every song is checked against Apple's
+    // catalogue afterwards and anything unconfirmed is removed, so the surplus
+    // is what keeps a verified set from coming back short.
+    const askCount = Math.min(38, songCount + 8);
+
     const prompt = `You are Prova, an expert live-music director helping a ${instrument} player plan a gig setlist.
 
 THE GIG (this is what matters most — the setlist must clearly match it):
@@ -525,14 +695,14 @@ THE GIG (this is what matters most — the setlist must clearly match it):
 - Desired genres / vibe: ${vibe || 'not specified — infer the most fitting genre and energy from the setting and audience'}
 - Inspiration artists: ${artists || 'none given'}${artistQuota ? ` — you MUST include at least ${artistQuota} song${artistQuota === 1 ? '' : 's'} performed BY these exact artists (real, well-known tracks of theirs), and use their style to steer the rest` : ''}
 - Player skill level: ${level}
-- Number of songs wanted: ${songCount}
+- Number of songs wanted: ${askCount}
 
 Songs already in the player's library:
 ${libList || '(library is empty)'}
 
 How to choose the songs:
-1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, AT LEAST ${artistQuota || 0} of the ${songCount} songs MUST be real songs performed by those named artists themselves — spread them through the set where they fit the energy curve — and the remaining songs should match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
-2. Pick the best widely-recognised, real songs that fit that genre and vibe. Do NOT invent songs.
+1. The gig's genres, vibe, setting, audience and any inspiration artists are the PRIMARY drivers. First decide the genre and energy this gig calls for (e.g. a country gig → country songs; a high-energy Friday-night bar → upbeat crowd-pleasers; "house like KETTAMA, Fred again.." → modern house/electronic in that style). If inspiration artists are given, AT LEAST ${artistQuota || 0} of the ${askCount} songs MUST be real songs performed by those named artists themselves — spread them through the set where they fit the energy curve — and the remaining songs should match their style, era and energy closely. Two gigs with different descriptions MUST produce clearly different setlists.
+2. Pick the best widely-recognised, real songs that fit that genre and vibe. Every entry must be a real commercially released recording that exists on Apple Music and Spotify, with the artist who actually performed it — every title and artist pairing is checked against Apple's catalogue after you answer, and anything that does not exist is deleted from the setlist. If you are not certain a song is real and that you have the right artist, leave it out and pick one you are certain of. Never invent a title, and never guess an artist.
 3. HARD GENRE GATE: every song must belong to the gig's genre. A song from the wrong genre must NOT appear — no exceptions for famous songs, crowd-pleasers, or songs from the player's library. Example: for a house/electronic gig, rock and acoustic classics like "Hotel California" or "Wonderwall" are WRONG answers. It is better to include zero library songs than one that breaks the genre. Only include a library song when it genuinely belongs to this gig's genre.
 4. Match difficulty to a ${level} player where possible, but prioritise fit to the gig.
 
@@ -550,7 +720,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
 
     let result;
     try {
-      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2000);
+      result = await callClaude(ANTHROPIC_API_KEY.value(), prompt, 2600);
     } catch (err) {
       await writeUsageLog(uid, 'generateSetlist', {
         tokensIn: 0, tokensOut: 0,
@@ -565,6 +735,17 @@ Return only valid JSON, no markdown fences, no explanation.`;
       result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     );
 
+    // Check every suggestion against Apple's catalogue, then trim back to the
+    // number asked for — the model was told to over-generate precisely so that
+    // dropping the invented ones still leaves a full set.
+    let verifyStats = null;
+    if (Array.isArray(setlist.songs)) {
+      const clean = setlist.songs.filter(s => s && typeof s.title === 'string' && s.title.trim());
+      const { songs: verified, stats } = await verifySongs(clean);
+      verifyStats = stats;
+      setlist.songs = verified.slice(0, songCount);
+    }
+
     Promise.all([
       recordTokenUsage(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
       writeUsageLog(uid, 'generateSetlist', {
@@ -572,6 +753,7 @@ Return only valid JSON, no markdown fences, no explanation.`;
         durationMs: Date.now() - startTime,
         success: true,
         appCheckPresent,
+        ...(verifyStats ? { verified: verifyStats } : {}),
       }),
       flagAbuseIfNeeded(uid, 'generateSetlist', result.tokensIn + result.tokensOut),
     ]).catch(() => {});
