@@ -1499,15 +1499,22 @@ function lbRowsHtml(rows) {
       ${shown.map(({ r, i }) => lbRow(r, i)).join('')}
       ${pinMe ? `<div style="text-align:center;color:var(--ink-3);padding:2px 0">···</div>${lbRow(rows[myIdx], myIdx)}` : ''}</div>
     ${q ? `<p class="hint" style="margin:12px 0 0">${hits.length} match${hits.length === 1 ? '' : 'es'}</p>`
-      : (hidden > 0 || LB_VISIBLE > LB_COLLAPSED) ? `<button class="btn sm ghost" id="lbMore" style="width:100%;margin-top:14px">
-          ${hidden > 0 ? `Show ${Math.min(LB_PAGE, hidden)} more` : 'Show less'}</button>` : ''}`;
+      : (hidden > 0 || LB_VISIBLE > LB_COLLAPSED) ? `<div style="display:flex;gap:8px;margin-top:14px">
+          ${LB_VISIBLE > LB_COLLAPSED ? '<button class="btn sm ghost" id="lbLess" style="flex:1">↑ Show less</button>' : ''}
+          ${hidden > 0 ? `<button class="btn sm ghost" id="lbMore" style="flex:1">Show ${Math.min(LB_PAGE, hidden)} more ↓</button>` : ''}
+        </div>` : ''}`;
 }
 function bindLbRows(rows) {
   const more = $('#lbMore');
-  if (more) more.onclick = () => {
-    const hidden = rows.length - Math.min(LB_VISIBLE, rows.length);
-    LB_VISIBLE = hidden > 0 ? LB_VISIBLE + LB_PAGE : LB_COLLAPSED;
+  if (more) more.onclick = () => { LB_VISIBLE += LB_PAGE; repaintLbRows(rows); };
+  const less = $('#lbLess');
+  if (less) less.onclick = () => {
+    LB_VISIBLE = LB_COLLAPSED;
     repaintLbRows(rows);
+    // Collapsing removes everything below the fold, which would otherwise
+    // leave you stranded at the bottom of the page looking at nothing.
+    const card = $('#lbRows')?.closest('.card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 }
 function repaintLbRows(rows) {
