@@ -1136,10 +1136,20 @@ export default function ProgressScreen({ navigation }) {
   // bottom of the page looking at nothing — so collapsing scrolls back to it.
   const lbOffsetRef = useRef(null);
   const scrollToLeaderboard = useCallback(() => {
-    const y = lbOffsetRef.current;
-    if (y == null) return;
-    // A little breathing room above the card rather than flush to its edge.
-    tourScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    // Deferred a frame: the collapse re-lays-out the card first, so reading
+    // its position immediately would use the expanded height and overshoot.
+    requestAnimationFrame(() => {
+      const l = lbOffsetRef.current;
+      if (!l) return;
+      // Centre the card in the viewport when it fits, rather than pinning it
+      // to the top — landing flush against the top edge reads as "jumped to
+      // the top of the page" rather than "came back to the leaderboard".
+      const viewport = Dimensions.get('window').height;
+      const y = l.height < viewport - 120
+        ? l.y - (viewport - l.height) / 2
+        : l.y - 24;
+      tourScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+    });
   }, [tourScrollRef]);
   const tourPad = useTourPadding();
   const [editMode, setEditMode] = useState(false);
@@ -1522,7 +1532,10 @@ export default function ProgressScreen({ navigation }) {
               <View
                 key={w.id}
                 onLayout={w.id === 'leaderboard'
-                  ? (e) => { lbOffsetRef.current = e.nativeEvent.layout.y; }
+                  ? (e) => {
+                    const { y, height } = e.nativeEvent.layout;
+                    lbOffsetRef.current = { y, height };
+                  }
                   : undefined}
               >
                 {content}
