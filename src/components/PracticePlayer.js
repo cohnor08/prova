@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../constants/theme';
 import YouTubePlayerModal from './YouTubePlayerModal';
 import Celebration from './Celebration';
+import { setAppBusy } from '../lib/appBusy';
 
 // Full-screen guided practice player. One task at a time: big timer, the
 // instructions, watch link, then Done/Skip — the student drives, nothing
@@ -73,6 +74,13 @@ export default function PracticePlayer({
   const [, setTick] = useState(0);            // re-render pulse for the clock
   const [watch, setWatch] = useState(null);   // { query, title }
   const [celeb, setCeleb] = useState(null);   // per-task celebration payload
+
+  // While the player is open the app must not restart under it — see
+  // src/lib/appBusy.js and useStaleReload.
+  useEffect(() => {
+    setAppBusy(true);
+    return () => setAppBusy(false);
+  }, []);
 
   // Timestamp-based timing so a locked phone doesn't drift the clock.
   const startedAtRef = useRef(null);
