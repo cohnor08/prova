@@ -47,6 +47,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from './src/hooks/useAuth';
 import { useMaintenance } from './src/hooks/useMaintenance';
+import { useStaleReload } from './src/hooks/useStaleReload';
 import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE, makeTabBarStyle } from './src/constants/theme';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
@@ -287,6 +288,11 @@ function AppInner() {
   // for a beat (see src/lib/nativeSplash.js) and then fades straight into
   // whatever is ready, so there's no second animation and nothing to restart.
   useEffect(() => { hideNativeSplash(); }, []);
+
+  // Coming back after a long time away restarts the app rather than showing
+  // yesterday's data. Only while signed in — there is nothing stale to fix on
+  // the welcome screen, and restarting mid-signup would lose what was typed.
+  useStaleReload(!!user);
 
   let body;
   if (loading || maintenanceLoading) {

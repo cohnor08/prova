@@ -701,6 +701,10 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
 // language, not emoji.
 const RANK_COLORS = ['#F5C044', '#B9C2CE', '#CD8A4F'];
 
+// Rows shown before you ask for more, and how many each "Show more" reveals.
+const LB_COLLAPSED = 3;
+const LB_PAGE = 20;
+
 // Shared so the search box matches on exactly the text the row displays.
 function lbDisplayName(entry, isMe) {
   const fallback = isMe ? auth.currentUser?.email : entry.email;
@@ -738,11 +742,13 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
   // Joining a class auto-selects its leaderboard.
   const [tab, setTab] = useState(inClass ? 'class' : 'world');
   const [open, setOpen] = useState(true);     // collapsible section
-  const [showAll, setShowAll] = useState(false); // expand the row list past the top few
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
+  // How many rows are revealed. Grows a page at a time rather than dumping the
+  // whole roster in one go.
+  const [visibleCount, setVisibleCount] = useState(LB_COLLAPSED);
 
   const handleAdd = async () => {
     const trimmed = email.trim().toLowerCase();
@@ -768,10 +774,6 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
   const rows = tab === 'world' ? worldBoard : tab === 'class' ? classBoard : friendsBoard;
   const isEmpty = rows.length === 0;
 
-  // Collapse long boards to the top few, with a "Show all" toggle. If the
-  // current user is ranked below the cutoff, pin their row so they can always
-  // see where they stand.
-  const LB_COLLAPSED = 3;
   const myIndex = rows.findIndex(e => e.uid === myUid);
 
   // Search, matching the web app. Ranks are carried from the real board, so
@@ -782,8 +784,10 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
   const hits = q
     ? ranked.filter(({ e }) => lbDisplayName(e, e.uid === myUid).toLowerCase().includes(q))
     : ranked;
-  const visibleRows = (q || showAll) ? hits : hits.slice(0, LB_COLLAPSED);
-  const pinMe = !q && !showAll && myIndex >= LB_COLLAPSED;
+  // A search shows every match; paging only applies at rest.
+  const visibleRows = q ? hits : hits.slice(0, visibleCount);
+  const remaining = hits.length - visibleRows.length;
+  const pinMe = !q && myIndex >= visibleCount;
 
   return (
     <View style={styles.section}>
@@ -798,7 +802,11 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
           {/* Tab toggle */}
           <View style={styles.lbTabs}>
             {(inClass ? ['world', 'friends', 'class'] : ['world', 'friends']).map(t => (
-              <TouchableOpacity key={t} style={[styles.lbTab, tab === t && styles.lbTabActive]} onPress={() => { setTab(t); setShowAll(false); }}>
+              <TouchableOpacity
+                key={t}
+                style={[styles.lbTab, tab === t && styles.lbTabActive]}
+                onPress={() => { setTab(t); setVisibleCount(LB_COLLAPSED); setSearch(''); }}
+              >
                 <Ionicons
                   name={t === 'world' ? 'globe-outline' : t === 'class' ? 'school-outline' : 'people-outline'}
                   size={14}
@@ -864,12 +872,18 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
             )}
           </View>
 
-          {/* Show all / less. Hidden while searching — a search already shows
-              every match, so the toggle would have nothing left to reveal. */}
-          {!search.trim() && rows.length > LB_COLLAPSED && (
-            <TouchableOpacity style={styles.lbShowAll} onPress={() => setShowAll(s => !s)} activeOpacity={0.7}>
-              <Text style={styles.lbShowAllText}>{showAll ? 'Show less' : `Show all ${rows.length}`}</Text>
-              <Ionicons name={showAll ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.primary} />
+          {/* Reveal a page at a time, then collapse back. Hidden while
+              searching — a search already shows every match. */}
+          {!q && (remaining > 0 || visibleCount > LB_COLLAPSED) && (
+            <TouchableOpacity
+              style={styles.lbShowAll}
+              onPress={() => setVisibleCount(c => (remaining > 0 ? c + LB_PAGE : LB_COLLAPSED))}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.lbShowAllText}>
+                {remaining > 0 ? `Show ${Math.min(LB_PAGE, remaining)} more` : 'Show less'}
+              </Text>
+              <Ionicons name={remaining > 0 ? 'chevron-down' : 'chevron-up'} size={14} color={COLORS.primary} />
             </TouchableOpacity>
           )}
 
