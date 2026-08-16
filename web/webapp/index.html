@@ -1406,11 +1406,32 @@ function viewProgress() {
 let BOARDS = null;
 let LB_TAB = 'world';
 const lbScore = (u) => (typeof u?.provaScore === 'number' ? u.provaScore : 0);
+
+// Ranking happens here rather than in the query, so this is the real ceiling
+// on the board. Fine at the current scale; a server-maintained top-N is the
+// answer if the roster ever approaches it.
+const LEADERBOARD_FETCH = 300;
+// The accounts handed to Apple for review are seeded with enough practice to
+// demo the app, which put them top of the world board ahead of real players.
+const BOARD_EXCLUDED_EMAILS = new Set([
+  'prova.demo.student@gmail.com',
+  'prova.demo.personal@gmail.com',
+  'prova.webtest.claude@gmail.com',
+]);
+const onWorldBoard = (u) => !BOARD_EXCLUDED_EMAILS.has(String(u?.email || '').toLowerCase());
 async function loadBoards() {
   const out = { world: [], friends: [], klass: [], className: '' };
   try {
-    const snap = await getDocs(query(collection(db, 'users'), orderBy('totalMinutes', 'desc'), limit(20)));
-    out.world = snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => lbScore(b) - lbScore(a));
+    // Ranked by Prova Score, which is the number the rows show. This used to
+    // fetch the top 20 by `totalMinutes` and then re-sort by score — two
+    // different orderings, so a high scorer with few logged minutes fell off
+    // the board, and with most accounts tied on 0 minutes the last places were
+    // arbitrary. Ordering by `provaScore` server-side isn't the answer either:
+    // Firestore drops documents missing the field, and a new account has none.
+    const snap = await getDocs(query(collection(db, 'users'), limit(LEADERBOARD_FETCH)));
+    out.world = snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+      .filter((u) => onWorldBoard(u) || u.uid === uid)
+      .sort((a, b) => lbScore(b) - lbScore(a));
   } catch { /* a blocked read just leaves the board empty */ }
 
   const fr = Array.isArray(me.friends) ? me.friends : [];
