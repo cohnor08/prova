@@ -737,7 +737,7 @@ function LeaderboardRow({ entry, rank, isMe }) {
   );
 }
 
-function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [], className, onAddFriend }) {
+function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [], className, onAddFriend, onCollapse }) {
   const inClass = classBoard.length > 0;
   // Joining a class auto-selects its leaderboard.
   const [tab, setTab] = useState(inClass ? 'class' : 'world');
@@ -872,19 +872,32 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
             )}
           </View>
 
-          {/* Reveal a page at a time, then collapse back. Hidden while
-              searching — a search already shows every match. */}
+          {/* Reveal a page at a time. Once expanded, "Show less" sits beside
+              "Show more" so you can collapse without paging to the very end.
+              Hidden while searching — a search already shows every match. */}
           {!q && (remaining > 0 || visibleCount > LB_COLLAPSED) && (
-            <TouchableOpacity
-              style={styles.lbShowAll}
-              onPress={() => setVisibleCount(c => (remaining > 0 ? c + LB_PAGE : LB_COLLAPSED))}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.lbShowAllText}>
-                {remaining > 0 ? `Show ${Math.min(LB_PAGE, remaining)} more` : 'Show less'}
-              </Text>
-              <Ionicons name={remaining > 0 ? 'chevron-down' : 'chevron-up'} size={14} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.lbPager}>
+              {visibleCount > LB_COLLAPSED && (
+                <TouchableOpacity
+                  style={[styles.lbShowAll, styles.lbPagerBtn]}
+                  onPress={() => { setVisibleCount(LB_COLLAPSED); onCollapse?.(); }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-up" size={14} color={COLORS.primary} />
+                  <Text style={styles.lbShowAllText}>Show less</Text>
+                </TouchableOpacity>
+              )}
+              {remaining > 0 && (
+                <TouchableOpacity
+                  style={[styles.lbShowAll, styles.lbPagerBtn]}
+                  onPress={() => setVisibleCount(c => c + LB_PAGE)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.lbShowAllText}>{`Show ${Math.min(LB_PAGE, remaining)} more`}</Text>
+                  <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
           )}
 
           {/* Add friend button (friends tab) */}
@@ -1117,6 +1130,17 @@ export default function ProgressScreen({ navigation }) {
   const [showRanks, setShowRanks] = useState(false);
   const [layout, setLayout] = useState(DEFAULT_WIDGETS);
   const tourScrollRef = useTourScroller('ProgressHome'); // full tour scroll access
+
+  // Where the leaderboard card sits in the scroll view. Collapsing a long board
+  // removes everything below the fold, which used to leave you stranded at the
+  // bottom of the page looking at nothing — so collapsing scrolls back to it.
+  const lbOffsetRef = useRef(null);
+  const scrollToLeaderboard = useCallback(() => {
+    const y = lbOffsetRef.current;
+    if (y == null) return;
+    // A little breathing room above the card rather than flush to its edge.
+    tourScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+  }, [tourScrollRef]);
   const tourPad = useTourPadding();
   const [editMode, setEditMode] = useState(false);
   const [dragging, setDragging] = useState(false); // true while a widget row is being dragged
@@ -1398,6 +1422,7 @@ export default function ProgressScreen({ navigation }) {
             classBoard={classBoard}
             className={className}
             onAddFriend={() => { lastFetchRef.current = 0; loadData(); }}
+            onCollapse={scrollToLeaderboard}
           />
           </TourSpot>
         );
@@ -1492,7 +1517,17 @@ export default function ProgressScreen({ navigation }) {
           layout.map((w) => {
             const content = renderWidget(w.id);
             if (!content) return null;
-            return w.enabled ? <View key={w.id}>{content}</View> : null;
+            if (!w.enabled) return null;
+            return (
+              <View
+                key={w.id}
+                onLayout={w.id === 'leaderboard'
+                  ? (e) => { lbOffsetRef.current = e.nativeEvent.layout.y; }
+                  : undefined}
+              >
+                {content}
+              </View>
+            );
           })
         )}
 
@@ -1831,6 +1866,10 @@ const styles = themedStyles(() => StyleSheet.create({
   lbName: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   lbMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
   lbScore: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '900' },
+
+  // Both pager buttons share the row and split it evenly when both are shown.
+  lbPager: { flexDirection: 'row', gap: SPACING.sm },
+  lbPagerBtn: { flex: 1 },
 
   lbSearchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
