@@ -234,6 +234,26 @@
   .composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;align-items:center}
   .composer input{flex:1;background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
 
+  /* reactions — the bubble and its reaction row share one column so the two
+     stay aligned to the same edge of the thread */
+  .msgrow{display:flex;flex-direction:column;gap:4px;max-width:74%;position:relative}
+  .msgrow.me{align-self:flex-end;align-items:flex-end}
+  .msgrow.them{align-self:flex-start;align-items:flex-start}
+  .msgrow .bub{max-width:100%}
+  .rx{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:0 3px;min-height:19px}
+  .rxchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink-2);border-radius:999px;padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6}
+  .rxchip.mine{border-color:var(--primary);color:var(--ink)}
+  .rxadd{opacity:0;border:1px solid var(--line);background:var(--card);color:var(--ink-3);border-radius:999px;
+    padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6;transition:opacity .14s}
+  .msgrow:hover .rxadd,.rxadd.on{opacity:1}
+  @media (hover:none){.rxadd{opacity:1}}
+  .rxpick{position:absolute;bottom:100%;margin-bottom:6px;display:flex;gap:2px;background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:5px 8px;box-shadow:var(--shadow);z-index:5}
+  .msgrow.me .rxpick{right:0} .msgrow.them .rxpick{left:0}
+  .rxpick button{border:0;background:transparent;font-size:17px;cursor:pointer;padding:2px 4px;border-radius:8px;line-height:1}
+  .rxpick button:hover{background:var(--raised)}
+
   .empty .ring{width:54px;height:54px;border-radius:50%;border:2px solid var(--line);margin:0 auto 14px;display:grid;place-items:center}
   .spin{display:inline-block;width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -1186,6 +1206,39 @@ function openThread(chatId) {
   setDoc(doc(db, 'chats', chatId), { lastRead: { [meUid]: new Date().toISOString() } }, { merge: true }).catch(() => {});
 }
 
+// Reactions live on the message as { emoji: [uids] }, the same shape the app
+// writes in src/lib/chat.js — so a reaction added here shows up on the phone.
+const QUICK_RX = ['👍', '❤️', '😂', '🔥', '🎸', '👏'];
+
+function rxHtml(m) {
+  const map = m.reactions && typeof m.reactions === 'object' ? m.reactions : {};
+  const used = Object.keys(map).filter(e => (map[e] || []).length);
+  return `<div class="rx">
+    ${used.map(e => `<button class="rxchip${(map[e] || []).includes(meUid) ? ' mine' : ''}"
+      data-rx="${esc(m.id)}|${esc(e)}">${e}<span>${(map[e] || []).length}</span></button>`).join('')}
+    <button class="rxadd" data-rxopen="${esc(m.id)}" title="Add a reaction" aria-label="Add a reaction">🙂﹢</button>
+  </div>`;
+}
+
+async function toggleReaction(messageId, emoji) {
+  if (!CUR) return;
+  const m = MSGS.find(x => x.id === messageId);
+  if (!m) return;
+  const cur = m.reactions && typeof m.reactions === 'object' ? m.reactions : {};
+  const next = {};
+  Object.keys(cur).forEach(k => { next[k] = [...(cur[k] || [])]; });
+  const list = next[emoji] || [];
+  if (list.includes(meUid)) {
+    const rest = list.filter(u => u !== meUid);
+    if (rest.length) next[emoji] = rest; else delete next[emoji];
+  } else {
+    next[emoji] = [...list, meUid];
+  }
+  try {
+    await updateDoc(doc(db, 'chats', CUR.id, 'messages', messageId), { reactions: next });
+  } catch { toast('Could not react'); }
+}
+
 function paintBubbles() {
   const b = document.querySelector('#thBub'); if (!b) return;
   const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 60;
@@ -1193,15 +1246,44 @@ function paintBubbles() {
       const mine = m.senderUid === meUid;
       const when = m.timestamp?.seconds
         ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      if (m.mediaUrl) return `<div class="bub ${mine ? 'me' : 'them'}" style="padding:6px">
-        ${m.mediaType === 'video'
-          ? `<video src="${esc(m.mediaUrl)}" controls style="max-width:230px;border-radius:12px;display:block"></video>`
-          : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`;
-      return `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
-        <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
+      const body = m.mediaUrl
+        ? `<div class="bub ${mine ? 'me' : 'them'}" style="padding:6px">
+            ${m.mediaType === 'video'
+              ? `<video src="${esc(m.mediaUrl)}" controls style="max-width:230px;border-radius:12px;display:block"></video>`
+              : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`
+        : `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
+            <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
+      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${rxHtml(m)}</div>`;
     }).join('') : '<div class="empty">No messages yet — say hello.</div>';
   if (atBottom) b.scrollTop = b.scrollHeight;
 }
+
+// One delegated handler for the whole thread: toggle an existing reaction,
+// open the picker, or pick from it. Clicking anywhere else closes the picker.
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-rx]');
+  if (chip) {
+    const raw = chip.getAttribute('data-rx');
+    const i = raw.lastIndexOf('|');
+    toggleReaction(raw.slice(0, i), raw.slice(i + 1));
+    return;
+  }
+  const pick = e.target.closest('[data-rxpick]');
+  if (pick) {
+    const raw = pick.getAttribute('data-rxpick');
+    const i = raw.lastIndexOf('|');
+    document.querySelectorAll('.rxpick').forEach(p => p.remove());
+    toggleReaction(raw.slice(0, i), raw.slice(i + 1));
+    return;
+  }
+  const open = e.target.closest('[data-rxopen]');
+  document.querySelectorAll('.rxpick').forEach(p => p.remove());
+  if (!open) return;
+  const id = open.getAttribute('data-rxopen');
+  const row = open.closest('.msgrow'); if (!row) return;
+  row.insertAdjacentHTML('beforeend', `<div class="rxpick">${QUICK_RX
+    .map(x => `<button data-rxpick="${esc(id)}|${esc(x)}" aria-label="React ${x}">${x}</button>`).join('')}</div>`);
+});
 
 function paintThread() {
   const host = document.querySelector('#thread'); if (!host) return;
