@@ -1,4 +1,11 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
+Disallow: /app/
+Disallow: /webapp/
+Disallow: /studio/
+Disallow: /preview/
+Disallow: /live.html
+Disallow: /check.html
+
 Sitemap: https://prova-583c9.web.app/sitemap.xml
