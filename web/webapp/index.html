@@ -424,7 +424,8 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, deleteUser }
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, deleteUser,
+  sendEmailVerification }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory.js';
@@ -462,6 +463,10 @@ const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','satur
 const TODAY_NAME = DAYS[new Date().getDay()];
 
 let me = null, uid = null, sessions = [], screen = 'today';
+// Set at signup if the confirmation email didn't go out; read by the verify
+// gate further down. Declared here rather than beside the gate so it is never
+// assigned before its own `let` runs.
+let VERIFY_SEND_ERROR = '';
 // ?game=<id> opens one game on its own. It is how a teacher reaches the games
 // from Studio, and it works for any account — nothing here is role-gated.
 const GAME_IDS = ['ear', 'fret', 'rhythm', 'theory'];
@@ -504,14 +509,28 @@ $('#suBtn').onclick = async () => {
   if (!nm || !em || pw.length < 6) { $('#suErr').textContent = 'Name, email, and a password of at least 6 characters.'; return; }
   $('#suBtn').disabled = true;
   try {
-    const cred = await createUserWithEmailAndPassword(auth, em, pw);
+    const cred = await createUserWithEmailAndPassword(auth, em.toLowerCase(), pw);
     // The same fields the app's onboarding writes first — the rest (level,
     // goals, the generated plan) is finished on the phone.
     await setDoc(doc(db, 'users', cred.user.uid), {
-      email: em, username: nm, role: SIGNUP_ROLE, createdAt: new Date().toISOString(),
+      email: em.toLowerCase(), username: nm, role: SIGNUP_ROLE, createdAt: new Date().toISOString(),
       onboardingComplete: false, streak: 0, provaScore: 0, totalMinutes: 0,
+      // Signing up here used to skip this, so a web-made account got no
+      // confirmation email AND was exempt from the phone's gate. Same flag
+      // the app writes in SignupScreen.js, so one account behaves the same
+      // way whichever surface made it.
+      requiresEmailVerification: true,
       ...(SIGNUP_ROLE === 'teacher' ? {} : { instrument: SIGNUP_INST }),
     }, { merge: true });
+    try {
+      await sendEmailVerification(cred.user);
+    } catch (err) {
+      // Not fatal — the verify screen has its own Resend. But it is never
+      // swallowed: if the first send fails the screen says so on arrival.
+      VERIFY_SEND_ERROR = err?.code === 'auth/too-many-requests'
+        ? 'Too many attempts just now — use Resend in a minute.'
+        : 'We could not send the confirmation email. Try Resend below.';
+    }
   } catch (e) {
     $('#suErr').textContent = /email-already-in-use/.test(e?.code || '')
       ? 'That email already has an account — log in instead.'
@@ -536,6 +555,86 @@ function confirmSignOut() {
   };
 }
 
+// ── Email confirmation ───────────────────────────────────────────────────
+// Mirrors VerifyEmailScreen.js on the phone: only accounts carrying
+// `requiresEmailVerification` are gated, so nobody who signed up before the
+// flag existed can be locked out. Firebase only refreshes `emailVerified` on
+// reload, and the link opens in a mail client rather than here, so this both
+// polls and offers an explicit "I've confirmed it".
+let verifyPoll = null;
+const VERIFY_POLL_MS = 4000;
+const VERIFY_COOLDOWN_S = 45;
+
+function showVerifyGate(onDone) {
+  $('#splash').classList.add('hidden');
+  $('#login').classList.add('hidden');
+  $('#app').classList.add('hidden');
+  let cooldown = 0;
+
+  const host = $('#overlays');
+  const paint = () => {
+    host.innerHTML = `<div class="scrim"></div><div class="modal" style="text-align:center">
+      <div style="width:56px;height:56px;border-radius:50%;background:var(--raised);display:grid;
+        place-items:center;margin:0 auto 16px;font-size:24px">✉️</div>
+      <h3 style="font-size:19px;margin-bottom:8px">Confirm your email</h3>
+      <p class="hint" style="margin:0 0 6px">We sent a link to
+        <strong style="color:var(--ink)">${esc(auth.currentUser?.email || 'your email')}</strong>.
+        Open it, then come back here.</p>
+      <p class="hint" style="margin:0 0 20px;font-size:12.5px">Check your spam folder if it hasn't arrived in a minute.</p>
+      ${VERIFY_SEND_ERROR ? `<p style="color:#FCA5A5;font-size:13px;margin:0 0 16px">${esc(VERIFY_SEND_ERROR)}</p>` : ''}
+      <button class="btn" id="vDone" style="width:100%">I've confirmed it</button>
+      <button class="btn ghost" id="vResend" style="width:100%;margin-top:10px"${cooldown ? ' disabled' : ''}>${
+        cooldown ? `Resend in ${cooldown}s` : 'Resend the email'}</button>
+      <button class="btn ghost" id="vOut" style="width:100%;margin-top:10px;border:0">Use a different account</button>
+    </div>`;
+
+    $('#vDone').onclick = async () => {
+      const b = $('#vDone'); b.disabled = true; b.textContent = 'Checking…';
+      const ok = await checkVerified();
+      if (!ok) { b.disabled = false; b.textContent = "I've confirmed it";
+        toast("No confirmation yet — open the link, then try again."); }
+    };
+    $('#vResend').onclick = async () => {
+      if (cooldown > 0) return;
+      try {
+        await sendEmailVerification(auth.currentUser);
+        VERIFY_SEND_ERROR = '';
+        toast('Sent — check your inbox, and your spam folder.');
+        cooldown = VERIFY_COOLDOWN_S; paint();
+        const tick = setInterval(() => {
+          cooldown -= 1;
+          if (cooldown <= 0) { clearInterval(tick); paint(); }
+          else { const r = $('#vResend'); if (r) r.textContent = `Resend in ${cooldown}s`; }
+        }, 1000);
+      } catch (e) {
+        toast(e?.code === 'auth/too-many-requests'
+          ? 'Too many attempts — wait a minute.' : 'Could not send. Check your connection.');
+      }
+    };
+    $('#vOut').onclick = async () => {
+      stopVerifyPoll(); host.innerHTML = '';
+      await signOut(auth);
+    };
+  };
+
+  const checkVerified = async () => {
+    try {
+      await auth.currentUser.reload();
+      if (auth.currentUser?.emailVerified) {
+        stopVerifyPoll(); host.innerHTML = '';
+        onDone();
+        return true;
+      }
+    } catch { /* offline — the poll will catch it */ }
+    return false;
+  };
+
+  paint();
+  stopVerifyPoll();
+  verifyPoll = setInterval(checkVerified, VERIFY_POLL_MS);
+}
+function stopVerifyPoll() { if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; } }
+
 // Nothing is shown until Firebase has resolved the session — otherwise a
 // signed-in visitor sees the welcome screen flash before their account
 // loads. Same reason the app holds `loading` in useAuth (PR #67).
@@ -549,24 +648,37 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   uid = user.uid;
+  stopVerifyPoll();
+  let profile = {};
+  try { profile = (await getDoc(doc(db, 'users', user.uid))).data() || {}; }
+  catch { /* fall through to the student view */ }
+
+  // Confirm the address before anything else — including the Studio redirect,
+  // so a brand-new teacher isn't bounced straight past the gate. Only accounts
+  // carrying the flag are asked, so nobody who joined earlier is locked out.
+  if (profile.requiresEmailVerification === true && !user.emailVerified) {
+    showVerifyGate(() => enterApp(user, profile));
+    return;
+  }
+  await enterApp(user, profile);
+});
+
+// Everything after the account is known to be usable. Split out of the auth
+// handler so the verify gate can call it once the address is confirmed.
+async function enterApp(user, profile) {
   // Role decides the whole experience, exactly as it does in the app — a
   // teacher signing in here was getting the student screen with an empty
-  // plan. Studio is the teacher surface.
-  try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
-    // Teachers get the four games too — the phone puts them under the teacher
-    // Resources tab. Rather than build the whole games engine a second time in
-    // Studio, Studio links here with ?game=, and that one case skips the
-    // redirect and opens the game on its own.
-    if ((snap.data() || {}).role === 'teacher' && !GAME_PARAM) {
-      $('#splash').innerHTML = `<div style="text-align:center">
-        <img src="/img/icon-192.png" alt="" style="width:64px;height:64px;border-radius:17px">
-        <div style="font-family:var(--serif);font-size:20px;letter-spacing:3.5px;margin-top:14px">PROVA</div>
-        <div style="color:var(--ink-3);font-size:13px;margin-top:12px">Teacher account — opening Studio…</div></div>`;
-      location.replace('/studio/');
-      return;
-    }
-  } catch { /* fall through to the student view */ }
+  // plan. Studio is the teacher surface. Teachers get the four games too, so
+  // Studio links back here with ?game=, and that one case skips the redirect.
+  if (profile.role === 'teacher' && !GAME_PARAM) {
+    $('#splash').classList.remove('hidden');
+    $('#splash').innerHTML = `<div style="text-align:center">
+      <img src="/img/icon-192.png" alt="" style="width:64px;height:64px;border-radius:17px">
+      <div style="font-family:var(--serif);font-size:20px;letter-spacing:3.5px;margin-top:14px">PROVA</div>
+      <div style="color:var(--ink-3);font-size:13px;margin-top:12px">Teacher account — opening Studio…</div></div>`;
+    location.replace('/studio/');
+    return;
+  }
   loadPrior();
   try { await load(); await loadHistory(); }
   catch { $('#splash').classList.add('hidden'); $('#login').classList.remove('hidden'); show('welcome'); return; }
@@ -575,7 +687,7 @@ onAuthStateChanged(auth, async (user) => {
   renderNav();
   go(GAME_PARAM || 'today');
   document.getElementById('metro').classList.add('ready');
-});
+}
 // If Firebase never answers (offline, blocked), don't sit on the splash.
 setTimeout(() => {
   if (!$('#splash').classList.contains('hidden') && !auth.currentUser) {

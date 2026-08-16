@@ -80,9 +80,14 @@ export default function SignupScreen({ navigation, route }) {
         // existing user can't be locked out by a rule added under them.
         requiresEmailVerification: true,
       });
-      // Best-effort: a failure here is recoverable from the verify screen,
-      // which has its own Resend.
-      sendEmailVerification(user).catch(() => {});
+      // Recoverable — the verify screen has its own Resend — but never
+      // silent. This used to be `.catch(() => {})`, so a send that failed
+      // left the account sitting on "we sent you a link" when nothing had
+      // been sent, with no way to tell that apart from a slow inbox.
+      sendEmailVerification(user).catch((err) => {
+        console.warn('Verification email failed to send:', err?.code || err);
+        track('verification_email_failed', { code: err?.code || 'unknown' });
+      });
     } catch (error) {
       const message = FIREBASE_ERRORS[error.code] || 'Sign up failed. Please try again.';
       Alert.alert('Sign Up Failed', message);
