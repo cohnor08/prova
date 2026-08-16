@@ -1513,8 +1513,10 @@ function bindLbRows(rows) {
     repaintLbRows(rows);
     // Collapsing removes everything below the fold, which would otherwise
     // leave you stranded at the bottom of the page looking at nothing.
+    // Centred, not 'start': the card sits near the top of this page, so
+    // aligning to its top just threw you to the very top of the document.
     const card = $('#lbRows')?.closest('.card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 }
 function repaintLbRows(rows) {
