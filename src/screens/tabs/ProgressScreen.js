@@ -29,6 +29,22 @@ const CACHE_TTL = 5 * 60 * 1000;
 
 // Practice heatmap: 12 weeks of small squares (GitHub-contributions style)
 const HEATMAP_WEEKS = 12;
+
+// How many accounts the world board pulls before ranking them locally. Ranking
+// has to happen client-side (see the comment where this is used), so this is
+// the real ceiling on the board. Comfortable at the current scale; if the user
+// count ever approaches it, the board needs a server-maintained top-N instead.
+const LEADERBOARD_FETCH = 300;
+
+// The accounts handed to Apple for review. They're seeded with enough practice
+// to demonstrate the app, which put them at #1 and #3 on the world board ahead
+// of every real player. They stay out of it.
+const BOARD_EXCLUDED_EMAILS = new Set([
+  'prova.demo.student@gmail.com',
+  'prova.demo.personal@gmail.com',
+  'prova.webtest.claude@gmail.com',
+]);
+const onWorldBoard = (u) => !BOARD_EXCLUDED_EMAILS.has(String(u.email || '').toLowerCase());
 const HEAT_CELL = 14;
 const HEAT_GAP = 3;
 
@@ -685,14 +701,20 @@ function BadgeGrid({ userData, onSkillTree, open, onToggle, onBadgePress }) {
 // language, not emoji.
 const RANK_COLORS = ['#F5C044', '#B9C2CE', '#CD8A4F'];
 
+// Shared so the search box matches on exactly the text the row displays.
+function lbDisplayName(entry, isMe) {
+  const fallback = isMe ? auth.currentUser?.email : entry.email;
+  return entry.username || fallback?.split('@')[0].replace(/\d+/g, '') || '?';
+}
+
 function LeaderboardRow({ entry, rank, isMe }) {
   const score = displayScore(entry);
-  const name = entry.username || (isMe ? auth.currentUser?.email?.split('@')[0].replace(/\d+/g, '') : entry.email?.split('@')[0].replace(/\d+/g, '')) || '?';
+  const name = lbDisplayName(entry, isMe);
   const initial = (name[0] || '?').toUpperCase();
   const streak = entry.streak || 0;
   return (
     <View style={[styles.lbRow, isMe && styles.lbRowMe]}>
-      <Text style={styles.lbRank}>
+      <Text style={styles.lbRank} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
         {rank <= 3 ? <Ionicons name="medal" size={16} color={RANK_COLORS[rank - 1]} /> : `#${rank}`}
       </Text>
       <View style={[styles.lbAvatar, isMe && { backgroundColor: COLORS.primary }]}>
@@ -720,6 +742,7 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
   const [showAdd, setShowAdd] = useState(false);
   const [email, setEmail] = useState('');
   const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState('');
 
   const handleAdd = async () => {
     const trimmed = email.trim().toLowerCase();
@@ -750,8 +773,17 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
   // see where they stand.
   const LB_COLLAPSED = 3;
   const myIndex = rows.findIndex(e => e.uid === myUid);
-  const visibleRows = showAll ? rows : rows.slice(0, LB_COLLAPSED);
-  const pinMe = !showAll && myIndex >= LB_COLLAPSED;
+
+  // Search, matching the web app. Ranks are carried from the real board, so
+  // filtering never renumbers anyone — find a name and you see the position
+  // they actually hold, not their position within the search results.
+  const q = search.trim().toLowerCase();
+  const ranked = rows.map((e, i) => ({ e, rank: i + 1 }));
+  const hits = q
+    ? ranked.filter(({ e }) => lbDisplayName(e, e.uid === myUid).toLowerCase().includes(q))
+    : ranked;
+  const visibleRows = (q || showAll) ? hits : hits.slice(0, LB_COLLAPSED);
+  const pinMe = !q && !showAll && myIndex >= LB_COLLAPSED;
 
   return (
     <View style={styles.section}>
@@ -780,6 +812,29 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
             ))}
           </View>
 
+          {/* Search — only worth showing once the board is bigger than the
+              collapsed view, otherwise it's a box with nothing to filter. */}
+          {rows.length > LB_COLLAPSED && (
+            <View style={styles.lbSearchWrap}>
+              <Ionicons name="search" size={15} color={COLORS.textMuted} />
+              <TextInput
+                style={styles.lbSearchInput}
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search players…"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* Board */}
           <View style={styles.lbCard}>
             {isEmpty ? (
@@ -789,10 +844,15 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
                   {tab === 'friends' ? 'Add friends to see how you stack up' : 'No data yet'}
                 </Text>
               </View>
+            ) : visibleRows.length === 0 ? (
+              <View style={styles.lbEmpty}>
+                <Text style={styles.lbEmptyIcon}>🔍</Text>
+                <Text style={styles.lbEmptyText}>Nobody matching “{search.trim()}”</Text>
+              </View>
             ) : (
               <>
-                {visibleRows.map((entry, i) => (
-                  <LeaderboardRow key={entry.uid} entry={entry} rank={i + 1} isMe={entry.uid === myUid} />
+                {visibleRows.map(({ e, rank }) => (
+                  <LeaderboardRow key={e.uid} entry={e} rank={rank} isMe={e.uid === myUid} />
                 ))}
                 {pinMe && (
                   <>
@@ -804,8 +864,9 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
             )}
           </View>
 
-          {/* Show all / less (only when the board is longer than the cutoff) */}
-          {rows.length > LB_COLLAPSED && (
+          {/* Show all / less. Hidden while searching — a search already shows
+              every match, so the toggle would have nothing left to reveal. */}
+          {!search.trim() && rows.length > LB_COLLAPSED && (
             <TouchableOpacity style={styles.lbShowAll} onPress={() => setShowAll(s => !s)} activeOpacity={0.7}>
               <Text style={styles.lbShowAllText}>{showAll ? 'Show less' : `Show all ${rows.length}`}</Text>
               <Ionicons name={showAll ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.primary} />
@@ -1055,7 +1116,12 @@ export default function ProgressScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      if (Date.now() - lastFetchRef.current > CACHE_TTL) loadData();
+      // Your own figures are re-read every time you arrive. Finishing the
+      // daily challenge on Today and switching straight here used to show the
+      // score from up to five minutes ago — the whole screen sat behind one
+      // TTL, so "I just earned 75 points" read as 0. The world board is the
+      // expensive read and barely moves, so that part alone keeps the cache.
+      loadData({ includeBoards: Date.now() - lastFetchRef.current > CACHE_TTL });
     }, [])
   );
 
@@ -1064,7 +1130,7 @@ export default function ProgressScreen({ navigation }) {
   // are ready before anyone arrives.
   useEffect(() => { loadData(); }, []);
 
-  const loadData = async () => {
+  const loadData = async ({ includeBoards = true } = {}) => {
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
@@ -1072,7 +1138,7 @@ export default function ProgressScreen({ navigation }) {
       const [userSnap, logsSnap, boardSnap] = await Promise.all([
         getDoc(doc(db, 'users', uid)),
         getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), orderBy('date', 'desc'), limit(HEATMAP_WEEKS * 7))),
-        getDocs(query(collection(db, 'users'), orderBy('totalMinutes', 'desc'), limit(20))),
+        includeBoards ? getDocs(query(collection(db, 'users'), limit(LEADERBOARD_FETCH))) : null,
       ]);
 
       const data = userSnap.data();
@@ -1085,9 +1151,22 @@ export default function ProgressScreen({ navigation }) {
       const score = displayScore(data);
       const now = Date.now();
       const baseDate = data?.weekScoreDate ? new Date(data.weekScoreDate).getTime() : null;
-      if (data?.weekScoreBaseline == null || !baseDate || now - baseDate >= 7 * 86400000) {
-        setWeekPoints(0);
-        updateDoc(doc(db, 'users', uid), { weekScoreBaseline: score, weekScoreDate: new Date().toISOString() }).catch(() => {});
+      const stale = !baseDate || now - baseDate >= 7 * 86400000;
+      if (data?.weekScoreBaseline == null || stale) {
+        // The baseline is created lazily, the first time Progress is opened.
+        // It used to be seeded with the CURRENT score, so everything earned
+        // before that first visit — the daily challenge you just finished,
+        // your first session — was absorbed into the baseline and the week
+        // read 0. For an account younger than the window, every point it has
+        // was earned inside the window, so the honest baseline is 0.
+        const createdAt = data?.createdAt ? new Date(data.createdAt).getTime() : null;
+        const freshAccount = createdAt != null && now - createdAt < 7 * 86400000;
+        const baseline = freshAccount && data?.weekScoreBaseline == null ? 0 : score;
+        setWeekPoints(Math.max(0, score - baseline));
+        updateDoc(doc(db, 'users', uid), {
+          weekScoreBaseline: baseline,
+          weekScoreDate: new Date().toISOString(),
+        }).catch(() => {});
       } else {
         setWeekPoints(Math.max(0, score - data.weekScoreBaseline));
       }
@@ -1096,11 +1175,23 @@ export default function ProgressScreen({ navigation }) {
       logsSnap.forEach(d => { map[d.id] = d.data(); });
       setLogMap(map);
 
-      // Fetched by totalMinutes for a cheap top-N, then ranked by Prova Score
-      const world = boardSnap.docs
-        .map(d => ({ uid: d.id, ...d.data() }))
-        .sort((a, b) => entryScore(b) - entryScore(a));
-      setWorldBoard(world);
+      // Ranked by Prova Score, which is also what the rows display.
+      //
+      // This used to fetch the top 20 by `totalMinutes` and then re-sort them
+      // by score — two different orderings, so the board was "twenty people
+      // who practised the most, shuffled by a number that isn't minutes".
+      // Anyone with a high score and few logged minutes fell off it, and with
+      // most accounts tied on 0 minutes the last places were arbitrary.
+      // Ordering server-side by `provaScore` isn't the fix either: Firestore
+      // drops documents missing the field, and a new account has no score yet,
+      // so those players would vanish entirely. Fetch the roster and rank here.
+      if (boardSnap) {
+        const world = boardSnap.docs
+          .map(d => ({ uid: d.id, ...d.data() }))
+          .filter(u => onWorldBoard(u) || u.uid === uid)
+          .sort((a, b) => entryScore(b) - entryScore(a));
+        setWorldBoard(world);
+      }
 
       // Fetch friends
       const friendUids = data?.friends || [];
@@ -1134,7 +1225,9 @@ export default function ProgressScreen({ navigation }) {
         setClassName('');
       }
 
-      lastFetchRef.current = Date.now();
+      // Only stamp when the board actually refetched — otherwise every focus
+      // would push the deadline out and the board would never refresh at all.
+      if (includeBoards) lastFetchRef.current = Date.now();
     } catch (e) {
       console.error(e);
     } finally {
@@ -1715,13 +1808,25 @@ const styles = themedStyles(() => StyleSheet.create({
   lbCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', marginBottom: SPACING.sm },
   lbRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border + '66', gap: SPACING.sm },
   lbRowMe: { backgroundColor: COLORS.primary + '12' },
-  lbRank: { width: 28, fontSize: 14, fontWeight: '800', color: COLORS.textMuted, textAlign: 'center' },
+  // Wide enough for "#100". At 28 a three-character rank clipped, so every
+  // position from #10 down rendered broken.
+  lbRank: { width: 38, fontSize: 13.5, fontWeight: '800', color: COLORS.textMuted, textAlign: 'center' },
   lbAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
   lbAvatarText: { color: COLORS.text, fontWeight: '800', fontSize: 14 },
   lbInfo: { flex: 1 },
   lbName: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   lbMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
   lbScore: { color: COLORS.textSecondary, fontSize: 16, fontWeight: '900' },
+
+  lbSearchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 10, paddingHorizontal: SPACING.md, paddingVertical: Platform.OS === 'ios' ? 9 : 2,
+    marginBottom: SPACING.sm,
+  },
+  // minWidth:0 so a long query shrinks the field instead of pushing the clear
+  // button out of the row — see the flex rules in src/lib/text.js.
+  lbSearchInput: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, padding: 0 },
 
   lbEmpty: { alignItems: 'center', paddingVertical: SPACING.xxl },
   lbEmptyIcon: { fontSize: 36, marginBottom: SPACING.sm },
