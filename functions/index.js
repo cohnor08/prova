@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const functionsV1 = require('firebase-functions/v1');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -1628,4 +1629,34 @@ exports.adminDeleteUser = onCall({ timeoutSeconds: 300 }, async (request) => {
       throw new HttpsError('internal', 'Data removed but auth deletion failed: ' + e.message);
   }
   return { ok: true, ...report };
+});
+
+// ─── cleanupDeletedUser ───────────────────────────────────────────────────────
+// Delete an account's Firestore document whenever its login goes away.
+//
+// The in-app "Delete account" flow already removes the document before the
+// login, so this is not about that path. It's about every other way an account
+// disappears — deleted from the Firebase console, removed by an admin, cleaned
+// up by a script. Those only touch Auth, and the users/{uid} document is left
+// behind for ever.
+//
+// Those leftovers are not harmless. A stale document keeps the person's email
+// in the users collection, so looking somebody up by address returns two rows:
+// the account they actually sign into, and a record nobody can read. A gig
+// invite was delivered to one of these and simply never arrived — the client
+// took the first match, and Firestore orders equality matches by document id.
+//
+// v1 API on purpose: Auth delete triggers have no v2 equivalent. It runs
+// happily alongside the v2 functions in this file.
+exports.cleanupDeletedUser = functionsV1.auth.user().onDelete(async (user) => {
+  const ref = admin.firestore().doc(`users/${user.uid}`);
+  try {
+    // Sub-collections (inbox) don't go with the parent — remove them first.
+    const inbox = await ref.collection('inbox').listDocuments();
+    await Promise.all(inbox.map((d) => d.delete()));
+    await ref.delete();
+    console.log(`cleanupDeletedUser: removed users/${user.uid} (${user.email || 'no email'})`);
+  } catch (err) {
+    console.error(`cleanupDeletedUser: failed for ${user.uid}`, err);
+  }
 });
