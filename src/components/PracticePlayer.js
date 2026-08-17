@@ -9,6 +9,8 @@ import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../constants/theme';
 import YouTubePlayerModal from './YouTubePlayerModal';
 import Celebration from './Celebration';
+import ProofMedia from './ProofMedia';
+import SheetModal from './SheetModal';
 import { setAppBusy } from '../lib/appBusy';
 
 // Full-screen guided practice player. One task at a time: big timer, the
@@ -59,6 +61,8 @@ export default function PracticePlayer({
   onBankStep,        // (stepId, seconds) -> Promise<pts> — learn-a-song step
   onGigSongEnd,      // Done/Next on a setlist song → back to the song picker
   onAttachProof,
+  onViewProof,        // (task) -> open the full set when there's more than one
+  assignedTasks,      // the raw tasks, so the viewer gets the real object
   proofBusyId,
   proofPct,
   proofStep,
@@ -74,6 +78,7 @@ export default function PracticePlayer({
   const [, setTick] = useState(0);            // re-render pulse for the clock
   const [watch, setWatch] = useState(null);   // { query, title }
   const [celeb, setCeleb] = useState(null);   // per-task celebration payload
+  const [note, setNote] = useState(null);     // { title, body } — teacher comment, in full
 
   // While the player is open the app must not restart under it — see
   // src/lib/appBusy.js and useStaleReload.
@@ -318,23 +323,79 @@ export default function PracticePlayer({
                 </TouchableOpacity>
               )}
 
-              {item.kind === 'teacher' && (
-                item.proofUrl ? (
-                  <View style={styles.proofNote}>
-                    <Ionicons name={item.proofVerified ? 'checkmark-circle' : 'videocam'} size={15} color={item.proofVerified ? COLORS.success : COLORS.primary} />
-                    <Text style={styles.proofNoteText}>{item.proofVerified ? 'Proof verified' : 'Proof submitted'}</Text>
-                    <TouchableOpacity onPress={() => onAttachProof(item.taskId)} disabled={proofBusyId === item.taskId} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.proofReplaceLink}>{proofBusyId === item.taskId ? 'Uploading…' : 'Add / Replace'}</Text>
-                    </TouchableOpacity>
+              {/* Your teacher's comment on this task. Capped to three lines
+                  so a long one can't push the clock and controls off screen;
+                  tap to read the whole thing. */}
+              {item.kind === 'teacher' && !!(item.feedback || '').trim() && (
+                <TouchableOpacity
+                  style={styles.fbCard}
+                  onPress={() => { pauseClock(); setNote({ title: item.title, body: item.feedback }); }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.fbHead}>
+                    <Ionicons name="chatbubble-ellipses" size={13} color={COLORS.primary} />
+                    <Text style={styles.fbWho}>From your teacher</Text>
+                    <Text style={styles.fbMore}>Read</Text>
                   </View>
-                ) : (
-                  <TouchableOpacity style={styles.proofBtn} onPress={() => onAttachProof(item.taskId)} disabled={proofBusyId === item.taskId} activeOpacity={0.8}>
+                  <Text style={styles.fbBody} numberOfLines={3}>{item.feedback.trim()}</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Proof — the only place it lives now. Watch back what you sent
+                  before deciding whether to replace it. */}
+              {item.kind === 'teacher' && (
+                <View style={styles.proofBlock}>
+                  {!!item.proofUrl && (
+                    <>
+                      <View style={styles.proofNote}>
+                        <Ionicons
+                          name={item.proofVerified ? 'checkmark-circle' : 'videocam'}
+                          size={15}
+                          color={item.proofVerified ? COLORS.success : COLORS.primary}
+                        />
+                        <Text style={styles.proofNoteText}>
+                          {item.proofVerified ? 'Proof verified' : 'Proof submitted'}
+                        </Text>
+                        {/* Only offered when there IS more than one — otherwise
+                            the preview below already is the whole story. */}
+                        {(() => {
+                          const src = (assignedTasks || []).find((t) => t.id === item.taskId);
+                          const n = src?.proofs?.length || 0;
+                          if (n < 2 || !onViewProof) return null;
+                          return (
+                            <TouchableOpacity
+                              onPress={() => { pauseClock(); onViewProof(src); }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={styles.proofReplaceLink}>All {n}</Text>
+                            </TouchableOpacity>
+                          );
+                        })()}
+                      </View>
+                      <ProofMedia
+                        key={item.proofUrl}
+                        url={item.proofUrl}
+                        type={item.proofType || 'video'}
+                        style={styles.proofPreview}
+                      />
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.proofBtn}
+                    onPress={() => onAttachProof(item.taskId)}
+                    disabled={proofBusyId === item.taskId}
+                    activeOpacity={0.8}
+                  >
                     {proofBusyId === item.taskId
                       ? <Ghost size="small" color={COLORS.primary} />
                       : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
-                    <Text style={styles.proofBtnText}>{proofBusyId === item.taskId ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…')) : 'Add proof of practice'}</Text>
+                    <Text style={styles.proofBtnText}>
+                      {proofBusyId === item.taskId
+                        ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…'))
+                        : item.proofUrl ? 'Record another' : 'Add proof of practice'}
+                    </Text>
                   </TouchableOpacity>
-                )
+                </View>
               )}
             </ScrollView>
 
@@ -410,6 +471,28 @@ export default function PracticePlayer({
           onClose={() => setWatch(null)}
         />
 
+        {/* The teacher's comment in full — the card in the scroll view is
+            capped at three lines so it can't shove the clock off screen. */}
+        <SheetModal
+          visible={!!note}
+          onRequestClose={() => setNote(null)}
+          centered
+          dismissOnBackdrop
+          cardStyle={styles.noteCard}
+        >
+          <View style={styles.noteHead}>
+            <Ionicons name="chatbubble-ellipses" size={15} color={COLORS.primary} />
+            <Text style={styles.noteWho}>From your teacher</Text>
+          </View>
+          {!!note?.title && <Text style={styles.noteTask} numberOfLines={2}>{note.title}</Text>}
+          <ScrollView style={styles.noteScroll} contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+            <Text style={styles.noteBody}>{note?.body}</Text>
+          </ScrollView>
+          <TouchableOpacity style={styles.noteClose} onPress={() => setNote(null)} activeOpacity={0.85}>
+            <Text style={styles.noteCloseText}>Close</Text>
+          </TouchableOpacity>
+        </SheetModal>
+
         <Celebration data={celeb} onDone={() => setCeleb(null)} />
       </InsetShell>
       </SafeAreaProvider>
@@ -443,6 +526,32 @@ const styles = themedStyles(() => StyleSheet.create({
   proofNote: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   proofNoteText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   proofReplaceLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginLeft: 6 },
+
+  // proof, gathered into one block: status, what you sent, then the control
+  proofBlock: { gap: SPACING.sm, marginTop: SPACING.md, alignItems: 'flex-start' },
+  proofPreview: { width: '100%', aspectRatio: 16 / 10, borderRadius: 12, overflow: 'hidden', backgroundColor: COLORS.card },
+
+  // teacher's comment on the task — capped on the page, full in the sheet
+  fbCard: {
+    marginTop: SPACING.md, padding: SPACING.md, borderRadius: 14,
+    backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '2E',
+  },
+  fbHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  fbWho: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
+  fbMore: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  fbBody: { color: COLORS.text, fontSize: 13.5, lineHeight: 20 },
+
+  noteCard: { padding: SPACING.lg, borderRadius: 20, maxHeight: '76%' },
+  noteHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  noteWho: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+  noteTask: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', marginTop: 6 },
+  noteScroll: { marginTop: SPACING.md },
+  noteBody: { color: COLORS.text, fontSize: 15, lineHeight: 23 },
+  noteClose: {
+    marginTop: SPACING.md, paddingVertical: 13, borderRadius: 13,
+    backgroundColor: COLORS.card, alignItems: 'center',
+  },
+  noteCloseText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   controls: { flexDirection: 'row', gap: SPACING.md, paddingHorizontal: SPACING.xl, marginBottom: SPACING.sm },
   pauseBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   pauseText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },

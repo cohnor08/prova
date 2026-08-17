@@ -31,7 +31,8 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   // Two homes in one window. Arriving from a lesson row opens Lesson notes;
   // otherwise Task feedback leads.
-  const [tab, setTab] = useState(focusDate ? 'lessons' : 'feedback');
+  // Lesson notes are the default now that they lead the toggle.
+  const [tab, setTab] = useState('lessons');
   const [collapsed, setCollapsed] = useState(() => new Set()); // collapsed feedback sections
   const toggleSection = (label) => setCollapsed((prev) => {
     const next = new Set(prev);
@@ -91,17 +92,10 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
         <View style={{ width: 64 }} />
       </View>
 
-      {/* ── Tab toggle: two homes, one window ── */}
+      {/* ── Tab toggle: two homes, one window. Lesson notes lead — they're
+           what a student comes here for after a lesson; task feedback is the
+           follow-up. ── */}
       <View style={styles.tabRow}>
-        <TouchableOpacity
-          style={[styles.tabPill, tab === 'feedback' && styles.tabPillOn]}
-          onPress={() => setTab('feedback')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.tabPillText, tab === 'feedback' && styles.tabPillTextOn]}>
-            Task feedback{taskNotes.length > 0 ? ` (${taskNotes.length})` : ''}
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabPill, tab === 'lessons' && styles.tabPillOn]}
           onPress={() => setTab('lessons')}
@@ -109,6 +103,15 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
         >
           <Text style={[styles.tabPillText, tab === 'lessons' && styles.tabPillTextOn]}>
             Lesson notes{entries.length > 0 ? ` (${entries.length})` : ''}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabPill, tab === 'feedback' && styles.tabPillOn]}
+          onPress={() => setTab('feedback')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabPillText, tab === 'feedback' && styles.tabPillTextOn]}>
+            Task feedback{taskNotes.length > 0 ? ` (${taskNotes.length})` : ''}
           </Text>
         </TouchableOpacity>
       </View>
