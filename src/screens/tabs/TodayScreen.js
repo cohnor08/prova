@@ -188,12 +188,11 @@ function ClipTitle({ text, style, containerStyle, expanded }) {
   );
 }
 
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onAttachProof, onViewProof, proofBusy, proofPct, proofStep, topDivider }) {
+// Proof props are gone from here on purpose: recording, viewing and replacing
+// all moved into the player, so the card only reports whether proof exists.
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, topDivider }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
-  const uploadingLabel = proofPct != null
-    ? `Uploading… ${proofPct}%`
-    : (proofStep || 'Uploading…');
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
   const due = assignedDueLabel(task.dueDate);
   const earnedSoFar = task.pointsEarned || 0;
@@ -290,32 +289,22 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
         </TouchableOpacity>
       )}
 
-      {expanded && (
-        task.proofUrl ? (
-          <View style={styles.proofRow}>
-            <Ionicons name={task.proofVerified ? 'checkmark-circle' : 'videocam'} size={15} color={task.proofVerified ? COLORS.success : COLORS.primary} />
-            <Text style={styles.proofRowText} numberOfLines={1}>
-              {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
-              {(task.proofs?.length || 0) > 1 ? ` (${task.proofs.length})` : ''}
-            </Text>
-            <TouchableOpacity onPress={() => onViewProof(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={styles.proofViewLink}>View</Text>
-            </TouchableOpacity>
-            {/* Opens the add-another / replace-latest chooser. */}
-            <TouchableOpacity onPress={() => onAttachProof(task.id)} disabled={proofBusy} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={styles.proofReplaceLink}>{proofBusy ? '…' : 'Add / Replace'}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.proofAddBtn} onPress={() => onAttachProof(task.id)} disabled={proofBusy} activeOpacity={0.8}>
-            <View style={styles.proofAddIcon}>
-              {proofBusy
-                ? <Ghost size="small" color={COLORS.primary} />
-                : <Ionicons name="videocam-outline" size={15} color={COLORS.primary} />}
-            </View>
-            <Text style={styles.proofAddText}>{proofBusy ? uploadingLabel : 'Add proof of practice'}</Text>
-          </TouchableOpacity>
-        )
+      {/* Proof lives in the player now, not on the card. Recording, viewing
+          and replacing were three controls competing with Practice on every
+          task — the card just reports the state, and everything you can DO
+          with proof happens where you actually practise. */}
+      {expanded && task.proofUrl && (
+        <View style={styles.proofRow}>
+          <Ionicons
+            name={task.proofVerified ? 'checkmark-circle' : 'videocam'}
+            size={15}
+            color={task.proofVerified ? COLORS.success : COLORS.primary}
+          />
+          <Text style={styles.proofRowText} numberOfLines={1}>
+            {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
+            {(task.proofs?.length || 0) > 1 ? ` (${task.proofs.length})` : ''}
+          </Text>
+        </View>
       )}
 
       {/* Practicing happens in the player — this just opens it at this task. */}
@@ -1370,7 +1359,11 @@ export default function TodayScreen({ navigation, route }) {
         watch: t.youtube || '',
         song: t.song || '',
         proofUrl: t.proofUrl,
+        proofType: t.proofType,
         proofVerified: t.proofVerified,
+        // The player shows the teacher's comment and plays back the proof, so
+        // both have to travel with the task — the card only reports state now.
+        feedback: t.feedback || '',
       })),
   ];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); track('practice_started'); };
@@ -1801,11 +1794,6 @@ export default function TodayScreen({ navigation, route }) {
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
-                      onAttachProof={attachProof}
-                      onViewProof={viewProof}
-                      proofBusy={proofBusyId === t.id}
-                      proofPct={proofBusyId === t.id ? proofPct : null}
-                      proofStep={proofBusyId === t.id ? proofStep : null}
                     />
                   ))}
                 </View>
@@ -1841,11 +1829,6 @@ export default function TodayScreen({ navigation, route }) {
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
-                      onAttachProof={attachProof}
-                      onViewProof={viewProof}
-                      proofBusy={proofBusyId === t.id}
-                      proofPct={proofBusyId === t.id ? proofPct : null}
-                      proofStep={proofBusyId === t.id ? proofStep : null}
                     />
                   ))}
                 </View>
@@ -2038,6 +2021,10 @@ export default function TodayScreen({ navigation, route }) {
         onCompleteSession={(sessionId) => handleComplete(sessionId, { silent: true })}
         onBankTeacher={(taskId, sec) => bankTeacherTask(taskId, sec, { silent: true })}
         onAttachProof={attachProof}
+        // Still reachable for tasks with more than one proof — the player
+        // previews the latest inline, this opens the full set.
+        onViewProof={viewProof}
+        assignedTasks={assignedTasks}
         proofBusyId={proofBusyId}
         proofPct={proofPct}
         proofStep={proofStep}
