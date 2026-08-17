@@ -166,6 +166,17 @@
   .prow .pl{flex:1;min-width:0}
   .prow .pt{font-weight:600;font-size:13.5px}
   .prow .ps{font-size:12px;color:var(--ink-3)}
+  /* way out of a game — sits above the title, ahead of the h2 */
+  /* align-self so it hugs its text instead of stretching across the flex
+     column, and a negative margin to sit close to the title rather than a
+     full 22px gap away from it */
+  .backlink{display:inline-flex;align-self:flex-start;align-items:center;gap:5px;background:none;
+    border:0;cursor:pointer;color:var(--ink-3);font:inherit;font-size:13px;font-weight:600;
+    padding:2px 6px 2px 0;margin:0 0 -12px -2px;border-radius:6px}
+  .backlink svg{width:15px;height:15px;flex:none}
+  .backlink:hover{color:var(--ink)}
+  .backlink:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+
   .lnrow:hover{background:var(--raised)} .lnrow:hover .chev{color:var(--ink-2)}
   .lnrow:first-of-type{border-top:0!important}
   a.btn{text-decoration:none;display:inline-block}
@@ -945,6 +956,14 @@ const card = (title, meta, body) =>
 const empty = (t, s2) => `<div class="empty"><div style="font-weight:650;color:var(--ink)">${t}</div><div style="font-size:13px;margin-top:4px">${s2}</div></div>`;
 const head = (h, sub, right) => `<div class="greet" style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
   <div><h2>${h}</h2><p>${sub}</p></div>${right || ''}</div>`;
+
+// Way out of a game. Once you opened one there was no route back except the
+// sidebar, and none at all on a narrow window where the sidebar is hidden.
+// Skipped for Studio's ?game= deep link, which has nowhere in-app to return to.
+const backLink = (to = 'practice', label = 'Practice') => GAME_PARAM ? ''
+  : `<button class="backlink" data-go="${to}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+        aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>${esc(label)}</button>`;
 
 const PI = {
   grid:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
@@ -1937,14 +1956,22 @@ $('#mPlay').onclick = () => { METRO.playing = !METRO.playing; METRO.playing ? me
     const r = el.getBoundingClientRect();
     startX = e.clientX; startY = e.clientY; baseL = r.left; baseT = r.top;
     live = true; moved = false;
-    el.setPointerCapture?.(e.pointerId);
+    // NOTE: capture is deliberately NOT taken here. While a pointer is
+    // captured the browser retargets the resulting `click` to the capturing
+    // element, so every click landed on #metro instead of the button inside
+    // it — bpm, +/−, Play and opening the sheet were all dead. Capture is
+    // taken below, only once a real drag starts.
   });
 
   el.addEventListener('pointermove', (e) => {
     if (!live) return;
     const dx = e.clientX - startX, dy = e.clientY - startY;
     if (!moved && Math.hypot(dx, dy) < DRAG_MIN) return;
-    if (!moved) { moved = true; el.classList.add('dragging'); }
+    if (!moved) {
+      moved = true;
+      el.classList.add('dragging');
+      el.setPointerCapture?.(e.pointerId);   // now it IS a drag — keep the pointer
+    }
     e.preventDefault();
     place(baseL + dx, baseT + dy);
   });
@@ -1952,7 +1979,7 @@ $('#mPlay').onclick = () => { METRO.playing = !METRO.playing; METRO.playing ? me
   const end = (e) => {
     if (!live) return;
     live = false;
-    el.releasePointerCapture?.(e.pointerId);
+    if (moved) el.releasePointerCapture?.(e.pointerId);
     if (!moved) return;
     el.classList.remove('dragging');
     const r = el.getBoundingClientRect();
@@ -2250,7 +2277,7 @@ function earPlay() {
 function viewEar() {
   const lv = earLevel(), md = earMode();
   if (EAR.phase === 'menu') {
-    $('#screen').innerHTML = `<div class="content">${head('Ear training', 'Prova plays — you name what you heard.')}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Ear training', 'Prova plays — you name what you heard.')}
       ${gameMenu({
         icon: PI.ear, title: 'Train your ears',
         blurb: `Prova plays — you name what you heard. ${ROUND_LEN} questions a round; your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
@@ -2267,7 +2294,7 @@ function viewEar() {
     return;
   }
   if (EAR.phase === 'done') {
-    $('#screen').innerHTML = `<div class="content">${head('Ear training', `${md.label} · ${lv.label}`)}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Ear training', `${md.label} · ${lv.label}`)}
       ${gameDone({ title: `${md.label} · ${lv.label}`, score: EAR.score, total: ROUND_LEN,
         stats: [['Game', md.label], ['Level', lv.label]], again: 'ear', backTo: 'practice' })}</div>`;
     return;
@@ -2288,7 +2315,7 @@ function viewEar() {
         return `<button class="opt ${cls}" data-ear="ans" data-v="${esc(o)}">${esc(o)}</button>`;
       }).join('')}</div>`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Ear training', `${md.label} · ${lv.label} · question ${EAR.round} of ${ROUND_LEN}`)}
+    ${backLink()}${head('Ear training', `${md.label} · ${lv.label} · question ${EAR.round} of ${ROUND_LEN}`)}
     <div class="cols"><div class="stack">
       ${card(prompt, `Score ${EAR.score}`,
         `<div style="text-align:center;padding:6px 0 20px">
@@ -2393,7 +2420,7 @@ function viewFret() {
   const lv = fretLevel();
   const md = FRET_MODES.find((m) => m.id === FRET.mode) || FRET_MODES[0];
   if (FRET.phase === 'menu') {
-    $('#screen').innerHTML = `<div class="content">${head('Fretboard game', 'Know every note on the neck.')}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Fretboard game', 'Know every note on the neck.')}
       ${gameMenu({
         icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
         title: 'Know every note',
@@ -2408,7 +2435,7 @@ function viewFret() {
     return;
   }
   if (FRET.phase === 'done') {
-    $('#screen').innerHTML = `<div class="content">${head('Fretboard game', `${md.label} · ${lv.label}`)}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Fretboard game', `${md.label} · ${lv.label}`)}
       ${gameDone({ title: `${md.label} · ${lv.label}`, score: FRET.score, total: ROUND_LEN,
         stats: [['Game', md.label], ['Level', lv.label]], again: 'fret', backTo: 'practice' })}</div>`;
     return;
@@ -2433,7 +2460,7 @@ function viewFret() {
       ${answered ? `<button class="btn wide" data-fretact="next" style="margin-top:16px">${
         FRET.round >= ROUND_LEN ? 'Finish round' : 'Next note'}</button>` : ''}`;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Fretboard game', `${md.label} · ${lv.label} · question ${FRET.round} of ${ROUND_LEN}`)}
+    ${backLink()}${head('Fretboard game', `${md.label} · ${lv.label} · question ${FRET.round} of ${ROUND_LEN}`)}
     <div class="cols"><div class="stack">
       ${card(prompt, `Score ${FRET.score}`, fretNeck(FRET.mode === 'find' && !answered) + tail)}
     </div><div class="stack">${gameRail(FRET.round, ROUND_LEN, FRET.score)}</div></div></div>`;
@@ -2541,7 +2568,7 @@ function viewRhythm() {
   const lv = rhLevel();
   const md = RH_MODES.find((m) => m.id === RH.mode) || RH_MODES[0];
   if (RH.phase === 'menu') {
-    $('#screen').innerHTML = `<div class="content">${head('Rhythm tapper', 'Tap in time. Scored to the millisecond.')}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Rhythm tapper', 'Tap in time. Scored to the millisecond.')}
       ${gameMenu({
         icon: PI.metro, title: 'Lock in your time',
         blurb: `A click plays and you tap along — every tap is scored against a perfect grid. Your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
@@ -2557,14 +2584,14 @@ function viewRhythm() {
     return;
   }
   if (RH.phase === 'done') {
-    $('#screen').innerHTML = `<div class="content">${head('Rhythm tapper', `${md.label} · ${lv.label}`)}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Rhythm tapper', `${md.label} · ${lv.label}`)}
       ${gameDone({ title: `${md.label} · ${lv.label} · ${lv.bpm} bpm`, score: RH.score || 0, total: RH.beats.length,
         stats: [['Perfect', RH.perfect || 0], ['Average off', `${RH.avg || 0} ms`], ['Tempo', `${lv.bpm} bpm`]],
         again: 'rhythm', backTo: 'practice' })}</div>`;
     return;
   }
   $('#screen').innerHTML = `<div class="content">
-    ${head('Rhythm tapper', `${md.label} · ${lv.label} · ${lv.bpm} bpm`)}
+    ${backLink()}${head('Rhythm tapper', `${md.label} · ${lv.label} · ${lv.bpm} bpm`)}
     <div class="cols"><div class="stack">
       ${card('Tap on every click', `<span id="rhCount">0 / ${RH.beats.length}</span>`,
         `<button class="rhpad" data-rhtap="1">
@@ -3114,7 +3141,7 @@ function quizNext() { QUIZ.q = QUIZ.qs[QUIZ.round - 1] || QUIZ.qs[0]; QUIZ.picke
 function viewTheory() {
   const cat = quizCat(), lv = quizLevel();
   if (QUIZ.phase === 'menu') {
-    $('#screen').innerHTML = `<div class="content">${head('Theory quiz', 'Fresh questions every round.')}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Theory quiz', 'Fresh questions every round.')}
       ${gameMenu({
         icon: PI.layers, title: 'Know your theory',
         blurb: `${ROUND_LEN} questions a round across intervals, chords, keys and scales. Your first ${REWARDED_ROUNDS_PER_DAY} rounds each day earn +${ROUND_POINTS} points.`,
@@ -3129,7 +3156,7 @@ function viewTheory() {
     return;
   }
   if (QUIZ.phase === 'done') {
-    $('#screen').innerHTML = `<div class="content">${head('Theory quiz', `${cat.label} · ${lv.label}`)}
+    $('#screen').innerHTML = `<div class="content">${backLink()}${head('Theory quiz', `${cat.label} · ${lv.label}`)}
       ${gameDone({ title: `${cat.label} · ${lv.label}`, score: QUIZ.score, total: ROUND_LEN,
         stats: [['Topic', cat.label], ['Level', lv.label]], again: 'theory', backTo: 'practice' })}</div>`;
     return;
@@ -3137,7 +3164,7 @@ function viewTheory() {
   if (!QUIZ.q) quizStart();
   const q = QUIZ.q, answered = QUIZ.picked != null;
   $('#screen').innerHTML = `<div class="content">
-    ${head('Theory quiz', `${cat.label} · ${lv.label} · question ${QUIZ.round} of ${ROUND_LEN}`)}
+    ${backLink()}${head('Theory quiz', `${cat.label} · ${lv.label} · question ${QUIZ.round} of ${ROUND_LEN}`)}
     <div class="cols"><div class="stack">
       ${card(esc(q.prompt), `Score ${QUIZ.score}`,
         `<div style="display:${q.recall ? 'grid' : 'flex'};${q.recall
