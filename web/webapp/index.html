@@ -3393,10 +3393,57 @@ function calEventSheet(kind, id) {
     <p class="hint" style="margin:0 0 6px">${esc(when)}${ev.time ? ' · ' + esc(ev.time) : ' · no time set'}</p>
     ${setlist ? `<p class="hint" style="margin:0 0 6px">Setlist: ${esc(setlist.name)}</p>` : ''}
     ${ev.note ? `<p style="margin:10px 0 0">${esc(ev.note)}</p>` : ''}
+    ${kind === 'gig' ? `
+      <div class="eyebrow" style="padding:18px 0 8px">Invite someone to play</div>
+      <div style="display:flex;gap:8px">
+        <input id="gigInvEm" type="email" placeholder="their@email.com" autocomplete="off"
+          style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--line);
+          border-radius:10px;padding:10px 12px;color:inherit;font:inherit">
+        <button class="btn sm" id="gigInv">Invite</button>
+      </div>
+      <p class="hint" id="gigInvMsg" style="margin:8px 0 0;font-size:12px">
+        They get it in their notifications, with Accept or Decline.</p>` : ''}
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="btn ghost" id="evDel" style="flex:1;border-color:var(--danger,#F43F5E);color:#FCA5A5">Remove</button>
       <button class="btn" id="evEdit" style="flex:1">Edit</button></div></div>`;
   $('#evEdit').onclick = () => calAddSheet({ kind, id });
+
+  // Gig invites, matching sendGigInvite in ScheduleScreen.js — same notification
+  // type and the same `data` shape, so it renders with Accept/Decline in the
+  // phone's bell rather than as a bare message.
+  if (kind === 'gig') {
+    const send = async () => {
+      const msg = $('#gigInvMsg'), btn = $('#gigInv'), input = $('#gigInvEm');
+      const email = (input.value || '').trim().toLowerCase();
+      const say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? '#FCA5A5' : 'var(--ink-3)'; };
+      if (!email) return;
+      if (email === String(me.email || '').toLowerCase()) { say("That's your own email.", true); return; }
+      btn.disabled = true; say('Sending…');
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
+        if (snap.empty) { say('No Prova account uses that email.', true); btn.disabled = false; return; }
+        const target = snap.docs[0];
+        if (target.id === uid) { say("That's your own account.", true); btn.disabled = false; return; }
+        const fromName = displayName(me);
+        await addDoc(collection(db, 'users', target.id, 'inbox'), {
+          type: 'gig_invite',
+          title: `Gig invite: ${ev.name}`,
+          body: `${fromName} invited you to play.`,
+          data: { name: ev.name, date: ev.date, time: ev.time || null, fromUid: uid, fromName },
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+        input.value = '';
+        say('Invite sent 🎸 — they can accept it from their notifications.');
+      } catch {
+        say("Couldn't send the invite. Try again.", true);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    $('#gigInv').onclick = send;
+    $('#gigInvEm').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  }
   $('#evDel').onclick = async () => {
     if (!confirm(`Remove "${title}" from your calendar?`)) return;
     try {
