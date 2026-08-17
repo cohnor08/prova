@@ -28,6 +28,28 @@ const fmt = (s) => {
   return `${Math.floor(v / 60).toString().padStart(2, '0')}:${(v % 60).toString().padStart(2, '0')}`;
 };
 
+// Whichever of card/surface actually stands off the page in the current theme.
+// The two swap round between palettes — in Sky `surface` is the raised well and
+// `card` sits a hair off the background; in the darkest theme it's reversed — so
+// picking one by name gives a box that looks solid in one theme and transparent
+// in another. Measured, not guessed.
+const relLum = (hex) => {
+  const h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return 0;
+  const ch = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+};
+const raisedSurface = (C) => {
+  const bg = relLum(C.background);
+  // Furthest from the page, in whichever direction the theme runs.
+  const dCard = Math.abs(relLum(C.card) - bg);
+  const dSurf = Math.abs(relLum(C.surface) - bg);
+  return dSurf > dCard ? C.surface : C.card;
+};
+
 
 // Safe-area insets are unreliable inside an RN Modal (they intermittently read
 // as 0, which is why the close/skip buttons sometimes sat under the notch or
@@ -634,11 +656,18 @@ const styles = themedStyles(() => StyleSheet.create({
   // sized this to its longest line instead of the column. Blue is down to the
   // icon and the Read affordance — the left accent rule and the coloured
   // heading made a comment card louder than the task it belongs to.
+  // It read as transparent because COLORS.card sits ~1.15 contrast off the
+  // background in Sky. raisedSurface() picks whichever token actually steps
+  // off the page in the current theme, and a 1.5px border plus a shadow give
+  // it an edge — in a near-black UI the border does more work than the fill.
   fbCard: {
     alignSelf: 'stretch',
     marginTop: SPACING.md, marginBottom: SPACING.md,
     padding: SPACING.md, borderRadius: 14,
-    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: raisedSurface(COLORS),
+    borderWidth: 1.5, borderColor: COLORS.border,
+    shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
   fbHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7 },
   fbWho: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
