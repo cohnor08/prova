@@ -607,7 +607,7 @@ const styles = themedStyles(() => StyleSheet.create({
   desc: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: SPACING.md },
   watchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, backgroundColor: COLORS.card, marginBottom: SPACING.sm },
   watchText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
-  proofBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
+  proofBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   proofBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
   proofNote: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   proofNoteText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
@@ -629,15 +629,21 @@ const styles = themedStyles(() => StyleSheet.create({
 
   // teacher's comment — a solid card, not a tint. It has to be as readable as
   // the task description sitting right above it.
+  //
+  // alignSelf:'stretch' because the scroll body centres its children, which
+  // sized this to its longest line instead of the column. Blue is down to the
+  // icon and the Read affordance — the left accent rule and the coloured
+  // heading made a comment card louder than the task it belongs to.
   fbCard: {
-    marginTop: SPACING.md, padding: SPACING.md, borderRadius: 14,
+    alignSelf: 'stretch',
+    marginTop: SPACING.md, marginBottom: SPACING.md,
+    padding: SPACING.md, borderRadius: 14,
     backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
-    borderLeftWidth: 3, borderLeftColor: COLORS.primary,
   },
   fbHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7 },
-  fbWho: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
+  fbWho: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
   fbMore: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  fbBody: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
+  fbBody: { color: COLORS.text, fontSize: 14, lineHeight: 21, textAlign: 'left' },
 
   noteCard: { padding: SPACING.lg, borderRadius: 20, maxHeight: '76%' },
   noteHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
