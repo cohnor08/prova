@@ -61,8 +61,8 @@ export default function PracticePlayer({
   onBankStep,        // (stepId, seconds) -> Promise<pts> — learn-a-song step
   onGigSongEnd,      // Done/Next on a setlist song → back to the song picker
   onAttachProof,
-  onViewProof,        // (task) -> open the full set when there's more than one
-  assignedTasks,      // the raw tasks, so the viewer gets the real object
+  onDeleteProof,      // (taskId, index) -> Promise<boolean>, confirms then removes
+  assignedTasks,      // the raw tasks, so the sheet reads live clip data
   proofBusyId,
   proofPct,
   proofStep,
@@ -79,6 +79,29 @@ export default function PracticePlayer({
   const [watch, setWatch] = useState(null);   // { query, title }
   const [celeb, setCeleb] = useState(null);   // per-task celebration payload
   const [note, setNote] = useState(null);     // { title, body } — teacher comment, in full
+  const [proofFor, setProofFor] = useState(null); // taskId whose proof sheet is open
+  const [proofIdx, setProofIdx] = useState(0);    // which clip, when there are several
+
+  // A task's clips, normalised — older tasks only ever had a single proofUrl.
+  const clipsFor = (taskId) => {
+    const t = (assignedTasks || []).find((x) => x.id === taskId);
+    if (!t) return [];
+    if (Array.isArray(t.proofs) && t.proofs.length) return t.proofs;
+    return t.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : [];
+  };
+  const proofCount = (taskId) => clipsFor(taskId).length;
+
+  // Start from the newest whenever the sheet opens — that's the one you just
+  // recorded and the one you're most likely judging.
+  useEffect(() => {
+    if (proofFor == null) return;
+    setProofIdx(Math.max(0, proofCount(proofFor) - 1));
+  }, [proofFor]);
+
+  // Close the sheet once the last clip is gone.
+  useEffect(() => {
+    if (proofFor != null && proofCount(proofFor) === 0) setProofFor(null);
+  }, [assignedTasks, proofFor]);
 
   // While the player is open the app must not restart under it — see
   // src/lib/appBusy.js and useStaleReload.
@@ -341,45 +364,28 @@ export default function PracticePlayer({
                 </TouchableOpacity>
               )}
 
-              {/* Proof — the only place it lives now. Watch back what you sent
-                  before deciding whether to replace it. */}
+              {/* Proof is one button. Nothing plays until you ask it to —
+                  opening a video unprompted in the middle of a timed task is
+                  the last thing you want. */}
               {item.kind === 'teacher' && (
-                <View style={styles.proofBlock}>
-                  {!!item.proofUrl && (
-                    <>
-                      <View style={styles.proofNote}>
-                        <Ionicons
-                          name={item.proofVerified ? 'checkmark-circle' : 'videocam'}
-                          size={15}
-                          color={item.proofVerified ? COLORS.success : COLORS.primary}
-                        />
-                        <Text style={styles.proofNoteText}>
-                          {item.proofVerified ? 'Proof verified' : 'Proof submitted'}
-                        </Text>
-                        {/* Only offered when there IS more than one — otherwise
-                            the preview below already is the whole story. */}
-                        {(() => {
-                          const src = (assignedTasks || []).find((t) => t.id === item.taskId);
-                          const n = src?.proofs?.length || 0;
-                          if (n < 2 || !onViewProof) return null;
-                          return (
-                            <TouchableOpacity
-                              onPress={() => { pauseClock(); onViewProof(src); }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Text style={styles.proofReplaceLink}>All {n}</Text>
-                            </TouchableOpacity>
-                          );
-                        })()}
-                      </View>
-                      <ProofMedia
-                        key={item.proofUrl}
-                        url={item.proofUrl}
-                        type={item.proofType || 'video'}
-                        style={styles.proofPreview}
-                      />
-                    </>
-                  )}
+                item.proofUrl ? (
+                  <TouchableOpacity
+                    style={styles.proofBtn}
+                    onPress={() => { pauseClock(); setProofFor(item.taskId); }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={item.proofVerified ? 'checkmark-circle' : 'videocam'}
+                      size={15}
+                      color={item.proofVerified ? COLORS.success : COLORS.primary}
+                    />
+                    <Text style={styles.proofBtnText}>
+                      {item.proofVerified ? 'Proof verified' : 'Your proof'}
+                      {proofCount(item.taskId) > 1 ? ` · ${proofCount(item.taskId)}` : ''}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={15} color={COLORS.primary} />
+                  </TouchableOpacity>
+                ) : (
                   <TouchableOpacity
                     style={styles.proofBtn}
                     onPress={() => onAttachProof(item.taskId)}
@@ -392,10 +398,10 @@ export default function PracticePlayer({
                     <Text style={styles.proofBtnText}>
                       {proofBusyId === item.taskId
                         ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…'))
-                        : item.proofUrl ? 'Record another' : 'Add proof of practice'}
+                        : 'Add proof of practice'}
                     </Text>
                   </TouchableOpacity>
-                </View>
+                )
               )}
             </ScrollView>
 
@@ -471,6 +477,86 @@ export default function PracticePlayer({
           onClose={() => setWatch(null)}
         />
 
+        {/* Proof: watch it, record another, or delete it. Nested inside the
+            player so it stacks over this full-screen modal. */}
+        <SheetModal
+          visible={proofFor != null}
+          onRequestClose={() => setProofFor(null)}
+          centered
+          dismissOnBackdrop
+          cardStyle={styles.proofCard}
+        >
+          {(() => {
+            if (proofFor == null) return null;
+            const clips = clipsFor(proofFor);
+            if (!clips.length) return null;
+            const i = Math.min(proofIdx, clips.length - 1);
+            const cur = clips[i];
+            const busy = proofBusyId === proofFor;
+            return (
+              <>
+                <Text style={styles.proofTitle}>
+                  {clips.length > 1 ? `Your proof · ${i + 1} of ${clips.length}` : 'Your proof'}
+                </Text>
+                <ProofMedia key={cur.url} url={cur.url} type={cur.type || 'video'} style={styles.proofSheetMedia} />
+
+                {clips.length > 1 && (
+                  <View style={styles.proofPager}>
+                    <TouchableOpacity
+                      onPress={() => setProofIdx((n) => Math.max(0, n - 1))}
+                      disabled={i === 0}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="chevron-back-circle" size={28} color={i === 0 ? COLORS.border : COLORS.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.proofPagerText}>{i + 1} / {clips.length}</Text>
+                    <TouchableOpacity
+                      onPress={() => setProofIdx((n) => Math.min(clips.length - 1, n + 1))}
+                      disabled={i >= clips.length - 1}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="chevron-forward-circle" size={28} color={i >= clips.length - 1 ? COLORS.border : COLORS.text} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.proofAction}
+                  onPress={() => onAttachProof(proofFor)}
+                  disabled={busy}
+                  activeOpacity={0.85}
+                >
+                  {busy
+                    ? <Ghost size="small" color={COLORS.primary} />
+                    : <Ionicons name="videocam-outline" size={17} color={COLORS.primary} />}
+                  <Text style={styles.proofActionText}>
+                    {busy
+                      ? (proofPct != null ? `Uploading… ${proofPct}%` : (proofStep || 'Uploading…'))
+                      : 'Record another'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.proofAction, styles.proofDelete]}
+                  onPress={async () => {
+                    const gone = await onDeleteProof?.(proofFor, i);
+                    if (gone) setProofIdx((n) => Math.max(0, n - 1));
+                  }}
+                  disabled={busy}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="trash-outline" size={17} color={COLORS.error} />
+                  <Text style={[styles.proofActionText, { color: COLORS.error }]}>Delete this one</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.noteClose} onPress={() => setProofFor(null)} activeOpacity={0.85}>
+                  <Text style={styles.noteCloseText}>Close</Text>
+                </TouchableOpacity>
+              </>
+            );
+          })()}
+        </SheetModal>
+
         {/* The teacher's comment in full — the card in the scroll view is
             capped at three lines so it can't shove the clock off screen. */}
         <SheetModal
@@ -527,19 +613,31 @@ const styles = themedStyles(() => StyleSheet.create({
   proofNoteText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   proofReplaceLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginLeft: 6 },
 
-  // proof, gathered into one block: status, what you sent, then the control
-  proofBlock: { gap: SPACING.sm, marginTop: SPACING.md, alignItems: 'flex-start' },
-  proofPreview: { width: '100%', aspectRatio: 16 / 10, borderRadius: 12, overflow: 'hidden', backgroundColor: COLORS.card },
+  // proof sheet — opened from the button, never on its own
+  proofCard: { padding: SPACING.lg, borderRadius: 20, maxHeight: '86%' },
+  proofTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800', marginBottom: SPACING.md },
+  proofSheetMedia: { width: '100%', aspectRatio: 16 / 10, borderRadius: 14, overflow: 'hidden', backgroundColor: COLORS.card },
+  proofPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.sm },
+  proofPagerText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', minWidth: 52, textAlign: 'center' },
+  proofAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: SPACING.sm, paddingVertical: 13, borderRadius: 13,
+    borderWidth: 1, borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '14',
+  },
+  proofActionText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
+  proofDelete: { borderColor: COLORS.error + '44', backgroundColor: COLORS.error + '12' },
 
-  // teacher's comment on the task — capped on the page, full in the sheet
+  // teacher's comment — a solid card, not a tint. It has to be as readable as
+  // the task description sitting right above it.
   fbCard: {
     marginTop: SPACING.md, padding: SPACING.md, borderRadius: 14,
-    backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '2E',
+    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+    borderLeftWidth: 3, borderLeftColor: COLORS.primary,
   },
-  fbHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  fbHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7 },
   fbWho: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
   fbMore: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
-  fbBody: { color: COLORS.text, fontSize: 13.5, lineHeight: 20 },
+  fbBody: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
 
   noteCard: { padding: SPACING.lg, borderRadius: 20, maxHeight: '76%' },
   noteHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },

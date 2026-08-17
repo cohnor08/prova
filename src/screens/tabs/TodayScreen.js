@@ -1234,6 +1234,59 @@ export default function TodayScreen({ navigation, route }) {
     if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video', proofs: task.proofs, taskId: task.id });
   };
 
+  // Remove one clip. Confirmed first — it's the student's own recording and
+  // there's no undo. The file itself is left in Storage: the teacher may have
+  // already been notified about it, and an orphaned object costs nothing next
+  // to deleting something a teacher is midway through reviewing.
+  const deleteProof = (taskId, index) => new Promise((resolve) => {
+    const task = (userData?.assignedTasks || []).find((x) => x.id === taskId);
+    if (!task) { resolve(false); return; }
+    const clips = Array.isArray(task.proofs) && task.proofs.length > 0
+      ? task.proofs
+      : (task.proofUrl ? [{ url: task.proofUrl, type: task.proofType || 'video', at: task.proofAt || null }] : []);
+    if (!clips.length) { resolve(false); return; }
+    const i = Math.min(Math.max(0, index), clips.length - 1);
+    const last = clips.length === 1;
+
+    Alert.alert(
+      last ? 'Delete this proof?' : `Delete clip ${i + 1} of ${clips.length}?`,
+      last
+        ? "Your teacher won't be able to see it any more. You can record a new one afterwards."
+        : 'The other clips stay where they are.',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const proofs = clips.filter((_, k) => k !== i);
+            const newest = proofs[proofs.length - 1] || null;
+            const next = (userData?.assignedTasks || []).map((t) => (t.id !== taskId ? t : {
+              ...t,
+              proofs,
+              proofUrl: newest ? newest.url : null,
+              proofType: newest ? newest.type : null,
+              proofAt: newest ? newest.at : null,
+              // A teacher's tick belonged to the clip that just went.
+              proofVerified: newest ? t.proofVerified : false,
+            }));
+            const uid = auth.currentUser?.uid;
+            if (!uid) { resolve(false); return; }
+            setUserData((p) => ({ ...p, assignedTasks: next }));
+            try {
+              await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+              resolve(true);
+            } catch (e) {
+              setUserData((p) => ({ ...p, assignedTasks: userData?.assignedTasks || [] }));
+              Alert.alert('Could not delete', 'Check your connection and try again.');
+              resolve(false);
+            }
+          },
+        },
+      ]
+    );
+  });
+
   // Open an attachment a teacher added to a task: a raw URL opens directly,
   // anything else becomes a YouTube search (handles links and song names).
   const openTaskLink = (value) => {
@@ -2021,9 +2074,7 @@ export default function TodayScreen({ navigation, route }) {
         onCompleteSession={(sessionId) => handleComplete(sessionId, { silent: true })}
         onBankTeacher={(taskId, sec) => bankTeacherTask(taskId, sec, { silent: true })}
         onAttachProof={attachProof}
-        // Still reachable for tasks with more than one proof — the player
-        // previews the latest inline, this opens the full set.
-        onViewProof={viewProof}
+        onDeleteProof={deleteProof}
         assignedTasks={assignedTasks}
         proofBusyId={proofBusyId}
         proofPct={proofPct}
