@@ -1610,9 +1610,9 @@ async function viewLeaderboard() {
     if (!email) return;
     add.disabled = true;
     try {
-      const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
-      if (snap.empty) { toast('No Prova user with that email'); return; }
-      const fid = snap.docs[0].id;
+      const found = await findUserByEmail(email);
+      if (!found) { toast('No Prova user with that email'); return; }
+      const fid = found.uid;
       if (fid === uid) { toast("That's you"); return; }
       if ((me.friends || []).includes(fid)) { toast('Already friends'); return; }
       await updateDoc(doc(db, 'users', uid), { friends: arrayUnion(fid) });
@@ -3420,12 +3420,11 @@ function calEventSheet(kind, id) {
       if (email === String(me.email || '').toLowerCase()) { say("That's your own email.", true); return; }
       btn.disabled = true; say('Sending…');
       try {
-        const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
-        if (snap.empty) { say('No Prova account uses that email.', true); btn.disabled = false; return; }
-        const target = snap.docs[0];
-        if (target.id === uid) { say("That's your own account.", true); btn.disabled = false; return; }
+        const target = await findUserByEmail(email);
+        if (!target) { say('No Prova account uses that email.', true); btn.disabled = false; return; }
+        if (target.uid === uid) { say("That's your own account.", true); btn.disabled = false; return; }
         const fromName = displayName(me);
-        await addDoc(collection(db, 'users', target.id, 'inbox'), {
+        await addDoc(collection(db, 'users', target.uid, 'inbox'), {
           type: 'gig_invite',
           title: `Gig invite: ${ev.name}`,
           body: `${fromName} invited you to play.`,
@@ -3810,6 +3809,26 @@ async function sendMedia(file) {
 // src/lib/chat.js: chatId is the two uids sorted and joined, the thread
 // lives at chats/{chatId}/messages, and each side keeps a pointer at
 // userChats/{uid}/conversations/{chatId}.
+// Look somebody up by email, picking the RIGHT one when more than one document
+// carries that address — mirrors src/lib/findUser.js. A gig invite was landing
+// in a user document with no login behind it while the account the person
+// actually uses got nothing: callers took snap.docs[0], and Firestore orders
+// equality matches by document id, so the dead duplicate won on id alone.
+const userLiveliness = (u) => (u.onboardingComplete === true ? 8 : 0)
+  + ((u.username || '').trim() ? 4 : 0)
+  + (((u.totalMinutes || 0) > 0 || (u.provaScore || 0) > 0) ? 3 : 0)
+  + (u.role ? 1 : 0);
+async function findUserByEmail(email) {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean) return null;
+  const snap = await getDocs(query(collection(db, 'users'), where('email', '==', clean)));
+  if (snap.empty) return null;
+  const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+  if (rows.length === 1) return rows[0];
+  return rows.sort((a, b) => (userLiveliness(b) - userLiveliness(a))
+    || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+}
+
 const makeChatId = (a, b) => [a, b].sort().join('_');
 let CONVS = [], CUR = null, unsubMsgs = null, MSGS = [];
 const NAMES = {};   // uid → display name, resolved once

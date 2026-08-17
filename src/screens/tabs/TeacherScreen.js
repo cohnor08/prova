@@ -25,6 +25,7 @@ import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
 import { ReactionChips, ReactionPicker } from '../../components/Reactions';
 import { createGroupChat, deleteGroupChat } from '../../lib/groupChat';
 import { sendNotification } from '../../lib/inbox';
+import { findUserByEmail } from '../../lib/findUser';
 import { shortTitle } from '../../lib/text';
 import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
@@ -1988,10 +1989,9 @@ function TeacherDashboard() {
     if (!email) return;
     setInviting(true);
     try {
-      const q = query(collection(db, 'users'), where('email', '==', email));
-      const snap = await getDocs(q);
-      if (snap.empty) { Alert.alert('Not found', 'No Prova account found with that email.'); return; }
-      const studentUid = snap.docs[0].id;
+      const found = await findUserByEmail(email);
+      if (!found) { Alert.alert('Not found', 'No Prova account found with that email.'); return; }
+      const studentUid = found.uid;
       if (students.find((s) => s.uid === studentUid)) { Alert.alert('Already added', 'This student is already in your list.'); return; }
       const uid = auth.currentUser.uid;
       await updateDoc(doc(db, 'users', uid), { students: arrayUnion(studentUid) });

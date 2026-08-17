@@ -12,6 +12,7 @@ import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import TimeWheel from '../../components/TimeWheel';
 import { sendNotification } from '../../lib/inbox';
+import { findUserByEmail } from '../../lib/findUser';
 import { displayName } from '../../lib/displayName';
 
 const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
@@ -162,15 +163,15 @@ export default function ScheduleScreen({ navigation, route }) {
     if (email === (me?.email || '').toLowerCase()) { Alert.alert('Invite', "That's your own email."); return; }
     setInviting(true);
     try {
-      const snap = await getDocs(query(collection(db, 'users'), where('email', '==', email)));
-      if (snap.empty) {
+      const target = await findUserByEmail(email);
+      if (!target) {
         Alert.alert('No user found', 'No Prova account uses that email.');
         return;
       }
-      const target = snap.docs[0];
+      if (target.uid === me.uid) { Alert.alert('Invite', "That's your own account."); return; }
       const meSnap = await getDoc(doc(db, 'users', me.uid));
       const fromName = displayName({ ...meSnap.data(), email: me.email });
-      await sendNotification(target.id, {
+      await sendNotification(target.uid, {
         type: 'gig_invite',
         title: `Gig invite: ${gig.name}`,
         body: `${fromName} invited you to play.`,
