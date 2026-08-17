@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { auth, db } from '../../lib/firebase';
+import { findUserByEmail } from '../../lib/findUser';
 import { COLORS, SPACING, themedStyles, CATEGORY_COLORS } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { displayScore, scoreRank, formatScore, RANKS } from '../../lib/score';
@@ -755,10 +756,9 @@ function Leaderboard({ myUid, myData, worldBoard, friendsBoard, classBoard = [],
     if (!trimmed) return;
     setAdding(true);
     try {
-      const q = query(collection(db, 'users'), where('email', '==', trimmed));
-      const snap = await getDocs(q);
-      if (snap.empty) { Alert.alert('Not found', 'No Prova user with that email.'); return; }
-      const friendUid = snap.docs[0].id;
+      const found = await findUserByEmail(trimmed);
+      if (!found) { Alert.alert('Not found', 'No Prova user with that email.'); return; }
+      const friendUid = found.uid;
       if (friendUid === myUid) { Alert.alert('Hmm', "That's you!"); return; }
       await updateDoc(doc(db, 'users', myUid), { friends: arrayUnion(friendUid) });
       setEmail('');
