@@ -38,20 +38,33 @@ def main():
         print(f'No such folder: {SRC}')
         raise SystemExit(1)
 
-    for src_name, out_name, what in SHOTS:
-        path = os.path.join(SRC, src_name)
-        if not os.path.exists(path):
-            print(f'  missing: {src_name} — skipped')
-            continue
-        im = Image.open(path).convert('RGB')
+    found = [(s, o, w) for s, o, w in SHOTS if os.path.exists(os.path.join(SRC, s))]
+    for s, _, _ in SHOTS:
+        if not os.path.exists(os.path.join(SRC, s)):
+            print(f'  missing: {s} — skipped')
+    if not found:
+        raise SystemExit(1)
+
+    # The sources were cropped by hand and differ by about 1% in height, which
+    # left the row on the site sitting at three slightly different heights.
+    # Everything is trimmed from the bottom — the home-indicator strip — to the
+    # shortest of them, so they line up exactly.
+    scaled = []
+    for src_name, out_name, what in found:
+        im = Image.open(os.path.join(SRC, src_name)).convert('RGB')
         h = round(im.height * (WIDTH / im.width))
-        im = im.resize((WIDTH, h), Image.LANCZOS)
+        scaled.append((im.resize((WIDTH, h), Image.LANCZOS), out_name, what))
+    height = min(im.height for im, _, _ in scaled)
+
+    for im, out_name, what in scaled:
+        if im.height > height:
+            im = im.crop((0, 0, WIDTH, height))
         dest = os.path.join(OUT, out_name)
         im.save(dest, optimize=True)
         kb = os.path.getsize(dest) // 1024
-        print(f'  {out_name:18} {WIDTH}x{h}  {kb} KB   ({what})')
+        print(f'  {out_name:18} {WIDTH}x{height}  {kb} KB   ({what})')
 
-    print(f'\n{len(SHOTS)} images -> {OUT}')
+    print(f'\n{len(scaled)} images at {WIDTH}x{height} -> {OUT}')
 
 
 if __name__ == '__main__':
