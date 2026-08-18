@@ -109,7 +109,10 @@
   .cta.store .lbl small { font-size: 10.5px; font-weight: 600; opacity: .85; letter-spacing: .3px; }
   .cta.store .lbl b { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
 
-  .phone { width: 250px; border-radius: 34px; border: 2px solid #333B4A;
+  /* height:auto so the image keeps its own proportions. Without it a flex row
+     stretches every item to the tallest one's height — invisible while all
+     three screenshots were exactly 295x640, obvious the moment they weren't. */
+  .phone { width: 250px; height: auto; border-radius: 34px; border: 2px solid #333B4A;
     box-shadow: 0 30px 80px rgba(59,130,246,0.14); }
   .heroGlow { position: relative; }
   .heroGlow::before { content: ''; position: absolute; inset: -60px; border-radius: 50%;
@@ -137,7 +140,7 @@
   .safe .cols b { display: block; margin-bottom: 6px; font-size: 15px; }
   .safe .cols p { color: #A8B2C4; font-size: 14px; }
 
-  .shots { display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; }
+  .shots { display: flex; gap: 26px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
 
   .contact { text-align: center; padding: 70px 0; }
   .contact h2 { font-size: 30px; }
@@ -176,7 +179,7 @@
     <a class="cta ghost" href="#teachers">For teachers →</a>
     <span class="badge">Free on iPhone · iOS 15.1 or later</span>
   </div>
-  <div class="heroGlow"><img class="phone" src="/img/shot-today.png" width="540" height="1117"
+  <div class="heroGlow"><img class="phone" src="/img/shot-today.png" width="540" height="1104"
     alt="Prova's Today screen — a three-day streak, the week so far, and nine exercises to work through"></div>
 </div>
 
@@ -251,9 +254,9 @@
   <h2 style="text-align:center">A look inside</h2>
   <p class="lead" style="text-align:center;margin-left:auto;margin-right:auto">The day's plan, the notes your teacher left, and the chords to go with them.</p>
   <div class="shots">
-    <img class="phone" src="/img/shot-today.png" width="540" height="1117" loading="lazy"
+    <img class="phone" src="/img/shot-today.png" width="540" height="1104" loading="lazy"
       alt="Today's practice: a three-day streak, nine exercises and the day's first warm-up">
-    <img class="phone" src="/img/shot-notes.png" width="540" height="1111" loading="lazy"
+    <img class="phone" src="/img/shot-notes.png" width="540" height="1104" loading="lazy"
       alt="Notes and feedback: what the teacher wrote after each lesson, with attendance">
     <img class="phone" src="/img/shot-chords.png" width="540" height="1104" loading="lazy"
       alt="The chord library: diagrams for C, Cmaj7, C7, Cm and more, filterable by root and type">
