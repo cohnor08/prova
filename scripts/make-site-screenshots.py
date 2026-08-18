@@ -33,6 +33,22 @@ SHOTS = [
 ]
 
 
+# Where to cut so the home indicator goes. Detected rather than hardcoded: the
+# sources were hand-cropped to different heights, so a fixed offset would clip
+# the tab bar on one and leave a sliver of the pill on another. Returns the row
+# to crop at, or None if no bar is found (already trimmed, or not an iPhone).
+def home_indicator_top(im):
+    g = im.convert('L')
+    w, h = g.size
+    px = g.load()
+    xs = range(w // 3, 2 * w // 3, 4)      # middle third only — the pill is centred
+    rows = [y for y in range(h - 1, int(h * 0.88), -1)
+            if sum(1 for x in xs if px[x, y] > 170) / len(xs) > 0.85]
+    if not rows:
+        return None
+    return max(0, min(rows) - 4)           # a few px of clearance above the pill
+
+
 def main():
     if not os.path.isdir(SRC):
         print(f'No such folder: {SRC}')
@@ -45,24 +61,41 @@ def main():
     if not found:
         raise SystemExit(1)
 
-    # The sources were cropped by hand and differ by about 1% in height, which
-    # left the row on the site sitting at three slightly different heights.
-    # Everything is trimmed from the bottom — the home-indicator strip — to the
-    # shortest of them, so they line up exactly.
+    # Two trims, both from the bottom.
+    #
+    # First the iOS home indicator — the white pill under the tab bar. It reads
+    # as a stray white line once the screenshot is on a web page, away from the
+    # phone that explains it.
+    #
+    # Then, because the sources were cropped by hand and differ by about 1% in
+    # height, they're squared up to a common size so the row lines up exactly.
+    # By PADDING the short ones, not cropping the tall ones: levelling down cut
+    # into the tab bar and clipped its labels. The padding is sampled from each
+    # image's own bottom edge — the tab bar is a flat colour there, so the join
+    # is invisible.
     scaled = []
     for src_name, out_name, what in found:
         im = Image.open(os.path.join(SRC, src_name)).convert('RGB')
+        cut = home_indicator_top(im)
+        if cut is not None:
+            im = im.crop((0, 0, im.width, cut))
         h = round(im.height * (WIDTH / im.width))
         scaled.append((im.resize((WIDTH, h), Image.LANCZOS), out_name, what))
-    height = min(im.height for im, _, _ in scaled)
+    height = max(im.height for im, _, _ in scaled)
 
     for im, out_name, what in scaled:
-        if im.height > height:
-            im = im.crop((0, 0, WIDTH, height))
+        pad = height - im.height
+        if pad > 0:
+            # Median of the bottom row, so one stray bright pixel can't pick it.
+            row = [im.getpixel((x, im.height - 1)) for x in range(0, WIDTH, 3)]
+            fill = tuple(sorted(c[i] for c in row)[len(row) // 2] for i in range(3))
+            canvas = Image.new('RGB', (WIDTH, height), fill)
+            canvas.paste(im, (0, 0))
+            im = canvas
         dest = os.path.join(OUT, out_name)
         im.save(dest, optimize=True)
         kb = os.path.getsize(dest) // 1024
-        print(f'  {out_name:18} {WIDTH}x{height}  {kb} KB   ({what})')
+        print(f'  {out_name:18} {WIDTH}x{height}  {kb} KB  pad {pad}px  ({what})')
 
     print(f'\n{len(scaled)} images at {WIDTH}x{height} -> {OUT}')
 
