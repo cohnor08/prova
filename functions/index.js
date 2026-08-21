@@ -1660,3 +1660,68 @@ exports.cleanupDeletedUser = functionsV1.auth.user().onDelete(async (user) => {
     console.error(`cleanupDeletedUser: failed for ${user.uid}`, err);
   }
 });
+
+// ─── pushOnInboxWrite ─────────────────────────────────────────────────────────
+// Turn an in-app notification into a real one on the person's lock screen.
+//
+// Everything in users/{uid}/inbox already renders under the bell — gig invites,
+// assigned tasks, lesson notes. But the bell only speaks to someone who has
+// already opened Prova, which meant a gig invite could sit unread for days.
+// This fires on the same write, so the phone buzzes whether the app is open,
+// backgrounded or closed.
+//
+// Triggering on the inbox rather than adding a send() call at each site is
+// deliberate: every notification the app already knows how to create gets push
+// for free, and a new type can never forget to.
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+
+exports.pushOnInboxWrite = functionsV1.firestore
+  .document('users/{uid}/inbox/{noteId}')
+  .onCreate(async (snap, context) => {
+    const { uid } = context.params;
+    const note = snap.data() || {};
+
+    const userSnap = await admin.firestore().doc(`users/${uid}`).get();
+    const tokens = Object.keys(userSnap.data()?.pushTokens || {});
+    if (!tokens.length) return;   // never signed in on a device, or denied push
+
+    const messages = tokens.map((to) => ({
+      to,
+      sound: 'default',
+      title: note.title || 'Prova',
+      body: note.body || '',
+      // The app reads this on tap to open the right screen — see
+      // NotificationsScreen for the types it knows how to render.
+      data: { type: note.type || 'default', noteId: context.params.noteId, ...(note.data || {}) },
+    }));
+
+    let receipts = [];
+    try {
+      const res = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'accept-encoding': 'gzip, deflate' },
+        body: JSON.stringify(messages),
+      });
+      const json = await res.json();
+      receipts = Array.isArray(json?.data) ? json.data : [];
+    } catch (err) {
+      console.error('pushOnInboxWrite: send failed', err);
+      return;
+    }
+
+    // Prune tokens Expo tells us are dead — app deleted, device wiped. Left
+    // alone they accumulate for ever and every future send wastes a slot on
+    // them. DeviceNotRegistered is the only error that means "gone"; the rest
+    // are transient and must not cost someone their registration.
+    const dead = receipts
+      .map((r, i) => (r?.status === 'error' && r?.details?.error === 'DeviceNotRegistered'
+        ? tokens[i] : null))
+      .filter(Boolean);
+
+    if (dead.length) {
+      const updates = {};
+      dead.forEach((t) => { updates[`pushTokens.${t}`] = admin.firestore.FieldValue.delete(); });
+      await admin.firestore().doc(`users/${uid}`).update(updates).catch(() => {});
+      console.log(`pushOnInboxWrite: pruned ${dead.length} dead token(s) for ${uid}`);
+    }
+  });

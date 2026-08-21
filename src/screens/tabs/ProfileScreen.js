@@ -11,6 +11,7 @@ import { doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
+import { unregisterPushToken } from '../../lib/pushToken';
 import { linkTeacherByCode, unlinkTeacher, teacherIdsOf } from '../../lib/teacher';
 import { clearSavedLogin } from '../../lib/savedLogin';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
@@ -522,7 +523,7 @@ export default function ProfileScreen({ navigation }) {
         // Forget the remembered email and password too, so the Login screen
         // comes up empty for whoever signs in next instead of pre-filled with
         // the last person's details.
-        onPress: async () => { await clearSavedLogin(); signOut(auth); },
+        onPress: async () => { await unregisterPushToken(auth.currentUser?.uid); await clearSavedLogin(); signOut(auth); },
       },
     ]);
   };

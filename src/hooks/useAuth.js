@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { registerPushToken } from '../lib/pushToken';
 import { onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../lib/firebase';
@@ -31,6 +32,10 @@ export function useAuth() {
         // flow, since role hadn't loaded either).
         setLoading(true);
         setUser(firebaseUser);
+        // Register this device for push. Fire-and-forget: it needs permission
+        // that may not have been granted yet, and sign-in must never wait on
+        // (or fail because of) a notification token.
+        registerPushToken(firebaseUser.uid);
         // Don't hang forever if Firestore is unreachable — fall through after
         // 8s (worst case = the old behavior).
         profileTimeout = setTimeout(() => setLoading(false), 8000);
