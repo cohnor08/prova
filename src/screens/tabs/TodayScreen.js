@@ -20,6 +20,7 @@ import { getDailyChallenge, CHALLENGE_POINTS } from '../../constants/challenges'
 import { getDrill, pickTodaysDrills, drillAssignmentLabel } from '../../constants/drills';
 import { taskPoints, completionBonus, displayScore, formatScore, scoreRank, restoreState, spendRestore, teacherTaskPoints, POINTS_PER_MIN } from '../../lib/score';
 import { practiceStreakUpdates, logPracticeMinutes } from '../../lib/practiceLog';
+import { maybeAskForRating, markSomethingWentWrong } from '../../lib/askForRating';
 import { awardNewBadges } from '../../lib/badges';
 import PracticeWrapped, { wrappedWeekKey } from '../../components/PracticeWrapped';
 import { track } from '../../lib/analytics';
@@ -972,6 +973,13 @@ export default function TodayScreen({ navigation, route }) {
         rankedUp
           ? `All done for today — you leveled up to ${newRank.name} (${formatScore(newScore)} pts)!`
           : `All done for today — your Prova Score is now ${formatScore(newScore)}.${newStreak > 1 ? `\n🔥 ${newStreak}-day streak — keep it alive!` : ''}`,
+        // Ask for a rating only once they've dismissed their own good news —
+        // two sheets at once would bury it, and the rating sheet is the one
+        // that would win. See src/lib/askForRating.js for when it stays quiet.
+        [{
+          text: 'OK',
+          onPress: () => { maybeAskForRating({ streak: newStreak, createdAt: userData?.createdAt }); },
+        }],
       );
     } catch (e) {
       console.error(e);
@@ -999,7 +1007,7 @@ export default function TodayScreen({ navigation, route }) {
       setReviewData(res);
     } catch (e) {
       console.error(e);
-      Alert.alert('Could not build your new plan', e?.message?.includes('limit')
+      markSomethingWentWrong(); Alert.alert('Could not build your new plan', e?.message?.includes('limit')
         ? "You've refreshed your plan already this week. Try again next week."
         : 'Something went wrong. Please try again.');
       setReviewOpen(false);
@@ -1028,7 +1036,7 @@ export default function TodayScreen({ navigation, route }) {
       Alert.alert('Plan updated 🎸', 'Your new week is ready — tuned to your feedback.');
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', "Couldn't save your new plan. Please try again.");
+      markSomethingWentWrong(); Alert.alert('Error', "Couldn't save your new plan. Please try again.");
     }
   };
 
@@ -1082,7 +1090,7 @@ export default function TodayScreen({ navigation, route }) {
       });
     } catch (e) {
       console.error(e);
-      Alert.alert('Error', "Couldn't save your challenge. Please try again.");
+      markSomethingWentWrong(); Alert.alert('Error', "Couldn't save your challenge. Please try again.");
     }
   };
 
@@ -1132,7 +1140,7 @@ export default function TodayScreen({ navigation, route }) {
       });
       if (mins > 0) logPracticeMinutes(uid, mins, 'teacher');
     } catch (e) {
-      Alert.alert('Error', "Couldn't save. Please try again.");
+      markSomethingWentWrong(); Alert.alert('Error', "Couldn't save. Please try again.");
     }
     if (!silent) {
       if (finished) {
@@ -1198,7 +1206,7 @@ export default function TodayScreen({ navigation, route }) {
       const detail = e?.friendly
         ? e.message
         : `Couldn't upload your clip.\n${e?.code || e?.message || 'Unknown error'}`;
-      Alert.alert('Upload failed', detail);
+      markSomethingWentWrong(); Alert.alert('Upload failed', detail);
     } finally {
       setProofBusyId(null);
       setProofPct(null);
@@ -1278,7 +1286,7 @@ export default function TodayScreen({ navigation, route }) {
               resolve(true);
             } catch (e) {
               setUserData((p) => ({ ...p, assignedTasks: userData?.assignedTasks || [] }));
-              Alert.alert('Could not delete', 'Check your connection and try again.');
+              markSomethingWentWrong(); Alert.alert('Could not delete', 'Check your connection and try again.');
               resolve(false);
             }
           },
@@ -1334,7 +1342,7 @@ export default function TodayScreen({ navigation, route }) {
       await updateDoc(doc(db, 'users', uid), updates);
       celebrate({ title: 'Streak restored!', emoji: '🔥', subtitle: 'Practice today to keep it going', streak: userData?.streak || 0 });
     } catch (e) {
-      Alert.alert('Error', "Couldn't restore your streak. Please try again.");
+      markSomethingWentWrong(); Alert.alert('Error', "Couldn't restore your streak. Please try again.");
     }
   };
 
