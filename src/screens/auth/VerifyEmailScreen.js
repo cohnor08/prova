@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { sendEmailVerification, signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { unregisterPushToken } from '../../lib/pushToken';
 import { clearSavedLogin } from '../../lib/savedLogin';
 import { COLORS, SPACING } from '../../constants/theme';
 import Ghost from '../../components/Ghost';
@@ -94,7 +95,7 @@ export default function VerifyEmailScreen({ onVerified }) {
             else's phone. */}
         <TouchableOpacity
           style={styles.link}
-          onPress={async () => { await clearSavedLogin(); signOut(auth); }}
+          onPress={async () => { await unregisterPushToken(auth.currentUser?.uid); await clearSavedLogin(); signOut(auth); }}
           activeOpacity={0.7}
         >
           <Text style={styles.linkText}>Use a different account</Text>

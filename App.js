@@ -48,6 +48,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './src/hooks/useAuth';
 import { useMaintenance } from './src/hooks/useMaintenance';
 import { useStaleReload } from './src/hooks/useStaleReload';
+import { navigationRef, onNavigatorReady, usePushTaps } from './src/lib/pushRouting';
 import { AuthContext } from './src/contexts/AuthContext';
 import { COLORS, TAB_BAR_STYLE, makeTabBarStyle } from './src/constants/theme';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
@@ -294,6 +295,10 @@ function AppInner() {
   // the welcome screen, and restarting mid-signup would lose what was typed.
   useStaleReload(!!user);
 
+  // Tapping a push opens the bell, where every notification type is
+  // rendered properly — including Accept/Decline on a gig invite.
+  usePushTaps();
+
   let body;
   if (loading || maintenanceLoading) {
     body = (
@@ -315,7 +320,7 @@ function AppInner() {
       <AuthContext.Provider value={{ setOnboardingComplete, role }}>
         <MetronomeProvider>
         <CelebrationProvider>
-        <NavigationContainer theme={navTheme}>
+        <NavigationContainer ref={navigationRef} onReady={onNavigatorReady} theme={navTheme}>
           <StatusBar style={statusBarStyle} />
           {!user ? (
             <AuthStack />
