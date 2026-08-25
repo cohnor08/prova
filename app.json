@@ -2,7 +2,7 @@
   "expo": {
     "name": "prova",
     "slug": "prova",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "scheme": "prova",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,6 +11,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ethanlam.prova",
+      "associatedDomains": [
+        "webcredentials:prova-583c9.web.app"
+      ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Prova uses the microphone to tune your instrument and record video messages.",
         "NSPhotoLibraryUsageDescription": "Prova lets you attach photos and videos to your chats.",
