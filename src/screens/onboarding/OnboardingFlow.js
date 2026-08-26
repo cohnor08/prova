@@ -9,6 +9,8 @@ import { auth, db } from '../../lib/firebase';
 import { COLORS, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { generatePracticePlan } from '../../lib/claude';
+import { buildStarterPlan } from '../../lib/starterPlan';
+import { track } from '../../lib/analytics';
 import { useAuthContext } from '../../contexts/AuthContext';
 import OnboardingInstrument from './OnboardingInstrument';
 import OnboardingLevel from './OnboardingLevel';
@@ -60,7 +62,22 @@ export default function OnboardingFlow() {
 
     setGenerating(true);
     try {
-      const plan = await generatePracticePlan(updatedProfile);
+      // The AI plan is an upgrade, not a gate. This used to write
+      // onboardingComplete only after generatePracticePlan returned, so a
+      // failed call left the flag unwritten and the person stuck on this
+      // screen — tap Finish, same error, no way into the app. They get a real
+      // plan built on the device instead, and Today offers to swap it for the
+      // personalised one later.
+      let plan;
+      let usedStarter = false;
+      try {
+        plan = await generatePracticePlan(updatedProfile);
+      } catch (planError) {
+        console.warn('Plan generation failed, using the starter plan:', planError?.message);
+        track('onboarding_starter_plan_used', { reason: planError?.code || 'unknown' });
+        plan = buildStarterPlan(updatedProfile);
+        usedStarter = true;
+      }
       const uid = auth.currentUser.uid;
 
       await setDoc(doc(db, 'users', uid), {
@@ -77,10 +94,18 @@ export default function OnboardingFlow() {
       // Hand off to the first-win warm-up before entering the app (instead of
       // navigating straight to MainTabs).
       setGenerating(false);
+      if (usedStarter) {
+        Alert.alert(
+          "You're in — here's a plan to start with",
+          "We couldn't reach the coach just now, so this week is a solid general plan for your instrument and level. Pull to refresh on Today once you're connected and we'll build your personalised one.",
+        );
+      }
       setFirstWin({ profile: updatedProfile, plan });
     } catch (error) {
+      // Only a Firestore write can reach here now — the plan call has its own
+      // fallback above — so this really is unrecoverable and worth surfacing.
       setGenerating(false);
-      Alert.alert('Error', `Failed to generate plan: ${error.message}`);
+      Alert.alert('Error', `Couldn't finish setting up: ${error.message}`);
     }
   };
 
