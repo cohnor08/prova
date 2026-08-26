@@ -150,7 +150,57 @@
     display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
   footer .links a { color: #8A94A8; margin-left: 18px; }
   footer .links a:hover { color: #F4F6FA; }
-  @media (max-width: 720px) { .hero { padding-top: 30px; } .safe { padding: 28px 22px; } }
+  /* ── Phones ────────────────────────────────────────────────────────────
+     Everything below only applies under 720px. Nothing outside this block
+     was touched, so the desktop layout is byte-for-byte what it was.
+
+     The page was built desktop-first with a single rule in here, so on a
+     phone it rendered at desktop proportions. The worst of it was sideways
+     scroll: .heroGlow::before sits at inset:-60px, so it reaches 60px past
+     the hero on every side, and a phone answers a too-wide page by zooming
+     out — which is why the whole thing looked shrunken rather than merely
+     cramped. */
+  @media (max-width: 720px) {
+    /* the glow is decorative; it must never widen the page */
+    body { overflow-x: hidden; }
+    .heroGlow::before { inset: -24px; }
+
+    .wrap { padding: 0 18px; }
+
+    /* nav: the four links can't share a row with the wordmark at this width */
+    nav { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 0 8px; }
+    nav .links { flex-wrap: wrap; gap: 14px 18px; font-size: 13.5px; }
+
+    .hero { padding: 24px 0 44px; gap: 32px; }
+    .hero .copy { min-width: 0; }          /* 300px min forced overflow at 414px */
+    .hero p.sub { font-size: 16px; }
+
+    /* buttons stack and fill the width — a 10px left margin on a stacked
+       button reads as a misalignment */
+    .cta { display: flex; align-items: center; justify-content: center;
+           width: 100%; margin: 0 0 10px; text-align: center; }
+    .cta.ghost { margin-left: 0; }
+    .cta.store { justify-content: center; }
+    .badge { margin-top: 4px; }
+
+    /* the hero shot centres and scales instead of sitting at a fixed 250px */
+    .heroGlow { align-self: center; }
+    .phone { width: min(250px, 66vw); }
+
+    section { padding: 40px 0; }
+    h2 { font-size: 24px; }
+    .lead { font-size: 15px; margin-bottom: 26px; }
+
+    .card { padding: 22px; }
+    .safe { padding: 26px 20px; border-radius: 20px; }
+    .shots { gap: 18px; }
+    .contact { padding: 48px 0; }
+    .contact h2 { font-size: 26px; }
+
+    /* footer: space-between leaves the two halves fighting on one line */
+    footer { flex-direction: column; align-items: flex-start; gap: 10px; padding: 22px 0 40px; }
+    footer .links a { margin: 0 16px 0 0; display: inline-block; }
+  }
 </style>
 </head>
 <body>
