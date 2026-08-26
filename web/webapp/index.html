@@ -526,6 +526,12 @@ const TASK_DIFFICULTY = { warmup:1.0, theory:1.1, ear_training:1.2, repertoire:1
 const taskPoints = (s = {}) => Math.round((s.duration || 0) * POINTS_PER_MIN * (TASK_DIFFICULTY[s.category] || 1.1)) + TASK_BASE;
 const teacherTaskPoints = (sec) => Math.round((Math.max(0, sec) / 60) * POINTS_PER_MIN * TEACHER_TASK_MULTIPLIER);
 // src/lib/displayName.js
+// Same alphabet as src/lib/teacher.js — 0/O and 1/I left out so a code can be
+// read aloud without confusion.
+const TEACHER_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newTeacherCode = () => Array.from({ length: 6 },
+  () => TEACHER_CODE_CHARS[Math.floor(Math.random() * TEACHER_CODE_CHARS.length)]).join('');
+
 const displayName = (u) => (u?.username?.trim()) || (u?.name?.trim()) || (u?.email ? u.email.split('@')[0] : 'there');
 const initials = (n) => n.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
 // src/lib/practiceLog.js uses a UTC date key; sessionProgress uses toDateString()
@@ -596,7 +602,12 @@ $('#suBtn').onclick = async () => {
       // the app writes in SignupScreen.js, so one account behaves the same
       // way whichever surface made it.
       requiresEmailVerification: true,
-      ...(SIGNUP_ROLE === 'teacher' ? {} : { instrument: SIGNUP_INST }),
+      // Teachers get their join code here, at signup. It used to be created
+      // lazily by whichever screen displayed it, which left four of seven live
+      // teachers without one — their students had nothing to type in.
+      ...(SIGNUP_ROLE === 'teacher'
+        ? { teacherCode: newTeacherCode() }
+        : { instrument: SIGNUP_INST }),
     }, { merge: true });
     try {
       await sendEmailVerification(cred.user);

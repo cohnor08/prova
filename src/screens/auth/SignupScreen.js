@@ -16,6 +16,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../lib/firebase';
 import { track } from '../../lib/analytics';
+import { generateTeacherCode } from '../../lib/teacher';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 
@@ -79,6 +80,12 @@ export default function SignupScreen({ navigation, route }) {
         // before this shipped has no such field and is never asked, so an
         // existing user can't be locked out by a rule added under them.
         requiresEmailVerification: true,
+        // A teacher's join code is written here, at signup, rather than lazily
+        // the first time they open a screen that shows it. That lazy path left
+        // four of seven live teachers with no code at all — its one call site
+        // swallowed errors, and a teacher who never visited that exact screen
+        // never got one, so their students had nothing to type in.
+        ...(role === 'teacher' ? { teacherCode: generateTeacherCode() } : {}),
       });
       // Recoverable — the verify screen has its own Resend — but never
       // silent. This used to be `.catch(() => {})`, so a send that failed
