@@ -364,6 +364,13 @@
 
     .shell{grid-template-columns:minmax(0,1fr)}
 
+    /* The 1080px rule strips the rail back to bare icons for the narrow
+       desktop sidebar, and it still applies at phone width — which left the
+       drawer as a column of unlabelled glyphs. The drawer is 268px wide, so
+       everything comes back: names, group headings, wordmark, account. */
+    .rail .word,.nav span,.eyebrow,.who .nm,.who .rl{display:revert}
+    .nav{justify-content:flex-start}
+
     .rail{
       position:fixed;left:0;top:0;bottom:0;z-index:60;
       width:min(268px,82vw);
