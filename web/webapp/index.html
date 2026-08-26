@@ -348,59 +348,53 @@
   /* ── Phones ──────────────────────────────────────────────────────────────
      Only applies under 720px; the desktop rules above are untouched.
 
-     The sidebar is the whole problem here. At 1080px it already shrinks to a
-     70px icon rail, and at phone width that rail eats a sixth of the screen
-     while the content beside it still lays out at desktop proportions. So on
-     a phone the rail stops being a sidebar and becomes a scrolling tab bar
-     along the bottom — the arrangement people already know from the app.
+     The sidebar is the whole problem on a phone. At 1080px it already shrinks
+     to a 70px icon rail, and at phone width that rail eats a sixth of the
+     screen while the content beside it still lays out at desktop proportions.
 
-     Horizontal scroll rather than fixed tabs because there are fourteen
-     destinations; five slots would mean hiding nine of them. */
+     So it slides off-canvas and comes back as a drawer behind a menu button.
+     A drawer rather than a bottom tab bar because there are fourteen
+     destinations — tabs would mean hiding most of them, and the drawer keeps
+     the grouping ("Practice", "Track", "Studio") that makes them findable. */
+  .menubtn{display:none}
+  .railscrim{display:none}
+
   @media (max-width:720px){
     .stats{grid-template-columns:1fr}
 
     .shell{grid-template-columns:minmax(0,1fr)}
 
     .rail{
-      position:fixed;left:0;right:0;bottom:0;z-index:40;
-      flex-direction:row;align-items:center;gap:2px;
-      padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-      border-right:0;border-top:1px solid var(--line);
-      overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-      scrollbar-width:none;
-      /* belt and braces: whatever ends up inside, the bar stays a bar */
-      max-height:76px;
+      position:fixed;left:0;top:0;bottom:0;z-index:60;
+      width:min(268px,82vw);
+      transform:translateX(-100%);
+      transition:transform .22s cubic-bezier(.4,0,.2,1);
+      overflow-y:auto;-webkit-overflow-scrolling:touch;
+      box-shadow:0 0 40px rgba(0,0,0,.5);
     }
-    .rail::-webkit-scrollbar{display:none}
-    /* the nav buttons live inside a plain #nav div — making the rail a row
-       left them stacking inside it, which grew the bar to full height and
-       hid the whole page behind it. The inner container has to be a row too. */
-    .rail #nav{display:flex;flex-direction:row;align-items:stretch;gap:2px;flex:1;min-width:0}
-    /* the brand, the big Ask button and the account block don't belong in a
-       tab bar — Ask has its own nav entry and Profile carries sign-out */
-    .rail .brand,.rail .ask,.rail .who{display:none}
+    .rail.open{transform:translateX(0)}
 
-    .nav{
-      flex-direction:column;gap:3px;flex:0 0 auto;
-      padding:7px 11px;min-width:62px;justify-content:center;text-align:center;
+    .railscrim{
+      display:block;position:fixed;inset:0;z-index:55;
+      background:rgba(0,0,0,.5);opacity:0;transition:opacity .22s ease;
     }
-    /* labels come back — an icon-only bar is unreadable without hover */
-    .nav span{display:block;font-size:9.5px;line-height:1.15;white-space:nowrap}
-    .nav svg{width:19px;height:19px}
-    .eyebrow{display:none}
+    .railscrim.open{opacity:1}
+    .railscrim[hidden]{display:none}
 
-    /* clear the bar, plus room for the metronome dock sitting above it */
-    .content{padding:16px 14px 108px}
-    .top{padding:14px 14px 0}
+    .menubtn{
+      display:grid;place-items:center;flex:none;
+      width:36px;height:36px;margin-left:-6px;
+      background:none;border:0;color:var(--ink-2);cursor:pointer;border-radius:9px;
+    }
+    .menubtn svg{width:21px;height:21px}
+    .menubtn:active{background:var(--raised)}
+
+    .top{padding:0 14px;gap:10px}
+    .top h1{font-size:18px}
+    .content{padding:16px 14px 90px}
     .cols{gap:16px}
     .card{padding:15px;border-radius:14px}
     .greet h2{font-size:21px}
-
-    /* the dock is draggable and remembers a position that may now be under
-       the tab bar, so pin it above the bar on small screens */
-    .metro{right:12px;bottom:auto;top:auto;left:auto;
-      bottom:calc(74px + env(safe-area-inset-bottom))!important;
-      left:auto!important;top:auto!important}
   }
 </style>
 </head>
@@ -459,7 +453,8 @@
 </div>
 
 <div class="shell hidden" id="app">
-  <aside class="rail">
+  <div class="railscrim" id="railScrim" hidden></div>
+  <aside class="rail" id="rail">
     <div class="brand"><img src="/img/icon-192.png" alt=""><div class="word">PROVA</div></div>
     <div id="nav"></div>
     <button class="ask" data-go="ask"><strong>Ask Prova</strong><span>Stuck on something? Just ask.</span></button>
@@ -468,7 +463,7 @@
       <button class="x" id="signout" title="Sign out" style="margin-left:auto">⏻</button></div>
   </aside>
   <div>
-    <header class="top"><h1 id="pageTitle">Today</h1>
+    <header class="top"><button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><h1 id="pageTitle">Today</h1>
       <div class="chips">
         <span class="chip"><span class="lab">Streak</span><span class="v" id="chipStreak">–</span></span>
         <span class="chip"><span class="lab">Score</span><span class="v" id="chipScore">–</span></span>
@@ -824,6 +819,37 @@ function renderNav() {
     : '');
 }
 $('#app').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.getAttribute('data-go')); });
+
+// ── the nav drawer (phones only) ─────────────────────────────────────────
+// Under 720px the rail is off-canvas; this is the only way back to it. The
+// scrim carries `hidden` when closed so it can't swallow taps on a wide
+// screen, where the drawer doesn't exist at all.
+(() => {
+  const rail = $('#rail'), scrim = $('#railScrim'), btn = $('#menuBtn');
+  if (!rail || !scrim || !btn) return;
+
+  const setOpen = (open) => {
+    rail.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      scrim.hidden = false;
+      // next frame, so the opacity transition has a state to animate from
+      requestAnimationFrame(() => scrim.classList.add('open'));
+    } else {
+      scrim.classList.remove('open');
+      setTimeout(() => { if (!rail.classList.contains('open')) scrim.hidden = true; }, 220);
+    }
+  };
+
+  btn.onclick = () => setOpen(!rail.classList.contains('open'));
+  scrim.onclick = () => setOpen(false);
+  // Picking a destination closes it — leaving it open over the page you just
+  // asked for is the classic drawer annoyance.
+  rail.addEventListener('click', (e) => { if (e.target.closest('[data-go]')) setOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+  // Rotating to landscape can cross the breakpoint with the drawer still open.
+  window.addEventListener('resize', () => { if (window.innerWidth > 720) setOpen(false); });
+})();
 // Every screen's renderer in one place. Expanding a row must repaint the
 // screen you are ON — calling render() directly painted Today over whatever
 // tab you were looking at.
@@ -2009,11 +2035,6 @@ $('#mPlay').onclick = () => { METRO.playing = !METRO.playing; METRO.playing ? me
 
   el.addEventListener('pointerdown', (e) => {
     if (e.button != null && e.button !== 0) return;
-    // On phones the dock is pinned above the tab bar by CSS (with !important,
-    // since a saved position could otherwise sit underneath it). Dragging
-    // there would fight that rule and snap back, which reads as broken — so
-    // the dock simply isn't draggable at that width.
-    if (window.innerWidth <= 720) return;
     const r = el.getBoundingClientRect();
     startX = e.clientX; startY = e.clientY; baseL = r.left; baseT = r.top;
     live = true; moved = false;
