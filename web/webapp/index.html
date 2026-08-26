@@ -368,8 +368,14 @@
       border-right:0;border-top:1px solid var(--line);
       overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
       scrollbar-width:none;
+      /* belt and braces: whatever ends up inside, the bar stays a bar */
+      max-height:76px;
     }
     .rail::-webkit-scrollbar{display:none}
+    /* the nav buttons live inside a plain #nav div — making the rail a row
+       left them stacking inside it, which grew the bar to full height and
+       hid the whole page behind it. The inner container has to be a row too. */
+    .rail #nav{display:flex;flex-direction:row;align-items:stretch;gap:2px;flex:1;min-width:0}
     /* the brand, the big Ask button and the account block don't belong in a
        tab bar — Ask has its own nav entry and Profile carries sign-out */
     .rail .brand,.rail .ask,.rail .who{display:none}
