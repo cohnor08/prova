@@ -345,7 +345,57 @@
   .beatbar.on{border-color:var(--primary)} .beatbar.cur{outline:2px solid var(--primary);outline-offset:1px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}.shell{grid-template-columns:70px minmax(0,1fr)}.rail .word,.nav span,.eyebrow,.who .nm,.who .rl{display:none}.nav{justify-content:center}}
-  @media (max-width:720px){.stats{grid-template-columns:1fr}}
+  /* ── Phones ──────────────────────────────────────────────────────────────
+     Only applies under 720px; the desktop rules above are untouched.
+
+     The sidebar is the whole problem here. At 1080px it already shrinks to a
+     70px icon rail, and at phone width that rail eats a sixth of the screen
+     while the content beside it still lays out at desktop proportions. So on
+     a phone the rail stops being a sidebar and becomes a scrolling tab bar
+     along the bottom — the arrangement people already know from the app.
+
+     Horizontal scroll rather than fixed tabs because there are fourteen
+     destinations; five slots would mean hiding nine of them. */
+  @media (max-width:720px){
+    .stats{grid-template-columns:1fr}
+
+    .shell{grid-template-columns:minmax(0,1fr)}
+
+    .rail{
+      position:fixed;left:0;right:0;bottom:0;z-index:40;
+      flex-direction:row;align-items:center;gap:2px;
+      padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+      border-right:0;border-top:1px solid var(--line);
+      overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+    }
+    .rail::-webkit-scrollbar{display:none}
+    /* the brand, the big Ask button and the account block don't belong in a
+       tab bar — Ask has its own nav entry and Profile carries sign-out */
+    .rail .brand,.rail .ask,.rail .who{display:none}
+
+    .nav{
+      flex-direction:column;gap:3px;flex:0 0 auto;
+      padding:7px 11px;min-width:62px;justify-content:center;text-align:center;
+    }
+    /* labels come back — an icon-only bar is unreadable without hover */
+    .nav span{display:block;font-size:9.5px;line-height:1.15;white-space:nowrap}
+    .nav svg{width:19px;height:19px}
+    .eyebrow{display:none}
+
+    /* clear the bar, plus room for the metronome dock sitting above it */
+    .content{padding:16px 14px 108px}
+    .top{padding:14px 14px 0}
+    .cols{gap:16px}
+    .card{padding:15px;border-radius:14px}
+    .greet h2{font-size:21px}
+
+    /* the dock is draggable and remembers a position that may now be under
+       the tab bar, so pin it above the bar on small screens */
+    .metro{right:12px;bottom:auto;top:auto;left:auto;
+      bottom:calc(74px + env(safe-area-inset-bottom))!important;
+      left:auto!important;top:auto!important}
+  }
 </style>
 </head>
 <body>
@@ -1953,6 +2003,11 @@ $('#mPlay').onclick = () => { METRO.playing = !METRO.playing; METRO.playing ? me
 
   el.addEventListener('pointerdown', (e) => {
     if (e.button != null && e.button !== 0) return;
+    // On phones the dock is pinned above the tab bar by CSS (with !important,
+    // since a saved position could otherwise sit underneath it). Dragging
+    // there would fight that rule and snap back, which reads as broken — so
+    // the dock simply isn't draggable at that width.
+    if (window.innerWidth <= 720) return;
     const r = el.getBoundingClientRect();
     startX = e.clientX; startY = e.clientY; baseL = r.left; baseT = r.top;
     live = true; moved = false;
