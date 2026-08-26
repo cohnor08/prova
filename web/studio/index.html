@@ -390,7 +390,10 @@ const ICON = {
 const svg = (p, w) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w||1.8}">${p}</svg>`;
 
 // ── state ─────────────────────────────────────────────────────────────────
-let me = null, meUid = null, students = [], screen = 'students', selUid = null;
+// `screen` starts on 'home' (the Studio tab) because renderNav() paints the
+// active item from it before go('home') runs — starting on 'students' made
+// every teacher login flash the Students tab for a beat first.
+let me = null, meUid = null, students = [], screen = 'home', selUid = null;
 
 // ── auth ──────────────────────────────────────────────────────────────────
 $('#loginBtn').onclick = async () => {
