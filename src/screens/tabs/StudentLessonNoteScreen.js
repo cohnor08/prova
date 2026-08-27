@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Linking } from 'react-native';
 import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -68,8 +68,13 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
           const tSnap = await getDoc(doc(db, 'users', me.teacherUid));
           const att = tSnap.data()?.attendance || {};
           const list = Object.entries(att)
-            .filter(([, rec]) => rec && rec.studentUid === uid && (rec.status || rec.note))
-            .map(([key, rec]) => ({ date: key.split('__')[1], status: rec.status || null, note: rec.note || null }))
+            .filter(([, rec]) => rec && rec.studentUid === uid && (rec.status || rec.note || (rec.attachments || []).length))
+            .map(([key, rec]) => ({ date: key.split('__')[1], status: rec.status || null, note: rec.note || null,
+              // Teachers attach sheet-music photos and links here. These were
+              // being dropped, so a phone student saw a note with no sign an
+              // attachment existed — worse than an error, because the teacher
+              // had no way to know it hadn't landed.
+              atts: Array.isArray(rec.attachments) ? rec.attachments : [] }))
             .filter((x) => x.date)
             .sort((a, b) => b.date.localeCompare(a.date));
           if (!cancelled) { setEntries(list); setTaskNotes(fb); setLoading(false); }
@@ -191,6 +196,29 @@ export default function StudentLessonNoteScreen({ navigation, route }) {
                   ) : (
                     <Text style={styles.noNote}>No note for this lesson.</Text>
                   )}
+                  {e.atts.length > 0 && (
+                    <View style={styles.atts}>
+                      {e.atts.map((a, k) => (a.type === 'photo' ? (
+                        <TouchableOpacity key={k} onPress={() => a.url && Linking.openURL(a.url)} activeOpacity={0.85}>
+                          <Image source={{ uri: a.url }} style={styles.attImg} resizeMode="cover" />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          key={k}
+                          style={styles.attChip}
+                          onPress={() => a.url && Linking.openURL(a.url)}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons
+                            name={a.type === 'video' ? 'videocam' : a.type === 'song' ? 'musical-notes' : 'link'}
+                            size={13}
+                            color={COLORS.primary}
+                          />
+                          <Text style={styles.attChipText} numberOfLines={1}>{a.title || a.url}</Text>
+                        </TouchableOpacity>
+                      )))}
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -228,4 +256,14 @@ const styles = themedStyles(() => StyleSheet.create({
   pillText: { fontSize: 12, fontWeight: '800' },
   note: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20 },
   noNote: { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic' },
+  // attachments a teacher added to the lesson — photos inline, everything else
+  // as a chip. Both open externally; the app has no viewer for these.
+  atts: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.md },
+  attImg: { width: 92, height: 92, borderRadius: 10, backgroundColor: COLORS.card },
+  attChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 7, paddingHorizontal: 11, borderRadius: 999,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, maxWidth: '100%',
+  },
+  attChipText: { color: COLORS.primary, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
 }));
