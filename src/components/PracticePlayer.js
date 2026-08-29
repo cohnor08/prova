@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, ActivityIndicator, Image, Linking,
 } from 'react-native';
 import Ghost from './Ghost';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -386,6 +386,29 @@ export default function PracticePlayer({
                 </TouchableOpacity>
               )}
 
+              {/* What the teacher attached when they set the task — usually a
+                  photo of the music. Tapping opens it full size; there's no
+                  in-app viewer and inventing one here isn't worth it. */}
+              {item.kind === 'teacher' && (item.attachments || []).length > 0 && (
+                <View style={styles.taskAtts}>
+                  {item.attachments.map((a, k) => (a.type === 'photo' ? (
+                    <TouchableOpacity key={k} onPress={() => a.url && Linking.openURL(a.url)} activeOpacity={0.85}>
+                      <Image source={{ uri: a.url }} style={styles.taskAttImg} resizeMode="cover" />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      key={k}
+                      style={styles.taskAttChip}
+                      onPress={() => a.url && Linking.openURL(a.url)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="videocam" size={13} color={COLORS.primary} />
+                      <Text style={styles.taskAttText} numberOfLines={1}>{a.title || 'Video'}</Text>
+                    </TouchableOpacity>
+                  )))}
+                </View>
+              )}
+
               {/* Proof is one button. Nothing plays until you ask it to —
                   opening a video unprompted in the middle of a timed task is
                   the last thing you want. */}
@@ -634,6 +657,15 @@ const styles = themedStyles(() => StyleSheet.create({
   proofNote: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   proofNoteText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   proofReplaceLink: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginLeft: 6 },
+
+  // what the teacher attached to the task
+  taskAtts: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.md, alignSelf: 'stretch' },
+  taskAttImg: { width: 104, height: 104, borderRadius: 12, backgroundColor: COLORS.card },
+  taskAttChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card,
+  },
+  taskAttText: { color: COLORS.primary, fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
 
   // proof sheet — opened from the button, never on its own
   proofCard: { padding: SPACING.lg, borderRadius: 20, maxHeight: '86%' },

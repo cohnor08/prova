@@ -940,6 +940,12 @@ function rows(list, kind, limit) {
       </div>
       <div class="tbody2">
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
+        ${(x.attachments || []).length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">
+          ${x.attachments.map((a) => a.type === 'photo'
+            ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title || 'Attachment')}"
+                 style="width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"></a>`
+            : `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener">🎥 ${esc(a.title || 'Video')}</a>`
+          ).join('')}</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${done ? '<span class="hint">Completed</span>'
             : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
