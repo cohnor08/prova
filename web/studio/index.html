@@ -266,7 +266,58 @@
     .nav{justify-content:center}
     .cal{grid-template-columns:repeat(2,minmax(0,1fr))}
   }
-  @media (max-width:720px){.stats{grid-template-columns:1fr}}
+  /* ── Phones ──────────────────────────────────────────────────────────────
+     Studio was built for a desk and had one mobile rule. Two things were
+     actually broken rather than merely cramped:
+
+     The 1080px rule leaves a 70px icon rail, and .msg is a two-column grid
+     with a fixed 270px conversation list. On a 400px screen that leaves the
+     message thread about 60px wide, which squeezes the composer to nothing —
+     the "typing bar appears for a split second then vanishes".
+
+     So: the rail becomes a drawer, and Messages becomes one column. */
+  .menubtn{display:none}
+  .railscrim{display:none}
+
+  @media (max-width:720px){
+    .stats{grid-template-columns:1fr}
+
+    .shell{grid-template-columns:minmax(0,1fr)}
+    .rail{
+      position:fixed;left:0;top:0;bottom:0;z-index:60;width:min(268px,82vw);
+      transform:translateX(-100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+      overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 0 40px rgba(0,0,0,.5);
+    }
+    .rail.open{transform:translateX(0)}
+    /* the 1080px rule stripped these for the narrow sidebar; the drawer is
+       wide enough to show them again */
+    .rail .word,.rail .sub,.nav span,.eyebrow,.who .nm,.who .rl{display:revert}
+    .nav{justify-content:flex-start}
+
+    .railscrim{display:block;position:fixed;inset:0;z-index:55;
+      background:rgba(0,0,0,.5);opacity:0;transition:opacity .22s ease}
+    .railscrim.open{opacity:1}
+    .railscrim[hidden]{display:none}
+
+    .menubtn{display:grid;place-items:center;flex:none;width:36px;height:36px;margin-left:-6px;
+      background:none;border:0;color:var(--ink-2);cursor:pointer;border-radius:9px}
+    .menubtn svg{width:21px;height:21px}
+    .menubtn:active{background:var(--raised)}
+
+    .top{padding:0 14px;gap:10px}
+    .top h1{font-size:18px}
+    .content{padding:16px 14px 28px}
+    .card{padding:15px;border-radius:14px}
+    .cal{grid-template-columns:minmax(0,1fr)}
+
+    /* Messages: one column. The list sits on top at a fixed height with its
+       own scroll, the thread takes the rest — so the composer is always the
+       bottom of the thread rather than being squeezed out of a 60px column. */
+    .msg{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 210px);min-height:420px}
+    .convs{border-right:0;border-bottom:1px solid var(--line);max-height:132px}
+    .composer{padding:10px 12px}
+    .composer input{font-size:16px}   /* under 16px iOS zooms the page on focus */
+  }
 </style>
 </head>
 <body>
@@ -293,7 +344,7 @@
 </div>
 
 <div class="shell hidden" id="app">
-  <aside class="rail">
+  <aside class="rail" id="rail">
     <div class="brand"><img src="/img/icon-192.png" alt="">
       <div><div class="word">PROVA</div><div class="sub">Studio</div></div></div>
     <div class="navgroup" id="nav"></div>
@@ -305,7 +356,8 @@
     </div>
   </aside>
   <div>
-    <header class="top">
+    <div class="railscrim" id="railScrim" hidden></div>
+    <header class="top"><button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       <h1 id="pageTitle">Students</h1>
       <div class="chips">
         <span class="chip"><span class="lab">Students</span><span class="v" id="chipCount">–</span></span>
@@ -405,6 +457,26 @@ $('#loginBtn').onclick = async () => {
   finally { $('#loginBtn').disabled = false; }
 };
 $('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
+// ── the nav drawer (phones only) ─────────────────────────────────────────
+(() => {
+  const rail = $('#rail'), scrim = $('#railScrim'), btn = $('#menuBtn');
+  if (!rail || !scrim || !btn) return;
+  const setOpen = (open) => {
+    rail.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) { scrim.hidden = false; requestAnimationFrame(() => scrim.classList.add('open')); }
+    else {
+      scrim.classList.remove('open');
+      setTimeout(() => { if (!rail.classList.contains('open')) scrim.hidden = true; }, 220);
+    }
+  };
+  btn.onclick = () => setOpen(!rail.classList.contains('open'));
+  scrim.onclick = () => setOpen(false);
+  rail.addEventListener('click', (e) => { if (e.target.closest('[data-go]')) setOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+  window.addEventListener('resize', () => { if (window.innerWidth > 720) setOpen(false); });
+})();
+
 $('#signout').onclick = confirmSignOut;
 function confirmSignOut() {
   modal(`<h3>Sign out?</h3>
