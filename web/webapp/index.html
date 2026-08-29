@@ -305,6 +305,7 @@
   .msgrow.me{align-self:flex-end;align-items:flex-end}
   .msgrow.them{align-self:flex-start;align-items:flex-start}
   .msgrow .bub{max-width:100%}
+  .receipt{font-size:10.5px;color:var(--ink-3);padding:1px 3px 0}
   .rx{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:0 3px;min-height:19px}
   .rxchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card);
     color:var(--ink-2);border-radius:999px;padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6}
@@ -3970,7 +3971,9 @@ async function findUserByEmail(email) {
 
 const makeChatId = (a, b) => [a, b].sort().join('_');
 let CONVS = [], CUR = null, unsubMsgs = null, MSGS = [];
+let unsubRead = null, OTHER_READ_AT = null;
 const NAMES = {};   // uid → display name, resolved once
+const TEACHER_ROLE = {}; // uid → is this person a teacher? resolved once
 
 async function nameFor(uid, fallback) {
   if (NAMES[uid]) return NAMES[uid];
@@ -3990,11 +3993,25 @@ const myTeacherUids = () =>
 async function loadConvs() {
   const teachers = myTeacherUids();
   const snap = await getDocs(collection(db, 'userChats', uid, 'conversations'));
-  CONVS = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    // School-safe: students get their teachers and nobody else. Peer DMs are
-    // off in the app (MessagesScreen shows student→teacher only) and a stale
-    // student-to-student thread in Firestore must not resurface here.
-    .filter(c => teachers.includes(c.otherUid))
+  const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Who among these is a teacher? Needed before filtering, so an ex-teacher's
+  // history survives an unlink while a peer thread still can't appear.
+  await Promise.all(raw.map(async (c) => {
+    if (!c.otherUid || TEACHER_ROLE[c.otherUid] !== undefined) return;
+    try {
+      const d = (await getDoc(doc(db, 'users', c.otherUid))).data() || {};
+      TEACHER_ROLE[c.otherUid] = d.role === 'teacher';
+    } catch { TEACHER_ROLE[c.otherUid] = false; }
+  }));
+
+  CONVS = raw
+    // School-safe: teachers only, never peers. A thread with someone who is
+    // no longer my teacher is KEPT — the history is mine to read — but it is
+    // kept on the strength of their ROLE, not the old link, so a stale
+    // student-to-student thread still can't resurface. The composer is hidden
+    // for these; see paintThread.
+    .filter(c => teachers.includes(c.otherUid) || TEACHER_ROLE[c.otherUid])
     .sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
 
   // A thread only exists once somebody has sent something, so a student who
@@ -4026,6 +4043,11 @@ function openThread(chatId) {
     paintBubbles();
   }, () => { MSGS = []; paintBubbles(); });
   setDoc(doc(db, 'chats', chatId), { lastRead: { [uid]: new Date().toISOString() } }, { merge: true }).catch(() => {});
+  if (unsubRead) { unsubRead(); unsubRead = null; }
+  unsubRead = onSnapshot(doc(db, 'chats', chatId), (d) => {
+    OTHER_READ_AT = (d.data()?.lastRead || {})[CUR?.otherUid] || null;
+    paintBubbles();
+  }, () => {});
 }
 
 // Reactions live on the message as { emoji: [uids] }, the same shape the app
@@ -4061,11 +4083,23 @@ async function toggleReaction(messageId, emoji) {
   } catch { toast('Could not react'); }
 }
 
+// Sent vs Seen — mirrors receiptStatus() in src/lib/chat.js so every surface
+// agrees. `lastRead` maps uid -> ISO string, written when someone opens the
+// thread; if theirs is at or after this message, they've seen it.
+function receiptFor(m) {
+  const toMs = (v) => (v && typeof v.seconds === 'number' ? v.seconds * 1000
+    : (typeof v === 'string' ? Date.parse(v) : (typeof v === 'number' ? v : null)));
+  const read = toMs(OTHER_READ_AT), sent = toMs(m.timestamp);
+  return read != null && sent != null && read >= sent ? 'Seen' : 'Sent';
+}
+
 // The bubbles alone — safe to call as often as messages change.
 function paintBubbles() {
   const b = document.querySelector('#thBub'); if (!b) return;
   const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 60;
-  b.innerHTML = MSGS.length ? MSGS.map(m => {
+  let lastMineIdx = -1;
+  MSGS.forEach((m, i) => { if (m.senderUid === uid) lastMineIdx = i; });
+  b.innerHTML = MSGS.length ? MSGS.map((m, i) => {
       const mine = m.senderUid === uid;
       const when = m.timestamp?.seconds
         ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
@@ -4076,7 +4110,8 @@ function paintBubbles() {
               : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`
         : `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
             <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
-      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${rxHtml(m)}</div>`;
+      const receipt = (mine && i === lastMineIdx) ? `<div class="receipt">${receiptFor(m)}</div>` : '';
+      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${receipt}${rxHtml(m)}</div>`;
     }).join('') : '<div class="empty">No messages yet — say hello.</div>';
   if (atBottom) b.scrollTop = b.scrollHeight;      // don't yank someone reading back
 }
@@ -4117,13 +4152,20 @@ function paintThread() {
     <div class="bubbles" id="thBub"></div>
     <div style="display:none;padding:0 14px"><div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
       <div id="upBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
-    <div class="composer">
+    ${myTeacherUids().includes(CUR.otherUid) ? `<div class="composer">
       <label class="btn sm ghost" for="msgFile" style="cursor:pointer;flex:none">📎</label>
       <input id="msgFile" type="file" accept="image/*,video/*" style="display:none">
       <input id="msgIn" placeholder="Write a message…" autocomplete="off">
-      <button class="btn sm" id="msgSend">Send</button></div>`;
+      <button class="btn sm" id="msgSend">Send</button></div>`
+    : `<div class="composer" style="justify-content:center">
+        <span class="hint" style="text-align:center;font-size:12.5px">
+          You're no longer connected to ${esc(CUR.name)}. The conversation stays here to read.
+        </span></div>`}`;
   paintBubbles();
+  // Absent when unlinked — the rules would reject the send anyway, so a box
+  // you can type into but not send from is worse than no box.
   const inp = document.querySelector('#msgIn');
+  if (!inp) return;
   document.querySelector('#msgSend').onclick = sendMsg;
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
   const fileIn = document.querySelector('#msgFile');

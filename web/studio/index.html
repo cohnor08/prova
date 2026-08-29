@@ -240,6 +240,7 @@
   .msgrow.me{align-self:flex-end;align-items:flex-end}
   .msgrow.them{align-self:flex-start;align-items:flex-start}
   .msgrow .bub{max-width:100%}
+  .receipt{font-size:10.5px;color:var(--ink-3);padding:1px 3px 0}
   .rx{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:0 3px;min-height:19px}
   .rxchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card);
     color:var(--ink-2);border-radius:999px;padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.6}
@@ -1221,6 +1222,7 @@ async function sendMedia(file) {
 // userChats/{meUid}/conversations/{chatId}.
 const makeChatId = (a, b) => [a, b].sort().join('_');
 let CONVS = [], CUR = null, unsubMsgs = null, MSGS = [];
+let unsubRead = null, OTHER_READ_AT = null;
 const NAMES = {};   // meUid → display name, resolved once
 
 async function nameFor(meUid, fallback) {
@@ -1250,6 +1252,13 @@ function openThread(chatId) {
     MSGS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     paintBubbles();
   }, () => { MSGS = []; paintBubbles(); });
+  // The other side's read marker, live — this is what turns Sent into Seen
+  // without needing a refresh.
+  if (unsubRead) { unsubRead(); unsubRead = null; }
+  unsubRead = onSnapshot(doc(db, 'chats', chatId), (d) => {
+    OTHER_READ_AT = (d.data()?.lastRead || {})[CUR?.otherUid] || null;
+    paintBubbles();
+  }, () => {});
   setDoc(doc(db, 'chats', chatId), { lastRead: { [meUid]: new Date().toISOString() } }, { merge: true }).catch(() => {});
 }
 
@@ -1286,10 +1295,24 @@ async function toggleReaction(messageId, emoji) {
   } catch { toast('Could not react'); }
 }
 
+// Sent vs Seen — mirrors receiptStatus() in src/lib/chat.js so both surfaces
+// agree. `lastRead` is a map of uid -> ISO string written when someone opens
+// the thread; if theirs is at or after this message, they've seen it.
+function receiptFor(m) {
+  const toMs = (v) => (v && typeof v.seconds === 'number' ? v.seconds * 1000
+    : (typeof v === 'string' ? Date.parse(v) : (typeof v === 'number' ? v : null)));
+  const read = toMs(OTHER_READ_AT);
+  const sent = toMs(m.timestamp);
+  return read != null && sent != null && read >= sent ? 'Seen' : 'Sent';
+}
+
 function paintBubbles() {
   const b = document.querySelector('#thBub'); if (!b) return;
   const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 60;
-  b.innerHTML = MSGS.length ? MSGS.map(m => {
+  // index of my most recent message, so only that one carries a receipt
+  let lastMineIdx = -1;
+  MSGS.forEach((m, i) => { if (m.senderUid === meUid) lastMineIdx = i; });
+  b.innerHTML = MSGS.length ? MSGS.map((m, i) => {
       const mine = m.senderUid === meUid;
       const when = m.timestamp?.seconds
         ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
@@ -1300,7 +1323,12 @@ function paintBubbles() {
               : `<img src="${esc(m.mediaUrl)}" alt="" style="max-width:230px;border-radius:12px;display:block">`}</div>`
         : `<div class="bub ${mine ? 'me' : 'them'}">${esc(m.text)}
             <span style="display:block;font-size:10.5px;opacity:.6;margin-top:3px">${when}</span></div>`;
-      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${rxHtml(m)}</div>`;
+      // Only on your own LAST message — a receipt under every bubble is noise,
+      // and the newest one already answers "did they see it?".
+      const lastMine = mine && i === lastMineIdx;
+      const receipt = lastMine
+        ? `<div class="receipt">${receiptFor(m)}</div>` : '';
+      return `<div class="msgrow ${mine ? 'me' : 'them'}">${body}${receipt}${rxHtml(m)}</div>`;
     }).join('') : '<div class="empty">No messages yet — say hello.</div>';
   if (atBottom) b.scrollTop = b.scrollHeight;
 }
@@ -1341,13 +1369,22 @@ function paintThread() {
     <div class="bubbles" id="thBub"></div>
     <div style="display:none;padding:0 14px"><div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
       <div id="upBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
-    <div class="composer">
+    ${stillLinked(CUR.otherUid) ? `<div class="composer">
       <label class="btn sm ghost" for="msgFile" style="cursor:pointer;flex:none">📎</label>
       <input id="msgFile" type="file" accept="image/*,video/*" style="display:none">
       <input id="msgIn" placeholder="Write a message…" autocomplete="off">
-      <button class="btn sm" id="msgSend">Send</button></div>`;
+      <button class="btn sm" id="msgSend">Send</button></div>`
+    : `<div class="composer" style="justify-content:center">
+        <span class="hint" style="text-align:center;font-size:12.5px">
+          ${esc(CUR.name)} is no longer connected to you. The conversation stays here to read.
+        </span></div>`}`;
   paintBubbles();
+  // Nothing below exists when the student has disconnected — the composer
+  // isn't rendered at all rather than shown and disabled, because the
+  // Firestore rules would reject the send anyway (isTeacherStudentChat), and
+  // a box you can type into but not send from is worse than no box.
   const inp = document.querySelector('#msgIn');
+  if (!inp) return;
   document.querySelector('#msgSend').onclick = sendMsg;
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
   const fileIn = document.querySelector('#msgFile');
@@ -1357,6 +1394,12 @@ function paintThread() {
     if (f) sendMedia(f);
   });
   inp.focus();
+}
+
+// Is this person still one of my students? A thread outlives the link — the
+// history is theirs to keep — but only a live link can carry a new message.
+function stillLinked(uid) {
+  return !!students.find((s) => s.uid === uid);
 }
 
 async function sendMsg() {
@@ -1392,7 +1435,7 @@ async function viewMessages() {
         <button class="conv" data-conv="${esc(c.id)}" aria-selected="${i === 0}">
           <span class="avatar">${initials(c.name || '?')}</span>
           <span style="min-width:0"><span class="cn">${esc(c.name)}</span>
-          <span class="cp">${esc(c.lastMessage || 'No messages yet')}</span></span></button>`).join('')}</div>
+          <span class="cp">${stillLinked(c.otherUid) ? '' : '· disconnected · '}${esc(c.lastMessage || 'No messages yet')}</span></span></button>`).join('')}</div>
       <div class="thread" id="thread"></div></div>`
       : `<section class="card"><div class="empty">
           <div style="font-weight:650;color:var(--ink)">No conversations</div>
