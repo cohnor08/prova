@@ -849,6 +849,11 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
   const [justAdded, setJustAdded] = useState(0); // count assigned this session
 
   const formScrollRef = useRef(null); // scrolls bottom fields (feedback) above the keyboard
+  // Photos/clips attached to the task. Held in state and written with the task
+  // on save, matching how Studio does it — backing out of the modal must not
+  // leave an orphan on the student's record.
+  const [atts, setAtts] = useState([]);
+  const [attBusy, setAttBusy] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState([]); // teacher's saved resources, assignable from here
@@ -857,6 +862,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1);
     setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false); setFeedback('');
+    setAtts([]);
     onClose();
   };
 
@@ -894,8 +900,34 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
       setDueDate(src.dueDate || null);
       setDurationMin(src.durationMin || 0);
       setFeedback(src.feedback || '');
+      setAtts(Array.isArray(src.attachments) ? src.attachments : []);
     }
   }, [visible, editTask, editClassTask]);
+
+  // Attach a photo or clip. Uploaded to chatMedia/lesson_{teacherUid}/… — the
+  // same path Studio uses and one storage.rules already lets a teacher write
+  // (only the proof_* prefix is locked to its owner).
+  const addAttachment = async (pick) => {
+    if (attBusy) return;
+    const picked = await pick();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Cannot attach', picked.error); return; }
+    setAttBusy(true);
+    try {
+      const uid = auth.currentUser.uid;
+      const url = DEMO_MODE ? picked.uri : await uploadChatMedia(picked.uri, `lesson_${uid}`, picked.type);
+      // pickMedia says 'image'; the student side keys on 'photo'.
+      setAtts((prev) => [...prev, {
+        type: picked.type === 'video' ? 'video' : 'photo',
+        url,
+        title: picked.type === 'video' ? 'Video' : 'Photo',
+      }]);
+    } catch (err) {
+      Alert.alert('Upload failed', err.message || 'That file could not be uploaded.');
+    } finally {
+      setAttBusy(false);
+    }
+  };
 
   const saveTemplates = (next) => {
     setTemplates(next);
@@ -943,6 +975,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
           title: title.trim(), description: description.trim(), youtube: youtube.trim(),
           song: song.trim(), drill: drill || null, drillLevel: drill ? drillLevel : null,
           drillMode: drill ? drillMode : null, dueDate, durationMin: durationMin || 0,
+          attachments: atts,
         });
         close();
       } catch (err) {
@@ -965,6 +998,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                 drill: drill || null, drillLevel: drill ? drillLevel : null,
                 drillMode: drill ? drillMode : null,
                 dueDate, durationMin: durationMin || 0,
+                attachments: atts,
                 feedback: feedback.trim(),
                 // Stamp when the feedback text actually changes, so the student's
                 // Notes screen can sort by freshness.
@@ -999,6 +1033,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
         drillMode: drill ? drillMode : null,
         dueDate,
         durationMin: durationMin || 0,
+        attachments: atts,
         completed: false,
         assignedAt: new Date().toISOString(),
         teacherUid: auth.currentUser.uid,
@@ -1022,7 +1057,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
         }).catch(() => {});
       });
       // Keep the modal open so the teacher can assign several in a row.
-      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1); setDueDate(null); setDurationMin(10);
+      setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1); setDueDate(null); setDurationMin(10); setAtts([]);
       setJustAdded((n) => n + 1);
       if (isClass) {
         Alert.alert('Assigned', `Sent to ${recipients.length} student${recipients.length === 1 ? '' : 's'} in ${klass.name}.`);
@@ -1109,6 +1144,51 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                 value={song}
                 onChangeText={setSong}
               />
+
+              <Text style={styles.dueLabel}>ATTACHMENTS</Text>
+              <Text style={styles.timerHint}>A photo of the sheet music, or a clip of how it should sound.</Text>
+              {atts.map((a, i) => (
+                <View key={`${a.url}_${i}`} style={styles.attRow}>
+                  {a.type === 'photo'
+                    ? <Image source={{ uri: a.url }} style={styles.attThumb} />
+                    : <View style={[styles.attThumb, styles.attThumbVid]}>
+                        <Ionicons name="videocam" size={16} color={COLORS.primary} />
+                      </View>}
+                  <Text style={styles.attName} numberOfLines={1}>{a.title || (a.type === 'video' ? 'Video' : 'Photo')}</Text>
+                  <TouchableOpacity
+                    onPress={() => setAtts((prev) => prev.filter((_, k) => k !== i))}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <View style={styles.attBtnRow}>
+                <TouchableOpacity
+                  style={[styles.attBtn, attBusy && styles.attBtnOff]}
+                  onPress={() => addAttachment(pickMedia)}
+                  disabled={attBusy}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="image-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.attBtnText}>Photo or video</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.attBtn, attBusy && styles.attBtnOff]}
+                  onPress={() => addAttachment(captureMedia)}
+                  disabled={attBusy}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="camera-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.attBtnText}>Record</Text>
+                </TouchableOpacity>
+              </View>
+              {attBusy ? (
+                <View style={styles.attBusyRow}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={styles.timerHint}>Uploading…</Text>
+                </View>
+              ) : null}
 
               <Text style={styles.dueLabel}>SKILL DRILL</Text>
               <Text style={styles.timerHint}>Optionally attach a mini-game the student launches straight from the task.</Text>
@@ -3869,6 +3949,18 @@ const styles = themedStyles(() => StyleSheet.create({
   tplSheetRowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
 
   dueLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
+
+  attRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  attThumb: { width: 38, height: 38, borderRadius: 8, backgroundColor: COLORS.background },
+  attThumbVid: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  // flex:1 + minWidth:0 so a long filename shrinks instead of pushing the
+  // remove button off the row (see the truncation rules in CLAUDE.md).
+  attName: { flex: 1, minWidth: 0, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  attBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+  attBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
+  attBtnOff: { opacity: 0.5 },
+  attBtnText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  attBusyRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: -SPACING.md, marginBottom: SPACING.md },
   drillPickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg },
   drillPick: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '47%', flexGrow: 1, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
   drillPickOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
