@@ -888,6 +888,14 @@ function assignSheet(stu, editIdx) {
     <textarea id="taDesc" rows="3" placeholder="Description (optional)" style="${F};margin-bottom:12px">${esc(existing?.description || '')}</textarea>
     <input id="taYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(existing?.youtube || '')}">
     <input id="taSong" placeholder="Song — e.g. Wonderwall — Oasis (optional)" style="${F};margin-bottom:20px" value="${esc(existing?.song || '')}">
+    <div class="eyebrow" style="padding:0 0 4px">Attachments</div>
+    <p class="hint" style="margin:0 0 10px">A photo of the sheet music, a tab, a diagram — the student sees it on the task.</p>
+    <div id="taAtts" style="margin-bottom:8px"></div>
+    <div id="taUpWrap" style="display:none;margin-bottom:8px">
+      <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
+        <div id="taUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
+    <button class="btn sm ghost" id="taAddPhoto" style="margin-bottom:20px">📷 Add a photo or video</button>
+    <input id="taFile" type="file" accept="image/*,video/*" style="display:none">
     <div class="eyebrow" style="padding:0 0 4px">Skill drill</div>
     <p class="hint" style="margin:0 0 10px">Optionally attach a mini-game the student launches straight from the task.</p>
     <div id="taDrills" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -929,6 +937,41 @@ function assignSheet(stu, editIdx) {
     $('#taYt').value = t.youtube || ''; $('#taSong').value = t.song || '';
     toast(`Filled from "${t.title}"`);
   };
+  // ── attachments ──────────────────────────────────────────────────────
+  // Same Storage path as lesson notes (chatMedia/lesson_…), which storage.rules
+  // already allows a teacher to write — only the proof_* prefix is locked to
+  // its owner. Held in memory and written with the task on Save, so backing out
+  // of the modal doesn't leave orphans on the student's record.
+  let taAtts = Array.isArray(existing?.attachments) ? existing.attachments.slice() : [];
+  function paintTaAtts() {
+    const box = $('#taAtts');
+    if (!taAtts.length) { box.innerHTML = '<p class="hint" style="margin:0">Nothing attached.</p>'; return; }
+    box.innerHTML = taAtts.map((a, i) => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <span>${a.type === 'video' ? '🎥' : '📷'}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title || a.url || '')}</span>
+      <button class="x" data-taattdel="${i}" aria-label="Remove">×</button></div>`).join('');
+    box.querySelectorAll('[data-taattdel]').forEach((b2) => {
+      b2.onclick = () => { taAtts.splice(+b2.getAttribute('data-taattdel'), 1); paintTaAtts(); };
+    });
+  }
+  paintTaAtts();
+  $('#taAddPhoto').onclick = () => $('#taFile').click();
+  $('#taFile').onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/^(image|video)\//.test(file.type)) { toast('Photos and video only'); return; }
+    if (file.size > MAX_UPLOAD_BYTES) { toast('That file is over 150 MB'); return; }
+    const wrap = $('#taUpWrap'), bar = $('#taUpBar');
+    wrap.style.display = 'block'; bar.style.width = '0';
+    try {
+      const m = await uploadChatMedia(file, 'lesson_' + meUid, (pr) => { bar.style.width = Math.round(pr * 100) + '%'; });
+      taAtts.push({ type: m.type === 'video' ? 'video' : 'photo', url: m.url, title: file.name });
+      paintTaAtts();
+    } catch { toast('Upload failed'); }
+    wrap.style.display = 'none';
+  };
+
   $('#taSaveTpl').onclick = async () => {
     const title = $('#taTitle').value.trim();
     if (!title) { toast('Give the task a title first'); return; }
@@ -948,6 +991,7 @@ function assignSheet(stu, editIdx) {
       drillMode: existing?.drillMode || null,
       dueDate: inputToDue($('#taDue').value), durationMin: parseInt($('#taMin').value, 10) || 0,
       completed: existing?.completed || false,
+      attachments: taAtts,
     };
     const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
     if (existing) cur[editIdx] = { ...existing, ...task }; else cur.push(task);

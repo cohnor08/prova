@@ -1425,6 +1425,8 @@ export default function TodayScreen({ navigation, route }) {
         // The player shows the teacher's comment and plays back the proof, so
         // both have to travel with the task — the card only reports state now.
         feedback: t.feedback || '',
+        // Photos of sheet music / tabs the teacher attached when assigning.
+        attachments: Array.isArray(t.attachments) ? t.attachments : [],
       })),
   ];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); track('practice_started'); };
