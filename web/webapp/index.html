@@ -409,6 +409,17 @@
     .cols{gap:16px}
     .card{padding:15px;border-radius:14px}
     .greet h2{font-size:21px}
+
+    /* Messages. .msg is a two-column grid with a fixed 270px conversation
+       list, so on a 400px screen the thread column was ~130px wide and the
+       composer got squeezed to nothing — it flashed on render then vanished.
+       One column on phones: list on top at a capped height with its own
+       scroll, thread below, composer pinned to the bottom of the thread. */
+    .msg{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 230px);min-height:420px}
+    .convs{border-right:0;border-bottom:1px solid var(--line);max-height:132px}
+    .bubbles{padding:14px}
+    .composer{padding:10px 12px}
+    .composer input{font-size:16px}   /* under 16px iOS zooms the page on focus */
   }
 </style>
 </head>
