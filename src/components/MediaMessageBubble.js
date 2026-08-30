@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, Pressable,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { COLORS, SPACING, themedStyles } from '../constants/theme';
@@ -22,6 +24,9 @@ export default function MediaMessageBubble({ item, isMe }) {
 
   const [failed, setFailed] = useState(!hasUrl);
   const [loaded, setLoaded] = useState(false);
+  // The thumbnail is a 220px square on `cover`, so a page of sheet music or a
+  // wide shot of a fretboard arrives cropped. Tapping opens the whole thing.
+  const [zoomed, setZoomed] = useState(false);
 
   // expo-video reports load failures through statusChange — there's no onError
   // prop on VideoView, so without this listener a dead URL just sits there as a
@@ -62,7 +67,7 @@ export default function MediaMessageBubble({ item, isMe }) {
           contentFit="contain"
         />
       ) : (
-        <View>
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setZoomed(true)} accessibilityRole="imagebutton" accessibilityLabel="Open photo">
           <Image
             style={styles.media}
             source={{ uri: item.mediaUrl }}
@@ -75,13 +80,30 @@ export default function MediaMessageBubble({ item, isMe }) {
               <ActivityIndicator size="small" color={COLORS.textMuted} />
             </View>
           )}
-        </View>
+          {/* Cropping hides that there is more to see, so say so. */}
+          {loaded && (
+            <View style={styles.expand} pointerEvents="none">
+              <Ionicons name="expand-outline" size={14} color="#fff" />
+            </View>
+          )}
+        </TouchableOpacity>
       )}
       {!!item.text && (
         <Text style={[styles.caption, isMe ? styles.captionMe : styles.captionThem]}>
           {item.text}
         </Text>
       )}
+
+      {/* Full-size viewer. `contain` rather than `cover` — the point of opening
+          it is to see the parts the thumbnail cut off. */}
+      <Modal visible={zoomed} transparent animationType="fade" onRequestClose={() => setZoomed(false)}>
+        <Pressable style={styles.zoomBack} onPress={() => setZoomed(false)}>
+          <Image style={styles.zoomImg} source={{ uri: item.mediaUrl }} resizeMode="contain" />
+          <View style={styles.zoomClose} pointerEvents="none">
+            <Ionicons name="close" size={22} color="#fff" />
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -97,6 +119,16 @@ const styles = themedStyles(() => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
   fallbackText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   loading: { position: 'absolute', top: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
+  expand: {
+    position: 'absolute', right: 8, bottom: 8, width: 24, height: 24, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
+  },
+  zoomBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  zoomImg: { width: '100%', height: '100%' },
+  zoomClose: {
+    position: 'absolute', top: 48, right: 20, width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+  },
   caption: { color: COLORS.textSecondary, fontSize: 13, marginTop: 4, paddingHorizontal: 4 },
   captionMe: { textAlign: 'right' },
   captionThem: { textAlign: 'left' },
