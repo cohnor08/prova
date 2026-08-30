@@ -217,7 +217,7 @@
   .modal{overflow-x:hidden}
   .modal .tablewrap{max-width:100%}
   .empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
-  .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:600px}
+  .msg{display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--card);box-shadow:var(--shadow);height:min(600px, calc(100vh - 220px));min-height:240px}
   .convs{border-right:1px solid var(--line);overflow-y:auto;background:var(--page)}
   .conv{display:flex;gap:11px;padding:13px 14px;border:0;border-bottom:1px solid var(--line);cursor:pointer;width:100%;text-align:left;background:none;color:inherit;align-items:center}
   .conv:hover{background:var(--card)}
