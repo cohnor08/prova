@@ -313,8 +313,12 @@
     /* Messages: one column. The list sits on top at a fixed height with its
        own scroll, the thread takes the rest — so the composer is always the
        bottom of the thread rather than being squeezed out of a 60px column. */
-    .msg{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 210px);min-height:420px}
+    .msg{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:calc(var(--vvh, 100vh) - 210px);min-height:0}
     .convs{border-right:0;border-bottom:1px solid var(--line);max-height:132px}
+    /* Typing: the keyboard leaves ~140px of card, and the conversation list
+       would eat all of it. You already know who you're talking to. */
+    body.kb .convs{display:none}
+    body.kb .msg{grid-template-rows:minmax(0,1fr);height:calc(var(--vvh, 100vh) - 96px)}
     .composer{padding:10px 12px}
     .composer input{font-size:16px}   /* under 16px iOS zooms the page on focus */
   }
@@ -457,6 +461,49 @@ $('#loginBtn').onclick = async () => {
   finally { $('#loginBtn').disabled = false; }
 };
 $('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginBtn').click(); });
+// ── the on-screen keyboard ───────────────────────────────────────────────
+// The composer flashed up then vanished the moment a thread opened. Nothing
+// was removing it: paintThread() ends with inp.focus(), that opens the phone
+// keyboard, and a phone keyboard does NOT shrink 100vh. So .msg stayed its
+// full height, the composer stayed pinned to the bottom of it, and the bottom
+// of it was now underneath the keyboard.
+//
+// visualViewport is the only thing that actually reports the space left over,
+// so publish it as --vvh and let the mobile .msg rule size off that.
+(() => {
+  const vv = window.visualViewport;
+  const set = () => {
+    const h = vv ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty('--vvh', h + 'px');
+  };
+  set();
+  // With the keyboard up there is barely any room; a phone in landscape can
+  // also be genuinely short, so compare against the layout viewport rather
+  // than a fixed pixel guess.
+  const flag = () => document.body.classList.toggle(
+    'kb', !!vv && vv.height < window.innerHeight - 120);
+  flag();
+  if (vv) vv.addEventListener('resize', flag);
+  if (vv) {
+    vv.addEventListener('resize', set);
+    // Opening the keyboard also scrolls the layout viewport; without this the
+    // card is the right size but sitting off the top of what you can see.
+    vv.addEventListener('scroll', set);
+  } else {
+    window.addEventListener('resize', set);
+  }
+  // Shrinking the card is not enough on its own — the page can still be
+  // scrolled so the composer sits below the fold. Put it back in view whenever
+  // the keyboard changes size while someone is typing.
+  const reveal = () => {
+    const el = document.activeElement;
+    if (!el || !el.closest || !el.closest('.composer')) return;
+    setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  };
+  if (vv) vv.addEventListener('resize', reveal);
+  document.addEventListener('focusin', (e) => { if (e.target.closest?.('.composer')) reveal(); });
+})();
+
 // ── the nav drawer (phones only) ─────────────────────────────────────────
 (() => {
   const rail = $('#rail'), scrim = $('#railScrim'), btn = $('#menuBtn');
@@ -1465,7 +1512,10 @@ function paintThread() {
     fileIn.value = '';
     if (f) sendMedia(f);
   });
-  inp.focus();
+  // Focus only where a keyboard is already there. On a phone this call is what
+  // opened the keyboard and hid the composer in the first place; the person can
+  // tap the box themselves.
+  if (!window.matchMedia('(pointer:coarse)').matches) inp.focus();
 }
 
 // Is this person still one of my students? A thread outlives the link — the
