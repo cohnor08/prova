@@ -298,6 +298,16 @@
   .bub.me{background:var(--primary);color:var(--on-primary);border-bottom-right-radius:5px;align-self:flex-end}
   .composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;align-items:center}
   .composer input{flex:1;background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:9px 15px}
+  /* A picked file waits here, above the composer, until Send — you get to see
+     what you attached and back out, instead of it landing in the thread the
+     instant the file dialog closes. */
+  .pending{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--line);background:var(--raised)}
+  .pending[hidden]{display:none}
+  .pendThumb{width:42px;height:42px;border-radius:9px;object-fit:cover;background:var(--card);border:1px solid var(--line);flex:none}
+  .pendName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--ink-2)}
+  .pendKind{flex:none;font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--ink-2);opacity:.7}
+  .pendX{flex:none;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink-2);cursor:pointer;font-size:16px;line-height:1;display:grid;place-items:center}
+  .pendX:hover{background:var(--line)}
 
   /* reactions — the bubble and its reaction row share one column so the two
      stay aligned to the same edge of the thread */
@@ -4114,6 +4124,9 @@ function openThread(chatId) {
   CUR = CONVS.find(c => c.id === chatId) || null;
   if (unsubMsgs) { unsubMsgs(); unsubMsgs = null; }
   MSGS = [];
+  // Switching conversations drops anything staged — sending it to the wrong
+  // person is the one mistake this whole feature exists to prevent.
+  if (PENDING) { URL.revokeObjectURL(PENDING.url); PENDING = null; }
   if (!CUR) return paintThread();
   paintThread();
   const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'), limit(200));
@@ -4233,6 +4246,7 @@ function paintThread() {
     <div class="bubbles" id="thBub"></div>
     <div style="display:none;padding:0 14px"><div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
       <div id="upBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
+    <div class="pending" id="pending" hidden></div>
     ${myTeacherUids().includes(CUR.otherUid) ? `<div class="composer">
       <label class="btn sm ghost" for="msgFile" style="cursor:pointer;flex:none">📎</label>
       <input id="msgFile" type="file" accept="image/*,video/*" style="display:none">
@@ -4243,6 +4257,7 @@ function paintThread() {
           You're no longer connected to ${esc(CUR.name)}. The conversation stays here to read.
         </span></div>`}`;
   paintBubbles();
+  paintPending();
   // Absent when unlinked — the rules would reject the send anyway, so a box
   // you can type into but not send from is worse than no box.
   const inp = document.querySelector('#msgIn');
@@ -4253,7 +4268,7 @@ function paintThread() {
   if (fileIn) fileIn.addEventListener('change', () => {
     const f = fileIn.files && fileIn.files[0];
     fileIn.value = '';
-    if (f) sendMedia(f);
+    if (f) stagePending(f);
   });
   // Focus only where a keyboard is already there. On a phone this call is what
   // opened the keyboard and hid the composer in the first place; the person can
@@ -4261,22 +4276,69 @@ function paintThread() {
   if (!window.matchMedia('(pointer:coarse)').matches) inp.focus();
 }
 
+// ── a staged attachment ──────────────────────────────────────────────────
+// Picking a file used to upload and post it immediately, so a mis-click was
+// already in the thread. Now it waits above the composer with a thumbnail and
+// an ×, and only goes when Send does — the file isn't even uploaded until then.
+let PENDING = null;   // { file, type, url } — url is a local object URL
+
+function clearPending() {
+  if (PENDING && PENDING.url) URL.revokeObjectURL(PENDING.url);
+  PENDING = null;
+  paintPending();
+}
+
+function paintPending() {
+  const box = document.querySelector('#pending');
+  if (!box) return;
+  if (!PENDING) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = `${PENDING.type === 'video'
+      ? `<video class="pendThumb" src="${PENDING.url}" muted playsinline></video>`
+      : `<img class="pendThumb" src="${PENDING.url}" alt="">`}
+    <span class="pendName">${esc(PENDING.file.name)}</span>
+    <span class="pendKind">${PENDING.type === 'video' ? 'VIDEO' : 'PHOTO'}</span>
+    <button class="pendX" id="pendX" aria-label="Remove attachment">&times;</button>`;
+  document.querySelector('#pendX').onclick = clearPending;
+}
+
+// Validate at pick time, not at send time — telling someone their file is too
+// big only after they hit Send wastes the wait.
+function stagePending(file) {
+  if (!/^(image|video)\//.test(file.type)) { toast('Photos and video only'); return; }
+  if (file.size > MAX_UPLOAD_BYTES) { toast('That file is over 150 MB'); return; }
+  if (PENDING && PENDING.url) URL.revokeObjectURL(PENDING.url);
+  PENDING = { file, type: file.type.startsWith('video') ? 'video' : 'image', url: URL.createObjectURL(file) };
+  paintPending();
+  const inp = document.querySelector('#msgIn');
+  if (inp && !window.matchMedia('(pointer:coarse)').matches) inp.focus();
+}
+
+async function sendText(text) {
+  const meta = { chatId: CUR.id, lastMessage: text, lastMessageAt: serverTimestamp(), lastSenderUid: uid };
+  await addDoc(collection(db, 'chats', CUR.id, 'messages'),
+    { senderUid: uid, text, timestamp: serverTimestamp() });
+  // Both sides get the pointer updated, exactly as sendChatMessage does.
+  await Promise.all([
+    setDoc(doc(db, 'userChats', uid, 'conversations', CUR.id),
+      { ...meta, otherUid: CUR.otherUid, otherEmail: CUR.otherEmail || '' }, { merge: true }),
+    setDoc(doc(db, 'userChats', CUR.otherUid, 'conversations', CUR.id),
+      { ...meta, otherUid: uid, otherEmail: me.email || '' }, { merge: true }),
+  ]);
+}
+
 async function sendMsg() {
   const inp = document.querySelector('#msgIn');
+  if (!inp || !CUR) return;
   const text = (inp.value || '').trim();
-  if (!text || !CUR) return;
+  if (!text && !PENDING) return;          // nothing to send
+  const staged = PENDING;
   inp.value = '';
-  const meta = { chatId: CUR.id, lastMessage: text, lastMessageAt: serverTimestamp(), lastSenderUid: uid };
+  if (staged) clearPending();             // clear the strip before the upload
   try {
-    await addDoc(collection(db, 'chats', CUR.id, 'messages'),
-      { senderUid: uid, text, timestamp: serverTimestamp() });
-    // Both sides get the pointer updated, exactly as sendChatMessage does.
-    await Promise.all([
-      setDoc(doc(db, 'userChats', uid, 'conversations', CUR.id),
-        { ...meta, otherUid: CUR.otherUid, otherEmail: CUR.otherEmail || '' }, { merge: true }),
-      setDoc(doc(db, 'userChats', CUR.otherUid, 'conversations', CUR.id),
-        { ...meta, otherUid: uid, otherEmail: me.email || '' }, { merge: true }),
-    ]);
+    // Attachment first so it reads above anything typed with it.
+    if (staged) await sendMedia(staged.file);
+    if (text) await sendText(text);
   } catch { inp.value = text; toast('Could not send — check your connection'); }
 }
 
