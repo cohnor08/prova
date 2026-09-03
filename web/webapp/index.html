@@ -152,6 +152,15 @@
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
   .modal{position:fixed;z-index:41;top:50%;left:50%;transform:translate(-50%,-50%);width:min(460px,94vw);background:var(--ground);border:1px solid var(--line);border-radius:22px;padding:26px;text-align:center;box-shadow:var(--shadow)}
   .modal .lab{font-size:11px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-3)}
+  /* Proof clips are filmed on a phone, so they're usually PORTRAIT. Sized at
+     width:100% one is taller than it is wide — at 640px across that's over
+     1100px high — which pushed the modal past the top and bottom of the window
+     and took the Delete/Close buttons off screen with it. Cap the media
+     against the viewport instead of the container, and let the modal itself
+     scroll as a backstop for a long title or wrapped buttons. */
+  .modal.proofmodal{width:min(640px,94vw);max-height:92vh;overflow-y:auto;overscroll-behavior:contain}
+  .proofmedia{display:block;margin:0 auto;width:auto;max-width:100%;
+    max-height:min(56vh,480px);border-radius:12px;background:#000}
   .clock{font-family:var(--round);font-weight:600;font-size:44px;font-variant-numeric:tabular-nums;line-height:1}
   .x{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:20px;padding:4px 8px}
 
@@ -1300,14 +1309,13 @@ function viewProof(oi, k) {
     // [data-close] handler: that one hands control back to the practice player
     // when it is mid-task, which is not what closing this should do.
     $('#overlays').innerHTML = `<div class="scrim" id="pvScrim"></div>
-      <div class="modal" style="text-align:left;max-width:640px">
+      <div class="modal proofmodal" style="text-align:left">
         <h3 style="font-size:17px;margin-bottom:4px">${esc(task.title || 'Proof')}</h3>
         <p class="hint" style="margin:0 0 14px">Clip ${i + 1} of ${clips.length}${
           c.at ? ` · filmed ${esc(fmtSetOn(c.at))}` : ''}</p>
         ${c.type === 'image'
-          ? `<img src="${esc(c.url)}" alt="Proof" style="width:100%;border-radius:12px;display:block">`
-          : `<video src="${esc(c.url)}" controls autoplay playsinline
-               style="width:100%;border-radius:12px;background:#000"></video>`}
+          ? `<img class="proofmedia" src="${esc(c.url)}" alt="Proof">`
+          : `<video class="proofmedia" src="${esc(c.url)}" controls autoplay playsinline></video>`}
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
           ${clips.length > 1 ? `<button class="btn sm ghost" id="pvPrev"${i === 0 ? ' disabled' : ''}>‹ Previous</button>
             <button class="btn sm ghost" id="pvNext"${i === clips.length - 1 ? ' disabled' : ''}>Next ›</button>` : ''}
