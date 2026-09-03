@@ -137,6 +137,9 @@
   .pill.att-late{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
   .pill.att-absent{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
   .pill.set{background:color-mix(in srgb,var(--teal) 20%,transparent);color:var(--teal)}
+  /* A deadline reads as information until it's missed, then as a warning. */
+  .pill.due{background:var(--raised);color:var(--ink-2)}
+  .pill.late{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
@@ -830,9 +833,71 @@ async function load() {
   $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
   const th = me.theme || {};
   applyTheme(th.mode || 'sky', th.accent || 'blue');
+  // Names for the teacher-task labels and the Profile card. Never fatal — a
+  // failed read just falls back to the generic "Teacher" pill.
+  try { await loadTeachers(); } catch { TEACHERS = {}; }
 }
 const doneIds = () => (me.sessionProgress?.date === todayKey() ? (me.sessionProgress.ids || []) : []);
 const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
+
+// Every teacher this student is connected to. This app is the student side —
+// teachers are bounced to /studio/ at sign-in — so these are the only people
+// a student is allowed to message. Mirrors teacherIdsOf() in src/lib/teacher.js:
+// `teacherUids` is the real list, `teacherUid` the legacy primary.
+// Declared up here (not beside its first use) so every caller sees it — the
+// render path runs long before the messages code further down.
+const myTeacherUids = () =>
+  [...new Set([me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean))];
+
+// uid → { name, email } for the connected teachers, so a task can be labelled
+// with who set it without a read per row. Filled by loadTeachers().
+let TEACHERS = {};
+async function loadTeachers() {
+  const out = {};
+  await Promise.all(myTeacherUids().map(async (tid) => {
+    try {
+      const d = (await getDoc(doc(db, 'users', tid))).data() || {};
+      out[tid] = { name: displayName(d), email: d.email || '' };
+    } catch { /* a teacher we can't read is simply absent */ }
+  }));
+  TEACHERS = out;
+}
+
+// Who set this task. Tasks carry `teacherUid` (the phone has always written it,
+// Studio now does too) but older ones don't — for those, a student with exactly
+// one teacher can only have got it from them. With several teachers and no uid
+// there's no honest answer, so it stays the generic label.
+function taskTeacherName(task) {
+  const byUid = task?.teacherUid && TEACHERS[task.teacherUid]?.name;
+  if (byUid) return byUid;
+  const ids = myTeacherUids();
+  return ids.length === 1 && TEACHERS[ids[0]] ? TEACHERS[ids[0]].name : '';
+}
+
+// "12 Aug", or "Today"/"Yesterday" for the two dates worth naming.
+function fmtSetOn(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const days = Math.round((new Date().setHours(0,0,0,0) - new Date(v).setHours(0,0,0,0)) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short',
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+}
+// Matches fmtDue() in /studio/ so both sides of the link word a deadline alike.
+function fmtDue(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const days = Math.round((new Date(v).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000);
+  if (days < 0) return 'Overdue';
+  if (days === 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return 'Due ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short',
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+}
+const isOverdue = (t) => !!t.dueDate && !t.completed && new Date(t.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
 
 // ── nav ──────────────────────────────────────────────────────────────────
 const ICON = { home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' };
@@ -1051,28 +1116,49 @@ const OPEN = {}; const SHOWALL = {};
 function rows(list, kind, limit) {
   const shown = SHOWALL[kind] ? list : list.slice(0, limit);
   return shown.map((x, i) => {
-    const id = kind + i, isOpen = OPEN[id];
+    // Address the row by its index in the underlying array, not its position
+    // on screen — assigned rows are re-ordered for display.
+    const oi = x._i ?? i;
+    const id = kind + oi, isOpen = OPEN[id];
     const done = kind === 'plan' ? doneIds().includes(x.id) : !!x.completed;
+    const isTask = kind === 'assigned';
+    // A plan session's length is `duration`; a teacher task's is `durationMin`
+    // (same split targetFor() handles for the timer). Reading only `duration`
+    // here meant teacher tasks never showed their length at all.
+    const mins = (isTask ? x.durationMin : x.duration) || 0;
+    const who = isTask ? taskTeacherName(x) : '';
+    const due = isTask ? fmtDue(x.dueDate) : '';
+    const setOn = isTask ? fmtSetOn(x.assignedAt) : '';
     return `<div class="trow${isOpen ? ' open' : ''}">
       <div class="thead2" data-open="${id}">
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>
         <div class="tick${done ? ' on' : ''}">${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--ground)" stroke-width="3.5" style="width:11px;height:11px"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
         <div style="flex:1;min-width:0"><div class="ttl${done ? ' done' : ''}">${esc(x.title)}</div>
           ${x.category ? `<div class="tsub">${esc(String(x.category).replace(/_/g,' '))}</div>` : ''}</div>
-        ${kind === 'assigned' ? '<span class="pill set">Teacher</span>' : ''}
-        ${x.duration ? `<div class="dur">${x.duration} min</div>` : ''}
+        ${isTask ? `<span class="pill set">${who ? esc(who) : 'Teacher'}</span>` : ''}
+        ${due ? `<span class="pill ${isOverdue(x) ? 'late' : 'due'}">${esc(due)}</span>` : ''}
+        ${mins ? `<div class="dur">${mins} min</div>` : ''}
       </div>
       <div class="tbody2">
+        ${isTask && (who || setOn || due) ? `<div class="hint" style="margin:0 0 10px">${[
+          who ? `Set by ${esc(who)}` : '',
+          setOn ? `added ${esc(setOn)}` : '',
+          // Mid-sentence here, so only the leading "Due"/"Overdue" drops its
+          // capital — lowercasing the whole label turned "6 Sept" into "6 sept".
+          due ? `<span${isOverdue(x) ? ' style="color:var(--bad);font-weight:650"' : ''}>${
+            esc(due.charAt(0).toLowerCase() + due.slice(1))}</span>` : '',
+        ].filter(Boolean).join(' · ')}</div>` : ''}
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
         ${(x.attachments || []).length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">
           ${x.attachments.map((a) => a.type === 'photo'
-            ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title || 'Attachment')}"
-                 style="width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"></a>`
-            : `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener">🎥 ${esc(a.title || 'Video')}</a>`
+            ? `<img src="${esc(a.url)}" alt="${esc(a.title || 'Attachment')} — click to enlarge" data-lightbox="${esc(a.url)}"
+                 style="width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in">`
+            : `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener">${
+                 a.type === 'video' ? '🎥' : '📎'} ${esc(a.title || (a.type === 'video' ? 'Video' : 'Attachment'))}</a>`
           ).join('')}</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${done ? '<span class="hint">Completed</span>'
-            : `<button class="btn sm" data-play="${kind}:${i}">Practice this</button>`}
+            : `<button class="btn sm" data-play="${kind}:${oi}">Practice this</button>`}
           <button class="btn sm ghost" data-yt="${esc(x.youtube || (x.title + ' ' + (me.instrument || 'guitar') + ' tutorial'))}" data-yttitle="${esc(x.title)}">▶ Watch a lesson</button>
           ${x.song ? `<button class="btn sm ghost" data-yt="${esc(x.song)} ${esc(me.instrument || 'guitar')} tutorial" data-yttitle="${esc(x.song)}">🎵 ${esc(x.song)}</button>` : ''}
         </div>
@@ -1082,7 +1168,26 @@ function rows(list, kind, limit) {
 }
 
 function render() {
-  const a = assigned(), d = doneIds();
+  const d = doneIds();
+  // Teacher tasks lead with what's owed: unfinished before done, and within
+  // those the soonest deadline first (no deadline sinks below the dated ones).
+  // `_i` is the task's index in the REAL assignedTasks array. The player and
+  // the completion write both address tasks by that index, so it has to travel
+  // with the row — the display order here is presentation only.
+  const rank = (t) => (t.completed ? 2 : 0) + (t.dueDate ? 0 : 0.5);
+  const a = assigned().map((t, i) => ({ ...t, _i: i })).sort((p, q) =>
+    rank(p) - rank(q)
+    || (p.dueDate && q.dueDate ? new Date(p.dueDate) - new Date(q.dueDate) : 0)
+    || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0)));
+  // A student's teacher tasks sit ABOVE their own plan — someone else is
+  // waiting on those. Other roles keep them below their own practice.
+  const isStudent = me.role === 'student';
+  const openCount = a.filter(t => !t.completed).length;
+  const assignedCard = a.length ? `<section class="card"><header><h3>From your teacher</h3>
+    <span class="meta">${a.filter(t => t.completed).length} of ${a.length} done</span></header>
+    ${openCount && isStudent ? `<p class="hint" style="margin:-4px 0 14px">${
+      openCount === 1 ? 'One task' : `${openCount} tasks`} still to do.</p>` : ''}
+    ${rows(a, 'assigned', 4)}</section>` : '';
   const donePlan = sessions.filter(s => d.includes(s.id)).length;
   const planned = sessions.reduce((t, s) => t + (s.duration || 0), 0);
   const doneMin = sessions.filter(s => d.includes(s.id)).reduce((t, s) => t + (s.duration || 0), 0);
@@ -1130,6 +1235,7 @@ function render() {
             ? '<div class="hint" style="margin-top:12px;color:var(--good)">Completed today — your streak is safe.</div>'
             : `<button class="btn sm ghost" data-chal="1" style="margin-top:14px">Mark as done</button>`}
         </section>`; })()}
+      ${isStudent ? assignedCard : ''}
       <section class="card"><header><h3>Today's sessions</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
         ${sessions.length ? rows(sessions, 'plan', 4)
@@ -1141,9 +1247,7 @@ function render() {
               ${me.practicePlan ? '' : '<button class="btn" id="makePlan">Build my practice plan</button>'}
             </div>`}
       </section>
-      ${a.length ? `<section class="card"><header><h3>Assigned by your teacher</h3>
-        <span class="meta">${a.filter(t => t.completed).length} of ${a.length} done</span></header>
-        ${rows(a, 'assigned', 4)}</section>` : ''}
+      ${isStudent ? '' : assignedCard}
     </div><div class="stack">
       <section class="card"><header><h3>This account</h3></header>
         <p class="hint" style="margin:0">Signed in as ${esc(me.email || '')}. Everything here is your real data —
@@ -1998,6 +2102,66 @@ function viewJournal() {
   });
 }
 
+// ── teacher connections ──────────────────────────────────────────────────
+// The student side of src/lib/teacher.js. A student can be connected to
+// SEVERAL teachers at once and each link is its own thing: separate tasks,
+// separate lesson notes, separate chat thread. Connecting or disconnecting is
+// a write to the student's OWN user doc, so it needs no special rules.
+async function linkTeacherByCode(rawCode) {
+  const code = (rawCode || '').trim().toUpperCase();
+  if (!code) throw new Error('Enter your teacher’s code.');
+  const snap = await getDocs(query(collection(db, 'users'), where('teacherCode', '==', code)));
+  if (snap.empty) throw new Error('No teacher found with that code. Double-check it.');
+  const t = snap.docs[0];
+  if (t.id === uid) throw new Error('That’s your own code.');
+  const already = myTeacherUids();
+  if (already.includes(t.id)) throw new Error('You’re already connected to this teacher.');
+  const next = [...already, t.id];
+  const update = { teacherUids: next };
+  if (!me.teacherUid) update.teacherUid = t.id; // first teacher = primary
+  await updateDoc(doc(db, 'users', uid), update);
+  Object.assign(me, update);
+  await loadTeachers();
+  return TEACHERS[t.id]?.name || displayName(t.data() || {});
+}
+// Disconnect ONE teacher, promoting another to primary if this was it. The
+// chat thread and its history are deliberately left alone.
+async function unlinkTeacher(tid) {
+  const next = myTeacherUids().filter(x => x !== tid);
+  const update = { teacherUids: next };
+  if (me.teacherUid === tid) update.teacherUid = next[0] || null;
+  await updateDoc(doc(db, 'users', uid), update);
+  Object.assign(me, update);
+  await loadTeachers();
+}
+
+function teachersCard() {
+  const ids = myTeacherUids();
+  const list = ids.map((tid) => {
+    const t = TEACHERS[tid] || {};
+    const nm = t.name || 'Your teacher';
+    return `<div class="prow">
+      <div class="pl" style="min-width:0"><div class="pt">${esc(nm)}${
+        tid === me.teacherUid && ids.length > 1 ? ' <span class="pill set">Primary</span>' : ''}</div>
+        <div class="ps">${esc(t.email || 'Connected')}</div></div>
+      <button class="btn sm ghost" data-unlink="${esc(tid)}" style="color:var(--bad);border-color:var(--bad)">Disconnect</button>
+    </div>`;
+  }).join('');
+  return card('Your teachers', ids.length ? String(ids.length) : '', `
+    <div class="rows" style="margin-top:-13px">${list || `<div class="prow"><div class="pl">
+      <div class="pt">Not connected to a teacher</div>
+      <div class="ps">Enter the code your teacher gives you and their tasks, lesson notes and messages appear here.</div>
+    </div></div>`}</div>
+    <div class="eyebrow" style="padding:18px 0 8px">${ids.length ? 'Connect another teacher' : 'Connect a teacher'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <input id="tcCode" placeholder="6-character code" maxlength="6" autocomplete="off"
+        style="flex:1;min-width:140px;background:var(--raised);border:1px solid var(--line);border-radius:10px;
+               padding:11px 13px;color:inherit;font:inherit;text-transform:uppercase;letter-spacing:2px;font-weight:650">
+      <button class="btn sm" id="tcGo">Connect</button></div>
+    <p class="hint" style="margin:12px 0 0">You can be connected to more than one teacher —
+      each one sets their own tasks and keeps their own lesson notes.</p>`);
+}
+
 function viewProfile() {
   const row = (t, v) => `<div style="display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--line)">
     <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${t}</div><div class="hint">${esc(v ?? '—')}</div></div></div>`;
@@ -2008,6 +2172,7 @@ function viewProfile() {
         ${row('Email', me.email)}${row('Instrument', me.instrument)}${row('Level', me.level)}
         ${row('Role', me.role)}${row('Daily target', me.dailyDuration ? me.dailyDuration + ' min' : null)}
         ${row('Member since', me.createdAt ? new Date(me.createdAt).toLocaleDateString() : null)}</div>`)}
+      ${teachersCard()}
       ${card('Metronome', '', `<div class="prow" style="border-top:0;padding-top:0">
         <div class="pl"><div class="pt">Floating metronome</div>
           <div class="ps">${metroIsHidden()
@@ -2040,7 +2205,7 @@ function viewProfile() {
         <p class="hint" style="margin:0 0 14px">Deleting removes your plan, history, chats and uploads permanently.
           This cannot be undone.</p>
         <button class="btn ghost" id="delAcc" style="color:var(--bad);border-color:var(--bad)">Delete my account</button>`)}
-      ${card('Settings live in the app','', `<p class="hint" style="margin:0 0 14px">Reminders and teacher connection are in the phone app for now.</p>
+      ${card('Reminders live in the app','', `<p class="hint" style="margin:0 0 14px">Practice reminders are set in the phone app for now.</p>
         <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
     </div></div></div>`;
   $('#soBtn').onclick = confirmSignOut;
@@ -2078,6 +2243,41 @@ function viewProfile() {
   // whole card is re-rendered rather than the button text patched.
   const mt = $('#metroToggle');
   if (mt) mt.onclick = () => { setMetroHidden(!metroIsHidden()); viewProfile(); };
+
+  const tcGo = $('#tcGo'), tcCode = $('#tcCode');
+  if (tcGo) {
+    const connect = async () => {
+      tcGo.disabled = true; tcGo.textContent = 'Connecting…';
+      try {
+        const nm = await linkTeacherByCode(tcCode.value);
+        toast(`Connected to ${nm}`);
+        viewProfile();
+      } catch (e) {
+        toast(e?.message || 'Could not connect. Check the code and try again.');
+        tcGo.disabled = false; tcGo.textContent = 'Connect';
+      }
+    };
+    tcGo.onclick = connect;
+    tcCode.onkeydown = (e) => { if (e.key === 'Enter') connect(); };
+  }
+  document.querySelectorAll('[data-unlink]').forEach((b) => {
+    b.onclick = () => {
+      const tid = b.getAttribute('data-unlink');
+      const nm = TEACHERS[tid]?.name || 'this teacher';
+      $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+        <h3 style="font-size:18px;margin-bottom:10px">Disconnect ${esc(nm)}?</h3>
+        <p class="hint" style="margin:0 0 16px">They stop setting you tasks and you lose access to their lesson
+          notes. Your messages stay. You can reconnect any time with their code.</p>
+        <div style="display:flex;gap:10px">
+          <button class="btn ghost" data-close style="flex:1">Cancel</button>
+          <button class="btn" id="unlinkGo" style="flex:1;background:var(--bad)">Disconnect</button></div></div>`;
+      $('#unlinkGo').onclick = async () => {
+        const g = $('#unlinkGo'); g.disabled = true; g.textContent = 'Disconnecting…';
+        try { await unlinkTeacher(tid); $('#overlays').innerHTML = ''; toast(`Disconnected from ${nm}`); viewProfile(); }
+        catch { toast('Could not disconnect.'); g.disabled = false; g.textContent = 'Disconnect'; }
+      };
+    };
+  });
 }
 
 document.addEventListener('click', (e) => {
@@ -4106,12 +4306,6 @@ async function nameFor(uid, fallback) {
   } catch { NAMES[uid] = (fallback || '').split('@')[0] || 'Someone'; }
   return NAMES[uid];
 }
-
-// Every teacher this student is connected to. This app is the student side —
-// teachers are bounced to /studio/ at sign-in — so these are the only people
-// a student is allowed to message.
-const myTeacherUids = () =>
-  [...new Set([me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean))];
 
 async function loadConvs() {
   const teachers = myTeacherUids();

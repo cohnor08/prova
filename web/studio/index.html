@@ -1177,6 +1177,11 @@ function assignSheet(stu, editIdx) {
       dueDate: inputToDue($('#taDue').value), durationMin: parseInt($('#taMin').value, 10) || 0,
       completed: existing?.completed || false,
       attachments: taAtts,
+      // Stamped the same way the phone's assign flow does (TeacherScreen.js), so
+      // the student's apps can show when a task was set and who set it. On an
+      // edit the original assignedAt is kept — the task wasn't re-issued.
+      assignedAt: existing?.assignedAt || new Date().toISOString(),
+      teacherUid: existing?.teacherUid || meUid,
     };
     const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
     if (existing) cur[editIdx] = { ...existing, ...task }; else cur.push(task);
