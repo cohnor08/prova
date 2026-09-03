@@ -172,7 +172,24 @@ Check with:
 ```bash
 node scripts/scan-truncation.cjs   # unshrinkable flex children, one-line titles
 node scripts/scan-undef.cjs        # identifiers used but never declared
+node scripts/scan-web-drift.cjs    # web apps falling behind the phone (see below)
 ```
+
+## The web apps drift from the phone
+`web/webapp/index.html` (student) and `web/studio/index.html` (teacher) share
+**no code** with `src/` — they re-implement the same screens by hand against
+the same Firestore documents. So a feature built on the phone does not reach
+the web until someone rebuilds it there, and nothing notices when they don't.
+Four of these shipped before it was caught: teacher tasks never showed their
+length (`durationMin` vs `duration`), class tasks were mixed in with one-to-one
+ones, proof of practice existed only on the phone, and the web read the user
+doc once with `getDoc` while the phone kept an `onSnapshot` on it — which is
+why the web app appeared not to sync at all.
+
+`scripts/scan-web-drift.cjs` guards the shared Firestore shapes. **Adding a
+field to `assignedTasks`, to proof, or to the teacher link? Add it to that
+script in the same commit.** It asserts both directions, so a field the phone
+stops using is reported too.
 
 ## Key Rules
 - All files must be `.js` — never `.ts` or `.tsx`
