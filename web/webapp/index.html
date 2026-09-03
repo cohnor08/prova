@@ -140,6 +140,13 @@
   /* A deadline reads as information until it's missed, then as a warning. */
   .pill.due{background:var(--raised);color:var(--ink-2)}
   .pill.late{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+  /* Proof clips: a video can't be thumbnailed without decoding it, so each one
+     is a numbered tile rather than a still frame. */
+  .proofthumb{position:relative;width:64px;height:64px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--line);background:var(--raised);display:grid;place-items:center;padding:0}
+  .proofthumb:hover{border-color:var(--primary)}
+  .proofplay{font-size:19px;line-height:1}
+  .proofn{position:absolute;bottom:3px;right:6px;font-size:10px;font-weight:700;color:var(--ink-3)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
@@ -836,7 +843,38 @@ async function load() {
   // Names for the teacher-task labels and the Profile card. Never fatal — a
   // failed read just falls back to the generic "Teacher" pill.
   try { await loadTeachers(); } catch { TEACHERS = {}; }
+  watchMe();
 }
+
+// The user doc used to be read exactly once, at sign-in. Anything the phone
+// changed after that — a task assigned, a proof filmed, a session completed —
+// stayed invisible here until a full page reload, which read as "the web app
+// doesn't sync". This keeps `me` live.
+//
+// Re-rendering is deliberately held back while the practice player or a modal
+// is open: rebuilding the screen under someone mid-task would drop their timer
+// UI and close whatever they opened. The data still updates; the screen catches
+// up when they come out.
+let unsubMe = null;
+function watchMe() {
+  if (unsubMe) unsubMe();
+  unsubMe = onSnapshot(doc(db, 'users', uid), (snap) => {
+    const next = snap.data();
+    if (!next) return;
+    const teachersChanged = JSON.stringify(myTeacherUids()) !== JSON.stringify(
+      [...new Set([next.teacherUid, ...(Array.isArray(next.teacherUids) ? next.teacherUids : [])].filter(Boolean))]);
+    me = next;
+    sessions = me.practicePlan?.weeklyPlan?.[TODAY_NAME]?.sessions || [];
+    $('#chipStreak').textContent = me.streak || 0;
+    $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
+    if (teachersChanged) loadTeachers().then(() => { if (!busyOnScreen()) rerender(); });
+    if (busyOnScreen()) return;
+    rerender();
+  }, () => { /* a dropped listener just means no live updates, not an error */ });
+}
+// True while something on screen owns the user's attention and must not be
+// rebuilt underneath them.
+const busyOnScreen = () => !!PLAY || !!$('#overlays')?.innerHTML.trim();
 const doneIds = () => (me.sessionProgress?.date === todayKey() ? (me.sessionProgress.ids || []) : []);
 const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
 
@@ -885,17 +923,36 @@ function fmtSetOn(v) {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short',
     ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
 }
-// Matches fmtDue() in /studio/ so both sides of the link word a deadline alike.
+// Just the date part of a deadline — "28 Aug", with the year only when it
+// isn't this one.
+function dueDay(v) {
+  const d = new Date(v);
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short',
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+}
+// A deadline always names its DATE, including when it has passed: "Overdue"
+// on its own told a student they were late but not by how long, so they
+// couldn't tell a task missed yesterday from one missed a fortnight ago.
 function fmtDue(v) {
   if (!v) return '';
   const d = new Date(v);
   if (isNaN(d)) return '';
   const days = Math.round((new Date(v).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000);
-  if (days < 0) return 'Overdue';
+  if (days < 0) return `Overdue · ${dueDay(v)}`;
   if (days === 0) return 'Due today';
   if (days === 1) return 'Due tomorrow';
-  return 'Due ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short',
-    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+  return 'Due ' + dueDay(v);
+}
+// The same deadline worded to sit mid-sentence in the meta line.
+function duePhrase(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const days = Math.round((new Date(v).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000);
+  if (days < 0) return `was due ${dueDay(v)}`;
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  return `due ${dueDay(v)}`;
 }
 const isOverdue = (t) => !!t.dueDate && !t.completed && new Date(t.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
 
@@ -1112,9 +1169,197 @@ function celebrate({ points = 0, title, subtitle, emoji = '🎸' } = {}) {
 }
 
 // ── render ───────────────────────────────────────────────────────────────
+// ── proof of practice ────────────────────────────────────────────────────
+// The phone films a clip against a teacher task and stores it on the task
+// itself. The web app could neither show one nor add one, so a student who
+// filmed proof on their phone saw no trace of it here.
+//
+// Shape, copied from TodayScreen.js so both clients read and write the same
+// thing: `proofs` is the list of clips, and proofUrl/proofType/proofAt always
+// mirror the NEWEST clip for everything still reading the single-clip fields.
+// Storage path is chatMedia/proof_{uid}/… — the prefix storage.rules locks to
+// its owner, so the existing upload helper reaches it unchanged.
+const proofClips = (t) => (Array.isArray(t?.proofs) && t.proofs.length
+  ? t.proofs
+  : (t?.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : []));
+
+function proofBlock(task, oi) {
+  const clips = proofClips(task);
+  if (!clips.length) {
+    return `<div style="margin:0 0 12px">
+      <button class="btn sm ghost" data-proofadd="${oi}">🎥 Add proof of practice</button>
+      <p class="hint" style="margin:8px 0 0">Film or upload a short clip so your teacher can see you play it.</p></div>`;
+  }
+  return `<div style="margin:0 0 12px">
+    <div class="eyebrow" style="padding:0 0 8px">Your proof${
+      task.proofVerified ? ' <span class="pill set">Verified</span>' : ''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${clips.map((c, k) => `<button class="proofthumb" data-proofview="${oi}:${k}"
+        title="${esc(c.type === 'image' ? 'Photo' : 'Video')}${c.at ? ' · ' + esc(fmtSetOn(c.at)) : ''}">
+        <span class="proofplay">${c.type === 'image' ? '🖼' : '▶'}</span>
+        <span class="proofn">${k + 1}</span></button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm ghost" data-proofadd="${oi}">Add another</button>
+      <button class="btn sm ghost" data-proofredo="${oi}">Replace latest</button>
+      <button class="btn sm ghost" data-proofdel="${oi}:${clips.length - 1}"
+        style="color:var(--bad);border-color:var(--bad)">Delete latest</button>
+    </div>
+    <p class="hint" style="margin:8px 0 0">${task.proofVerified
+      ? 'Your teacher has checked this off.'
+      : 'Submitted — waiting for your teacher to review it.'}</p></div>`;
+}
+
+// Write a changed task back into assignedTasks by its INDEX. Everything here
+// addresses tasks by index rather than id because a task's id is only unique
+// per-teacher, and a class batch gives every student a copy sharing one title.
+async function patchTask(oi, mutate) {
+  const cur = assigned();
+  const task = cur[oi];
+  if (!task) return false;
+  const next = cur.map((t, i) => (i === oi ? mutate(t) : t));
+  try {
+    await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    me.assignedTasks = next;
+    return true;
+  } catch { toast('Could not save — check your connection.'); return false; }
+}
+
+// Add a clip, or replace the newest one. Mirrors runProofUpload() on the
+// phone, including clearing proofVerified: a new clip has not been checked by
+// anyone yet, so an old tick must not carry over to it.
+async function uploadProof(oi, file, mode) {
+  if (!/^(image|video)\//.test(file.type)) { toast('Photos and video only'); return; }
+  if (file.size > MAX_UPLOAD_BYTES) { toast('That file is over 150 MB'); return; }
+  const t = toastSticky('Uploading proof… 0%');
+  try {
+    const media = await uploadChatMedia(file, 'proof_' + uid, (p) => t.set(`Uploading proof… ${Math.round(p * 100)}%`));
+    const clip = { url: media.url, type: media.type, at: new Date().toISOString() };
+    const ok = await patchTask(oi, (task) => {
+      const existing = proofClips(task);
+      const proofs = mode === 'replace' && existing.length
+        ? [...existing.slice(0, -1), clip]
+        : [...existing, clip];
+      return { ...task, proofs, proofUrl: clip.url, proofType: clip.type, proofAt: clip.at, proofVerified: false };
+    });
+    t.done();
+    if (ok) { toast(mode === 'replace' ? 'Proof replaced' : 'Proof submitted — your teacher can review it'); rerender(); }
+  } catch (e) {
+    t.done();
+    toast(/40[13]|unauthorized/.test(String(e?.message)) ? 'Not allowed to upload that.' : 'Upload failed — try again.');
+  }
+}
+
+// Ask for a file, then hand it to uploadProof. `capture` asks a phone browser
+// for the camera directly; a desktop browser ignores it and opens the picker.
+function pickProof(oi, mode) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'video/*,image/*';
+  inp.setAttribute('capture', 'environment');
+  inp.onchange = () => { const f = inp.files?.[0]; if (f) uploadProof(oi, f, mode); };
+  inp.click();
+}
+
+async function deleteProof(oi, k) {
+  const task = assigned()[oi];
+  const clips = proofClips(task);
+  if (!clips.length) return;
+  const i = Math.min(Math.max(0, k), clips.length - 1);
+  const last = clips.length === 1;
+  const ok = await confirmModal({
+    title: last ? 'Delete this proof?' : `Delete clip ${i + 1} of ${clips.length}?`,
+    body: last
+      ? "Your teacher won't be able to see it any more. You can record a new one afterwards."
+      : 'The other clips stay where they are.',
+    danger: 'Delete',
+  });
+  if (!ok) return;
+  const saved = await patchTask(oi, (t) => {
+    const proofs = proofClips(t).filter((_, j) => j !== i);
+    const newest = proofs[proofs.length - 1] || null;
+    return { ...t, proofs,
+      proofUrl: newest ? newest.url : null,
+      proofType: newest ? newest.type : null,
+      proofAt: newest ? newest.at : null,
+      // A teacher's tick belonged to the clip that just went.
+      proofVerified: newest ? t.proofVerified : false };
+  });
+  if (saved) { toast('Proof deleted'); rerender(); }
+}
+
+// Watch one clip, stepping through the rest without closing.
+function viewProof(oi, k) {
+  const task = assigned()[oi];
+  const clips = proofClips(task);
+  if (!clips.length) return;
+  let i = Math.min(Math.max(0, k), clips.length - 1);
+  const paint = () => {
+    const c = clips[i];
+    // The scrim and Close are bound directly rather than via the global
+    // [data-close] handler: that one hands control back to the practice player
+    // when it is mid-task, which is not what closing this should do.
+    $('#overlays').innerHTML = `<div class="scrim" id="pvScrim"></div>
+      <div class="modal" style="text-align:left;max-width:640px">
+        <h3 style="font-size:17px;margin-bottom:4px">${esc(task.title || 'Proof')}</h3>
+        <p class="hint" style="margin:0 0 14px">Clip ${i + 1} of ${clips.length}${
+          c.at ? ` · filmed ${esc(fmtSetOn(c.at))}` : ''}</p>
+        ${c.type === 'image'
+          ? `<img src="${esc(c.url)}" alt="Proof" style="width:100%;border-radius:12px;display:block">`
+          : `<video src="${esc(c.url)}" controls autoplay playsinline
+               style="width:100%;border-radius:12px;background:#000"></video>`}
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          ${clips.length > 1 ? `<button class="btn sm ghost" id="pvPrev"${i === 0 ? ' disabled' : ''}>‹ Previous</button>
+            <button class="btn sm ghost" id="pvNext"${i === clips.length - 1 ? ' disabled' : ''}>Next ›</button>` : ''}
+          <span style="flex:1"></span>
+          <button class="btn sm ghost" id="pvDel" style="color:var(--bad);border-color:var(--bad)">Delete this clip</button>
+          <button class="btn sm" id="pvClose">Close</button>
+        </div></div>`;
+    const p = $('#pvPrev'), n = $('#pvNext');
+    if (p) p.onclick = () => { if (i > 0) { i--; paint(); } };
+    if (n) n.onclick = () => { if (i < clips.length - 1) { i++; paint(); } };
+    const shut = () => { $('#overlays').innerHTML = ''; };
+    $('#pvClose').onclick = shut;
+    $('#pvScrim').onclick = shut;
+    $('#pvDel').onclick = async () => { shut(); await deleteProof(oi, i); };
+  };
+  paint();
+}
+
+// A yes/no the caller can await, so the delete flows read top-to-bottom the
+// way the phone's Alert-with-callbacks does.
+function confirmModal({ title, body, danger }) {
+  return new Promise((resolve) => {
+    $('#overlays').innerHTML = `<div class="scrim" id="cmScrim"></div><div class="modal" style="text-align:left">
+      <h3 style="font-size:18px;margin-bottom:10px">${esc(title)}</h3>
+      <p class="hint" style="margin:0 0 16px">${esc(body)}</p>
+      <div style="display:flex;gap:10px">
+        <button class="btn ghost" id="cmNo" style="flex:1">Cancel</button>
+        <button class="btn" id="cmYes" style="flex:1;background:var(--bad)">${esc(danger)}</button></div></div>`;
+    let settled = false;
+    const finish = (v) => { if (settled) return; settled = true; $('#overlays').innerHTML = ''; resolve(v); };
+    $('#cmYes').onclick = () => finish(true);
+    $('#cmNo').onclick = () => finish(false);
+    $('#cmScrim').onclick = () => finish(false);
+  });
+}
+
+// A toast that stays put while something slow runs, and can update its text.
+function toastSticky(msg) {
+  const el = $('#toast');
+  el.textContent = msg; el.classList.add('show');
+  return { set: (m) => { el.textContent = m; }, done: () => el.classList.remove('show') };
+}
+
 const OPEN = {}; const SHOWALL = {};
-function rows(list, kind, limit) {
-  const shown = SHOWALL[kind] ? list : list.slice(0, limit);
+// `kind` is the ADDRESS of a task ('plan' or 'assigned') — it decides which
+// array the player and the completion write index into, so class tasks pass
+// 'assigned' like any other. `showKey` is separate because the teacher card
+// and each class card need their own Show-all state; sharing `kind` made them
+// all expand together. Per-row open state is keyed on the task's real index,
+// which is unique across the whole array, so it needs no such split.
+function rows(list, kind, limit, showKey = kind) {
+  const shown = SHOWALL[showKey] ? list : list.slice(0, limit);
   return shown.map((x, i) => {
     // Address the row by its index in the underlying array, not its position
     // on screen — assigned rows are re-ordered for display.
@@ -1143,10 +1388,8 @@ function rows(list, kind, limit) {
         ${isTask && (who || setOn || due) ? `<div class="hint" style="margin:0 0 10px">${[
           who ? `Set by ${esc(who)}` : '',
           setOn ? `added ${esc(setOn)}` : '',
-          // Mid-sentence here, so only the leading "Due"/"Overdue" drops its
-          // capital — lowercasing the whole label turned "6 Sept" into "6 sept".
           due ? `<span${isOverdue(x) ? ' style="color:var(--bad);font-weight:650"' : ''}>${
-            esc(due.charAt(0).toLowerCase() + due.slice(1))}</span>` : '',
+            esc(duePhrase(x.dueDate))}</span>` : '',
         ].filter(Boolean).join(' · ')}</div>` : ''}
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
         ${(x.attachments || []).length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">
@@ -1156,6 +1399,7 @@ function rows(list, kind, limit) {
             : `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener">${
                  a.type === 'video' ? '🎥' : '📎'} ${esc(a.title || (a.type === 'video' ? 'Video' : 'Attachment'))}</a>`
           ).join('')}</div>` : ''}
+        ${isTask ? proofBlock(x, oi) : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${done ? '<span class="hint">Completed</span>'
             : `<button class="btn sm" data-play="${kind}:${oi}">Practice this</button>`}
@@ -1164,7 +1408,7 @@ function rows(list, kind, limit) {
         </div>
       </div></div>`;
   }).join('') +
-  (list.length > limit ? `<button class="showmore" data-showall="${kind}">${SHOWALL[kind] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
+  (list.length > limit ? `<button class="showmore" data-showall="${esc(showKey)}">${SHOWALL[showKey] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
 }
 
 function render() {
@@ -1175,19 +1419,41 @@ function render() {
   // the completion write both address tasks by that index, so it has to travel
   // with the row — the display order here is presentation only.
   const rank = (t) => (t.completed ? 2 : 0) + (t.dueDate ? 0 : 0.5);
-  const a = assigned().map((t, i) => ({ ...t, _i: i })).sort((p, q) =>
+  const bySoonest = (p, q) =>
     rank(p) - rank(q)
     || (p.dueDate && q.dueDate ? new Date(p.dueDate) - new Date(q.dueDate) : 0)
-    || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0)));
+    || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0));
+  const withIndex = assigned().map((t, i) => ({ ...t, _i: i }));
+  // Split one-to-one teacher tasks from class-assigned ones exactly as the
+  // phone does (TodayScreen: soloTasks vs classGroups keyed on className) —
+  // a class task carries classId/className, a personal one doesn't. Sending
+  // them to one list made a whole class's homework look like it was set for
+  // you alone.
+  const solo = withIndex.filter(t => !t.classId).sort(bySoonest);
+  const classGroups = [];
+  withIndex.filter(t => t.classId).forEach((t) => {
+    const key = t.className || 'Class';
+    let g = classGroups.find(x => x.key === key);
+    if (!g) { g = { key, tasks: [] }; classGroups.push(g); }
+    g.tasks.push(t);
+  });
+  classGroups.forEach(g => g.tasks.sort(bySoonest));
   // A student's teacher tasks sit ABOVE their own plan — someone else is
   // waiting on those. Other roles keep them below their own practice.
   const isStudent = me.role === 'student';
-  const openCount = a.filter(t => !t.completed).length;
-  const assignedCard = a.length ? `<section class="card"><header><h3>From your teacher</h3>
-    <span class="meta">${a.filter(t => t.completed).length} of ${a.length} done</span></header>
-    ${openCount && isStudent ? `<p class="hint" style="margin:-4px 0 14px">${
-      openCount === 1 ? 'One task' : `${openCount} tasks`} still to do.</p>` : ''}
-    ${rows(a, 'assigned', 4)}</section>` : '';
+  const taskCard = (title, list, showKey, meta) => {
+    const open = list.filter(t => !t.completed).length;
+    return `<section class="card"><header><h3>${esc(title)}</h3>
+      <span class="meta">${list.filter(t => t.completed).length} of ${list.length} done</span></header>
+      ${meta ? `<p class="hint" style="margin:-4px 0 4px">${esc(meta)}</p>` : ''}
+      ${open && isStudent ? `<p class="hint" style="margin:${meta ? '4px' : '-4px'} 0 14px">${
+        open === 1 ? 'One task' : `${open} tasks`} still to do.</p>` : ''}
+      ${rows(list, 'assigned', 4, showKey)}</section>`;
+  };
+  // All of one teacher's tasks belong in ONE card. Splitting further (per
+  // teacher, per batch) turned a single teacher into several headings.
+  const assignedCard = (solo.length ? taskCard('From your teacher', solo, 'assigned') : '')
+    + classGroups.map(g => taskCard(g.key, g.tasks, 'class:' + g.key, 'Set for the whole class')).join('');
   const donePlan = sessions.filter(s => d.includes(s.id)).length;
   const planned = sessions.reduce((t, s) => t + (s.duration || 0), 0);
   const doneMin = sessions.filter(s => d.includes(s.id)).reduce((t, s) => t + (s.duration || 0), 0);
@@ -1272,6 +1538,14 @@ document.addEventListener('click', (e) => {
     if (row) row.classList.toggle('open', OPEN[k]);
     else { const y = window.scrollY; rerender(); window.scrollTo(0, y); }
     return;
+  }
+  if ((t = e.target.closest('[data-proofadd]'))) { pickProof(+t.getAttribute('data-proofadd'), 'add'); return; }
+  if ((t = e.target.closest('[data-proofredo]'))) { pickProof(+t.getAttribute('data-proofredo'), 'replace'); return; }
+  if ((t = e.target.closest('[data-proofview]'))) {
+    const [oi, k] = t.getAttribute('data-proofview').split(':').map(Number); viewProof(oi, k); return;
+  }
+  if ((t = e.target.closest('[data-proofdel]'))) {
+    const [oi, k] = t.getAttribute('data-proofdel').split(':').map(Number); deleteProof(oi, k); return;
   }
   if ((t = e.target.closest('[data-showall]'))) {
     const y = window.scrollY, k = t.getAttribute('data-showall');

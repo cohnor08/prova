@@ -1540,12 +1540,22 @@ export default function TodayScreen({ navigation, route }) {
   // rows; tasks with no teacherUid fall under the primary.
   const allTeacherIds = teacherIdsOf(userData || {});
   const primaryTeacher = userData?.teacherUid || allTeacherIds[0] || null;
+  // Bucket a task under its teacher ONLY when that teacher is one the student
+  // is still connected to. A task can carry a teacherUid that no longer means
+  // anything here — a teacher since disconnected, or a stray id — and keying
+  // on it blindly opened a second nameless "TEACHER" card holding that one
+  // task, so a student with a single teacher saw two identical headings.
+  // Anything unattributable belongs to the primary teacher.
+  const connected = new Set(allTeacherIds);
   const soloByTeacher = {};
   soloTasks.forEach((t) => {
-    const tid = t.teacherUid || primaryTeacher || 'unknown';
+    const tid = (t.teacherUid && connected.has(t.teacherUid)) ? t.teacherUid : (primaryTeacher || 'unknown');
     (soloByTeacher[tid] = soloByTeacher[tid] || []).push(t);
   });
-  const teacherOrder = [...new Set([primaryTeacher, ...allTeacherIds, ...Object.keys(soloByTeacher)].filter(Boolean))];
+  // Only connected teachers get a card (plus the catch-all when there is no
+  // primary at all) — never an id that merely appeared on a task.
+  const teacherOrder = [...new Set([primaryTeacher, ...allTeacherIds].filter(Boolean))];
+  if (soloByTeacher.unknown) teacherOrder.push('unknown');
   const teacherGroups = teacherOrder
     .map((tid) => ({ tid, isPrimary: tid === primaryTeacher, name: teacherNames[tid], tasks: soloByTeacher[tid] || [] }))
     .filter((g) => g.tasks.length > 0 || (g.isPrimary && (nextLesson || lastAttended || userData?.teacherUid)));
