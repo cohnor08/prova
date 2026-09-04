@@ -189,9 +189,17 @@ function ClipTitle({ text, style, containerStyle, expanded }) {
   );
 }
 
-// Proof props are gone from here on purpose: recording, viewing and replacing
-// all moved into the player, so the card only reports whether proof exists.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, topDivider }) {
+// A task's proof clips. `proofs` is the real list; the single proofUrl/proofType
+// fields are the older shape and are read as a one-clip list so nothing filmed
+// before `proofs` existed disappears.
+const proofClipsOf = (t) => (Array.isArray(t?.proofs) && t.proofs.length > 0
+  ? t.proofs
+  : (t?.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : []));
+
+// Recording still happens in the player, where you practise. But the card's
+// proof row is now a way IN to the viewer — it used to be dead text, so a
+// submitted clip could not be watched, replaced or deleted from here at all.
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, topDivider }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
@@ -295,17 +303,24 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
           task — the card just reports the state, and everything you can DO
           with proof happens where you actually practise. */}
       {expanded && task.proofUrl && (
-        <View style={styles.proofRow}>
+        <TouchableOpacity
+          style={styles.proofRow}
+          onPress={() => onOpenProof?.(task)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Watch, replace or delete your proof"
+        >
           <Ionicons
             name={task.proofVerified ? 'checkmark-circle' : 'videocam'}
             size={15}
             color={task.proofVerified ? COLORS.success : COLORS.primary}
           />
-          <Text style={styles.proofRowText} numberOfLines={1}>
+          <Text style={[styles.proofRowText, { flex: 1 }]} numberOfLines={1}>
             {task.proofVerified ? 'Proof verified by your teacher' : 'Proof submitted'}
-            {(task.proofs?.length || 0) > 1 ? ` (${task.proofs.length})` : ''}
+            {proofClipsOf(task).length > 1 ? ` (${proofClipsOf(task).length})` : ''}
           </Text>
-        </View>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+        </TouchableOpacity>
       )}
 
       {/* Practicing happens in the player — this just opens it at this task. */}
@@ -1157,7 +1172,10 @@ export default function TodayScreen({ navigation, route }) {
   // the latest. proofUrl/proofType always mirror the newest clip so everything
   // reading the single-clip fields keeps working; a new upload clears teacher
   // verification so the fresh clip gets re-checked.
-  const runProofUpload = async (taskId, getMedia, mode = 'add', fromCamera = false) => {
+  // `replaceAt` is null to append, or the INDEX of the clip to swap. It used to
+  // be the string 'replace', which could only ever mean the last clip — wrong
+  // as soon as a task holds several and you want to redo the second one.
+  const runProofUpload = async (taskId, getMedia, replaceAt = null, fromCamera = false) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     setProofBusyId(taskId);
@@ -1185,19 +1203,21 @@ export default function TodayScreen({ navigation, route }) {
       const url = await uploadProofMedia(picked.uri, uid, picked.type, setProofPct, onStep);
       const next = (userData?.assignedTasks || []).map((t) => {
         if (t.id !== taskId) return t;
-        const existing = Array.isArray(t.proofs) && t.proofs.length > 0
-          ? t.proofs
-          : (t.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : []);
+        const existing = proofClipsOf(t);
         const clip = { url, type: picked.type, at: new Date().toISOString() };
-        const proofs = mode === 'replace' && existing.length > 0
-          ? [...existing.slice(0, -1), clip]
+        const proofs = (replaceAt !== null && existing[replaceAt])
+          ? existing.map((c, k) => (k === replaceAt ? clip : c))
           : [...existing, clip];
-        return { ...t, proofs, proofUrl: clip.url, proofType: clip.type, proofAt: clip.at, proofVerified: false };
+        // proofUrl/proofType/proofAt mean "the newest clip" to the teacher's
+        // dashboard, so they mirror whatever ends up LAST — not the file just
+        // uploaded, which may have replaced one in the middle.
+        const newest = proofs[proofs.length - 1];
+        return { ...t, proofs, proofUrl: newest.url, proofType: newest.type, proofAt: newest.at, proofVerified: false };
       });
       setUserData((p) => ({ ...p, assignedTasks: next }));
       await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
       Alert.alert(
-        'Proof submitted 🎥',
+        replaceAt !== null ? 'Clip replaced 🎥' : 'Proof submitted 🎥',
         `Your teacher can now review it.${fromCamera ? (rollSaved ? ' The clip was saved to your camera roll too.' : " (Couldn't save a copy to your camera roll.)") : ''}`
       );
     } catch (e) {
@@ -1214,33 +1234,38 @@ export default function TodayScreen({ navigation, route }) {
     }
   };
 
-  const attachProof = (taskId) => {
+  // `replaceAt` given (from the viewer, targeting the clip on screen) goes
+  // straight to the source picker. Called without it — from the player — it
+  // still asks add-or-replace, where "replace" means the last clip.
+  const attachProof = (taskId, replaceAt = null) => {
     const task = (userData?.assignedTasks || []).find((x) => x.id === taskId);
-    const pickSource = (mode) => {
+    const pickSource = (at) => {
       // Browsers can't hand us a camera recorder — go straight to the file
       // picker on web (which offers the camera anyway on tablets/phones).
-      if (Platform.OS === 'web') { runProofUpload(taskId, pickMedia, mode); return; }
+      if (Platform.OS === 'web') { runProofUpload(taskId, pickMedia, at); return; }
       Alert.alert(
-        mode === 'replace' ? 'Replace your latest video' : 'Add proof of practice',
+        at !== null ? 'Replace this video' : 'Add proof of practice',
         'Show your teacher you practiced this.',
         [
-          { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, mode, true) },
-          { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, mode) },
+          { text: 'Record now', onPress: () => runProofUpload(taskId, captureMedia, at, true) },
+          { text: 'Choose from library', onPress: () => runProofUpload(taskId, pickMedia, at) },
           { text: 'Cancel', style: 'cancel' },
         ]
       );
     };
-    if (!task?.proofUrl) { pickSource('add'); return; }
+    if (replaceAt !== null) { pickSource(replaceAt); return; }
+    if (!task?.proofUrl) { pickSource(null); return; }
     Alert.alert('Proof of practice', 'Add another video, or replace your latest one?', [
-      { text: 'Add another', onPress: () => pickSource('add') },
-      { text: 'Replace latest', onPress: () => pickSource('replace') },
+      { text: 'Add another', onPress: () => pickSource(null) },
+      { text: 'Replace latest', onPress: () => pickSource(Math.max(0, proofClipsOf(task).length - 1)) },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const viewProof = (task) => {
-    if (task.proofUrl) setProofView({ url: task.proofUrl, type: task.proofType || 'video', proofs: task.proofs, taskId: task.id });
-  };
+  // The viewer holds only the task id: the clips are read live from userData on
+  // every render, so it stays right after its own replace or delete and after
+  // anything that lands from another device.
+  const viewProof = (task) => { if (task.proofUrl) setProofView({ taskId: task.id }); };
 
   // Remove one clip. Confirmed first — it's the student's own recording and
   // there's no undo. The file itself is left in Storage: the teacher may have
@@ -1249,9 +1274,7 @@ export default function TodayScreen({ navigation, route }) {
   const deleteProof = (taskId, index) => new Promise((resolve) => {
     const task = (userData?.assignedTasks || []).find((x) => x.id === taskId);
     if (!task) { resolve(false); return; }
-    const clips = Array.isArray(task.proofs) && task.proofs.length > 0
-      ? task.proofs
-      : (task.proofUrl ? [{ url: task.proofUrl, type: task.proofType || 'video', at: task.proofAt || null }] : []);
+    const clips = proofClipsOf(task);
     if (!clips.length) { resolve(false); return; }
     const i = Math.min(Math.max(0, index), clips.length - 1);
     const last = clips.length === 1;
@@ -1347,7 +1370,21 @@ export default function TodayScreen({ navigation, route }) {
   };
 
   const isToday = selectedDay === TODAY_NAME;
-  const assignedTasks = userData?.assignedTasks || [];
+  // Tasks live on the STUDENT's document, so unlinking a teacher leaves theirs
+  // behind — a task set months ago by an account you're no longer connected to
+  // kept appearing among your current teacher's work, and there was no way to
+  // be rid of it. A task naming a teacher you aren't linked to any more is
+  // therefore hidden. It is only hidden, never deleted: re-link and it returns.
+  //
+  // A task with NO teacherUid is always kept. Tasks assigned from Studio before
+  // 2026-09-03 carry none, and the phone wrote none for a long time before
+  // that, so treating "unattributed" as "stale" would wipe real homework.
+  // Likewise nothing is hidden while the student has no connected teacher at
+  // all — mid-unlink, that would empty the screen rather than explain it.
+  const connectedTeacherIds = new Set(teacherIdsOf(userData || {}));
+  const fromACurrentTeacher = (t) =>
+    !t.teacherUid || connectedTeacherIds.size === 0 || connectedTeacherIds.has(t.teacherUid);
+  const assignedTasks = (userData?.assignedTasks || []).filter(fromACurrentTeacher);
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
   // Completed tasks disappear from the student's list to keep it from piling up
@@ -1538,18 +1575,15 @@ export default function TodayScreen({ navigation, route }) {
   // a student connected to several teachers gets a "FROM <name>" card each. The
   // primary teacher (userData.teacherUid) leads and carries the lesson/attendance
   // rows; tasks with no teacherUid fall under the primary.
-  const allTeacherIds = teacherIdsOf(userData || {});
+  const allTeacherIds = [...connectedTeacherIds];
   const primaryTeacher = userData?.teacherUid || allTeacherIds[0] || null;
   // Bucket a task under its teacher ONLY when that teacher is one the student
-  // is still connected to. A task can carry a teacherUid that no longer means
-  // anything here — a teacher since disconnected, or a stray id — and keying
-  // on it blindly opened a second nameless "TEACHER" card holding that one
-  // task, so a student with a single teacher saw two identical headings.
-  // Anything unattributable belongs to the primary teacher.
-  const connected = new Set(allTeacherIds);
+  // is still connected to. Anything unattributed — the old tasks that carry no
+  // teacherUid at all — belongs to the primary. (Tasks naming a teacher who is
+  // NO LONGER connected never reach here; they're filtered out further up.)
   const soloByTeacher = {};
   soloTasks.forEach((t) => {
-    const tid = (t.teacherUid && connected.has(t.teacherUid)) ? t.teacherUid : (primaryTeacher || 'unknown');
+    const tid = (t.teacherUid && connectedTeacherIds.has(t.teacherUid)) ? t.teacherUid : (primaryTeacher || 'unknown');
     (soloByTeacher[tid] = soloByTeacher[tid] || []).push(t);
   });
   // Only connected teachers get a card (plus the catch-all when there is no
@@ -1867,6 +1901,7 @@ export default function TodayScreen({ navigation, route }) {
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
+                      onOpenProof={viewProof}
                     />
                   ))}
                 </View>
@@ -1902,6 +1937,7 @@ export default function TodayScreen({ navigation, route }) {
                       openTaskLink={openTaskLink}
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
+                      onOpenProof={viewProof}
                     />
                   ))}
                 </View>
@@ -2038,25 +2074,59 @@ export default function TodayScreen({ navigation, route }) {
         <View style={styles.proofBackdrop}>
           <View style={styles.proofViewer}>
             {proofView ? (() => {
-              // Page through every clip attached to this task.
-              const clips = Array.isArray(proofView.proofs) && proofView.proofs.length > 0
-                ? proofView.proofs
-                : [{ url: proofView.url, type: proofView.type }];
-              const cur = clips[Math.min(proofIdx, clips.length - 1)];
+              // Read the clips LIVE from userData rather than from a snapshot
+              // taken when the viewer opened, so a replace or a delete here is
+              // reflected immediately instead of leaving a stale frame up.
+              const task = (userData?.assignedTasks || []).find((x) => x.id === proofView.taskId);
+              const clips = proofClipsOf(task);
+              if (!clips.length) return null;
+              const idx = Math.min(proofIdx, clips.length - 1);
+              const cur = clips[idx];
+              const busy = proofBusyId === proofView.taskId;
               return (
                 <>
                   <ProofMedia key={cur.url} url={cur.url} type={cur.type || 'video'} style={styles.proofMedia} />
                   {clips.length > 1 && (
                     <View style={styles.proofPager}>
-                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.max(0, i - 1))} disabled={proofIdx === 0} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="chevron-back-circle" size={26} color={proofIdx === 0 ? COLORS.border : COLORS.text} />
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.max(0, i - 1))} disabled={idx === 0} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-back-circle" size={26} color={idx === 0 ? COLORS.border : COLORS.text} />
                       </TouchableOpacity>
-                      <Text style={styles.proofPagerText}>{Math.min(proofIdx, clips.length - 1) + 1} of {clips.length}</Text>
-                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.min(clips.length - 1, i + 1))} disabled={proofIdx >= clips.length - 1} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="chevron-forward-circle" size={26} color={proofIdx >= clips.length - 1 ? COLORS.border : COLORS.text} />
+                      <Text style={styles.proofPagerText}>{idx + 1} of {clips.length}</Text>
+                      <TouchableOpacity onPress={() => setProofIdx((i) => Math.min(clips.length - 1, i + 1))} disabled={idx >= clips.length - 1} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-forward-circle" size={26} color={idx >= clips.length - 1 ? COLORS.border : COLORS.text} />
                       </TouchableOpacity>
                     </View>
                   )}
+                  {/* Both act on the clip ON SCREEN, not on "the latest" */}
+                  <View style={styles.proofActions}>
+                    <TouchableOpacity
+                      style={styles.proofActionBtn}
+                      disabled={busy}
+                      onPress={() => attachProof(proofView.taskId, idx)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="refresh" size={15} color={COLORS.text} />
+                      <Text style={styles.proofActionText}>{busy ? 'Working…' : 'Replace'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.proofActionBtn, styles.proofActionDanger]}
+                      disabled={busy}
+                      onPress={async () => {
+                        const gone = await deleteProof(proofView.taskId, idx);
+                        if (!gone) return;
+                        // Closing only when nothing is left keeps you in the
+                        // viewer to check the rest.
+                        const left = proofClipsOf(
+                          (userData?.assignedTasks || []).find((x) => x.id === proofView.taskId)
+                        ).length - 1;
+                        if (left <= 0) setProofView(null); else setProofIdx((i) => Math.max(0, Math.min(i, left - 1)));
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={COLORS.error} />
+                      <Text style={[styles.proofActionText, { color: COLORS.error }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 </>
               );
             })() : null}
@@ -2606,6 +2676,12 @@ const makeStyles = (COLORS) => StyleSheet.create({
   proofPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.sm },
   proofPagerText: { color: '#fff', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  // Replace/Delete sit on the dark viewer backdrop, not on a card, so they get
+  // their own translucent chips rather than the app's normal button styles.
+  proofActions: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md },
+  proofActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
+  proofActionDanger: { backgroundColor: 'rgba(244,63,94,0.18)' },
+  proofActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   proofCloseBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg, paddingVertical: 10, paddingHorizontal: SPACING.lg, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)' },
   proofCloseText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   songLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
