@@ -885,7 +885,24 @@ function watchMe() {
 // rebuilt underneath them.
 const busyOnScreen = () => !!PLAY || !!$('#overlays')?.innerHTML.trim();
 const doneIds = () => (me.sessionProgress?.date === todayKey() ? (me.sessionProgress.ids || []) : []);
-const assigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
+const allAssigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
+// Tasks live on the STUDENT's doc, so unlinking a teacher leaves theirs behind.
+// A task naming a teacher you're no longer connected to is hidden — only
+// hidden, never deleted, so re-linking brings it back. Matches
+// fromACurrentTeacher() in TodayScreen.js; keep the two in step.
+//
+// Unattributed tasks (no teacherUid — everything Studio wrote before
+// 2026-09-03) are always kept, or real homework would vanish. Nothing is
+// hidden while no teacher is connected at all, so unlinking empties the card
+// deliberately rather than by accident.
+// NOTE the split, and keep it: every write and every index into assignedTasks
+// goes through allAssigned(), because tasks are addressed by their position in
+// the REAL array. Mapping over the filtered list and saving that would delete
+// the hidden tasks outright. isCurrentTeacherTask() is for display only.
+const isCurrentTeacherTask = (t) => {
+  const ids = new Set(myTeacherUids());
+  return !t.teacherUid || ids.size === 0 || ids.has(t.teacherUid);
+};
 
 // Every teacher this student is connected to. This app is the student side —
 // teachers are bounced to /studio/ at sign-in — so these are the only people
@@ -1221,7 +1238,7 @@ function proofBlock(task, oi) {
 // addresses tasks by index rather than id because a task's id is only unique
 // per-teacher, and a class batch gives every student a copy sharing one title.
 async function patchTask(oi, mutate) {
-  const cur = assigned();
+  const cur = allAssigned();
   const task = cur[oi];
   if (!task) return false;
   const next = cur.map((t, i) => (i === oi ? mutate(t) : t));
@@ -1279,7 +1296,7 @@ function pickProof(oi, replaceAt = null, onDone) {
 }
 
 async function deleteProof(oi, k) {
-  const task = assigned()[oi];
+  const task = allAssigned()[oi];
   const clips = proofClips(task);
   if (!clips.length) return;
   const i = Math.min(Math.max(0, k), clips.length - 1);
@@ -1316,7 +1333,7 @@ async function deleteProof(oi, k) {
 function viewProof(oi, k) {
   let i = k;
   const paint = () => {
-    const task = assigned()[oi];
+    const task = allAssigned()[oi];
     const clips = proofClips(task);
     if (!clips.length) { $('#overlays').innerHTML = ''; rerender(); return; }
     i = Math.min(Math.max(0, i), clips.length - 1);
@@ -1451,7 +1468,9 @@ function render() {
     rank(p) - rank(q)
     || (p.dueDate && q.dueDate ? new Date(p.dueDate) - new Date(q.dueDate) : 0)
     || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0));
-  const withIndex = assigned().map((t, i) => ({ ...t, _i: i }));
+  // Index FIRST, then filter: `_i` has to be the position in the real array,
+  // and hidden tasks must not shift the ones after them.
+  const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i })).filter(isCurrentTeacherTask);
   // Split one-to-one teacher tasks from class-assigned ones exactly as the
   // phone does (TodayScreen: soloTasks vs classGroups keyed on className) —
   // a class task carries classId/className, a personal one doesn't. Sending
@@ -4920,14 +4939,17 @@ const hasStartedToday = () => {
   return Object.keys(PRIOR).length > 0 || doneIds().length > 0;
 };
 const markStarted = () => { try { localStorage.setItem(startedKey(), '1'); } catch {} };
-function playList(kind) { return kind === 'plan' ? sessions : assigned(); }
+function playList(kind) { return kind === 'plan' ? sessions : allAssigned(); }
 // One queue for the whole run — the day's plan, then anything the teacher
 // set — so Next carries you across both, as the app's player does.
 function queue() {
-  const d = doneIds(), a = assigned();
+  const d = doneIds(), a = allAssigned();
   return [
     ...sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id)),
-    ...a.map((x, i) => ({ kind: 'assigned', i })).filter(q => !a[q.i].completed),
+    // Indexes are positions in the real array; a task from a teacher you've
+    // unlinked is skipped here too, so Next never lands on one you can't see.
+    ...a.map((x, i) => ({ kind: 'assigned', i }))
+       .filter(q => !a[q.i].completed && isCurrentTeacherTask(a[q.i])),
   ];
 }
 // A teacher task's timer is durationMin; a plan session's is duration.
@@ -5057,7 +5079,7 @@ async function finish() {
       celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '🎸' });
     } else {
       const pts = teacherTaskPoints(secs);
-      const next = assigned().map((t, j) => j === PLAY.i ? { ...t, completed: true } : t);
+      const next = allAssigned().map((t, j) => j === PLAY.i ? { ...t, completed: true } : t);
       const patch = { assignedTasks: next, provaScore: increment(pts), totalMinutes: increment(mins) };
       // streak: same today/yesterday rule as src/lib/practiceLog.js
       const last = me.lastSessionDate ? new Date(me.lastSessionDate) : null;
