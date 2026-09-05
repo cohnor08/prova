@@ -199,7 +199,7 @@ const proofClipsOf = (t) => (Array.isArray(t?.proofs) && t.proofs.length > 0
 // Recording still happens in the player, where you practise. But the card's
 // proof row is now a way IN to the viewer — it used to be dead text, so a
 // submitted clip could not be watched, replaced or deleted from here at all.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, topDivider }) {
+function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, onRemove, topDivider }) {
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
@@ -321,6 +321,18 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
           </Text>
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
+      )}
+
+      {/* Left behind by a teacher who is no longer linked. Said plainly, with
+          a way out, rather than being hidden on the student's behalf. */}
+      {expanded && onRemove && (
+        <View style={styles.formerRow}>
+          <Ionicons name="information-circle-outline" size={15} color={COLORS.textMuted} />
+          <Text style={[styles.formerText, { flex: 1 }]}>From a teacher you’re no longer connected to</Text>
+          <TouchableOpacity onPress={() => onRemove(task)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.formerRemove}>Remove</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Practicing happens in the player — this just opens it at this task. */}
@@ -1267,6 +1279,38 @@ export default function TodayScreen({ navigation, route }) {
   // anything that lands from another device.
   const viewProof = (task) => { if (task.proofUrl) setProofView({ taskId: task.id }); };
 
+  // Drop a task left behind by a teacher the student is no longer linked to.
+  // Offered ONLY for those — a task from a current teacher is their homework,
+  // not the student's to delete. Removal is by id, never by index, so it can't
+  // take the wrong task if the list has shifted.
+  const removeTask = (task) => {
+    Alert.alert(
+      'Remove this task?',
+      `"${task.title}" was set by a teacher you're no longer connected to. Removing it only affects your copy.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            const before = userData?.assignedTasks || [];
+            const next = before.filter((t) => t.id !== task.id);
+            setUserData((p) => ({ ...p, assignedTasks: next }));
+            try {
+              await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+            } catch (e) {
+              setUserData((p) => ({ ...p, assignedTasks: before }));
+              markSomethingWentWrong();
+              Alert.alert('Could not remove', 'Check your connection and try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Remove one clip. Confirmed first — it's the student's own recording and
   // there's no undo. The file itself is left in Storage: the teacher may have
   // already been notified about it, and an orphaned object costs nothing next
@@ -1371,20 +1415,21 @@ export default function TodayScreen({ navigation, route }) {
 
   const isToday = selectedDay === TODAY_NAME;
   // Tasks live on the STUDENT's document, so unlinking a teacher leaves theirs
-  // behind — a task set months ago by an account you're no longer connected to
-  // kept appearing among your current teacher's work, and there was no way to
-  // be rid of it. A task naming a teacher you aren't linked to any more is
-  // therefore hidden. It is only hidden, never deleted: re-link and it returns.
+  // behind with no way to be rid of them.
   //
-  // A task with NO teacherUid is always kept. Tasks assigned from Studio before
-  // 2026-09-03 carry none, and the phone wrote none for a long time before
-  // that, so treating "unattributed" as "stale" would wipe real homework.
-  // Likewise nothing is hidden while the student has no connected teacher at
-  // all — mid-unlink, that would empty the screen rather than explain it.
+  // Hiding them automatically was tried and REVERTED: a class task carries its
+  // teacher's uid just like a one-to-one one, so a class set up by an account
+  // the student later stopped being linked to had every task hidden and the
+  // whole class silently vanished. "Teacher you've unlinked" does not mean
+  // "work you no longer want" — you can still be in that class.
+  //
+  // So nothing is hidden. Tasks naming a teacher you're no longer linked to are
+  // marked instead, and carry a Remove of their own, which makes getting rid of
+  // one a decision the student makes rather than one made for them.
   const connectedTeacherIds = new Set(teacherIdsOf(userData || {}));
-  const fromACurrentTeacher = (t) =>
-    !t.teacherUid || connectedTeacherIds.size === 0 || connectedTeacherIds.has(t.teacherUid);
-  const assignedTasks = (userData?.assignedTasks || []).filter(fromACurrentTeacher);
+  const fromAFormerTeacher = (t) =>
+    !!t.teacherUid && connectedTeacherIds.size > 0 && !connectedTeacherIds.has(t.teacherUid);
+  const assignedTasks = userData?.assignedTasks || [];
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
   // Completed tasks disappear from the student's list to keep it from piling up
@@ -1902,6 +1947,7 @@ export default function TodayScreen({ navigation, route }) {
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
                       onOpenProof={viewProof}
+                      onRemove={fromAFormerTeacher(t) ? removeTask : null}
                     />
                   ))}
                 </View>
@@ -1938,6 +1984,7 @@ export default function TodayScreen({ navigation, route }) {
                       onOpenSong={openSongInLibrary}
                       onOpenDrill={openDrill}
                       onOpenProof={viewProof}
+                      onRemove={fromAFormerTeacher(t) ? removeTask : null}
                     />
                   ))}
                 </View>
@@ -2676,6 +2723,9 @@ const makeStyles = (COLORS) => StyleSheet.create({
   proofPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.sm },
   proofPagerText: { color: '#fff', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   proofMedia: { width: '100%', height: 360, borderRadius: 12, backgroundColor: '#000' },
+  formerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.md, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, backgroundColor: COLORS.card },
+  formerText: { color: COLORS.textMuted, fontSize: 12.5 },
+  formerRemove: { color: COLORS.error, fontSize: 12.5, fontWeight: '700' },
   // Replace/Delete sit on the dark viewer backdrop, not on a card, so they get
   // their own translucent chips rather than the app's normal button styles.
   proofActions: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md },

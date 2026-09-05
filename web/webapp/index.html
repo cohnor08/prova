@@ -147,6 +147,11 @@
   .proofthumb:hover{border-color:var(--primary)}
   .proofplay{font-size:19px;line-height:1}
   .proofn{position:absolute;bottom:3px;right:6px;font-size:10px;font-weight:700;color:var(--ink-3)}
+  /* A task left behind by a teacher who is no longer linked: said plainly,
+     with a way out, rather than hidden on the student's behalf. */
+  .formerrow{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 13px;border-radius:10px;
+    background:var(--raised);color:var(--ink-3);font-size:12.5px}
+  .linkbtn{background:none;border:0;padding:0;cursor:pointer;font:inherit;font-weight:700;color:var(--bad)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
@@ -886,22 +891,19 @@ function watchMe() {
 const busyOnScreen = () => !!PLAY || !!$('#overlays')?.innerHTML.trim();
 const doneIds = () => (me.sessionProgress?.date === todayKey() ? (me.sessionProgress.ids || []) : []);
 const allAssigned = () => Array.isArray(me.assignedTasks) ? me.assignedTasks : [];
-// Tasks live on the STUDENT's doc, so unlinking a teacher leaves theirs behind.
-// A task naming a teacher you're no longer connected to is hidden — only
-// hidden, never deleted, so re-linking brings it back. Matches
-// fromACurrentTeacher() in TodayScreen.js; keep the two in step.
-//
-// Unattributed tasks (no teacherUid — everything Studio wrote before
-// 2026-09-03) are always kept, or real homework would vanish. Nothing is
-// hidden while no teacher is connected at all, so unlinking empties the card
-// deliberately rather than by accident.
-// NOTE the split, and keep it: every write and every index into assignedTasks
+// NOTE the name, and keep it: every write and every index into assignedTasks
 // goes through allAssigned(), because tasks are addressed by their position in
-// the REAL array. Mapping over the filtered list and saving that would delete
-// the hidden tasks outright. isCurrentTeacherTask() is for display only.
-const isCurrentTeacherTask = (t) => {
+// the REAL array. Mapping over a filtered copy and saving that would delete
+// whatever the filter dropped.
+//
+// Hiding tasks from unlinked teachers was tried and REVERTED: a class task
+// carries its teacher's uid just like a one-to-one one, so a class set up by an
+// account the student later stopped being linked to lost every task and
+// disappeared. Those tasks are marked and given a Remove instead — see
+// fromAFormerTeacher() in TodayScreen.js, which this mirrors.
+const fromAFormerTeacher = (t) => {
   const ids = new Set(myTeacherUids());
-  return !t.teacherUid || ids.size === 0 || ids.has(t.teacherUid);
+  return !!t.teacherUid && ids.size > 0 && !ids.has(t.teacherUid);
 };
 
 // Every teacher this student is connected to. This app is the student side —
@@ -1322,6 +1324,27 @@ async function deleteProof(oi, k) {
   if (saved) { toast('Proof deleted'); rerender(); }
 }
 
+// Drop a task left behind by a teacher the student is no longer linked to.
+// Offered ONLY for those — a task from a current teacher is their homework,
+// not the student's to delete.
+async function removeTask(oi) {
+  const task = allAssigned()[oi];
+  if (!task || !fromAFormerTeacher(task)) return;
+  const ok = await confirmModal({
+    title: 'Remove this task?',
+    body: `"${task.title}" was set by a teacher you're no longer connected to. Removing it only affects your copy.`,
+    danger: 'Remove',
+  });
+  if (!ok) return;
+  const next = allAssigned().filter((_, i) => i !== oi);
+  try {
+    await updateDoc(doc(db, 'users', uid), { assignedTasks: next });
+    me.assignedTasks = next;
+    toast('Task removed');
+    rerender();
+  } catch { toast('Could not remove — check your connection.'); }
+}
+
 // Watch one clip, stepping through the rest without closing. Replace and
 // delete live HERE rather than on the row, so they act on the clip you are
 // actually looking at — on the row they could only ever mean "the latest one",
@@ -1445,6 +1468,9 @@ function rows(list, kind, limit, showKey = kind) {
                  a.type === 'video' ? '🎥' : '📎'} ${esc(a.title || (a.type === 'video' ? 'Video' : 'Attachment'))}</a>`
           ).join('')}</div>` : ''}
         ${isTask ? proofBlock(x, oi) : ''}
+        ${isTask && fromAFormerTeacher(x) ? `<div class="formerrow">
+          <span style="flex:1">From a teacher you’re no longer connected to</span>
+          <button class="linkbtn" data-taskremove="${oi}">Remove</button></div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${done ? '<span class="hint">Completed</span>'
             : `<button class="btn sm" data-play="${kind}:${oi}">Practice this</button>`}
@@ -1468,9 +1494,8 @@ function render() {
     rank(p) - rank(q)
     || (p.dueDate && q.dueDate ? new Date(p.dueDate) - new Date(q.dueDate) : 0)
     || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0));
-  // Index FIRST, then filter: `_i` has to be the position in the real array,
-  // and hidden tasks must not shift the ones after them.
-  const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i })).filter(isCurrentTeacherTask);
+  // `_i` is the position in the real array — the player and every write use it.
+  const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i }));
   // Split one-to-one teacher tasks from class-assigned ones exactly as the
   // phone does (TodayScreen: soloTasks vs classGroups keyed on className) —
   // a class task carries classId/className, a personal one doesn't. Sending
@@ -1592,6 +1617,7 @@ document.addEventListener('click', (e) => {
   if ((t = e.target.closest('[data-proofview]'))) {
     const [oi, k] = t.getAttribute('data-proofview').split(':').map(Number); viewProof(oi, k); return;
   }
+  if ((t = e.target.closest('[data-taskremove]'))) { removeTask(+t.getAttribute('data-taskremove')); return; }
   if ((t = e.target.closest('[data-showall]'))) {
     const y = window.scrollY, k = t.getAttribute('data-showall');
     SHOWALL[k] = !SHOWALL[k]; rerender(); window.scrollTo(0, y); return;
@@ -4946,10 +4972,7 @@ function queue() {
   const d = doneIds(), a = allAssigned();
   return [
     ...sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id)),
-    // Indexes are positions in the real array; a task from a teacher you've
-    // unlinked is skipped here too, so Next never lands on one you can't see.
-    ...a.map((x, i) => ({ kind: 'assigned', i }))
-       .filter(q => !a[q.i].completed && isCurrentTeacherTask(a[q.i])),
+    ...a.map((x, i) => ({ kind: 'assigned', i })).filter(q => !a[q.i].completed),
   ];
 }
 // A teacher task's timer is durationMin; a plan session's is duration.
