@@ -175,6 +175,11 @@
   .ev.att-absent{border-left-color:var(--bad);color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,transparent)}
 
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
+  /* the assign sheet's attachments — one box that is also a drop target */
+  .tadrop{border:1px dashed var(--line);border-radius:12px;padding:12px;margin-bottom:20px;transition:border-color .15s,background .15s}
+  .tadrop.over{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,transparent)}
+  .taatt{padding:8px 0;border-bottom:1px solid var(--line)}
+  .taatt:last-child{border-bottom:0}
   .modal{position:fixed;z-index:41;top:50%;left:50%;transform:translate(-50%,-50%);width:min(460px,94vw);max-height:88vh;overflow:auto;background:var(--ground);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:var(--shadow)}
   .modal h3{font-size:17px;margin-bottom:16px}
   .modal .acts{display:flex;gap:10px;margin-top:20px}
@@ -404,6 +409,12 @@ import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, quer
   addDoc, serverTimestamp, onSnapshot, orderBy, limit, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
+import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
+// Shared word-for-word with the phone (src/lib/attachments.js) — what a task
+// can carry, the size limit, and how each attachment is recognised.
+import { TASK_FILE_MAX_BYTES, TASK_FILE_MAX_LABEL, TASK_FILE_ACCEPT, contentTypeForFile, kindForContentType,
+  attachmentKind, attachmentMeta, cleanFileName, storageFileName } from '/shared/attachments.js';
 
 const app = initializeApp({
   apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
@@ -818,8 +829,24 @@ function modal(html) {
   $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">${html}</div>`;
 }
 const closeModal = () => { $('#overlays').innerHTML = ''; };
-$('#overlays').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+// A big file can take minutes to upload. A stray click on the backdrop or a
+// reflexive Escape must not throw that away — only the sheet's own Cancel or ×
+// does, and that stops the upload rather than leaving it running unseen.
+let ACTIVE_UPLOAD = null;
+$('#overlays').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-close]');
+  if (!c) return;
+  if (ACTIVE_UPLOAD) {
+    if (c.classList.contains('scrim')) { toast('Still uploading — press Cancel to stop it'); return; }
+    ACTIVE_UPLOAD.cancel();
+  }
+  closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (ACTIVE_UPLOAD) { toast('Still uploading — press Cancel to stop it'); return; }
+  closeModal();
+});
 
 // ── 1. STUDENTS + PRACTICE PULSE ──────────────────────────────────────────
 function viewStudents() {
@@ -901,7 +928,8 @@ function paintStudent() {
         <span class="t" data-edit-task="${i}" style="cursor:pointer">${esc(t.title)}
           ${t.durationMin ? `<span class="hint"> · ${t.durationMin} min</span>` : ''}
           ${t.dueDate ? `<span class="hint" style="${fmtDue(t.dueDate) === 'overdue' ? 'color:var(--bad)' : ''}"> · ${esc(fmtDue(t.dueDate))}</span>` : ''}
-          ${t.drill ? `<span class="pill set" style="margin-left:6px">${esc(t.drill)}</span>` : ''}</span>
+          ${t.drill ? `<span class="pill set" style="margin-left:6px">${esc(t.drill)}</span>` : ''}
+          ${(t.attachments || []).length ? `<span class="hint" title="${esc(t.attachments.map(a => cleanFileName(a.title || '')).join(', '))}"> · 📎 ${t.attachments.length}</span>` : ''}</span>
         <button class="del" data-del="${i}" title="Remove">×</button>
       </div>`).join('') : '<p class="hint" style="margin:0">Nothing assigned yet.</p>'}</div>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
@@ -1024,7 +1052,9 @@ function removeStudent(stu) {
 // ── Assign task — the sheet from TeacherScreen ───────────────────────────
 // Task shape written to the student's doc:
 // { id,title,description,youtube,song,drill,drillLevel,drillMode,dueDate,
-//   durationMin,completed } — anything else the phone would not understand.
+//   durationMin,completed,attachments,assignedAt,teacherUid } — anything else
+// the phone would not understand. attachments[] is described in
+// src/lib/attachments.js.
 // dueDate is stored as a full ISO timestamp. <input type="date"> only accepts
 // YYYY-MM-DD, so it has to be converted both ways — and shown as a date, not
 // the raw string.
@@ -1074,13 +1104,22 @@ function assignSheet(stu, editIdx) {
     <input id="taYt" placeholder="YouTube link or search (optional)" style="${F};margin-bottom:12px" value="${esc(existing?.youtube || '')}">
     <input id="taSong" placeholder="Song — e.g. Wonderwall — Oasis (optional)" style="${F};margin-bottom:20px" value="${esc(existing?.song || '')}">
     <div class="eyebrow" style="padding:0 0 4px">Attachments</div>
-    <p class="hint" style="margin:0 0 10px">A photo of the sheet music, a tab, a diagram — the student sees it on the task.</p>
-    <div id="taAtts" style="margin-bottom:8px"></div>
-    <div id="taUpWrap" style="display:none;margin-bottom:8px">
-      <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
-        <div id="taUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
-    <button class="btn sm ghost" id="taAddPhoto" style="margin-bottom:20px">📷 Add a photo or video</button>
-    <input id="taFile" type="file" accept="image/*,video/*" style="display:none">
+    <p class="hint" style="margin:0 0 10px">Sheet music or tabs as a PDF or photo, a backing track or recording
+      (MP3, WAV, M4A), or a video — up to ${TASK_FILE_MAX_LABEL} each. The student opens them from the task,
+      and audio plays right there while they practise.</p>
+    <div id="taDrop" class="tadrop">
+      <div id="taAtts"></div>
+      <div id="taUpWrap" style="display:none;margin-top:10px">
+        <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:6px">
+          <span id="taUpName" class="hint" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+          <span id="taUpPct" class="hint" style="flex:none;font-variant-numeric:tabular-nums"></span></div>
+        <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
+          <div id="taUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn sm ghost" id="taAddPhoto">📎 Add files</button>
+        <span class="hint" style="font-size:12px">or drop them here</span></div>
+    </div>
+    <input id="taFile" type="file" multiple accept="${TASK_FILE_ACCEPT}" style="display:none">
     <div class="eyebrow" style="padding:0 0 4px">Skill drill</div>
     <p class="hint" style="margin:0 0 10px">Optionally attach a mini-game the student launches straight from the task.</p>
     <div id="taDrills" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1123,39 +1162,106 @@ function assignSheet(stu, editIdx) {
     toast(`Filled from "${t.title}"`);
   };
   // ── attachments ──────────────────────────────────────────────────────
-  // Same Storage path as lesson notes (chatMedia/lesson_…), which storage.rules
-  // already allows a teacher to write — only the proof_* prefix is locked to
-  // its owner. Held in memory and written with the task on Save, so backing out
-  // of the modal doesn't leave orphans on the student's record.
+  // Uploaded to taskFiles/{teacherUid}/…, which only this teacher can write
+  // (storage.rules), with Firebase's resumable upload so a 300 MB WAV survives
+  // a wobbly connection. Held in memory and written with the task on Save, so
+  // backing out of the sheet doesn't leave anything on the student's record.
   let taAtts = Array.isArray(existing?.attachments) ? existing.attachments.slice() : [];
+  const taQueue = [];
+  let taBusy = false;
+  const ICONS = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷', file: '📎' };
   function paintTaAtts() {
     const box = $('#taAtts');
+    if (!box) return;
     if (!taAtts.length) { box.innerHTML = '<p class="hint" style="margin:0">Nothing attached.</p>'; return; }
-    box.innerHTML = taAtts.map((a, i) => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
-      <span>${a.type === 'video' ? '🎥' : '📷'}</span>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title || a.url || '')}</span>
-      <button class="x" data-taattdel="${i}" aria-label="Remove">×</button></div>`).join('');
+    box.innerHTML = taAtts.map((a, i) => {
+      const kind = attachmentKind(a);
+      const name = cleanFileName(a.title || a.url || '');
+      return `<div class="taatt">
+        <div style="display:flex;align-items:center;gap:10px">
+          ${kind === 'photo'
+            ? `<img src="${esc(a.url)}" alt="" data-lightbox="${esc(a.url)}" style="width:34px;height:34px;object-fit:cover;border-radius:7px;cursor:zoom-in;flex:none">`
+            : `<span style="width:34px;text-align:center;font-size:18px;flex:none">${ICONS[kind] || ICONS.file}</span>`}
+          <div style="flex:1;min-width:0">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
+            <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
+          ${kind === 'pdf' || kind === 'video' || kind === 'file'
+            ? `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>` : ''}
+          <button class="x" data-taattdel="${i}" aria-label="Remove ${esc(name)}">×</button></div>
+        ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
+      </div>`;
+    }).join('');
     box.querySelectorAll('[data-taattdel]').forEach((b2) => {
       b2.onclick = () => { taAtts.splice(+b2.getAttribute('data-taattdel'), 1); paintTaAtts(); };
     });
   }
+  // Save waits for uploads — saving mid-upload would send the task without
+  // the file the teacher just added.
+  function paintSaveState() {
+    const btn = $('#taSave');
+    if (!btn) return;
+    btn.disabled = taBusy;
+    btn.textContent = taBusy ? 'Uploading…' : (existing ? 'Save changes' : 'Assign task');
+  }
+  async function pumpUploads() {
+    if (taBusy) return;
+    const file = taQueue.shift();
+    if (!file) return;
+    taBusy = true; paintSaveState();
+    const wrap = $('#taUpWrap'), bar = $('#taUpBar'), pct = $('#taUpPct'), nm = $('#taUpName');
+    wrap.style.display = 'block'; bar.style.width = '0'; pct.textContent = '0%';
+    nm.textContent = `Uploading ${cleanFileName(file.name)}${taQueue.length ? ` (+${taQueue.length} more)` : ''}`;
+    const up = uploadTaskFile(file, (p) => {
+      bar.style.width = Math.round(p * 100) + '%';
+      pct.textContent = Math.round(p * 100) + '%';
+    });
+    ACTIVE_UPLOAD = { cancel: () => { taQueue.length = 0; up.cancel(); } };
+    try {
+      const att = await up.done;
+      taAtts.push(att);
+      if ($('#taAtts')) paintTaAtts();
+    } catch (err) {
+      if (err?.code !== 'storage/canceled') {
+        toast(err?.code === 'storage/unauthorized'
+          ? `Upload blocked — ${cleanFileName(file.name)} must be under ${TASK_FILE_MAX_LABEL}`
+          : `Could not upload ${cleanFileName(file.name)}`);
+      }
+    }
+    ACTIVE_UPLOAD = null;
+    taBusy = false;
+    if (!$('#taUpWrap')) return;          // sheet was closed
+    wrap.style.display = 'none';
+    paintSaveState();
+    pumpUploads();
+  }
+  // Checked up front, not after a long upload: an unsupported type or an
+  // oversized file is named straight away and the rest still go.
+  function addTaFiles(files) {
+    const list = [...(files || [])];
+    const bad = [];
+    list.forEach((file) => {
+      if (!kindForContentType(contentTypeForFile(file.name, file.type))) { bad.push(`${file.name} isn't a PDF, audio, photo or video`); return; }
+      if (file.size > TASK_FILE_MAX_BYTES) { bad.push(`${file.name} is over ${TASK_FILE_MAX_LABEL}`); return; }
+      if (!file.size) { bad.push(`${file.name} is empty`); return; }
+      taQueue.push(file);
+    });
+    if (bad.length) toast(bad.length === 1 ? bad[0] : `${bad.length} files skipped — ${bad[0]}`);
+    pumpUploads();
+  }
   paintTaAtts();
   $('#taAddPhoto').onclick = () => $('#taFile').click();
-  $('#taFile').onchange = async (e) => {
-    const file = e.target.files && e.target.files[0];
+  $('#taFile').onchange = (e) => {
+    const files = [...(e.target.files || [])];
     e.target.value = '';
-    if (!file) return;
-    if (!/^(image|video)\//.test(file.type)) { toast('Photos and video only'); return; }
-    if (file.size > MAX_UPLOAD_BYTES) { toast('That file is over 150 MB'); return; }
-    const wrap = $('#taUpWrap'), bar = $('#taUpBar');
-    wrap.style.display = 'block'; bar.style.width = '0';
-    try {
-      const m = await uploadChatMedia(file, 'lesson_' + meUid, (pr) => { bar.style.width = Math.round(pr * 100) + '%'; });
-      taAtts.push({ type: m.type === 'video' ? 'video' : 'photo', url: m.url, title: file.name });
-      paintTaAtts();
-    } catch { toast('Upload failed'); }
-    wrap.style.display = 'none';
+    addTaFiles(files);
   };
+  const drop = $('#taDrop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', (e) => { if (!drop.contains(e.relatedTarget)) drop.classList.remove('over'); });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); drop.classList.remove('over');
+    addTaFiles(e.dataTransfer?.files);
+  });
 
   $('#taSaveTpl').onclick = async () => {
     const title = $('#taTitle').value.trim();
@@ -1167,6 +1273,7 @@ function assignSheet(stu, editIdx) {
     catch { toast('Could not save the template'); }
   };
   $('#taSave').onclick = async () => {
+    if (taBusy) { toast('Wait for the upload to finish'); return; }
     const title = $('#taTitle').value.trim();
     if (!title) { toast('Give the task a title'); return; }
     const task = {
@@ -1379,6 +1486,33 @@ async function uploadChatMedia(file, chatId, onProgress) {
   const dlToken = (res.downloadTokens || '').split(',')[0];
   return { url: `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${dlToken}`,
            type };
+}
+// Task files (PDFs, audio, photos, video — up to TASK_FILE_MAX_LABEL) go
+// through Firebase's resumable upload rather than the one-shot POST above: it
+// sends the file in chunks and retries a chunk that fails, so a long WAV on a
+// shaky connection still arrives. Returns { done, cancel }.
+function uploadTaskFile(file, onProgress) {
+  const contentType = contentTypeForFile(file.name, file.type);
+  const name = cleanFileName(file.name);
+  const path = `taskFiles/${meUid}/${Date.now()}_${storageFileName(file.name)}`;
+  const task = uploadBytesResumable(storageRef(getStorage(app, 'gs://' + STORAGE_BUCKET), path), file, {
+    contentType,
+    // Opens in the browser (a PDF in its viewer, audio in its player) and
+    // downloads under the teacher's own file name, not the storage path.
+    contentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+  });
+  const done = new Promise((resolve, reject) => {
+    task.on('state_changed',
+      (snap) => { if (onProgress && snap.totalBytes) onProgress(snap.bytesTransferred / snap.totalBytes); },
+      reject,
+      async () => {
+        try {
+          resolve({ type: kindForContentType(contentType), url: await getDownloadURL(task.snapshot.ref),
+            title: name, size: file.size, contentType });
+        } catch (err) { reject(err); }
+      });
+  });
+  return { done, cancel: () => task.cancel() };
 }
 async function sendMedia(file) {
   if (!CUR || !file) return;

@@ -31,7 +31,8 @@ import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { notifyOverdueTasks } from '../../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { pickMedia, captureMedia, uploadChatMedia } from '../../lib/media';
+import { pickMedia, captureMedia, uploadChatMedia, pickDocument, uploadTaskFile } from '../../lib/media';
+import { attachmentKind, attachmentMeta, cleanFileName, TASK_FILE_MAX_LABEL } from '../../lib/attachments';
 import { TEACHER_FREE_STUDENT_LIMIT, studioUpsell } from '../../lib/entitlements';
 import StudentKeeperModal from '../../components/StudentKeeperModal';
 import * as Print from 'expo-print';
@@ -854,6 +855,8 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
   // leave an orphan on the student's record.
   const [atts, setAtts] = useState([]);
   const [attBusy, setAttBusy] = useState(false);
+  const [attPct, setAttPct] = useState(null); // upload progress of a PDF/audio file, 0–100
+  const attSession = useRef(0); // bumped on close — an upload from a closed sheet is dropped
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState([]); // teacher's saved resources, assignable from here
@@ -863,6 +866,10 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
     setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1);
     setDueDate(null); setDurationMin(10); setJustAdded(0); setShowTemplates(false); setFeedback('');
     setAtts([]);
+    // The sheet stays mounted after it closes, so an upload still running
+    // would otherwise land on whatever task is opened next.
+    attSession.current += 1;
+    setAttBusy(false); setAttPct(null);
     onClose();
   };
 
@@ -912,10 +919,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
     const picked = await pick();
     if (!picked) return;
     if (picked.error) { Alert.alert('Cannot attach', picked.error); return; }
+    const session = attSession.current;
     setAttBusy(true);
     try {
       const uid = auth.currentUser.uid;
       const url = DEMO_MODE ? picked.uri : await uploadChatMedia(picked.uri, `lesson_${uid}`, picked.type);
+      if (session !== attSession.current) return;
       // pickMedia says 'image'; the student side keys on 'photo'.
       setAtts((prev) => [...prev, {
         type: picked.type === 'video' ? 'video' : 'photo',
@@ -923,9 +932,36 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
         title: picked.type === 'video' ? 'Video' : 'Photo',
       }]);
     } catch (err) {
-      Alert.alert('Upload failed', err.message || 'That file could not be uploaded.');
+      if (session === attSession.current) Alert.alert('Upload failed', err.message || 'That file could not be uploaded.');
     } finally {
-      setAttBusy(false);
+      if (session === attSession.current) setAttBusy(false);
+    }
+  };
+
+  // Attach a PDF (sheet music, tabs) or an audio file (a backing track, a
+  // recording) from Files. These can be big — up to TASK_FILE_MAX_LABEL — so
+  // they show real progress, and they go to taskFiles/{teacherUid}/…, a folder
+  // only this teacher can write to.
+  const addFile = async () => {
+    if (attBusy) return;
+    Keyboard.dismiss();
+    const picked = await pickDocument();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Cannot attach', picked.error); return; }
+    const session = attSession.current;
+    setAttBusy(true);
+    setAttPct(0);
+    try {
+      const uid = auth.currentUser.uid;
+      const att = DEMO_MODE
+        ? { type: picked.kind, url: picked.uri, title: picked.name, size: picked.size, contentType: picked.contentType }
+        : await uploadTaskFile(picked, uid, (pct) => { if (session === attSession.current) setAttPct(pct); });
+      if (session !== attSession.current) return;
+      setAtts((prev) => [...prev, att]);
+    } catch (err) {
+      if (session === attSession.current) Alert.alert('Upload failed', err.message || 'That file could not be uploaded.');
+    } finally {
+      if (session === attSession.current) { setAttBusy(false); setAttPct(null); }
     }
   };
 
@@ -1146,15 +1182,24 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
               />
 
               <Text style={styles.dueLabel}>ATTACHMENTS</Text>
-              <Text style={styles.timerHint}>A photo of the sheet music, or a clip of how it should sound.</Text>
-              {atts.map((a, i) => (
+              <Text style={styles.timerHint}>Sheet music or tabs as a PDF or photo, a backing track to play along to, or a clip of how it should sound. Files up to {TASK_FILE_MAX_LABEL}.</Text>
+              {atts.map((a, i) => {
+                const kind = attachmentKind(a);
+                return (
                 <View key={`${a.url}_${i}`} style={styles.attRow}>
-                  {a.type === 'photo'
+                  {kind === 'photo'
                     ? <Image source={{ uri: a.url }} style={styles.attThumb} />
                     : <View style={[styles.attThumb, styles.attThumbVid]}>
-                        <Ionicons name="videocam" size={16} color={COLORS.primary} />
+                        <Ionicons
+                          name={kind === 'audio' ? 'musical-notes' : kind === 'pdf' ? 'document-text' : kind === 'video' ? 'videocam' : 'attach'}
+                          size={16}
+                          color={COLORS.primary}
+                        />
                       </View>}
-                  <Text style={styles.attName} numberOfLines={1}>{a.title || (a.type === 'video' ? 'Video' : 'Photo')}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.attTitle} numberOfLines={1} ellipsizeMode="middle">{cleanFileName(a.title || (kind === 'video' ? 'Video' : kind === 'photo' ? 'Photo' : 'File'))}</Text>
+                    <Text style={styles.attMeta} numberOfLines={1}>{attachmentMeta(a)}</Text>
+                  </View>
                   <TouchableOpacity
                     onPress={() => setAtts((prev) => prev.filter((_, k) => k !== i))}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1162,8 +1207,9 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                     <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
                   </TouchableOpacity>
                 </View>
-              ))}
-              <View style={styles.attBtnRow}>
+                );
+              })}
+              <View style={[styles.attBtnRow, { marginBottom: SPACING.sm }]}>
                 <TouchableOpacity
                   style={[styles.attBtn, attBusy && styles.attBtnOff]}
                   onPress={() => addAttachment(pickMedia)}
@@ -1183,10 +1229,21 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                   <Text style={styles.attBtnText}>Record</Text>
                 </TouchableOpacity>
               </View>
+              <View style={styles.attBtnRow}>
+                <TouchableOpacity
+                  style={[styles.attBtn, attBusy && styles.attBtnOff]}
+                  onPress={addFile}
+                  disabled={attBusy}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.attBtnText}>PDF or audio file</Text>
+                </TouchableOpacity>
+              </View>
               {attBusy ? (
                 <View style={styles.attBusyRow}>
                   <ActivityIndicator size="small" color={COLORS.primary} />
-                  <Text style={styles.timerHint}>Uploading…</Text>
+                  <Text style={styles.timerHint}>{attPct != null ? `Uploading… ${attPct}%` : 'Uploading…'}</Text>
                 </View>
               ) : null}
 
@@ -1313,14 +1370,16 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { Keyboard.dismiss(); close(); }}>
                   <Text style={styles.modalCancelText}>{justAdded > 0 ? 'Done' : 'Cancel'}</Text>
                 </TouchableOpacity>
+                {/* Held while a file is still uploading — assigning then would
+                    send the task without the file the teacher just picked. */}
                 <TouchableOpacity
-                  style={[styles.modalAssignBtn, (!title.trim() || loading) && { opacity: 0.5 }]}
+                  style={[styles.modalAssignBtn, (!title.trim() || loading || attBusy) && { opacity: 0.5 }]}
                   onPress={handleAssign}
-                  disabled={!title.trim() || loading}
+                  disabled={!title.trim() || loading || attBusy}
                 >
                   {loading
                     ? <Ghost color={COLORS.onPrimary} size="small" />
-                    : <Text style={styles.modalAssignText}>{(isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
+                    : <Text style={styles.modalAssignText}>{attBusy ? 'Uploading…' : (isEdit || isClassEdit) ? 'Save changes' : 'Assign task'}</Text>}
                 </TouchableOpacity>
               </View>
               </ScrollView>
@@ -2021,6 +2080,9 @@ function TeacherDashboard() {
       const templates = [...batches.values()].map((t) => ({
         title: t.title, description: t.description || '', youtube: t.youtube || '', song: t.song || '',
         dueDate: t.dueDate || null, durationMin: t.durationMin || 0,
+        // The sheet music and backing tracks are half the task — a student who
+        // joins late needs them as much as anyone.
+        attachments: Array.isArray(t.attachments) ? t.attachments : [],
         completed: false, assignedAt: t.assignedAt, teacherUid: auth.currentUser.uid,
         classId: klass.id, className: klass.name,
       }));
@@ -3304,6 +3366,11 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                 drill && { icon: drill.icon, label: 'Skill drill', value: `${drill.title}${drillLabel ? ` · ${drillLabel}` : ''}` },
                 t.youtube && { icon: 'logo-youtube', label: 'Tutorial', value: 'Attached' },
                 t.photo && { icon: 'image-outline', label: 'Photo', value: 'Attached' },
+                (t.attachments || []).length > 0 && {
+                  icon: 'attach-outline',
+                  label: t.attachments.length === 1 ? 'File' : 'Files',
+                  value: t.attachments.map((a) => cleanFileName(a.title || attachmentMeta(a))).join(', '),
+                },
                 t.durationMin && { icon: 'timer-outline', label: 'Timer', value: `${t.durationMin} min` },
                 t.assignedAt && { icon: 'calendar-outline', label: 'Assigned', value: fmtDate(t.assignedAt) },
                 t.className && { icon: 'people-outline', label: 'Class', value: t.className },
@@ -3956,6 +4023,8 @@ const styles = themedStyles(() => StyleSheet.create({
   // flex:1 + minWidth:0 so a long filename shrinks instead of pushing the
   // remove button off the row (see the truncation rules in CLAUDE.md).
   attName: { flex: 1, minWidth: 0, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  attTitle: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  attMeta: { color: COLORS.textMuted, fontSize: 11.5, marginTop: 1 },
   attBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   attBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },
   attBtnOff: { opacity: 0.5 },

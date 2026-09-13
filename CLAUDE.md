@@ -103,12 +103,13 @@ prova/
 | `analytics.js` | PostHog. Tracks which features get used, never message content. |
 | `ThemeContext.js` | App-wide palette (mode + accent) |
 | `MetronomeContext.js` | Global metronome state — powers `<MetronomePill />` |
-| `spotify.js`, `youtube.js`, `media.js` | Integrations + media handling |
+| `spotify.js`, `youtube.js`, `media.js` | Integrations + media handling (`pickDocument`/`uploadTaskFile` for task PDFs + audio) |
+| `attachments.js` | What a task attachment can be (photo/video/audio/pdf), the 300 MB cap, kind detection. Mirrored to `web/shared/` — Studio and the web app import the same file |
 | `livegig.js`, `programs.js`, `progressReport.js` | Gig mode, programs, parent reports |
 | `displayName.js`, `savedLogin.js`, `webAlert.js` | Small helpers |
 
 ### `src/components/`
-`PracticePlayer` · `PracticeWrapped` · `PerformanceMode` · `MetronomePill` · `ChordDiagram` · `ScaleDiagram` · `Celebration` · `TourOverlay` / `TourSpot` (guided tour) · `IntroSplash` · `SheetModal` · `TimeWheel` · `DueDatePicker` · `EmptyState` · `Ghost` · `GroupChatView` · `MediaMessageBubble` · `ProofMedia` · `Reactions` · `StudentKeeperModal` · `YouTubePlayerModal`
+`PracticePlayer` · `PracticeWrapped` · `PerformanceMode` · `MetronomePill` · `ChordDiagram` · `ScaleDiagram` · `Celebration` · `TourOverlay` / `TourSpot` (guided tour) · `IntroSplash` · `SheetModal` · `TimeWheel` · `DueDatePicker` · `EmptyState` · `Ghost` · `GroupChatView` · `MediaMessageBubble` · `ProofMedia` · `Reactions` · `StudentKeeperModal` · `TaskAttachments` (a teacher's files on a task — audio plays in place) · `YouTubePlayerModal`
 
 *(`.web.js` variants exist for `IntroSplash` and `YouTubePlayerModal`.)*
 
@@ -185,6 +186,12 @@ length (`durationMin` vs `duration`), class tasks were mixed in with one-to-one
 ones, proof of practice existed only on the phone, and the web read the user
 doc once with `getDoc` while the phone kept an `onSnapshot` on it — which is
 why the web app appeared not to sync at all.
+
+Task files (PDFs, audio, photos, video) upload to Storage at
+`taskFiles/{teacherUid}/…` — only that teacher can write there, 300 MB per
+file (storage.rules). The phone picks them with expo-file-system's
+`File.pickFileAsync`, which ships inside `expo` itself, so it needed no new
+native module.
 
 `scripts/scan-web-drift.cjs` guards the shared Firestore shapes. **Adding a
 field to `assignedTasks`, to proof, or to the teacher link? Add it to that

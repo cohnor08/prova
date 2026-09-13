@@ -154,6 +154,19 @@
   .linkbtn{background:none;border:0;padding:0;cursor:pointer;font:inherit;font-weight:700;color:var(--bad)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
+  /* A teacher's files on a task: audio plays in place, everything else opens. */
+  .atts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 12px;text-align:left}
+  .att{display:flex;gap:12px;align-items:flex-start;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);color:inherit;text-decoration:none}
+  a.att:hover{border-color:var(--primary)}
+  .atti{font-size:18px;line-height:1.35;flex:none}
+  .attb{flex:1;min-width:0}
+  .attn{font-weight:650;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .att audio{display:block;width:100%;height:36px;margin-top:8px}
+  .atto{color:var(--primary);font-weight:650;font-size:13px;align-self:center;flex:none}
+  .attphotos{display:flex;gap:8px;flex-wrap:wrap}
+  .attphotos img{width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in}
+
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40}
   .modal{position:fixed;z-index:41;top:50%;left:50%;transform:translate(-50%,-50%);width:min(460px,94vw);background:var(--ground);border:1px solid var(--line);border-radius:22px;padding:26px;text-align:center;box-shadow:var(--shadow)}
   .modal .lab{font-size:11px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-3)}
@@ -566,6 +579,7 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, on
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory.js';
+import { attachmentKind, attachmentMeta, cleanFileName } from '/shared/attachments.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment, deleteDoc, collection, getDocs,
   addDoc, serverTimestamp, onSnapshot, query, orderBy, limit, where, arrayUnion }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -1419,6 +1433,54 @@ function toastSticky(msg) {
   return { set: (m) => { el.textContent = m; }, done: () => el.classList.remove('show') };
 }
 
+// What a teacher attached to a task — the same shapes the phone shows in
+// src/components/TaskAttachments.js, recognised by /shared/attachments.js.
+// Audio gets a real player so a backing track runs while they practise; a PDF
+// or video opens in its own tab, where the browser's viewer does it properly.
+// `key` names the task, so a track is only ever carried across a re-render
+// onto the SAME task (see setHtmlKeepingAudio).
+function attachmentsHtml(list, key) {
+  const atts = (Array.isArray(list) ? list : []).filter(a => a && a.url);
+  if (!atts.length) return '';
+  const photos = atts.filter(a => attachmentKind(a) === 'photo');
+  const others = atts.filter(a => attachmentKind(a) !== 'photo');
+  const icon = { pdf: '📄', audio: '🎵', video: '🎥' };
+  return `<div class="atts">
+    ${others.map((a) => {
+      const kind = attachmentKind(a);
+      const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : kind === 'audio' ? 'Audio' : 'File')));
+      const meta = esc(attachmentMeta(a));
+      return kind === 'audio'
+        ? `<div class="att"><span class="atti">${icon.audio}</span><div class="attb">
+            <div class="attn">${name}</div><div class="hint">${meta}</div>
+            <audio controls preload="none" src="${esc(a.url)}" data-attaudio="${esc(key + '|' + a.url)}"></audio></div></div>`
+        : `<a class="att" href="${esc(a.url)}" target="_blank" rel="noopener">
+            <span class="atti">${icon[kind] || '📎'}</span>
+            <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
+            <span class="atto">Open</span></a>`;
+    }).join('')}
+    ${photos.length ? `<div class="attphotos">${photos.map(a => `<img src="${esc(a.url)}"
+      alt="${esc(cleanFileName(a.title || 'Photo'))} — click to enlarge" data-lightbox="${esc(a.url)}">`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// Every Firestore snapshot rebuilds the screen's HTML, and a rebuilt <audio>
+// starts again from silence — so a backing track would cut out whenever
+// anything on the user doc changed. A track that has been started is moved
+// into the new markup instead of being replaced. Moving it within the same
+// task keeps it playing: a media element only pauses if it is still out of
+// the document once the current task finishes.
+function setHtmlKeepingAudio(host, html) {
+  if (!host) return;
+  const live = [...host.querySelectorAll('audio[data-attaudio]')].filter(a => !a.paused || a.currentTime > 0);
+  host.innerHTML = html;
+  live.forEach((a) => {
+    const slot = [...host.querySelectorAll('audio[data-attaudio]')]
+      .find(n => !live.includes(n) && n.getAttribute('data-attaudio') === a.getAttribute('data-attaudio'));
+    if (slot) slot.replaceWith(a);
+  });
+}
+
 const OPEN = {}; const SHOWALL = {};
 // `kind` is the ADDRESS of a task ('plan' or 'assigned') — it decides which
 // array the player and the completion write index into, so class tasks pass
@@ -1460,13 +1522,7 @@ function rows(list, kind, limit, showKey = kind) {
             esc(duePhrase(x.dueDate))}</span>` : '',
         ].filter(Boolean).join(' · ')}</div>` : ''}
         ${x.description ? `<p class="tdesc">${esc(x.description)}</p>` : '<p class="hint" style="margin:0 0 12px">No description.</p>'}
-        ${(x.attachments || []).length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">
-          ${x.attachments.map((a) => a.type === 'photo'
-            ? `<img src="${esc(a.url)}" alt="${esc(a.title || 'Attachment')} — click to enlarge" data-lightbox="${esc(a.url)}"
-                 style="width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in">`
-            : `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener">${
-                 a.type === 'video' ? '🎥' : '📎'} ${esc(a.title || (a.type === 'video' ? 'Video' : 'Attachment'))}</a>`
-          ).join('')}</div>` : ''}
+        ${attachmentsHtml(x.attachments, id)}
         ${isTask ? proofBlock(x, oi) : ''}
         ${isTask && fromAFormerTeacher(x) ? `<div class="formerrow">
           <span style="flex:1">From a teacher you’re no longer connected to</span>
@@ -1536,7 +1592,7 @@ function render() {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  $('#screen').innerHTML = `<div class="content">
+  setHtmlKeepingAudio($('#screen'), `<div class="content">
     <div class="greet"><h2>${greet}, ${esc(displayName(me))}.</h2>
       <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div>
     <div class="stats">
@@ -1591,7 +1647,7 @@ function render() {
         <p class="hint" style="margin:0">Signed in as ${esc(me.email || '')}. Everything here is your real data —
         completing a task writes the same points, minutes and streak the app does.</p></section>
     </div></div>
-  </div>`;
+  </div>`);
 }
 
 // ── interactions ─────────────────────────────────────────────────────────
@@ -5023,7 +5079,8 @@ function tick() {
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
 function drawPlayer() {
   const rem = Math.max(0, PLAY.target - PLAY.elapsed);
-  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal">
+  // Pause/Resume redraws the whole sheet — a backing track has to survive that.
+  setHtmlKeepingAudio($('#overlays'), `<div class="scrim" data-close></div><div class="modal">
     <div style="display:flex;align-items:center"><span class="lab">Now practicing</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
     ${PLAY.kind === 'gigsong' ? `<div style="text-align:center;margin:2px 0 10px">
@@ -5035,6 +5092,9 @@ function drawPlayer() {
     ${PLAY.item.description ? `<p style="margin:0 0 20px;color:var(--ink-2);font-size:13px;line-height:1.6;
         text-align:left;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);
         border:1px solid var(--line);border-radius:12px;padding:13px 15px">${esc(PLAY.item.description)}</p>` : '<div style="height:8px"></div>'}
+    ${PLAY.kind === 'assigned' && (PLAY.item.attachments || []).length
+      ? `<div style="max-height:min(230px,32vh);overflow:auto;margin:-6px 0 18px">${
+          attachmentsHtml(PLAY.item.attachments, 'player' + PLAY.i)}</div>` : ''}
     <div class="clock" id="pClock">${PLAY.target ? fmt(rem) : fmt(PLAY.elapsed)}</div>
     <p class="hint" style="margin:12px 0 0">${PLAY.target
       ? `${Math.round(PLAY.target / 60)} min ${PLAY.kind === 'assigned' ? 'teacher task' : 'task'}`
@@ -5052,7 +5112,7 @@ function drawPlayer() {
           <span class="hint">${at < 0 ? 1 : at + 1} of ${q.length}</span>`; })()}
       <button class="btn ghost sm" id="pNext">Next ›</button></div>
     <p class="hint" style="margin:14px 0 0">${PLAY.target
-      ? 'Done unlocks when the clock runs out.' : 'Done unlocks after 30 seconds.'} Move on and your time is kept.</p></div>`;
+      ? 'Done unlocks when the clock runs out.' : 'Done unlocks after 30 seconds.'} Move on and your time is kept.</p></div>`);
   $('#pPause').onclick = () => { PLAY.paused = !PLAY.paused; PLAY.t0 = performance.now(); drawPlayer(); };
   $('#pDone').onclick = () => (PLAY.kind === 'gigsong' ? finishRehearsal() : finish());
   if ($('#pPrev')) $('#pPrev').onclick = () => step(-1);

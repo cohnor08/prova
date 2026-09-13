@@ -46,7 +46,7 @@ const SHARED = [
   // `className` is deliberately NOT checked: it collides with the DOM property
   // of the same name, so the test could never fail and would only look like
   // cover. classId guards the same feature and is unambiguous.
-  ['attachments',   STUDENT_WEB, 'photos/videos a teacher attached to a task'],
+  ['attachments',   STUDENT_WEB, 'photos, video, PDFs and audio a teacher attached to a task'],
   ['completed',     STUDENT_WEB, 'whether a task is done'],
   // proof of practice — student writes, teacher reads
   ['proofs',        STUDENT_WEB, 'the list of proof clips on a task'],
@@ -79,6 +79,25 @@ for (const [field, webFile, why] of SHARED) {
   }
 }
 
+// Attachments come in kinds (photo, video, audio, pdf — src/lib/attachments.js)
+// and PDFs/audio arrived after the rest. Every surface that shows or writes
+// them must recognise kinds through that ONE module (mirrored to
+// web/shared/ by sync-shared.cjs), or a kind added on one side turns into a
+// dead link — or nothing at all — on the other.
+const ATTACHMENT_SURFACES = [
+  [STUDENT_WEB, /from '\/shared\/attachments\.js'/, 'must import /shared/attachments.js to show PDFs and audio'],
+  [TEACHER_WEB, /from '\/shared\/attachments\.js'/, 'must import /shared/attachments.js to upload PDFs and audio'],
+  ['src/components/TaskAttachments.js', /from '\.\.\/lib\/attachments'/, 'must recognise kinds via src/lib/attachments.js'],
+  ['src/screens/tabs/TodayScreen.js', /<TaskAttachments\b/, "the student's task card must show a teacher's files"],
+  ['src/components/PracticePlayer.js', /<TaskAttachments\b/, 'the practice player must show a teacher\'s files'],
+  ['src/screens/tabs/TeacherScreen.js', /\bpickDocument\(/, 'a teacher on the phone must be able to attach a PDF or audio file'],
+];
+for (const [file, re, why] of ATTACHMENT_SURFACES) {
+  const src = webCache[file] ?? read(file);
+  if (src === null) { console.log(`❌ missing file: ${file}`); findings++; continue; }
+  if (!re.test(src)) { console.log(`❌ ${file} — ${why}`); findings++; }
+}
+
 // The web app must WATCH the user doc, not read it once: the phone writes to
 // users/{uid} constantly (useAuth.js keeps a live listener), and a one-shot
 // getDoc is why the web app appeared not to sync at all.
@@ -89,6 +108,6 @@ if (studentWeb && !/onSnapshot\(\s*doc\(db,\s*['"]users['"]/.test(studentWeb)) {
 }
 
 console.log(findings === 0
-  ? `\n✅ web apps handle all ${SHARED.length} shared fields`
+  ? `\n✅ web apps handle all ${SHARED.length} shared fields and every attachment surface`
   : `\n❌ ${findings} drift finding(s)`);
 process.exit(findings === 0 ? 0 : 1);
