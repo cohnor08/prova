@@ -29,6 +29,7 @@ import { teacherIdsOf } from '../../lib/teacher';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
 import ProofMedia from '../../components/ProofMedia';
+import TaskAttachments from '../../components/TaskAttachments';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
 import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
@@ -270,6 +271,11 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
             )}
           </View>
         </View>
+      )}
+      {/* The teacher's files — sheet music, a backing track — right under
+          what to do, so the student has them before they start the clock. */}
+      {expanded && (task.attachments || []).length > 0 && (
+        <TaskAttachments attachments={task.attachments} style={{ marginTop: SPACING.md }} />
       )}
       {expanded && !!task.youtube && (
         <TouchableOpacity style={styles.teacherTaskLink} onPress={() => openTaskLink(task.youtube)} activeOpacity={0.8}>

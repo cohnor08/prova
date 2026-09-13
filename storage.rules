@@ -21,5 +21,23 @@ service firebase.storage {
         && (request.resource.contentType.matches('image/.*')
             || request.resource.contentType.matches('video/.*'));
     }
+
+    // Files a teacher attaches to a task: sheet music and tabs as PDFs,
+    // backing tracks and recordings as audio, plus photos and video. Written
+    // only by the teacher, under their own uid, so nobody can drop files into
+    // someone else's folder. Students open them through the tokened download
+    // URL saved on the task, the same way they open everything else here.
+    // 300 MB matches TASK_FILE_MAX_BYTES in src/lib/attachments.js — about
+    // half an hour of WAV, or hours of MP3.
+    match /taskFiles/{ownerUid}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == ownerUid
+        && request.resource.size <= 300 * 1024 * 1024
+        && (request.resource.contentType == 'application/pdf'
+            || request.resource.contentType.matches('audio/.*')
+            || request.resource.contentType.matches('image/.*')
+            || request.resource.contentType.matches('video/.*'));
+    }
   }
 }
