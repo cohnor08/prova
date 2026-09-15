@@ -1538,19 +1538,20 @@ function rows(list, kind, limit, showKey = kind) {
   (list.length > limit ? `<button class="showmore" data-showall="${esc(showKey)}">${SHOWALL[showKey] ? 'Show less' : `Show all (${list.length})`}</button>` : '');
 }
 
-function render() {
-  const d = doneIds();
+// The teacher's tasks exactly as the Today screen lays them out: one-to-one
+// tasks, then each class's. Shared by render() and queue() so Start practice
+// runs through them in the order the student is looking at.
+function assignedGroups() {
   // Teacher tasks lead with what's owed: unfinished before done, and within
   // those the soonest deadline first (no deadline sinks below the dated ones).
-  // `_i` is the task's index in the REAL assignedTasks array. The player and
-  // the completion write both address tasks by that index, so it has to travel
-  // with the row — the display order here is presentation only.
   const rank = (t) => (t.completed ? 2 : 0) + (t.dueDate ? 0 : 0.5);
   const bySoonest = (p, q) =>
     rank(p) - rank(q)
     || (p.dueDate && q.dueDate ? new Date(p.dueDate) - new Date(q.dueDate) : 0)
     || (new Date(q.assignedAt || 0) - new Date(p.assignedAt || 0));
-  // `_i` is the position in the real array — the player and every write use it.
+  // `_i` is the task's index in the REAL assignedTasks array. The player and
+  // the completion write both address tasks by that index, so it has to travel
+  // with the row — the display order here is presentation only.
   const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i }));
   // Split one-to-one teacher tasks from class-assigned ones exactly as the
   // phone does (TodayScreen: soloTasks vs classGroups keyed on className) —
@@ -1566,9 +1567,17 @@ function render() {
     g.tasks.push(t);
   });
   classGroups.forEach(g => g.tasks.sort(bySoonest));
-  // A student's teacher tasks sit ABOVE their own plan — someone else is
-  // waiting on those. Other roles keep them below their own practice.
-  const isStudent = me.role === 'student';
+  return { solo, classGroups };
+}
+// A student's teacher tasks sit ABOVE their own plan — someone else is waiting
+// on those. Other roles keep them below their own practice. render() and
+// queue() both ask this, so the screen and the player can't disagree.
+const teacherTasksFirst = () => me.role === 'student';
+
+function render() {
+  const d = doneIds();
+  const { solo, classGroups } = assignedGroups();
+  const isStudent = teacherTasksFirst();
   const taskCard = (title, list, showKey, meta) => {
     const open = list.filter(t => !t.completed).length;
     return `<section class="card"><header><h3>${esc(title)}</h3>
@@ -5024,12 +5033,16 @@ const markStarted = () => { try { localStorage.setItem(startedKey(), '1'); } cat
 function playList(kind) { return kind === 'plan' ? sessions : allAssigned(); }
 // One queue for the whole run — the day's plan, then anything the teacher
 // set — so Next carries you across both, as the app's player does.
+// What Start practice runs through, in the order it's on screen: for a student
+// the teacher's tasks (one-to-one, then each class) and then their own plan;
+// for everyone else the plan first. Previous/Next and "3 of 7" walk this too.
 function queue() {
-  const d = doneIds(), a = allAssigned();
-  return [
-    ...sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id)),
-    ...a.map((x, i) => ({ kind: 'assigned', i })).filter(q => !a[q.i].completed),
-  ];
+  const d = doneIds();
+  const { solo, classGroups } = assignedGroups();
+  const teacher = [...solo, ...classGroups.flatMap(g => g.tasks)]
+    .filter(t => !t.completed).map(t => ({ kind: 'assigned', i: t._i }));
+  const plan = sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id));
+  return teacherTasksFirst() ? [...teacher, ...plan] : [...plan, ...teacher];
 }
 // A teacher task's timer is durationMin; a plan session's is duration.
 const targetFor = (kind, item) => ((kind === 'plan' ? item.duration : item.durationMin) || 0) * 60;
