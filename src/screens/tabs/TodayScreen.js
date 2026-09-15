@@ -1449,6 +1449,26 @@ export default function TodayScreen({ navigation, route }) {
     g.tasks.push(t);
   });
 
+  // Group the 1-to-1 (non-class) teacher tasks by which teacher assigned them, so
+  // a student connected to several teachers gets a "FROM <name>" card each. The
+  // primary teacher (userData.teacherUid) leads and carries the lesson/attendance
+  // rows; tasks with no teacherUid fall under the primary.
+  const allTeacherIds = [...connectedTeacherIds];
+  const primaryTeacher = userData?.teacherUid || allTeacherIds[0] || null;
+  // Bucket a task under its teacher ONLY when that teacher is one the student
+  // is still connected to. Anything unattributed — the old tasks that carry no
+  // teacherUid at all — belongs to the primary. (Tasks naming a teacher who is
+  // NO LONGER connected never reach here; they're filtered out further up.)
+  const soloByTeacher = {};
+  soloTasks.forEach((t) => {
+    const tid = (t.teacherUid && connectedTeacherIds.has(t.teacherUid)) ? t.teacherUid : (primaryTeacher || 'unknown');
+    (soloByTeacher[tid] = soloByTeacher[tid] || []).push(t);
+  });
+  // Only connected teachers get a card (plus the catch-all when there is no
+  // primary at all) — never an id that merely appeared on a task.
+  const teacherOrder = [...new Set([primaryTeacher, ...allTeacherIds].filter(Boolean))];
+  if (soloByTeacher.unknown) teacherOrder.push('unknown');
+
   const selectedSessions = isToday ? sessions : (plan?.[selectedDay]?.sessions || []);
   // A student account is free and has no AI plan unless they opt in. Distinguish
   // "no plan at all" from a genuine rest day inside an existing plan.
@@ -1477,10 +1497,17 @@ export default function TodayScreen({ navigation, route }) {
   const songOfTheDay = getDailySong(userData?.instrument, userData?.level);
 
   // ── Guided practice player ──────────────────────────────────────────────────
-  // Everything still to do today, normalized into one queue: plan sessions
-  // first (in plan order), then teacher tasks (solo + class). The player is the
-  // ONLY place with a practice timer; cards/rows just open it. Completed tasks
-  // are excluded, so a fresh run always starts at the first uncompleted task.
+  // Everything still to do today, normalized into one queue IN THE ORDER THE
+  // SCREEN SHOWS IT: plan sessions, then each teacher's one-to-one tasks (same
+  // teacher order as the cards), then each class's. It used to take teacher
+  // tasks in raw array order, so the player could jump between teachers and
+  // classes that sit in separate cards. The player is the ONLY place with a
+  // practice timer; cards/rows just open it. Completed tasks are excluded, so a
+  // fresh run always starts at the first uncompleted task.
+  const tasksInDisplayOrder = [
+    ...teacherOrder.flatMap((tid) => soloByTeacher[tid] || []),
+    ...classGroups.flatMap((g) => g.tasks),
+  ];
   const playerQueue = [
     ...sessions
       .filter((s) => !completedIds.includes(s.id))
@@ -1495,8 +1522,7 @@ export default function TodayScreen({ navigation, route }) {
         priorSec: 0,
         watch: s.reference || `${s.title} ${userData?.instrument || 'guitar'} lesson`,
       })),
-    ...assignedTasks
-      .filter((t) => !t.completed)
+    ...tasksInDisplayOrder
       .map((t) => ({
         id: `t_${t.id}`,
         kind: 'teacher',
@@ -1622,25 +1648,8 @@ export default function TodayScreen({ navigation, route }) {
     .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
   // Whether there's any lesson feedback to open in the notes window.
 
-  // Group the 1-to-1 (non-class) teacher tasks by which teacher assigned them, so
-  // a student connected to several teachers gets a "FROM <name>" card each. The
-  // primary teacher (userData.teacherUid) leads and carries the lesson/attendance
-  // rows; tasks with no teacherUid fall under the primary.
-  const allTeacherIds = [...connectedTeacherIds];
-  const primaryTeacher = userData?.teacherUid || allTeacherIds[0] || null;
-  // Bucket a task under its teacher ONLY when that teacher is one the student
-  // is still connected to. Anything unattributed — the old tasks that carry no
-  // teacherUid at all — belongs to the primary. (Tasks naming a teacher who is
-  // NO LONGER connected never reach here; they're filtered out further up.)
-  const soloByTeacher = {};
-  soloTasks.forEach((t) => {
-    const tid = (t.teacherUid && connectedTeacherIds.has(t.teacherUid)) ? t.teacherUid : (primaryTeacher || 'unknown');
-    (soloByTeacher[tid] = soloByTeacher[tid] || []).push(t);
-  });
-  // Only connected teachers get a card (plus the catch-all when there is no
-  // primary at all) — never an id that merely appeared on a task.
-  const teacherOrder = [...new Set([primaryTeacher, ...allTeacherIds].filter(Boolean))];
-  if (soloByTeacher.unknown) teacherOrder.push('unknown');
+  // One card per teacher (soloByTeacher/teacherOrder are built further up —
+  // the practice queue needs the same order before any of this is known).
   const teacherGroups = teacherOrder
     .map((tid) => ({ tid, isPrimary: tid === primaryTeacher, name: teacherNames[tid], tasks: soloByTeacher[tid] || [] }))
     .filter((g) => g.tasks.length > 0 || (g.isPrimary && (nextLesson || lastAttended || userData?.teacherUid)));
