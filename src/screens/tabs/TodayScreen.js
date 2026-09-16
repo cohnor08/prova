@@ -1435,6 +1435,11 @@ export default function TodayScreen({ navigation, route }) {
   const connectedTeacherIds = new Set(teacherIdsOf(userData || {}));
   const fromAFormerTeacher = (t) =>
     !!t.teacherUid && connectedTeacherIds.size > 0 && !connectedTeacherIds.has(t.teacherUid);
+  // A student with a teacher is told what to practise by a person. Prova's own
+  // AI plan then competes with that homework for the same half hour — so for
+  // them the teacher's work leads, the plan is labelled extra, and Prova stops
+  // offering to write one. Solo players are untouched: the plan is all they have.
+  const hasTeacher = connectedTeacherIds.size > 0;
   const assignedTasks = userData?.assignedTasks || [];
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
@@ -1508,7 +1513,7 @@ export default function TodayScreen({ navigation, route }) {
     ...teacherOrder.flatMap((tid) => soloByTeacher[tid] || []),
     ...classGroups.flatMap((g) => g.tasks),
   ];
-  const playerQueue = [
+  const planItems = [
     ...sessions
       .filter((s) => !completedIds.includes(s.id))
       .map((s) => ({
@@ -1522,6 +1527,8 @@ export default function TodayScreen({ navigation, route }) {
         priorSec: 0,
         watch: s.reference || `${s.title} ${userData?.instrument || 'guitar'} lesson`,
       })),
+  ];
+  const teacherItems = [
     ...tasksInDisplayOrder
       .map((t) => ({
         id: `t_${t.id}`,
@@ -1543,6 +1550,8 @@ export default function TodayScreen({ navigation, route }) {
         attachments: Array.isArray(t.attachments) ? t.attachments : [],
       })),
   ];
+  // Same order as the screen — teacher work first for a student who has one.
+  const playerQueue = hasTeacher ? [...teacherItems, ...planItems] : [...planItems, ...teacherItems];
   const openPlayerAt = (id) => { setPlayerStartId(id || null); setPlayerVisible(true); track('practice_started'); };
   const anyDoneToday = completedIds.length > 0;
 
@@ -1840,181 +1849,199 @@ export default function TodayScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Sessions — the actual practice for the day */}
-        {selectedSessions.length > 0 && (
-          <Text style={styles.sectionLabel}>{isToday ? "TODAY'S SESSIONS" : 'PLANNED SESSIONS'}</Text>
-        )}
-        {showRateToday && (
-          <TouchableOpacity style={styles.rateTodayCard} onPress={openDayReview} activeOpacity={0.85}>
-            <Ionicons name="clipboard-outline" size={18} color={COLORS.accent} />
-            <Text style={styles.rateTodayText}>All done — tell Prova how today went</Text>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        )}
-        {selectedSessions.length === 0 ? (
-          isToday && !hasPlan ? (
-            // The "Create a plan" card lives at the very bottom (below teacher
-            // tasks/classes/song), so nothing renders in this slot.
-            null
-          ) : (
-            <View style={styles.restDay}>
-              <View style={styles.restIconWrap}>
-                <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
-              </View>
-              <Text style={styles.restTitle}>Rest Day</Text>
-              <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
-            </View>
-          )
-        ) : isToday ? (
-          selectedSessions.map(session => (
-            <SessionCard
-              key={session.id}
-              session={session}
-              completed={completedIds.includes(session.id)}
-              onPractice={(s) => openPlayerAt(`s_${s.id}`)}
-            />
-          ))
-        ) : (
-          selectedSessions.map((session, i) => (
-            <PlanCard key={session.id || i} session={session} />
-          ))
-        )}
-
-        {/* Teacher + class work grouped under one quiet header, so the two
-            (personal-teacher tasks and class tasks) read as one section
-            rather than two competing full-weight cards. */}
-        {isToday && (teacherGroups.length > 0 || classGroups.length > 0) && (
-          <Text style={[styles.sectionLabel, { marginTop: SPACING.sm }]}>FROM YOUR TEACHER</Text>
-        )}
-
-        {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
-        {isToday && teacherGroups.map((g) => {
-          const open = !closedTeachers.has(g.tid);
-          const toggle = () => setClosedTeachers((prev) => {
-            const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
-          });
-          return (
-            <View key={g.tid} style={styles.teacherCard}>
-              {/* Same coloured left bar the session cards use, so an assigned
-                  section reads as "a thing to do" at a glance even collapsed.
-                  Blue = from a person (your teacher), cyan = from a class. */}
-              <View style={[styles.categoryBar, { backgroundColor: COLORS.primary }]} />
-              <View style={styles.assignedBody}>
-              <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
-                <Ionicons name="school" size={16} color={COLORS.primary} />
-                <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
-                {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-                {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
-                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
-              </TouchableOpacity>
-              {open && !!g.name && (
-                <View style={styles.teacherNameRow}>
-                  <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
-                  <Text style={styles.teacherNameText}>{g.name}</Text>
-                </View>
+        {/* Whoever sets the work leads. A student with a teacher opens on
+            their teacher's tasks, with their own plan below as extra practice;
+            a solo player opens on their plan. The practice player walks them in
+            this same order (playerQueue above). */}
+        {(() => {
+          const planSection = (
+            <>
+              {/* Sessions — the actual practice for the day */}
+              {selectedSessions.length > 0 && (
+                <Text style={styles.sectionLabel}>
+                  {!isToday ? 'PLANNED SESSIONS' : hasTeacher ? 'EXTRA PRACTICE' : "TODAY'S SESSIONS"}
+                </Text>
               )}
-              {open && g.isPrimary && nextLesson && (
-                <TouchableOpacity
-                  style={styles.lessonRow}
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Practice', {
-                    screen: 'Schedule',
-                    params: { date: ymdLocal(nextLesson.when) },
-                    initial: false,
-                  })}
-                >
-                  <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
-                  <Text style={styles.lessonRowText} numberOfLines={1}>
-                    {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+              {showRateToday && (
+                <TouchableOpacity style={styles.rateTodayCard} onPress={openDayReview} activeOpacity={0.85}>
+                  <Ionicons name="clipboard-outline" size={18} color={COLORS.accent} />
+                  <Text style={styles.rateTodayText}>All done — tell Prova how today went</Text>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                 </TouchableOpacity>
               )}
-              {open && g.isPrimary && lastAttended && (
-                <TouchableOpacity
-                  style={styles.lessonRow}
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
-                >
-                  <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.lessonRowText} numberOfLines={1}>
-                      Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
-                    </Text>
-                    {lastAttended.rec.note ? (
-                      <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
-                    ) : null}
+              {selectedSessions.length === 0 ? (
+                isToday && !hasPlan ? (
+                  // The "Create a plan" card lives at the very bottom (below teacher
+                  // tasks/classes/song), so nothing renders in this slot.
+                  null
+                ) : (
+                  <View style={styles.restDay}>
+                    <View style={styles.restIconWrap}>
+                      <Ionicons name="bed-outline" size={36} color={COLORS.textMuted} />
+                    </View>
+                    <Text style={styles.restTitle}>Rest Day</Text>
+                    <Text style={styles.restSubtitle}>No sessions scheduled. Enjoy the break!</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
-                </TouchableOpacity>
+                )
+              ) : isToday ? (
+                selectedSessions.map(session => (
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    completed={completedIds.includes(session.id)}
+                    onPractice={(s) => openPlayerAt(`s_${s.id}`)}
+                  />
+                ))
+              ) : (
+                selectedSessions.map((session, i) => (
+                  <PlanCard key={session.id || i} session={session} />
+                ))
               )}
-              {open && g.tasks.length > 0 && (
-                <View style={styles.taskGroup}>
-                  {g.tasks.map((t, i) => (
-                    <TeacherTaskCard
-                      key={t.id}
-                      task={t}
-                      topDivider={i > 0}
-                      expanded={expandedTask === t.id}
-                      onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                      onPractice={(t) => openPlayerAt(`t_${t.id}`)}
-                      openTaskLink={openTaskLink}
-                      onOpenSong={openSongInLibrary}
-                      onOpenDrill={openDrill}
-                      onOpenProof={viewProof}
-                      onRemove={fromAFormerTeacher(t) ? removeTask : null}
-                    />
-                  ))}
-                </View>
-              )}
-              </View>
-            </View>
+            </>
           );
-        })}
+          const teacherSection = (
+            <>
+              {/* Teacher + class work grouped under one quiet header, so the two
+                  (personal-teacher tasks and class tasks) read as one section
+                  rather than two competing full-weight cards. */}
+              {isToday && (teacherGroups.length > 0 || classGroups.length > 0) && (
+                <Text style={[styles.sectionLabel, { marginTop: SPACING.sm }]}>FROM YOUR TEACHER</Text>
+              )}
 
-        {/* Class-assigned tasks, grouped per class with a collapsible header */}
-        {isToday && classGroups.map((g) => {
-          const collapsed = collapsedGroups.has(g.key);
-          return (
-            <View key={g.key} style={styles.teacherCard}>
-              <View style={[styles.categoryBar, { backgroundColor: COLORS.accent }]} />
-              <View style={styles.assignedBody}>
-              <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
-                <Ionicons name="people" size={16} color={COLORS.accent} />
-                <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
-                <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
-                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
-              </TouchableOpacity>
-              {!collapsed && g.tasks.length > 0 && (
-                <View style={styles.taskGroup}>
-                  {g.tasks.map((t, i) => (
-                    <TeacherTaskCard
-                      key={t.id}
-                      task={t}
-                      topDivider={i > 0}
-                      expanded={expandedTask === t.id}
-                      onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                      onPractice={(t) => openPlayerAt(`t_${t.id}`)}
-                      openTaskLink={openTaskLink}
-                      onOpenSong={openSongInLibrary}
-                      onOpenDrill={openDrill}
-                      onOpenProof={viewProof}
-                      onRemove={fromAFormerTeacher(t) ? removeTask : null}
-                    />
-                  ))}
-                </View>
-              )}
-              {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
-                <ClassScoreboard
-                  classId={g.tasks[0].classId}
-                  teacherUid={userData.teacherUid}
-                  myUid={auth.currentUser?.uid}
-                />
-              )}
-              </View>
-            </View>
+              {/* One-to-one teacher tasks — a "FROM <teacher>" card per connected teacher */}
+              {isToday && teacherGroups.map((g) => {
+                const open = !closedTeachers.has(g.tid);
+                const toggle = () => setClosedTeachers((prev) => {
+                  const n = new Set(prev); n.has(g.tid) ? n.delete(g.tid) : n.add(g.tid); return n;
+                });
+                return (
+                  <View key={g.tid} style={styles.teacherCard}>
+                    {/* Same coloured left bar the session cards use, so an assigned
+                        section reads as "a thing to do" at a glance even collapsed.
+                        Blue = from a person (your teacher), cyan = from a class. */}
+                    <View style={[styles.categoryBar, { backgroundColor: COLORS.primary }]} />
+                    <View style={styles.assignedBody}>
+                    <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
+                      <Ionicons name="school" size={16} color={COLORS.primary} />
+                      <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
+                      {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
+                      {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
+                      <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
+                    </TouchableOpacity>
+                    {open && !!g.name && (
+                      <View style={styles.teacherNameRow}>
+                        <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
+                        <Text style={styles.teacherNameText}>{g.name}</Text>
+                      </View>
+                    )}
+                    {open && g.isPrimary && nextLesson && (
+                      <TouchableOpacity
+                        style={styles.lessonRow}
+                        activeOpacity={0.7}
+                        onPress={() => navigation.navigate('Practice', {
+                          screen: 'Schedule',
+                          params: { date: ymdLocal(nextLesson.when) },
+                          initial: false,
+                        })}
+                      >
+                        <Ionicons name="calendar-outline" size={15} color={COLORS.primary} />
+                        <Text style={styles.lessonRowText} numberOfLines={1}>
+                          {lessonIsToday ? 'Lesson today' : 'Next lesson'}: {lessonDayLabel(nextLesson.when)}{nextLesson.lesson.time ? ` · ${fmtLessonTime(nextLesson.lesson.time)}` : ''}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                    {open && g.isPrimary && lastAttended && (
+                      <TouchableOpacity
+                        style={styles.lessonRow}
+                        activeOpacity={0.7}
+                        onPress={() => navigation.navigate('LessonNotes', { date: lastAttended.date })}
+                      >
+                        <View style={[styles.attDot, { backgroundColor: ATT_META[lastAttended.rec.status].color }]} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.lessonRowText} numberOfLines={1}>
+                            Last lesson ({pastDayLabel(lastAttended.date)}): {ATT_META[lastAttended.rec.status].label}
+                          </Text>
+                          {lastAttended.rec.note ? (
+                            <Text style={styles.attNoteText} numberOfLines={2}>“{lastAttended.rec.note}”</Text>
+                          ) : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                    {open && g.tasks.length > 0 && (
+                      <View style={styles.taskGroup}>
+                        {g.tasks.map((t, i) => (
+                          <TeacherTaskCard
+                            key={t.id}
+                            task={t}
+                            topDivider={i > 0}
+                            expanded={expandedTask === t.id}
+                            onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                            onPractice={(t) => openPlayerAt(`t_${t.id}`)}
+                            openTaskLink={openTaskLink}
+                            onOpenSong={openSongInLibrary}
+                            onOpenDrill={openDrill}
+                            onOpenProof={viewProof}
+                            onRemove={fromAFormerTeacher(t) ? removeTask : null}
+                          />
+                        ))}
+                      </View>
+                    )}
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* Class-assigned tasks, grouped per class with a collapsible header */}
+              {isToday && classGroups.map((g) => {
+                const collapsed = collapsedGroups.has(g.key);
+                return (
+                  <View key={g.key} style={styles.teacherCard}>
+                    <View style={[styles.categoryBar, { backgroundColor: COLORS.accent }]} />
+                    <View style={styles.assignedBody}>
+                    <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
+                      <Ionicons name="people" size={16} color={COLORS.accent} />
+                      <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
+                      <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
+                      <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
+                    </TouchableOpacity>
+                    {!collapsed && g.tasks.length > 0 && (
+                      <View style={styles.taskGroup}>
+                        {g.tasks.map((t, i) => (
+                          <TeacherTaskCard
+                            key={t.id}
+                            task={t}
+                            topDivider={i > 0}
+                            expanded={expandedTask === t.id}
+                            onToggle={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
+                            onPractice={(t) => openPlayerAt(`t_${t.id}`)}
+                            openTaskLink={openTaskLink}
+                            onOpenSong={openSongInLibrary}
+                            onOpenDrill={openDrill}
+                            onOpenProof={viewProof}
+                            onRemove={fromAFormerTeacher(t) ? removeTask : null}
+                          />
+                        ))}
+                      </View>
+                    )}
+                    {!collapsed && userData?.teacherUid && g.tasks[0]?.classId && (
+                      <ClassScoreboard
+                        classId={g.tasks[0].classId}
+                        teacherUid={userData.teacherUid}
+                        myUid={auth.currentUser?.uid}
+                      />
+                    )}
+                    </View>
+                  </View>
+                );
+              })}
+            </>
           );
-        })}
+          return hasTeacher
+            ? <>{teacherSection}{planSection}</>
+            : <>{planSection}{teacherSection}</>;
+        })()}
 
         {/* Today's drills — optional mini-games, above the song (low priority) */}
         {isToday && (
@@ -2074,7 +2101,7 @@ export default function TodayScreen({ navigation, route }) {
 
         {/* No plan yet: the "Create a plan" survey CTA sits at the very bottom,
             below the teacher's tasks, classes and the song — those take priority. */}
-        {isToday && !hasPlan && (
+        {isToday && !hasPlan && !hasTeacher && (
           <View style={styles.restDay}>
             <View style={styles.restIconWrap}>
               <Ionicons name="sparkles-outline" size={34} color={COLORS.primary} />

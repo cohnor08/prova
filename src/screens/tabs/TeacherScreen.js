@@ -17,7 +17,7 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
-import { generateSongPlan, sendParentReportsNow } from '../../lib/claude';
+import { generateSongPlan, sendParentReportsNow, draftNextWeek } from '../../lib/claude';
 import { track } from '../../lib/analytics';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus, toggleChatReaction } from '../../lib/chat';
@@ -1785,6 +1785,13 @@ function TeacherDashboard() {
   const [inviting, setInviting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  // "Draft next week" — Claude's suggestions for ONE student, shown to the
+  // teacher to tick, edit or throw away. Nothing is assigned until they say so.
+  const [draftFor, setDraftFor] = useState(null);      // the student being drafted for
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draft, setDraft] = useState(null);            // { summary, tasks: [{ title, description, durationMin, on }] }
+  const [draftSending, setDraftSending] = useState(false);
+  const [prefillTask, setPrefillTask] = useState(null); // one draft opened in the assign sheet
   const [songStudent, setSongStudent] = useState(null);
   const [songClass, setSongClass] = useState(null); // class getting a song-to-learn
   const [expanded, setExpanded] = useState(null);
@@ -2379,6 +2386,66 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
     }
   };
 
+  // Ask for a draft. Reads that student's own practice record server-side; the
+  // teacher sees the result before anyone else does.
+  const runDraft = async (student) => {
+    if (draftBusy) return;
+    setDraftFor(student);
+    setDraft(null);
+    setDraftBusy(true);
+    try {
+      const r = await draftNextWeek(student.uid);
+      if (!r.tasks.length) throw new Error('empty');
+      setDraft({ summary: r.summary, tasks: r.tasks.map((t) => ({ ...t, on: true })) });
+    } catch (e) {
+      setDraftFor(null);
+      Alert.alert('Could not draft anything',
+        /rate|limit/i.test(e?.message || '')
+          ? "You've used today's drafts. Try again tomorrow."
+          : 'Prova could not draft tasks for this student just now. Please try again.');
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  // Send the ticked drafts as real tasks — the same shape and the same writes
+  // the assign sheet makes, so they behave identically from here on.
+  const assignDrafts = async () => {
+    const student = draftFor;
+    const picked = (draft?.tasks || []).filter((t) => t.on);
+    if (!student || picked.length === 0) return;
+    setDraftSending(true);
+    try {
+      const now = Date.now();
+      const tasks = picked.map((t, i) => ({
+        id: `${now}_${i}`,
+        title: t.title,
+        description: t.description || '',
+        youtube: '', song: '', drill: null, drillLevel: null, drillMode: null,
+        dueDate: null,
+        durationMin: t.durationMin || 0,
+        attachments: [],
+        completed: false,
+        assignedAt: new Date().toISOString(),
+        teacherUid: auth.currentUser.uid,
+      }));
+      await updateDoc(doc(db, 'users', student.uid), { assignedTasks: arrayUnion(...tasks) });
+      sendNotification(student.uid, {
+        type: 'task_assigned',
+        title: 'New tasks from your teacher',
+        body: tasks.length === 1 ? tasks[0].title : `${tasks.length} new tasks`,
+        data: { taskTitle: tasks[0].title },
+      }).catch(() => {});
+      setDraftFor(null); setDraft(null);
+      await loadStudents();
+      Alert.alert('Assigned', `${tasks.length} task${tasks.length === 1 ? '' : 's'} sent to ${displayName(student)}.`);
+    } catch (e) {
+      Alert.alert('Could not assign', e?.message || 'Please try again.');
+    } finally {
+      setDraftSending(false);
+    }
+  };
+
   const openChat = (student) => {
     setActiveChatStudent(student);
     setActiveTab('chats');
@@ -2698,6 +2765,22 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                           <Ionicons name="person-remove-outline" size={15} color={COLORS.error} />
                         </TouchableOpacity>
                       </View>
+                      {/* A starting point, not a decision: Claude reads this
+                          student's practice record and proposes next week's
+                          tasks for the teacher to edit or bin. */}
+                      <TouchableOpacity
+                        style={styles.draftBtn}
+                        onPress={() => runDraft(student)}
+                        disabled={draftBusy}
+                        activeOpacity={0.85}
+                      >
+                        {draftBusy && draftFor?.uid === student.uid
+                          ? <Ghost size="small" color={COLORS.primary} />
+                          : <Ionicons name="sparkles" size={15} color={COLORS.primary} />}
+                        <Text style={styles.draftBtnText}>
+                          {draftBusy && draftFor?.uid === student.uid ? 'Reading their practice…' : "Draft next week's tasks"}
+                        </Text>
+                      </TouchableOpacity>
 
                       {/* Assign a song to learn (AI step-by-step) */}
                       <TouchableOpacity style={styles.songBtn} onPress={() => setSongStudent(student)} activeOpacity={0.85}>
@@ -3066,10 +3149,76 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
       <AssignTaskModal
         student={selectedStudent}
+        prefill={prefillTask}
         visible={!!selectedStudent}
-        onClose={() => setSelectedStudent(null)}
+        onClose={() => { setSelectedStudent(null); setPrefillTask(null); }}
         onAssigned={loadStudents}
       />
+
+      {/* The draft, for the teacher's eyes only until they send it. */}
+      <SheetModal visible={!!draftFor && !!draft} onRequestClose={() => { setDraftFor(null); setDraft(null); }} cardStyle={styles.modalCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 }}>
+          <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>Draft for {displayName(draftFor || {})}</Text>
+          <TouchableOpacity onPress={() => { setDraftFor(null); setDraft(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {!!draft?.summary && <Text style={styles.draftSummary}>{draft.summary}</Text>}
+        <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+          {(draft?.tasks || []).map((t, i) => (
+            <View key={i} style={styles.draftRow}>
+              <TouchableOpacity
+                onPress={() => setDraft((d) => ({ ...d, tasks: d.tasks.map((x, k) => (k === i ? { ...x, on: !x.on } : x)) }))}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: t.on }}
+                accessibilityLabel={`${t.on ? 'Drop' : 'Include'} ${t.title}`}
+              >
+                <Ionicons
+                  name={t.on ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={t.on ? COLORS.primary : COLORS.textMuted}
+                />
+              </TouchableOpacity>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.draftTitle}>{t.title}</Text>
+                {!!t.description && <Text style={styles.draftDesc} numberOfLines={3}>{t.description}</Text>}
+                <Text style={styles.draftMeta}>{t.durationMin} min · no due date yet</Text>
+              </View>
+              {/* Opens this one in the normal assign sheet, filled in. */}
+              <TouchableOpacity
+                onPress={() => {
+                  const student = draftFor;
+                  setPrefillTask({ title: t.title, description: t.description, durationMin: t.durationMin });
+                  setDraftFor(null); setDraft(null);
+                  setSelectedStudent(student);
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel={`Edit ${t.title} before sending`}
+              >
+                <Ionicons name="create-outline" size={19} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+        <Text style={styles.draftFoot}>Written by Prova from their practice record. Edit anything before it goes.</Text>
+        <View style={styles.modalBtns}>
+          <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setDraftFor(null); setDraft(null); }}>
+            <Text style={styles.modalCancelText}>Discard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modalAssignBtn, (draftSending || !(draft?.tasks || []).some((t) => t.on)) && { opacity: 0.5 }]}
+            onPress={assignDrafts}
+            disabled={draftSending || !(draft?.tasks || []).some((t) => t.on)}
+          >
+            {draftSending
+              ? <Ghost color={COLORS.onPrimary} size="small" />
+              : <Text style={styles.modalAssignText}>
+                  Assign {(draft?.tasks || []).filter((t) => t.on).length} task{(draft?.tasks || []).filter((t) => t.on).length === 1 ? '' : 's'}
+                </Text>}
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
       <AssignTaskModal
         klass={selectedClass}
         recipientUids={
@@ -4024,6 +4173,21 @@ const styles = themedStyles(() => StyleSheet.create({
   // remove button off the row (see the truncation rules in CLAUDE.md).
   attName: { flex: 1, minWidth: 0, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   attTitle: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  draftBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    marginTop: SPACING.sm, paddingVertical: 11, borderRadius: 10,
+    borderWidth: 1, borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '12',
+  },
+  draftBtnText: { color: COLORS.primary, fontSize: 13.5, fontWeight: '700' },
+  draftSummary: { color: COLORS.textSecondary, fontSize: 13.5, lineHeight: 20, marginBottom: SPACING.md },
+  draftRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md,
+    paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  draftTitle: { color: COLORS.text, fontSize: 14.5, fontWeight: '700' },
+  draftDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 3 },
+  draftMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 4 },
+  draftFoot: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginTop: SPACING.md },
   attMeta: { color: COLORS.textMuted, fontSize: 11.5, marginTop: 1 },
   attBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
   attBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background },

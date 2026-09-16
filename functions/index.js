@@ -60,6 +60,10 @@ const RATE_LIMITS = {
   // trips, like searchYouTube) — `requests` caps how many manual send bursts one
   // teacher can trigger per day so the button can't be used to spam email.
   sendParentReportsNow:   { requests: 10, tokens: 1 },
+  // "Draft next week" — a teacher asking Claude for a starting point on one
+  // student. Per teacher per day, so a studio of 20 can be drafted in a sitting
+  // but nothing can run away with the bill.
+  draftNextWeek:          { requests: 40, tokens: 150000 },
 };
 
 // Returns the bucket key for an action's rate-limit period. Daily actions key on
@@ -1574,6 +1578,160 @@ exports.sendParentReportsNow = onCall(
       overrideEmail: testEmail || null,
     });
     return r;
+  },
+);
+
+// ─── Draft next week's tasks for one student ──────────────────────────────────
+// The teacher asks, reads what comes back, edits it, and sends it — nothing here
+// reaches a student on its own. That's the whole point: a draft only has to be
+// a good starting point, and a human decides what's actually set.
+//
+// What it reads: the student's own practice record (minutes per day, what the
+// teacher has already set and how much of it got done). NOT their journal and
+// NOT their messages — those are the student's, and a teacher asking for
+// homework ideas is not a reason to hand them over.
+exports.draftNextWeek = onCall(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 120 },
+  async (request) => {
+    const startTime = Date.now();
+    const appCheckPresent = !!request.app;
+    const uid = request.auth && request.auth.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Please sign in.');
+    const apiKey = ANTHROPIC_API_KEY.value();
+    if (!apiKey) throw new HttpsError('failed-precondition', 'The AI coach is not set up yet.');
+
+    const studentUid = String((request.data && request.data.studentUid) || '').trim();
+    if (!studentUid) throw new HttpsError('invalid-argument', 'studentUid is required.');
+
+    const [meSnap, stuSnap] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.collection('users').doc(studentUid).get(),
+    ]);
+    const me = meSnap.data() || {};
+    if (me.role !== 'teacher') throw new HttpsError('permission-denied', 'Teachers only.');
+    if (!stuSnap.exists) throw new HttpsError('not-found', 'That student no longer exists.');
+    const s = stuSnap.data() || {};
+    // Only for YOUR students — the uid has to be on their teacher link.
+    const linked = [s.teacherUid, ...(Array.isArray(s.teacherUids) ? s.teacherUids : [])].filter(Boolean);
+    if (!linked.includes(uid)) throw new HttpsError('permission-denied', 'That student is not connected to you.');
+
+    await checkRateLimit(uid, 'draftNextWeek');
+
+    // Last 14 days of practice, as the student's own logs recorded it.
+    const logsSnap = await db
+      .collection('sessionHistory').doc(studentUid).collection('logs')
+      .orderBy('date', 'desc').limit(14).get();
+    const days = [];
+    logsSnap.forEach((d) => {
+      const data = d.data() || {};
+      const cats = Object.entries(data.categories || {})
+        .filter(([, v]) => typeof v === 'number' && v > 0)
+        .map(([k, v]) => `${k} ${v}m`).join(', ');
+      days.push(`${d.id}: ${data.totalMinutes || 0} min${cats ? ` (${cats})` : ''}`);
+    });
+
+    // What this teacher has set recently, and what happened to it.
+    const mine = (Array.isArray(s.assignedTasks) ? s.assignedTasks : [])
+      .filter((t) => !t.teacherUid || t.teacherUid === uid)
+      .slice(-14)
+      .map((t) => {
+        const practised = Math.round((t.practicedSec || 0) / 60);
+        return [
+          `"${String(t.title || '').slice(0, 80)}"`,
+          t.durationMin ? `${t.durationMin} min set` : 'no timer',
+          t.completed ? 'DONE' : 'not done',
+          practised ? `${practised} min practised` : 'never opened',
+          t.proofUrl ? 'proof submitted' : '',
+          t.className ? `class: ${t.className}` : '',
+        ].filter(Boolean).join(' · ');
+      });
+
+    const songs = (Array.isArray(s.songLibrary) ? s.songLibrary : [])
+      .slice(0, 6).map((x) => `${x.title}${x.artist ? ` — ${x.artist}` : ''}`);
+
+    const daysSince = s.lastSessionDate
+      ? Math.floor((Date.now() - new Date(s.lastSessionDate).getTime()) / 86400000)
+      : null;
+
+    const prompt = `You are helping a music teacher plan next week's homework for ONE student.
+Write a draft the teacher will read, edit and then send. Be specific enough to be useful,
+and never invent facts about the student that aren't below.
+
+STUDENT
+Instrument: ${s.instrument || 'Guitar'}
+Level: ${s.level || 'Beginner'}
+Goals: ${(Array.isArray(s.goals) ? s.goals : []).join(', ') || 'not set'}
+Current streak: ${s.streak || 0} days
+Total practice ever: ${s.totalMinutes || 0} minutes
+Last practised: ${daysSince === null ? 'never' : daysSince === 0 ? 'today' : `${daysSince} day(s) ago`}
+
+PRACTICE, LAST 14 DAYS (days not listed = no practice)
+${days.length ? days.join('\n') : 'Nothing logged.'}
+
+WHAT YOU (THE TEACHER) HAVE ALREADY SET
+${mine.length ? mine.join('\n') : 'Nothing assigned yet.'}
+
+SONGS THEY ARE WORKING ON
+${songs.length ? songs.join('\n') : 'None saved.'}
+
+Draft 3 or 4 tasks for next week. Rules:
+- Build on what was already set: finish what stalled, move on from what is done.
+- If they have barely practised, make the first task small and easy to start.
+- Be concrete: name chords, keys, tempos in BPM, bar counts, which song.
+- title: under 45 characters, plain, no quotes.
+- description: 1-2 sentences telling them exactly what to do.
+- durationMin: a whole number between 5 and 30.
+- Do not mention this was written by an AI.
+
+Reply with ONLY this JSON, no other text:
+{"summary":"one sentence to the teacher about where this student is","tasks":[{"title":"","description":"","durationMin":10}]}`;
+
+    let result;
+    try {
+      result = await callClaude(apiKey, prompt, 1400, MODEL_SMART);
+    } catch (err) {
+      await writeUsageLog(uid, 'draftNextWeek', {
+        tokensIn: 0, tokensOut: 0, durationMs: Date.now() - startTime,
+        success: false, errorType: 'claude_error', appCheckPresent,
+      });
+      throw err;
+    }
+
+    let out;
+    try {
+      let text = (result.text || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const first = text.indexOf('{');
+      const last = text.lastIndexOf('}');
+      if (first !== -1 && last > first) text = text.slice(first, last + 1);
+      out = JSON.parse(text);
+    } catch (parseErr) {
+      await writeUsageLog(uid, 'draftNextWeek', {
+        tokensIn: result.tokensIn, tokensOut: result.tokensOut, durationMs: Date.now() - startTime,
+        success: false, errorType: 'parse_error', appCheckPresent,
+      });
+      throw new HttpsError('internal', 'Could not draft anything just now. Try again.');
+    }
+
+    // Shape it into exactly what the assign sheet expects, and never trust the
+    // model's numbers — a 4-hour "task" would be sent to a child.
+    const tasks = (Array.isArray(out.tasks) ? out.tasks : [])
+      .map((t) => ({
+        title: String((t && t.title) || '').trim().slice(0, 80),
+        description: String((t && t.description) || '').trim().slice(0, 400),
+        durationMin: Math.min(30, Math.max(5, Math.round(Number((t && t.durationMin) || 10)) || 10)),
+      }))
+      .filter((t) => t.title)
+      .slice(0, 4);
+
+    if (!tasks.length) throw new HttpsError('internal', 'Could not draft anything just now. Try again.');
+
+    await writeUsageLog(uid, 'draftNextWeek', {
+      tokensIn: result.tokensIn, tokensOut: result.tokensOut, durationMs: Date.now() - startTime,
+      success: true, errorType: null, appCheckPresent,
+    });
+    await recordTokenUsage(uid, 'draftNextWeek', result.tokensIn + result.tokensOut);
+
+    return { summary: String(out.summary || '').trim().slice(0, 300), tasks };
   },
 );
 

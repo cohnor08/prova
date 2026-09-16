@@ -179,6 +179,10 @@
   .tadrop{border:1px dashed var(--line);border-radius:12px;padding:12px;margin-bottom:20px;transition:border-color .15s,background .15s}
   .tadrop.over{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,transparent)}
   .taatt{padding:8px 0;border-bottom:1px solid var(--line)}
+  /* A drafted task is prose, not a form label — Studio's global label rule
+     would otherwise SHOUT the whole thing in caps. */
+  .draftrow{display:flex;gap:12px;align-items:flex-start;cursor:pointer;
+    font-size:14px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink);margin:0}
   .taatt:last-child{border-bottom:0}
   .modal{position:fixed;z-index:41;top:50%;left:50%;transform:translate(-50%,-50%);width:min(460px,94vw);max-height:88vh;overflow:auto;background:var(--ground);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:var(--shadow)}
   .modal h3{font-size:17px;margin-bottom:16px}
@@ -980,6 +984,9 @@ function paintStudent() {
       <button class="btn sm ghost" id="msgStu" style="flex:1">Message</button>
     </div>
     <button class="btn sm ghost" id="assignSong" style="width:100%;margin-top:8px">Assign a song to learn</button>
+    <!-- A starting point, not a decision: Claude reads this student's own
+         practice record and proposes next week's tasks for you to edit or bin. -->
+    <button class="btn sm ghost" id="draftWeek" style="width:100%;margin-top:8px">✦ Draft next week's tasks</button>
     ${(() => {   // proof the student uploaded against a task
       const withProof = tasks.map((t, i) => ({ t, i })).filter(x => x.t.proofUrl);
       if (!withProof.length) return '';
@@ -998,6 +1005,21 @@ function paintStudent() {
   el.querySelector('#addTask').onclick = () => assignSheet(s);
   el.querySelector('#msgStu').onclick = () => go('messages');
   el.querySelector('#assignSong').onclick = () => assignSongSheet(s);
+  el.querySelector('#draftWeek').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.textContent = 'Reading their practice…';
+    try {
+      const r = await httpsCallable(fns, 'draftNextWeek')({ studentUid: s.uid });
+      const tasks = (r?.data?.tasks || []).map(t => ({ ...t, on: true }));
+      if (!tasks.length) throw new Error('empty');
+      draftSheet(s, r.data.summary || '', tasks);
+    } catch (err) {
+      toast(/resource-exhausted|rate/i.test(err?.code || err?.message || '')
+        ? "You've used today's drafts — try again tomorrow"
+        : 'Could not draft anything just now');
+    }
+    btn.disabled = false; btn.textContent = "✦ Draft next week's tasks";
+  };
   el.querySelector('#removeStu').onclick = () => removeStudent(s);
   el.querySelectorAll('[data-proof]').forEach(b => b.onclick = () => {
     const t = (s.assignedTasks || [])[+b.getAttribute('data-proof')];
@@ -1014,6 +1036,52 @@ function paintStudent() {
     if (tg) { const i = +tg.getAttribute('data-toggle'); arr[i] = { ...arr[i], completed: !arr[i].completed }; persist(arr); }
     if (dl) { const i = +dl.getAttribute('data-del'); arr.splice(i, 1); persist(arr); }
   });
+}
+
+// ── The draft, for the teacher's eyes only until they send it ────────────
+// Ticked tasks are written exactly as the assign sheet writes one, so from the
+// moment they land they are ordinary tasks — editable, timed, completable.
+function draftSheet(stu, summary, tasks) {
+  const paint = () => {
+    const on = tasks.filter(t => t.on).length;
+    modal(`<div style="display:flex;align-items:flex-start;gap:12px">
+      <div><h3 style="margin:0">Draft for ${esc(displayName(stu))}</h3>
+        <div class="hint">Written by Prova from their practice record — edit or drop anything.</div></div>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+      ${summary ? `<p class="hint" style="margin:14px 0 4px;line-height:1.6;color:var(--ink-2)">${esc(summary)}</p>` : ''}
+      <div style="margin-top:10px">${tasks.map((t, i) => `<label class="taatt draftrow">
+        <input type="checkbox" data-draft="${i}"${t.on ? ' checked' : ''} style="margin-top:3px;flex:none;width:17px;height:17px;accent-color:var(--primary)">
+        <span style="flex:1;min-width:0">
+          <span style="display:block;font-weight:650">${esc(t.title)}</span>
+          ${t.description ? `<span class="hint" style="display:block;margin-top:3px;line-height:1.55">${esc(t.description)}</span>` : ''}
+          <span class="hint" style="display:block;margin-top:4px;font-size:12px">${t.durationMin} min · no due date yet</span>
+        </span></label>`).join('')}</div>
+      <div class="acts"><button class="btn ghost" data-close style="flex:1">Discard</button>
+        <button class="btn" id="draftSend" style="flex:1"${on ? '' : ' disabled'}>Assign ${on} task${on === 1 ? '' : 's'}</button></div>`);
+    document.querySelectorAll('[data-draft]').forEach((b) => {
+      b.onchange = () => { tasks[+b.getAttribute('data-draft')].on = b.checked; paint(); };
+    });
+    $('#draftSend').onclick = async () => {
+      const picked = tasks.filter(t => t.on);
+      if (!picked.length) return;
+      $('#draftSend').disabled = true;
+      const now = Date.now();
+      const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
+      picked.forEach((t, i) => cur.push({
+        id: `${now}_${i}`, title: t.title, description: t.description || '',
+        youtube: '', song: '', drill: null, drillLevel: null, drillMode: null,
+        dueDate: '', durationMin: t.durationMin || 0, completed: false,
+        attachments: [], assignedAt: new Date().toISOString(), teacherUid: meUid,
+      }));
+      try {
+        await updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
+        stu.assignedTasks = cur;
+        closeModal(); paintStudent();
+        toast(`${picked.length} task${picked.length === 1 ? '' : 's'} sent to ${displayName(stu)}`);
+      } catch { toast('Could not assign'); $('#draftSend').disabled = false; }
+    };
+  };
+  paint();
 }
 
 // ── Assign a song to learn ──────────────────────────────────────────────
