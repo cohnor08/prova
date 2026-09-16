@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { topicSheetHtml } from '../../lib/printSheets';
+import { saveSheet } from '../../lib/pdf';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { LIBRARY_TOPICS, LIBRARY_CATEGORIES, LIBRARY_LEVELS } from '../../constants/library';
 import YouTubePlayerModal from '../../components/YouTubePlayerModal';
@@ -47,6 +50,7 @@ export default function LibraryScreen({ navigation }) {
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
   const [selected, setSelected] = useState(null); // topic opened in the detail modal
+  const [saving, setSaving] = useState(false);    // building the topic's PDF
   const [watch, setWatch] = useState(null); // { query } for the in-app video player
 
   useEffect(() => {
@@ -83,6 +87,23 @@ export default function LibraryScreen({ navigation }) {
     const hay = `${norm(t.title)} ${norm(t.summary)} ${norm(t.category)} ${(t.tags || []).join(' ')}`;
     return q.split(/\s+/).every((word) => hay.includes(word));
   });
+
+  const saveTopicPdf = async () => {
+    if (!selected || saving) return;
+    setSaving(true);
+    try {
+      await saveSheet(topicSheetHtml({
+        title: selected.title,
+        meta: `${selected.category} · ${selected.level} · ${selected.instrument}`,
+        summary: selected.summary,
+        steps: (selected.tasks || []).map((t) => t.text),
+      }), selected.title);
+    } catch (e) {
+      Alert.alert('Could not save', 'That sheet could not be made into a PDF. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -150,6 +171,20 @@ export default function LibraryScreen({ navigation }) {
                 <Text style={styles.sheetTitle} numberOfLines={2}>{selected?.title}</Text>
                 <Text style={styles.sheetMeta}>{selected?.category} · {selected?.level}</Text>
               </View>
+              {/* The whole topic as a sheet you can print or keep — a lesson
+                  is easier to follow on paper with the instrument in hand. */}
+              <TouchableOpacity
+                style={styles.sheetPdfBtn}
+                onPress={saveTopicPdf}
+                disabled={saving}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Save this lesson as a PDF"
+              >
+                {saving
+                  ? <Ghost size="small" color={COLORS.primary} />
+                  : <Ionicons name="download-outline" size={20} color={COLORS.primary} />}
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => setSelected(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={24} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -213,6 +248,7 @@ const styles = themedStyles(() => StyleSheet.create({
   sheetTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
   sheetMeta: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
   summary: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 21, marginBottom: SPACING.md },
+  sheetPdfBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 2 },
   task: { marginBottom: SPACING.md },
   taskText: { color: COLORS.text, fontSize: 14, lineHeight: 21 },
   watchBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 2 },
