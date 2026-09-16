@@ -91,6 +91,14 @@ export async function askProva({ question, instrument, level, history }) {
 // automatically every week; this is the on-demand "send now" / test path.
 // opts: { studentUid? } to send just one, { testEmail? } to redirect all to one
 // address for testing. Returns { sent, skipped, failed, total }.
+// A teacher asking for a starting point on one student: Claude reads that
+// student's own practice record and proposes 3-4 tasks. Nothing is written —
+// the teacher edits and sends them from the assign sheet.
+export async function draftNextWeek(studentUid) {
+  const r = await callFunction('draftNextWeek', { studentUid });
+  return { summary: r?.summary || '', tasks: Array.isArray(r?.tasks) ? r.tasks : [] };
+}
+
 export async function sendParentReportsNow(opts = {}) {
   track('parent_reports_sent_now');
   return callFunction('sendParentReportsNow', {

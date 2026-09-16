@@ -1669,6 +1669,9 @@ function render() {
   const d = doneIds();
   const { solo, classGroups } = assignedGroups();
   const isStudent = teacherTasksFirst();
+  // Someone else sets this student's work — Prova shouldn't be touting its own
+  // plan against their teacher's homework. Mirrors hasTeacher in TodayScreen.js.
+  const hasTeacher = myTeacherUids().length > 0;
   const taskCard = (title, list, showKey, meta) => {
     const open = list.filter(t => !t.completed).length;
     return `<section class="card"><header><h3>${esc(title)}</h3>
@@ -1730,7 +1733,8 @@ function render() {
             : `<button class="btn sm ghost" data-chal="1" style="margin-top:14px">Mark as done</button>`}
         </section>`; })()}
       ${isStudent ? assignedCard : ''}
-      <section class="card"><header><h3>Today's sessions</h3>
+      ${hasTeacher && !sessions.length ? '' : `<section class="card"><header>
+        <h3>${hasTeacher ? 'Extra practice' : "Today's sessions"}</h3>
         <span class="meta">${sessions.length ? `${donePlan} of ${sessions.length} done` : ''}</span></header>
         ${sessions.length ? rows(sessions, 'plan', 4)
           : `<div class="empty">
@@ -1740,7 +1744,7 @@ function render() {
                 : 'Build a week and Prova fills every day around your goals.'}</div>
               ${me.practicePlan ? '' : '<button class="btn" id="makePlan">Build my practice plan</button>'}
             </div>`}
-      </section>
+      </section>`}
       ${isStudent ? '' : assignedCard}
     </div><div class="stack">
       <section class="card"><header><h3>This account</h3></header>
