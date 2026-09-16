@@ -279,7 +279,7 @@ export default function App() {
 }
 
 function AppInner() {
-  const { user, onboardingComplete, setOnboardingComplete, role, loading,
+  const { user, onboardingComplete, setOnboardingComplete, role, loading, profileLoaded,
     needsEmailVerification, setNeedsEmailVerification } = useAuth();
   const { isUnderMaintenance, message, loading: maintenanceLoading } = useMaintenance();
   const { colors, mode } = useTheme();
@@ -299,8 +299,13 @@ function AppInner() {
   // rendered properly — including Accept/Decline on a gig invite.
   usePushTaps();
 
+  // Hold the splash rather than guess. Onboarding is only ever shown once the
+  // profile has really been read: an existing account must never be dropped
+  // back into "pick your instrument" because the answer hasn't arrived yet.
+  const waitingForProfile = !!user && !onboardingComplete && !profileLoaded;
+
   let body;
-  if (loading || maintenanceLoading) {
+  if (loading || maintenanceLoading || waitingForProfile) {
     body = (
       <View style={styles.loading}>
         <StatusBar style="light" />

@@ -68,7 +68,8 @@ export function sessionPoints(minutes, streakDay, rating) {
 // total from their lifetime stats (historical per-session streaks are lost, so
 // we approximate with the current streak + last rating). Used once, then the
 // banked total takes over.
-export function backfillScore(u = {}) {
+export function backfillScore(input) {
+  const u = input || {};
   return Math.round(
     (u.totalMinutes || 0) * POINTS_PER_MIN
     + (u.totalSessions || 0) * SESSION_BONUS
@@ -77,8 +78,12 @@ export function backfillScore(u = {}) {
   );
 }
 
+// NOTE the `input || {}` in each of these: a screen calls them while its user
+// doc is still loading (userData starts as null, and on a cold start offline
+// that can last seconds), and a default parameter does NOT catch null.
 // The score to show / rank by: the banked total once it exists, else the backfill.
-export function displayScore(u = {}) {
+export function displayScore(input) {
+  const u = input || {};
   return typeof u.provaScore === 'number' ? u.provaScore : backfillScore(u);
 }
 
@@ -89,7 +94,8 @@ export function displayScore(u = {}) {
 // streak as it actually stands right now: it only counts if the last session was
 // today or yesterday (the same rule the student self-heal uses). Use this
 // wherever another user's streak is displayed.
-export function liveStreak(u = {}) {
+export function liveStreak(input) {
+  const u = input || {};
   const streak = u.streak || 0;
   if (streak <= 0 || !u.lastSessionDate) return 0;
   const last = new Date(u.lastSessionDate).toDateString();
@@ -114,7 +120,8 @@ const monthKeyOf = (d = new Date()) =>
 // grants earned restores for every POINTS_PER_EARNED_RESTORE crossed since the
 // baseline (set to their score the first time we see them, so past points don't
 // grant a flood). Returns the view + any field `updates` the caller should save.
-export function restoreState(u = {}) {
+export function restoreState(input) {
+  const u = input || {};
   const monthKey = monthKeyOf();
   const score = displayScore(u);
 
@@ -141,7 +148,8 @@ export function restoreState(u = {}) {
 // Field updates for spending one restore (free first, then earned), or null if
 // none are available. Does NOT touch the streak itself — the caller backfills
 // the missed day so the chain continues.
-export function spendRestore(u = {}) {
+export function spendRestore(input) {
+  const u = input || {};
   const st = restoreState(u);
   if (st.total <= 0) return null;
   const updates = { ...st.updates };

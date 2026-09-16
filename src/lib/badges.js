@@ -6,7 +6,8 @@ import { db } from './firebase';
 import { BADGES } from '../constants/badges';
 import { track } from './analytics';
 
-export function badgeStats(u = {}) {
+export function badgeStats(input) {
+  const u = input || {};
   const tasks = Array.isArray(u.assignedTasks) ? u.assignedTasks : [];
   const songs = Array.isArray(u.learningSongs) ? u.learningSongs : [];
   return {
