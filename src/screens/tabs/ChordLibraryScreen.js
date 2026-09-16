@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, Alert } from 'react-native';
+import Ghost from '../../components/Ghost';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ChordDiagram from '../../components/ChordDiagram';
@@ -7,6 +8,8 @@ import ScaleDiagram from '../../components/ScaleDiagram';
 import { GUITAR_CHORDS, ROOTS, CHORD_TYPES } from '../../constants/chords';
 import { SCALES, SCALE_ROOTS, NOTE_NAMES } from '../../constants/scales';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
+import { chordSheetHtml, scaleSheetHtml } from '../../lib/printSheets';
+import { saveSheet } from '../../lib/pdf';
 import { useThemeSync } from '../../lib/ThemeContext';
 
 // Every card is the same fixed height (the diagram is always 4 frets), so we can
@@ -68,6 +71,31 @@ export default function ChordLibraryScreen({ navigation }) {
   const scaleRootIdx = NOTE_NAMES.indexOf(scaleRoot);
   const scaleNotes = scale.intervals.map((i) => NOTE_NAMES[(scaleRootIdx + i) % 12]);
 
+  const [saving, setSaving] = useState(false);
+  const savePdf = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (mode === 'chords') {
+        const which = [root === 'All' ? null : root, type === 'All' ? null : type].filter(Boolean).join(' ');
+        const heading = which ? `${which} chords` : 'Chord shapes';
+        await saveSheet(chordSheetHtml({
+          heading,
+          sub: `${chords.length} shape${chords.length === 1 ? '' : 's'} · guitar, standard tuning`,
+          chords: chords.map((c) => ({ name: c.name, frets: c.frets, fingers: c.fingers })),
+        }), heading);
+      } else {
+        await saveSheet(scaleSheetHtml({
+          rootName: scaleRoot, scaleName, intervals: scale.intervals,
+        }), `${scaleRoot} ${scaleName}`);
+      }
+    } catch (e) {
+      Alert.alert('Could not save', 'That sheet could not be made into a PDF. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -75,7 +103,19 @@ export default function ChordLibraryScreen({ navigation }) {
           <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chords & Scales</Text>
-        <View style={{ width: 24 }} />
+        {/* Saves exactly what's on screen — the filtered shapes, or the scale
+            you're looking at — as a sheet to print or keep. */}
+        <TouchableOpacity
+          onPress={savePdf}
+          disabled={saving}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={mode === 'chords' ? 'Save these chords as a PDF' : 'Save this scale as a PDF'}
+        >
+          {saving
+            ? <Ghost size="small" color={COLORS.primary} />
+            : <Ionicons name="download-outline" size={22} color={COLORS.primary} />}
+        </TouchableOpacity>
       </View>
 
       {/* Chords / Scales toggle */}

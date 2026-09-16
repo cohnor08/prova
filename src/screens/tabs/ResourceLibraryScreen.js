@@ -7,7 +7,9 @@ import {
 import Ghost from '../../components/Ghost';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { pickMedia, captureMedia, uploadResourceMedia } from '../../lib/media';
+import { pickMedia, captureMedia, uploadResourceMedia, pickDocument, uploadTaskFile } from '../../lib/media';
+import { attachmentKind, attachmentMeta, cleanFileName, TASK_FILE_MAX_LABEL } from '../../lib/attachments';
+import TaskAttachments from '../../components/TaskAttachments';
 import {
   doc, getDoc, updateDoc, collection, query, where, getDocs, arrayUnion,
 } from 'firebase/firestore';
@@ -76,6 +78,11 @@ export default function ResourceLibraryScreen({ navigation }) {
   const [newLevel, setNewLevel] = useState('Beginner');
   const [newPhoto, setNewPhoto] = useState('');   // uploaded resource-photo URL
   const [photoBusy, setPhotoBusy] = useState(false);
+  // PDFs (sheet music, tabs) and audio kept ON the resource, so they go out
+  // with it every time it's assigned rather than being re-picked each time.
+  const [newFiles, setNewFiles] = useState([]);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [filePct, setFilePct] = useState(null);
   const [resSearch, setResSearch] = useState('');       // search across the teacher's own resources
   const [expandedRes, setExpandedRes] = useState(null);
   const [resCategories, setResCategories] = useState([]); // teacher's own category names
@@ -169,6 +176,9 @@ export default function ResourceLibraryScreen({ navigation }) {
       description: assignInstructions.trim(),
       youtube: assignTarget.url || '',
       photo: assignTarget.photo || '',
+      // The resource's files ARE the task's attachments — before this, a
+      // resource's photo was written to a `photo` field no student screen reads.
+      attachments: resourceAtts(assignTarget),
       song: '',
       drill: assignTarget.drill || null,
       drillLevel: assignTarget.drill ? assignDrillLevel : null,
@@ -228,13 +238,37 @@ export default function ResourceLibraryScreen({ navigation }) {
     setNewCatText(''); setAddingCat(false);
   };
 
+  const attachFile = async () => {
+    if (fileBusy) return;
+    const picked = await pickDocument();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Cannot attach', picked.error); return; }
+    setFileBusy(true); setFilePct(0);
+    try {
+      const uid = auth.currentUser.uid;
+      const att = await uploadTaskFile(picked, uid, (pct) => setFilePct(pct));
+      setNewFiles((prev) => [...prev, att]);
+    } catch (e) {
+      Alert.alert('Upload failed', e?.message || 'That file could not be uploaded.');
+    } finally {
+      setFileBusy(false); setFilePct(null);
+    }
+  };
+
+  // Everything attached to a resource, in the shape a task carries — the old
+  // single `photo` field included, so nothing added before this is lost.
+  const resourceAtts = (r) => [
+    ...(r?.photo ? [{ type: 'photo', url: r.photo, title: 'Photo' }] : []),
+    ...(Array.isArray(r?.files) ? r.files : []),
+  ];
+
   const saveCustom = (next) => {
     setCustom(next);
     const uid = auth.currentUser?.uid;
     if (uid) updateDoc(doc(db, 'users', uid), { customResources: next }).catch(() => {});
   };
 
-  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); setNewCategory(''); setAddingCat(false); setNewCatText(''); setNewPhoto(''); setPhotoBusy(false); };
+  const resetForm = () => { setNewTitle(''); setNewUrl(''); setNewDesc(''); setEditingId(null); setNewCategory(''); setAddingCat(false); setNewCatText(''); setNewPhoto(''); setPhotoBusy(false); setNewFiles([]); setFileBusy(false); setFilePct(null); };
 
   // Attach a photo to the resource — from the library or the camera. Uploads to
   // Storage and keeps the download URL. (Upload works on the dev build; it hangs
@@ -275,16 +309,18 @@ export default function ResourceLibraryScreen({ navigation }) {
     setNewLevel(r.level || 'Beginner');
     setNewCategory(r.category || '');
     setNewPhoto(r.photo || '');
+    setNewFiles(Array.isArray(r.files) ? r.files : []);
     setShowAdd(true);
   };
 
   const saveResource = () => {
-    if (!newTitle.trim() || (!newUrl.trim() && !newPhoto)) {
-      Alert.alert('Add a title and a link or photo', 'A title plus either a YouTube link (or search) or a photo is needed.');
+    if (!newTitle.trim() || (!newUrl.trim() && !newPhoto && newFiles.length === 0)) {
+      Alert.alert('Add a title and something to open', 'A title plus a YouTube link (or search), a photo, or a file.');
       return;
     }
     if (photoBusy) { Alert.alert('Photo still uploading', 'Wait for the photo to finish, then save.'); return; }
-    const fields = { title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '', photo: newPhoto || '' };
+    if (fileBusy) { Alert.alert('File still uploading', 'Wait for the file to finish, then save.'); return; }
+    const fields = { title: newTitle.trim(), url: newUrl.trim(), description: newDesc.trim(), instrument: newInstrument, level: newLevel, category: newCategory || '', photo: newPhoto || '', files: newFiles };
     if (editingId) {
       saveCustom(custom.map((x) => (x.id === editingId ? { ...x, ...fields } : x)));
     } else {
@@ -308,7 +344,11 @@ export default function ResourceLibraryScreen({ navigation }) {
         (r.title || '').toLowerCase().includes(resQuery)
         || (r.description || '').toLowerCase().includes(resQuery)
         || (r.url || '').toLowerCase().includes(resQuery))
-    : custom.filter((r) => r.instrument === instrument && r.level === level);
+    // A resource saved in Studio carries no instrument or level — Studio has no
+    // picker for them. Unclassified ones belong to every filter rather than to
+    // none, which is why they used to be invisible on the phone entirely.
+    : custom.filter((r) => (!r.instrument || r.instrument === instrument)
+        && (!r.level || r.level === level));
   // Category chip filter (only when browsing, not searching).
   if (!resQuery && resCatFilter !== 'All') {
     myResources = myResources.filter((r) => (r.category || '') === resCatFilter);
@@ -414,6 +454,9 @@ export default function ResourceLibraryScreen({ navigation }) {
                   {open && (
                     <>
                       {!!r.description && <Text style={[styles.itemDetail, { marginTop: SPACING.sm }]}>{r.description}</Text>}
+                      {resourceAtts(r).length > 0 && (
+                        <TaskAttachments attachments={resourceAtts(r)} style={{ marginTop: SPACING.sm }} />
+                      )}
                       <TouchableOpacity style={styles.ytRow} onPress={() => setWatch({ query: r.url, title: r.title })} activeOpacity={0.8}>
                         <View style={styles.rowIcon}>
                           <Ionicons name="play-circle" size={18} color={COLORS.error} />
@@ -422,7 +465,7 @@ export default function ResourceLibraryScreen({ navigation }) {
                         <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
                       </TouchableOpacity>
                       <View style={styles.resActions}>
-                        <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '', photo: r.photo || '' })} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.resAction} onPress={() => setAssignTarget({ title: r.title, url: r.url, description: r.description || '', photo: r.photo || '', files: r.files || [] })} activeOpacity={0.7}>
                           <Ionicons name="paper-plane-outline" size={14} color={COLORS.primary} />
                           <Text style={styles.resActionText}>Assign</Text>
                         </TouchableOpacity>
@@ -667,11 +710,46 @@ export default function ResourceLibraryScreen({ navigation }) {
                   <Text style={styles.photoAddText}>{photoBusy ? 'Uploading…' : 'Add a photo (library or camera)'}</Text>
                 </TouchableOpacity>
               )}
+
+              <Text style={styles.pickLabel}>FILES (OPTIONAL)</Text>
+              <Text style={styles.fileHint}>
+                Sheet music or tabs as a PDF, a backing track, a clip — up to {TASK_FILE_MAX_LABEL} each.
+                They go out with the resource every time you assign it.
+              </Text>
+              {newFiles.map((a, i) => (
+                <View key={`${a.url}_${i}`} style={styles.fileRow}>
+                  <Ionicons
+                    name={attachmentKind(a) === 'audio' ? 'musical-notes' : attachmentKind(a) === 'pdf' ? 'document-text'
+                      : attachmentKind(a) === 'video' ? 'videocam' : 'attach'}
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{cleanFileName(a.title || 'File')}</Text>
+                    <Text style={styles.fileMeta} numberOfLines={1}>{attachmentMeta(a)}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setNewFiles((prev) => prev.filter((_, k) => k !== i))}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.photoAddBtn} onPress={attachFile} disabled={fileBusy} activeOpacity={0.85}>
+                {fileBusy
+                  ? <Ghost size="small" color={COLORS.primary} />
+                  : <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />}
+                <Text style={styles.photoAddText}>
+                  {fileBusy ? (filePct != null ? `Uploading… ${filePct}%` : 'Uploading…') : 'Add a PDF or audio file'}
+                </Text>
+              </TouchableOpacity>
+
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={saveResource}>
+                <TouchableOpacity style={[styles.saveBtn, (photoBusy || fileBusy) && { opacity: 0.5 }]} onPress={saveResource} disabled={photoBusy || fileBusy}>
                   <Text style={styles.saveText}>{editingId ? 'Save' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
@@ -914,6 +992,13 @@ const styles = themedStyles(() => StyleSheet.create({
   modalSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: SPACING.md },
   input: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14, marginBottom: SPACING.sm },
   inputMulti: { minHeight: 70, textAlignVertical: 'top' },
+  fileHint: { color: COLORS.textMuted, fontSize: 12.5, lineHeight: 18, marginBottom: SPACING.sm },
+  fileRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  fileName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  fileMeta: { color: COLORS.textMuted, fontSize: 11.5, marginTop: 1 },
   photoAddBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary + '40', backgroundColor: COLORS.primary + '12' },
   photoAddText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },

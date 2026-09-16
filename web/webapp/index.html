@@ -611,6 +611,8 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, on
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory.js';
 import { attachmentKind, attachmentMeta, cleanFileName } from '/shared/attachments.js';
+// The printable sheets — the same file the phone prints from (src/lib/printSheets.js).
+import { chordSheetHtml, scaleSheetHtml, topicSheetHtml } from '/shared/printSheets.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment, deleteDoc, collection, getDocs,
   addDoc, serverTimestamp, onSnapshot, query, orderBy, limit, where, arrayUnion }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -1195,6 +1197,23 @@ window.addEventListener('resize', fitMsg);
     if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); close(); }
   }, true);
 })();
+
+// ── printing a library sheet ─────────────────────────────────────────────
+// A hidden iframe, printed and dropped: the student never leaves the page, and
+// every browser's print dialog can "Save as PDF" from there. Same sheets the
+// phone builds (/shared/printSheets.js).
+function printSheet(html) {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  frame.srcdoc = html;
+  frame.onload = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (e) { toast('Your browser blocked the print dialog'); }
+    setTimeout(() => frame.remove(), 60000);   // Safari needs it alive while the dialog is up
+  };
+  document.body.appendChild(frame);
+}
 
 // ── the nav drawer (phones only) ─────────────────────────────────────────
 // Under 720px the rail is off-canvas; this is the only way back to it. The
@@ -1829,7 +1848,9 @@ function viewPractice() {
     </div></div></div>`;
 }
 
-let CH = { root: 'All', type: 'All' };
+let CH = { root: 'All', type: 'All', scaleRoot: 'C' };
+// The 12 roots a scale sheet can be built on (src/constants/scales.js).
+const SCALE_ROOTS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 function chordSvg(c) {
   const W=92,H=112,L=15,T=24,SP=12.4,FR=18;
   const pos = c.f.filter(x => x > 0);
@@ -1857,11 +1878,32 @@ function viewChords() {
     ${head('Chords &amp; scales', `${APP.chords.length} shapes · ${APP.scales.length} scales`)}
     <div style="display:flex;gap:8px;flex-wrap:wrap">${roots.map(r=>chip('root',r,CH.root===r)).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${types.map(t=>chip('type',t,CH.type===t)).join('')}</div>
-    ${card('Shapes', `${list.length} of ${APP.chords.length}`,
-      list.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px">${list.map(chordSvg).join('')}</div>`
-      : '<p class="hint" style="margin:0">Nothing matches those filters.</p>')}
-    ${card('Scales', APP.scales.length, `<div class="hint">${APP.scales.map(x=>esc(x.name)).join(' · ')}</div>`)}
+    <section class="card"><header><h3>Shapes</h3><span class="meta">${list.length} of ${APP.chords.length}</span>
+      <button class="btn sm ghost" id="chordPdf" style="margin-left:auto">⤓ Save as PDF</button></header>
+      ${list.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px">${list.map(chordSvg).join('')}</div>`
+      : '<p class="hint" style="margin:0">Nothing matches those filters.</p>'}</section>
+    <section class="card"><header><h3>Scales</h3><span class="meta">${APP.scales.length}</span></header>
+      <p class="hint" style="margin:0 0 12px">Pick a root, then save any scale as a sheet — every note of it
+        mapped across the neck, ready to print.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        ${SCALE_ROOTS.map(r => `<button class="btn sm ghost" data-scaleroot="${esc(r)}"${
+          CH.scaleRoot === r ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(r)}</button>`).join('')}</div>
+      ${APP.scales.map((sc, i) => `<div class="prow"><div class="pl">
+        <div class="pt">${esc(CH.scaleRoot)} ${esc(sc.name)}</div>
+        <div class="ps">${esc(sc.intervals.length)} notes</div></div>
+        <button class="btn sm ghost" data-scalepdf="${i}">⤓ PDF</button></div>`).join('')}
+    </section>
   </div>`;
+  // The sheet takes the shapes exactly as filtered on screen.
+  $('#chordPdf').onclick = () => {
+    const which = [CH.root === 'All' ? null : CH.root, CH.type === 'All' ? null : CH.type].filter(Boolean).join(' ');
+    const heading = which ? `${which} chords` : 'Chord shapes';
+    printSheet(chordSheetHtml({
+      heading,
+      sub: `${list.length} shape${list.length === 1 ? '' : 's'} · guitar, standard tuning`,
+      chords: list.map(c => ({ name: c.n, frets: c.f, fingers: c.fg })),
+    }));
+  };
 }
 let LB = { cat: 'All', level: 'All' };
 function viewLibrary() {
@@ -1888,6 +1930,7 @@ function viewLibrary() {
                   ${t.y ? `<button class="btn sm ghost" data-yt="${esc(t.y)}" data-yttitle="${esc(x.t)}" style="margin-top:8px">▶ Watch</button>` : ''}
                 </div></div>`).join('')}
               ${!(x.k || []).length ? '<p class="hint" style="margin:0">No drills listed for this topic.</p>' : ''}
+              <button class="btn sm ghost" data-libpdf="${i}" style="margin-top:12px">⤓ Save as PDF</button>
             </div></div>`;
         }).join('')
       : '<p class="hint" style="margin:0">Nothing matches.</p>')}
@@ -2765,6 +2808,20 @@ function viewProfile() {
 document.addEventListener('click', (e) => {
   let t;
   if ((t = e.target.closest('[data-ch]'))) { CH[t.getAttribute('data-ch')] = t.getAttribute('data-v'); viewChords(); }
+  if ((t = e.target.closest('[data-libpdf]'))) {
+    // The row index is into the FILTERED list, which is what's on screen.
+    const shown = APP.lib.filter(x => (LB.cat === 'All' || x.c === LB.cat) && (LB.level === 'All' || x.l === LB.level));
+    const x = shown[+t.getAttribute('data-libpdf')];
+    if (x) printSheet(topicSheetHtml({ title: x.t, meta: `${x.c} · ${x.l} · ${x.i}`, summary: x.s,
+      steps: (x.k || []).map(k => k.x) }));
+    return;
+  }
+  if ((t = e.target.closest('[data-scaleroot]'))) { CH.scaleRoot = t.getAttribute('data-scaleroot'); viewChords(); return; }
+  if ((t = e.target.closest('[data-scalepdf]'))) {
+    const sc = APP.scales[+t.getAttribute('data-scalepdf')];
+    if (sc) printSheet(scaleSheetHtml({ rootName: CH.scaleRoot, scaleName: sc.name, intervals: sc.intervals }));
+    return;
+  }
   if ((t = e.target.closest('[data-lb]'))) { LB[t.getAttribute('data-lb')] = t.getAttribute('data-v'); viewLibrary(); }
 });
 

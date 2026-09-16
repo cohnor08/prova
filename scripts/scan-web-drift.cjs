@@ -55,6 +55,10 @@ const SHARED = [
   ['proofAt',       STUDENT_WEB, 'when a proof clip was filmed'],
   ['proofVerified', STUDENT_WEB, "the teacher's tick on a proof clip"],
   ['proofUrl',      TEACHER_WEB, 'the teacher has to be able to watch submitted proof'],
+  // the teacher's own resource library — Studio kept a separate `resources`
+  // array for months, so a resource saved on the phone was invisible there and
+  // vice versa. Both sides read/write `customResources` now.
+  ['customResources', TEACHER_WEB, "the teacher's saved resources (Studio had its own `resources` list)"],
   // teacher ↔ student linking
   ['teacherUids',   STUDENT_WEB, 'a student can be linked to SEVERAL teachers'],
   ['teacherCode',   STUDENT_WEB, 'the join code a student enters to link a teacher'],
@@ -91,6 +95,12 @@ const ATTACHMENT_SURFACES = [
   ['src/screens/tabs/TodayScreen.js', /<TaskAttachments\b/, "the student's task card must show a teacher's files"],
   ['src/components/PracticePlayer.js', /<TaskAttachments\b/, 'the practice player must show a teacher\'s files'],
   ['src/screens/tabs/TeacherScreen.js', /\bpickDocument\(/, 'a teacher on the phone must be able to attach a PDF or audio file'],
+  ['src/screens/tabs/ResourceLibraryScreen.js', /\bpickDocument\(/, 'a saved resource must be able to carry a PDF or audio file'],
+  [TEACHER_WEB, /resourceAttachments\(/, "a resource's files must travel onto the task when it's assigned"],
+  // The printable sheets are generated from ONE module on both sides.
+  [STUDENT_WEB, /from '\/shared\/printSheets\.js'/, 'the web library must print the same sheets the phone does'],
+  ['src/screens/tabs/ChordLibraryScreen.js', /chordSheetHtml|scaleSheetHtml/, 'chords and scales must be printable from the phone'],
+  ['src/screens/tabs/LibraryScreen.js', /topicSheetHtml/, 'a lesson topic must be printable from the phone'],
 ];
 for (const [file, re, why] of ATTACHMENT_SURFACES) {
   const src = webCache[file] ?? read(file);
