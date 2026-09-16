@@ -154,7 +154,21 @@
   .linkbtn{background:none;border:0;padding:0;cursor:pointer;font:inherit;font-weight:700;color:var(--bad)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
-  /* A teacher's files on a task: audio plays in place, everything else opens. */
+  /* The in-page PDF viewer. Sits above everything (including the practice
+     player) as its OWN element, so opening it never rebuilds the player —
+     the clock keeps running and a backing track keeps playing underneath. */
+  .pdfbox{position:fixed;inset:0;z-index:210;background:var(--page);display:flex;flex-direction:column}
+  .pdfbox[hidden]{display:none}
+  .pdfbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--ground);
+    border-bottom:1px solid var(--line)}
+  .pdfname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:14px}
+  .pdfclock{flex:none;font-family:var(--round);font-weight:700;font-size:15px;color:var(--primary);
+    font-variant-numeric:tabular-nums}
+  .pdfclock[hidden]{display:none}
+  .pdfbox iframe{flex:1;width:100%;border:0;background:#525659}
+
+  /* A teacher's files on a task: audio and video play in place, PDFs open in
+     the viewer above — nothing sends the student off the page mid-practice. */
   .atts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 12px;text-align:left}
   .att{display:flex;gap:12px;align-items:flex-start;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;
     background:var(--card);color:inherit;text-decoration:none}
@@ -163,6 +177,9 @@
   .attb{flex:1;min-width:0}
   .attn{font-weight:650;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .att audio{display:block;width:100%;height:36px;margin-top:8px}
+  .att video{display:block;width:100%;max-height:260px;margin-top:8px;border-radius:8px;background:#000}
+  button.att{font:inherit;text-align:left;width:100%;cursor:pointer}
+  button.att:hover{border-color:var(--primary)}
   .atto{color:var(--primary);font-weight:650;font-size:13px;align-self:center;flex:none}
   .attphotos{display:flex;gap:8px;flex-wrap:wrap}
   .attphotos img{width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in}
@@ -570,6 +587,20 @@
 <div class="lightbox" id="lightbox" hidden>
   <button class="lightboxX" id="lightboxX" aria-label="Close">&times;</button>
   <img id="lightboxImg" alt="">
+</div>
+<!-- Sheet music opens HERE, not in another tab: the practice clock is running
+     on this page, and a task you have to leave the app to read is a task the
+     timer can't follow. -->
+<div class="pdfbox" id="pdfbox" hidden>
+  <div class="pdfbar">
+    <span class="pdfname" id="pdfName"></span>
+    <!-- Reading the chart IS practising, so the clock stays in sight while the
+         viewer covers the player. Empty (and hidden) when nothing is running. -->
+    <span class="pdfclock" id="pdfClock" hidden></span>
+    <a class="btn sm ghost" id="pdfTab" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab</a>
+    <button class="btn sm" id="pdfClose">Close</button>
+  </div>
+  <iframe id="pdfFrame" title="Attachment"></iframe>
 </div>
 
 <script type="module">
@@ -1134,6 +1165,37 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
+// ── the in-page PDF viewer ───────────────────────────────────────────────
+// Opened from any [data-pdf]. Delegated on the document like the lightbox, so
+// it works from a task card AND from inside the practice player, whose markup
+// is rebuilt on every snapshot. The iframe is only loaded while open — a
+// closed viewer must not hold a 20 MB score in memory.
+(() => {
+  const box = document.querySelector('#pdfbox');
+  const frame = document.querySelector('#pdfFrame');
+  if (!box || !frame) return;
+  const close = () => { box.hidden = true; frame.removeAttribute('src'); paintPdfClock(); };
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-pdf]');
+    if (!t) return;
+    const url = t.getAttribute('data-pdf');
+    if (!url) return;
+    e.preventDefault();
+    document.querySelector('#pdfName').textContent = t.getAttribute('data-pdfname') || 'Attachment';
+    // Every browser's own PDF viewer, in a frame — no library to ship, and
+    // printing/downloading stay available through "Open in a new tab".
+    document.querySelector('#pdfTab').href = url;
+    frame.src = url;
+    box.hidden = false;
+    paintPdfClock();
+  });
+  document.querySelector('#pdfClose').onclick = close;
+  // Escape closes the viewer and nothing else — the player stays open behind it.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); close(); }
+  }, true);
+})();
+
 // ── the nav drawer (phones only) ─────────────────────────────────────────
 // Under 720px the rail is off-canvas; this is the only way back to it. The
 // scrim carries `hidden` when closed so it can't swallow taps on a wide
@@ -1435,10 +1497,11 @@ function toastSticky(msg) {
 
 // What a teacher attached to a task — the same shapes the phone shows in
 // src/components/TaskAttachments.js, recognised by /shared/attachments.js.
-// Audio gets a real player so a backing track runs while they practise; a PDF
-// or video opens in its own tab, where the browser's viewer does it properly.
+// Everything stays ON this page: audio and video play in the row, a PDF opens
+// in the viewer above it. The practice clock is running while they read, and
+// sending them to another tab for the sheet music took them out of the app.
 // `key` names the task, so a track is only ever carried across a re-render
-// onto the SAME task (see setHtmlKeepingAudio).
+// onto the SAME task (see setHtmlKeepingMedia).
 function attachmentsHtml(list, key) {
   const atts = (Array.isArray(list) ? list : []).filter(a => a && a.url);
   if (!atts.length) return '';
@@ -1450,14 +1513,21 @@ function attachmentsHtml(list, key) {
       const kind = attachmentKind(a);
       const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : kind === 'audio' ? 'Audio' : 'File')));
       const meta = esc(attachmentMeta(a));
-      return kind === 'audio'
-        ? `<div class="att"><span class="atti">${icon.audio}</span><div class="attb">
-            <div class="attn">${name}</div><div class="hint">${meta}</div>
-            <audio controls preload="none" src="${esc(a.url)}" data-attaudio="${esc(key + '|' + a.url)}"></audio></div></div>`
-        : `<a class="att" href="${esc(a.url)}" target="_blank" rel="noopener">
-            <span class="atti">${icon[kind] || '📎'}</span>
-            <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
-            <span class="atto">Open</span></a>`;
+      const media = (tag) => `<div class="att"><span class="atti">${icon[kind]}</span><div class="attb">
+        <div class="attn">${name}</div><div class="hint">${meta}</div>
+        <${tag} controls preload="none" src="${esc(a.url)}" data-attmedia="${esc(key + '|' + a.url)}"></${tag}></div></div>`;
+      if (kind === 'audio') return media('audio');
+      if (kind === 'video') return media('video');
+      if (kind === 'pdf') {
+        return `<button class="att" type="button" data-pdf="${esc(a.url)}" data-pdfname="${name}">
+          <span class="atti">${icon.pdf}</span>
+          <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
+          <span class="atto">Open</span></button>`;
+      }
+      return `<a class="att" href="${esc(a.url)}" target="_blank" rel="noopener">
+        <span class="atti">📎</span>
+        <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
+        <span class="atto">Open</span></a>`;
     }).join('')}
     ${photos.length ? `<div class="attphotos">${photos.map(a => `<img src="${esc(a.url)}"
       alt="${esc(cleanFileName(a.title || 'Photo'))} — click to enlarge" data-lightbox="${esc(a.url)}">`).join('')}</div>` : ''}
@@ -1466,17 +1536,19 @@ function attachmentsHtml(list, key) {
 
 // Every Firestore snapshot rebuilds the screen's HTML, and a rebuilt <audio>
 // starts again from silence — so a backing track would cut out whenever
-// anything on the user doc changed. A track that has been started is moved
-// into the new markup instead of being replaced. Moving it within the same
-// task keeps it playing: a media element only pauses if it is still out of
-// the document once the current task finishes.
-function setHtmlKeepingAudio(host, html) {
+// anything on the user doc changed. A track (or clip) that has been started is
+// moved into the new markup instead of being replaced. Moving it within the
+// same task keeps it playing: a media element only pauses if it is still out
+// of the document once the current task finishes.
+function setHtmlKeepingMedia(host, html) {
   if (!host) return;
-  const live = [...host.querySelectorAll('audio[data-attaudio]')].filter(a => !a.paused || a.currentTime > 0);
+  const sel = '[data-attmedia]';
+  const live = [...host.querySelectorAll(sel)].filter(a => !a.paused || a.currentTime > 0);
   host.innerHTML = html;
   live.forEach((a) => {
-    const slot = [...host.querySelectorAll('audio[data-attaudio]')]
-      .find(n => !live.includes(n) && n.getAttribute('data-attaudio') === a.getAttribute('data-attaudio'));
+    const slot = [...host.querySelectorAll(sel)]
+      .find(n => !live.includes(n) && n.tagName === a.tagName
+        && n.getAttribute('data-attmedia') === a.getAttribute('data-attmedia'));
     if (slot) slot.replaceWith(a);
   });
 }
@@ -1601,7 +1673,7 @@ function render() {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  setHtmlKeepingAudio($('#screen'), `<div class="content">
+  setHtmlKeepingMedia($('#screen'), `<div class="content">
     <div class="greet"><h2>${greet}, ${esc(displayName(me))}.</h2>
       <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</p></div>
     <div class="stats">
@@ -5082,6 +5154,7 @@ function tick() {
     if (!PLAY || PLAY.paused) return;
     const now = performance.now();
     PLAY.elapsed += (now - PLAY.t0) / 1000; PLAY.t0 = now;
+    paintPdfClock();
     const c = $('#pClock'); if (!c) return;
     const rem = Math.max(0, PLAY.target - PLAY.elapsed);
     c.textContent = PLAY.target ? fmt(rem) : fmt(PLAY.elapsed);
@@ -5090,10 +5163,18 @@ function tick() {
   }, 200);
 }
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
+// The practice clock, mirrored into the PDF viewer's bar while it's open.
+function paintPdfClock() {
+  const el = document.querySelector('#pdfClock');
+  if (!el) return;
+  if (!PLAY || document.querySelector('#pdfbox')?.hidden) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = PLAY.target ? fmt(Math.max(0, PLAY.target - PLAY.elapsed)) : fmt(PLAY.elapsed);
+}
 function drawPlayer() {
   const rem = Math.max(0, PLAY.target - PLAY.elapsed);
   // Pause/Resume redraws the whole sheet — a backing track has to survive that.
-  setHtmlKeepingAudio($('#overlays'), `<div class="scrim" data-close></div><div class="modal">
+  setHtmlKeepingMedia($('#overlays'), `<div class="scrim" data-close></div><div class="modal">
     <div style="display:flex;align-items:center"><span class="lab">Now practicing</span>
       <button class="x" data-close style="margin-left:auto">×</button></div>
     ${PLAY.kind === 'gigsong' ? `<div style="text-align:center;margin:2px 0 10px">
