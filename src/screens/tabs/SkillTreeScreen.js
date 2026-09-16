@@ -17,7 +17,8 @@ import { track } from '../../lib/analytics';
 
 const fmtH = (m) => (m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`);
 
-function buildLanes(u, catMins) {
+function buildLanes(input, catMins) {
+  const u = input || {};   // the user doc is null until it loads
   const sessions = u.totalSessions || 0;
   const mins = u.totalMinutes || 0;
   const score = u.provaScore || 0;
