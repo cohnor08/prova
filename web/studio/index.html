@@ -250,6 +250,13 @@
   .pendX:hover{background:var(--line)}
   /* Tap a photo to see it properly. A 230px thumbnail is useless for the thing
      people actually send — a page of sheet music or a close-up of a hand. */
+  /* In-page PDF viewer — above the assign sheet, its own element, so opening
+     a score never disturbs the half-filled form underneath. */
+  .pdfbox{position:fixed;inset:0;z-index:210;background:var(--page);display:flex;flex-direction:column}
+  .pdfbox[hidden]{display:none}
+  .pdfbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--ground);border-bottom:1px solid var(--line)}
+  .pdfname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:14px}
+  .pdfbox iframe{flex:1;width:100%;border:0;background:#525659}
   .lightbox{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);display:grid;place-items:center;padding:22px;cursor:zoom-out}
   .lightbox[hidden]{display:none}
   .lightbox img{max-width:min(1200px,94vw);max-height:92vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
@@ -399,6 +406,16 @@
 <div class="lightbox" id="lightbox" hidden>
   <button class="lightboxX" id="lightboxX" aria-label="Close">&times;</button>
   <img id="lightboxImg" alt="">
+</div>
+<!-- A PDF opens here rather than in another tab — checking the score you just
+     attached shouldn't take you out of Studio (and off a half-written task). -->
+<div class="pdfbox" id="pdfbox" hidden>
+  <div class="pdfbar">
+    <span class="pdfname" id="pdfName"></span>
+    <a class="btn sm ghost" id="pdfTab" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab</a>
+    <button class="btn sm" id="pdfClose">Close</button>
+  </div>
+  <iframe id="pdfFrame" title="Attachment"></iframe>
 </div>
 
 <script type="module">
@@ -578,6 +595,32 @@ window.addEventListener('resize', fitMsg);
   });
   box.addEventListener('click', close);          // anywhere, including the ×
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
+})();
+
+// ── the in-page PDF viewer ───────────────────────────────────────────────
+// Delegated like the lightbox above, so it works from the assign sheet's
+// attachment list (which is repainted on every add/remove).
+(() => {
+  const box = document.querySelector('#pdfbox');
+  const frame = document.querySelector('#pdfFrame');
+  if (!box || !frame) return;
+  const close = () => { box.hidden = true; frame.removeAttribute('src'); };
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-pdf]');
+    if (!t) return;
+    const url = t.getAttribute('data-pdf');
+    if (!url) return;
+    e.preventDefault();
+    document.querySelector('#pdfName').textContent = t.getAttribute('data-pdfname') || 'Attachment';
+    document.querySelector('#pdfTab').href = url;
+    frame.src = url;
+    box.hidden = false;
+  });
+  document.querySelector('#pdfClose').onclick = close;
+  // Closes the viewer ONLY — the sheet underneath (and any upload) stays put.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); close(); }
+  }, true);
 })();
 
 // ── the nav drawer (phones only) ─────────────────────────────────────────
@@ -1185,8 +1228,10 @@ function assignSheet(stu, editIdx) {
           <div style="flex:1;min-width:0">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
             <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
-          ${kind === 'pdf' || kind === 'video' || kind === 'file'
-            ? `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>` : ''}
+          ${kind === 'pdf'
+            ? `<button class="btn sm ghost" type="button" data-pdf="${esc(a.url)}" data-pdfname="${esc(name)}">Open</button>`
+            : kind === 'video' || kind === 'file'
+              ? `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>` : ''}
           <button class="x" data-taattdel="${i}" aria-label="Remove ${esc(name)}">×</button></div>
         ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
       </div>`;
