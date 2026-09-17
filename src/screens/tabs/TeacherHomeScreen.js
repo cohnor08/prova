@@ -246,6 +246,9 @@ export default function TeacherHomeScreen({ navigation }) {
   // their account (users/{uid}.teacherFiles) instead of being re-found on a
   // laptop every time they set a task.
   const [files, setFiles] = useState([]);
+  // Folders the teacher named, kept even when empty — Studio can create one
+  // before anything is in it, and the two screens share the field.
+  const [folders, setFolders] = useState([]);
   const [fileFolder, setFileFolder] = useState('All');
   const [fileBusy, setFileBusy] = useState(false);
   const [filePct, setFilePct] = useState(null);
@@ -323,6 +326,7 @@ export default function TeacherHomeScreen({ navigation }) {
         setNote(s.data()?.teacherNote || '');
         setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
         setFiles(Array.isArray(s.data()?.teacherFiles) ? s.data().teacherFiles : []);
+        setFolders(Array.isArray(s.data()?.teacherFolders) ? s.data().teacherFolders : []);
       })
       .catch(() => {});
   }, []);
@@ -359,10 +363,19 @@ export default function TeacherHomeScreen({ navigation }) {
   };
 
   const saveFileEdit = () => {
+    const folder = fileFolderText.trim();
     const next = files.map((f) => (f.id === fileEdit.id
-      ? { ...f, title: fileName.trim() || f.title, folder: fileFolderText.trim() }
+      ? { ...f, title: fileName.trim() || f.title, folder }
       : f));
     saveFiles(next);
+    // Naming a new folder here makes it, so it's there to file the next thing
+    // into — and Studio shows it too.
+    if (folder && !folders.includes(folder)) {
+      const nextFolders = [...folders, folder];
+      setFolders(nextFolders);
+      const uid = auth.currentUser?.uid;
+      if (uid) updateDoc(doc(db, 'users', uid), { teacherFolders: nextFolders }).catch(() => {});
+    }
     setFileEdit(null);
   };
 
@@ -469,7 +482,7 @@ export default function TeacherHomeScreen({ navigation }) {
           </View>
         ) : null;
       case 'files': {
-        const folders = [...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].sort();
+        const allFolders = [...new Set([...folders, ...files.map((f) => (f.folder || '').trim())].filter(Boolean))].sort();
         const shown = fileFolder === 'All' ? files : files.filter((f) => (f.folder || '') === fileFolder);
         return (
           <View style={styles.card}>
@@ -481,9 +494,9 @@ export default function TeacherHomeScreen({ navigation }) {
               Sheet music, tabs and backing tracks in one place. Tap to open or play; attach them to a task without
               going looking for the file again. Up to {TASK_FILE_MAX_LABEL} each.
             </Text>
-            {folders.length > 0 && (
+            {allFolders.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.folderRow} contentContainerStyle={{ gap: 8 }}>
-                {['All', ...folders].map((f) => (
+                {['All', ...allFolders].map((f) => (
                   <TouchableOpacity
                     key={f}
                     style={[styles.folderChip, fileFolder === f && styles.folderChipOn]}
@@ -846,9 +859,9 @@ export default function TeacherHomeScreen({ navigation }) {
           placeholderTextColor={COLORS.textMuted}
           autoCapitalize="sentences"
         />
-        {[...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].length > 0 && (
+        {[...new Set([...folders, ...files.map((f) => (f.folder || '').trim())].filter(Boolean))].length > 0 && (
           <View style={styles.folderPickRow}>
-            {[...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].sort().map((f) => (
+            {[...new Set([...folders, ...files.map((f) => (f.folder || '').trim())].filter(Boolean))].sort().map((f) => (
               <TouchableOpacity key={f} style={styles.folderChip} onPress={() => setFileFolderText(f)} activeOpacity={0.8}>
                 <Text style={styles.folderChipText} numberOfLines={1}>{f}</Text>
               </TouchableOpacity>

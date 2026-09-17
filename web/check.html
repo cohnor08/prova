@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prova — browser check</title>
+<style>
+  body{margin:0;padding:30px 22px 60px;background:#101318;color:#F4F6FA;
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,sans-serif}
+  .wrap{max-width:620px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:#8A94A8;font-size:13.5px;margin:0 0 26px}
+  .card{background:#212630;border:1px solid #333B4A;border-radius:16px;padding:20px;margin-bottom:16px}
+  h2{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#8A94A8;margin:0 0 14px}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #333B4A}
+  .row:first-of-type{border-top:0;padding-top:0}
+  .row .lbl{flex:1;min-width:0;font-size:14px}
+  .res{font-weight:700;font-size:13px;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .ok{background:rgba(110,231,183,.18);color:#6EE7B7}
+  .bad{background:rgba(245,139,139,.18);color:#F58B8B}
+  .wait{background:#2A303C;color:#8A94A8}
+  button{background:#2A99DB;color:#fff;border:0;border-radius:8px;padding:12px 22px;
+         font:inherit;font-weight:650;cursor:pointer}
+  a.link{color:#2A99DB;font-weight:650}
+  pre{background:#171A21;border:1px solid #333B4A;border-radius:10px;padding:14px;
+      font-size:12px;overflow-x:auto;color:#A8B2C4;white-space:pre-wrap;word-break:break-all}
+  .big{font-size:17px;font-weight:700;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Prova — browser check</h1>
+  <p class="sub">Click the blue button, then the link. Screenshot this whole page and send it back.</p>
+
+  <noscript>
+    <div class="card" style="border-color:#F58B8B">
+      <div class="big" style="color:#F58B8B">JavaScript is switched off</div>
+      That is the whole problem — every page needs it. Turn it on for this site,
+      or the extension blocking it needs an exception.
+    </div>
+  </noscript>
+
+  <div class="card">
+    <h2>Automatic checks</h2>
+    <div class="row"><span class="lbl">JavaScript runs</span><span class="res wait" id="r-js">waiting</span></div>
+    <div class="row"><span class="lbl">Page served over https (not a local file)</span><span class="res wait" id="r-proto">waiting</span></div>
+    <div class="row"><span class="lbl">Nothing is covering the page</span><span class="res wait" id="r-cover">waiting</span></div>
+    <div class="row"><span class="lbl">Clicks reach the page</span><span class="res wait" id="r-click">click the button below</span></div>
+    <div class="row"><span class="lbl">Links work</span><span class="res wait" id="r-link">click the link below</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Try these two things</h2>
+    <p style="margin:0 0 16px">This button counts up every time you click it.</p>
+    <button id="btn">Click me — <span id="count">0</span></button>
+    <p style="margin:22px 0 0">And this is an ordinary link:
+      <a class="link" id="lnk" href="#tested">click the link</a></p>
+  </div>
+
+  <div class="card">
+    <h2>Details</h2>
+    <pre id="info">collecting…</pre>
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  function set(id, ok, text) {
+    var el = $(id);
+    el.className = 'res ' + (ok ? 'ok' : 'bad');
+    el.textContent = text;
+  }
+  // 1. JS runs at all
+  set('#r-js', true, 'yes');
+
+  // 2. protocol — file:// breaks every absolute path on the site
+  var isFile = location.protocol === 'file:';
+  set('#r-proto', !isFile, isFile ? 'NO — opened as a local file' : location.protocol.replace(':', ''));
+
+  // 3. is something invisible sitting on top of the page?
+  var cx = Math.round(window.innerWidth / 2), cy = Math.round(window.innerHeight / 2);
+  var top = document.elementFromPoint(cx, cy);
+  var covering = top && !top.closest('.wrap') ? top : null;
+  set('#r-cover', !covering, covering ? 'BLOCKED by <' + top.tagName.toLowerCase() + '>' : 'clear');
+
+  // 4. clicks
+  var n = 0;
+  $('#btn').addEventListener('click', function () {
+    n++;
+    $('#count').textContent = n;
+    set('#r-click', true, 'yes — ' + n + ' click' + (n === 1 ? '' : 's'));
+  });
+
+  // 5. links
+  $('#lnk').addEventListener('click', function () { set('#r-link', true, 'yes'); });
+
+  // 6. environment
+  var lines = [
+    'url        ' + location.href,
+    'browser    ' + navigator.userAgent,
+    'window     ' + window.innerWidth + ' x ' + window.innerHeight,
+    'zoom/dpr   ' + (window.devicePixelRatio || 1),
+    'cookies    ' + (navigator.cookieEnabled ? 'enabled' : 'DISABLED'),
+    'online     ' + (navigator.onLine ? 'yes' : 'no'),
+    'touch      ' + ('ontouchstart' in window ? 'yes' : 'no'),
+    'top elem   <' + (top ? top.tagName.toLowerCase() + (top.id ? '#' + top.id : '') + (top.className ? '.' + String(top.className).split(' ')[0] : '') : '?') + '>'
+  ];
+  $('#info').textContent = lines.join('\n');
+})();
+</script>
+</body>
+</html>

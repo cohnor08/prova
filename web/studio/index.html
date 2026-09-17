@@ -260,7 +260,11 @@
   .pdfbox[hidden]{display:none}
   .pdfbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--ground);border-bottom:1px solid var(--line)}
   .pdfname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:14px}
-  .pdfbox iframe{flex:1;width:100%;border:0;background:#525659}
+  .pdfbody{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#1c1f26}
+  .pdfbody iframe{flex:1;width:100%;height:100%;border:0;background:#525659}
+  .pdfbody video,.pdfbody img{max-width:100%;max-height:100%;display:block}
+  .pdfaudio{width:min(560px,92vw);padding:26px;text-align:center}
+  .pdfaudio audio{width:100%;margin-top:14px}
   .lightbox{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);display:grid;place-items:center;padding:22px;cursor:zoom-out}
   .lightbox[hidden]{display:none}
   .lightbox img{max-width:min(1200px,94vw);max-height:92vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
@@ -419,7 +423,7 @@
     <a class="btn sm ghost" id="pdfTab" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab</a>
     <button class="btn sm" id="pdfClose">Close</button>
   </div>
-  <iframe id="pdfFrame" title="Attachment"></iframe>
+  <div class="pdfbody" id="pdfBody"></div>
 </div>
 
 <script type="module">
@@ -601,29 +605,50 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
-// ── the in-page PDF viewer ───────────────────────────────────────────────
-// Delegated like the lightbox above, so it works from the assign sheet's
-// attachment list (which is repainted on every add/remove).
+// ── the in-page viewer: PDFs, video, audio, images ───────────────────────
+// NOTHING a teacher attached should send them out of Studio — they are usually
+// mid-task when they open it. Delegated on the document (like the lightbox) so
+// it works from lists that get repainted, and from inside a modal.
+function openMediaViewer(url, name, kindHint) {
+  const box = document.querySelector('#pdfbox');
+  const body = document.querySelector('#pdfBody');
+  if (!box || !body || !url) return;
+  const kind = kindHint || attachmentKind({ url, title: name }) || 'file';
+  document.querySelector('#pdfName').textContent = name || 'Attachment';
+  document.querySelector('#pdfTab').href = url;
+  const safe = esc(url);
+  body.innerHTML =
+      kind === 'video' ? `<video src="${safe}" controls autoplay playsinline></video>`
+    : kind === 'audio' ? `<div class="pdfaudio"><div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
+        <audio src="${safe}" controls autoplay></audio></div>`
+    : kind === 'photo' ? `<img src="${safe}" alt="${esc(name || '')}">`
+    // A PDF renders in the frame; anything the browser can't show inline lands
+    // in the same frame, which offers to download it instead.
+    : `<iframe src="${safe}" title="${esc(name || 'Attachment')}"></iframe>`;
+  box.hidden = false;
+}
 (() => {
   const box = document.querySelector('#pdfbox');
-  const frame = document.querySelector('#pdfFrame');
-  if (!box || !frame) return;
-  const close = () => { box.hidden = true; frame.removeAttribute('src'); };
+  const body = document.querySelector('#pdfBody');
+  if (!box || !body) return;
+  // Emptying it stops a video or a track dead — one playing on behind a closed
+  // viewer is the worst thing that could happen mid-lesson.
+  const close = () => { box.hidden = true; body.innerHTML = ''; };
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-pdf]');
+    const t = e.target.closest('[data-pdf], [data-media]');
     if (!t) return;
-    const url = t.getAttribute('data-pdf');
+    const url = t.getAttribute('data-pdf') || t.getAttribute('data-media');
     if (!url) return;
     e.preventDefault();
-    document.querySelector('#pdfName').textContent = t.getAttribute('data-pdfname') || 'Attachment';
-    document.querySelector('#pdfTab').href = url;
-    frame.src = url;
-    box.hidden = false;
+    openMediaViewer(url, t.getAttribute('data-pdfname') || t.getAttribute('data-medianame'),
+      t.getAttribute('data-mediakind'));
   });
   document.querySelector('#pdfClose').onclick = close;
   // Closes the viewer ONLY — the sheet underneath (and any upload) stays put.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); close(); }
+    if (e.key !== 'Escape' || box.hidden) return;
+    e.stopPropagation();
+    close();
   }, true);
 })();
 
@@ -1298,10 +1323,8 @@ function assignSheet(stu, editIdx) {
           <div style="flex:1;min-width:0">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
             <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
-          ${kind === 'pdf'
-            ? `<button class="btn sm ghost" type="button" data-pdf="${esc(a.url)}" data-pdfname="${esc(name)}">Open</button>`
-            : kind === 'video' || kind === 'file'
-              ? `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>` : ''}
+          ${kind === 'photo' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
+            data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
           <button class="x" data-taattdel="${i}" aria-label="Remove ${esc(name)}">×</button></div>
         ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
       </div>`;
@@ -1493,19 +1516,14 @@ function viewHome() {
           <div class="ps">${esc(fmtDay(l.date))} at ${esc(l.time || '')}</div></div>
           <button class="btn sm ghost" data-go="calendar">Open</button></div>`).join('')}</section>` : ''}
     </div><div class="stack">
-      <section class="card"><header><h3>Needs a nudge</h3><span class="meta">${quiet.length}</span></header>
-        ${quiet.length ? quiet.map(s => {
-          const nm = displayName(s);
-          return `<div class="prow"><span class="avatar">${initials(nm)}</span>
-            <div class="pl"><div class="pt">${esc(nm)}</div>
-            <div class="ps">${s.lastSessionDate ? `Silent ${daysSince(s.lastSessionDate)} days` : 'Has never practised'}</div></div></div>`;
-        }).join('') + '<p class="hint" style="margin:14px 0 0">Message them from the app to nudge their lock screen.</p>'
-        : '<p class="hint" style="margin:0">Everyone has practised in the last week.</p>'}
-      </section>
       <section class="card"><header><h3>My files</h3>
         <span class="meta">${(me.teacherFiles || []).length ? `${me.teacherFiles.length} file${me.teacherFiles.length === 1 ? '' : 's'}` : ''}</span></header>
         <p class="hint" style="margin:0 0 12px">Sheet music, tabs and backing tracks in one place — attach them to a
           task without going looking for the file again.</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="mfSearch" placeholder="Search your files" value="${esc(MF_QUERY)}"
+            style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:inherit;font:inherit">
+          <button class="btn sm ghost" id="mfNewFolder" style="flex:none">+ Folder</button></div>
         <div id="myFiles">${myFilesHtml()}</div>
         <div id="mfUpWrap" style="display:none;margin-top:10px">
           <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:6px">
@@ -1535,27 +1553,42 @@ function viewHome() {
 // is there on the phone and vice versa. Files live at taskFiles/{uid}/…, the
 // path a task's attachments already use.
 const myFiles = () => (Array.isArray(me.teacherFiles) ? me.teacherFiles : []);
+// Folders are named by the teacher and kept even when empty — one they made
+// and then emptied should still be there to file the next thing into.
+const myFolders = () => {
+  const named = Array.isArray(me.teacherFolders) ? me.teacherFolders : [];
+  const used = myFiles().map(f => (f.folder || '').trim()).filter(Boolean);
+  return [...new Set([...named, ...used])].sort((a, b) => a.localeCompare(b));
+};
 let MF_FOLDER = 'All';
+let MF_QUERY = '';
 function myFilesHtml() {
   const all = myFiles();
-  if (!all.length) return '<p class="hint" style="margin:0">Nothing here yet — add a PDF or a backing track and it stays in your library.</p>';
-  const folders = [...new Set(all.map(f => (f.folder || '').trim()).filter(Boolean))].sort();
+  const folders = myFolders();
+  if (!all.length && !folders.length) return '<p class="hint" style="margin:0">Nothing here yet — add a PDF or a backing track and it stays in your library.</p>';
   if (MF_FOLDER !== 'All' && !folders.includes(MF_FOLDER)) MF_FOLDER = 'All';
-  const shown = MF_FOLDER === 'All' ? all : all.filter(f => (f.folder || '') === MF_FOLDER);
+  const q = MF_QUERY.trim().toLowerCase();
+  const shown = all
+    .filter(f => MF_FOLDER === 'All' || (f.folder || '') === MF_FOLDER)
+    .filter(f => !q || `${cleanFileName(f.title || '')} ${f.folder || ''}`.toLowerCase().includes(q));
   const icon = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷' };
   return `${folders.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     ${['All', ...folders].map(f => `<button class="btn sm ghost" data-mffolder="${esc(f)}"${
-      MF_FOLDER === f ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(f)}</button>`).join('')}</div>` : ''}
+      MF_FOLDER === f ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(f)}${
+      f === 'All' ? '' : ` <span class="hint">${all.filter(x => (x.folder || '') === f).length}</span>`}</button>`).join('')}
+    ${MF_FOLDER === 'All' ? '' : `<button class="btn sm ghost" data-mfdelfolder="${esc(MF_FOLDER)}" title="Delete this folder">🗑</button>`}</div>` : ''}
+    ${shown.length === 0 ? `<p class="hint" style="margin:0">${q ? 'Nothing matches that.' : 'Nothing in this folder yet.'}</p>` : ''}
     ${shown.map((f, i) => {
       const kind = attachmentKind(f), name = cleanFileName(f.title || 'File');
       return `<div class="taatt"><div style="display:flex;align-items:center;gap:10px">
         ${kind === 'photo'
-          ? `<img src="${esc(f.url)}" alt="" data-lightbox="${esc(f.url)}" style="width:30px;height:30px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:none">`
+          ? `<img src="${esc(f.url)}" alt="" data-media="${esc(f.url)}" data-medianame="${esc(name)}" data-mediakind="photo" style="width:30px;height:30px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:none">`
           : `<span style="width:30px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>`}
         <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
           <div class="hint" style="font-size:12px">${esc([f.folder, attachmentMeta(f)].filter(Boolean).join(' · '))}</div></div>
-        ${kind === 'pdf' ? `<button class="btn sm ghost" type="button" data-pdf="${esc(f.url)}" data-pdfname="${esc(name)}">Open</button>`
-          : kind === 'audio' ? '' : `<a class="btn sm ghost" href="${esc(f.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>`}
+        ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(f.url)}"
+          data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
+        <button class="btn sm ghost" data-mfsend="${esc(f.id || String(i))}" title="Send to a student">Send</button>
         <button class="x" data-mfedit="${esc(f.id || String(i))}" title="Rename or file">⋯</button></div>
         ${kind === 'audio' ? `<audio controls preload="none" src="${esc(f.url)}" style="width:100%;height:34px;margin-top:8px"></audio>` : ''}
       </div>`;
@@ -1594,13 +1627,106 @@ function wireMyFiles() {
       if ($('#mfUpWrap')) $('#mfUpWrap').style.display = 'none';
     }
   };
+  const search = $('#mfSearch');
+  if (search) {
+    search.oninput = () => {
+      MF_QUERY = search.value;
+      const box = $('#myFiles');
+      if (box) { box.innerHTML = myFilesHtml(); wireMyFiles(); }   // keeps focus in the box
+    };
+  }
+  const nf = $('#mfNewFolder');
+  if (nf) nf.onclick = async () => {
+    const name = (prompt('Name the folder — e.g. Grade 3, Backing tracks, Warm-ups') || '').trim();
+    if (!name) return;
+    if (myFolders().includes(name)) { MF_FOLDER = name; repaintMyFiles(); return; }
+    me.teacherFolders = [...(Array.isArray(me.teacherFolders) ? me.teacherFolders : []), name];
+    MF_FOLDER = name;
+    try { await saveMe({ teacherFolders: me.teacherFolders }); } catch { toast('Could not save that folder'); }
+    repaintMyFiles();
+  };
   document.querySelectorAll('[data-mffolder]').forEach((b) => {
     b.onclick = () => { MF_FOLDER = b.getAttribute('data-mffolder'); repaintMyFiles(); };
+  });
+  document.querySelectorAll('[data-mfdelfolder]').forEach((b) => {
+    b.onclick = async () => {
+      const name = b.getAttribute('data-mfdelfolder');
+      const inside = myFiles().filter(f => (f.folder || '') === name).length;
+      if (!confirm(inside
+        ? `Delete the folder “${name}”? The ${inside} file${inside === 1 ? '' : 's'} inside stay in your library, just unfiled.`
+        : `Delete the folder “${name}”?`)) return;
+      me.teacherFolders = myFolders().filter(f => f !== name);
+      const next = myFiles().map(f => ((f.folder || '') === name ? { ...f, folder: '' } : f));
+      MF_FOLDER = 'All';
+      try { await saveMe({ teacherFolders: me.teacherFolders, teacherFiles: next }); } catch { toast('Could not delete that folder'); }
+      me.teacherFiles = next;
+      repaintMyFiles();
+    };
+  });
+  document.querySelectorAll('[data-mfsend]').forEach((b) => {
+    b.onclick = () => sendFileSheet(b.getAttribute('data-mfsend'));
   });
   document.querySelectorAll('[data-mfedit]').forEach((b) => {
     b.onclick = () => fileSheet(b.getAttribute('data-mfedit'));
   });
 }
+// Send a file straight out as a task, to one student or a whole class — the
+// point of keeping a library is not having to rebuild the task around it.
+function sendFileSheet(id) {
+  const all = myFiles();
+  const f = all.find((x, i) => (x.id || String(i)) === id);
+  if (!f) return;
+  if (!students.length) { toast('No students yet'); return; }
+  const name = cleanFileName(f.title || 'File');
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  const picked = new Set();
+  modal(`<div style="display:flex;align-items:flex-start;gap:12px">
+      <div><h3 style="margin:0">Send “${esc(name)}”</h3>
+        <div class="hint">It goes as a task with the file attached.</div></div>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <div class="eyebrow" style="padding:18px 0 4px">Task title</div>
+    <input id="sfTitle" style="${F}" value="${esc(name.replace(/\.[a-z0-9]+$/i, ''))}">
+    <div class="eyebrow" style="padding:16px 0 4px">Instructions (optional)</div>
+    <textarea id="sfDesc" rows="2" style="${F}"></textarea>
+    <div class="eyebrow" style="padding:16px 0 8px">Send to</div>
+    <div class="rows" id="sfWho">${students.map((s2, si) => `<label class="taatt draftrow">
+      <input type="checkbox" data-sfwho="${si}" style="margin-top:3px;flex:none;width:17px;height:17px;accent-color:var(--primary)">
+      <span style="flex:1;min-width:0"><span style="display:block;font-weight:650">${esc(displayName(s2))}</span>
+      <span class="hint" style="display:block;font-size:12px">${esc(agoLabel(s2.lastSessionDate))}</span></span></label>`).join('')}</div>
+    <div class="acts"><button class="btn ghost" data-close style="flex:1">Cancel</button>
+      <button class="btn" id="sfSend" style="flex:1" disabled>Send</button></div>`);
+  const paintBtn = () => {
+    const b = $('#sfSend');
+    b.disabled = picked.size === 0;
+    b.textContent = picked.size > 1 ? `Send to ${picked.size} students` : 'Send';
+  };
+  document.querySelectorAll('[data-sfwho]').forEach((b) => {
+    b.onchange = () => { const i = +b.getAttribute('data-sfwho'); b.checked ? picked.add(i) : picked.delete(i); paintBtn(); };
+  });
+  $('#sfSend').onclick = async () => {
+    const title = $('#sfTitle').value.trim() || name;
+    $('#sfSend').disabled = true;
+    const task = {
+      title, description: $('#sfDesc').value.trim(),
+      youtube: '', song: '', drill: null, drillLevel: null, drillMode: null,
+      dueDate: '', durationMin: 0, completed: false,
+      attachments: [{ type: f.type, url: f.url, title: f.title, size: f.size, contentType: f.contentType }],
+      assignedAt: new Date().toISOString(), teacherUid: meUid,
+    };
+    try {
+      await Promise.all([...picked].map((i, n) => {
+        const stu = students[i];
+        const cur = Array.isArray(stu.assignedTasks) ? [...stu.assignedTasks] : [];
+        cur.push({ ...task, id: `${Date.now()}_${n}` });
+        stu.assignedTasks = cur;
+        return updateDoc(doc(db, 'users', stu.uid), { assignedTasks: cur });
+      }));
+      closeModal();
+      toast(`Sent to ${picked.size} student${picked.size === 1 ? '' : 's'}`);
+    } catch { toast('Could not send'); $('#sfSend').disabled = false; }
+  };
+}
+
 // Rename it to something you'll recognise, and file it under a folder you name
 // yourself. Removing it here never touches a task it's already attached to.
 function fileSheet(id) {
@@ -1608,7 +1734,7 @@ function fileSheet(id) {
   const f = all.find((x, i) => (x.id || String(i)) === id);
   if (!f) return;
   const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
-  const folders = [...new Set(all.map(x => (x.folder || '').trim()).filter(Boolean))].sort();
+  const folders = myFolders();
   modal(`<div style="display:flex;align-items:flex-start;gap:12px">
       <div><h3 style="margin:0">File</h3><div class="hint">${esc(attachmentMeta(f))}</div></div>
       <button class="x" data-close style="margin-left:auto">×</button></div>
@@ -2293,7 +2419,9 @@ function viewResources() {
           <p class="tdesc">${esc(r.description || '')}</p>
           ${resourceFilesHtml(r)}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${r.url ? `<a class="btn sm ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Open link</a>` : ''}
+            ${r.url ? (kindForContentType(contentTypeForFile(r.url, '')) || ytId(r.url)
+              ? `<button class="btn sm ghost" type="button" data-reslink="${esc(r.url)}" data-resname="${esc(r.title || 'Resource')}">Open</button>`
+              : `<a class="btn sm ghost" href="${esc(r.url)}" target="_blank" rel="noopener">Open link</a>`) : ''}
             <button class="btn sm ghost" data-assignown="${i}">Assign to a student</button>
             <button class="btn sm ghost" data-delown="${i}" style="color:var(--bad);border-color:var(--bad)">Delete</button>
           </div></div></div>`).join('')
@@ -2362,6 +2490,11 @@ function viewResources() {
     if (dg) return delFrom('taskPrograms', +dg.getAttribute('data-delprog'));
     const dr = e.target.closest('[data-delown]');
     if (dr) return delResource(+dr.getAttribute('data-delown'));
+    const rl = e.target.closest('[data-reslink]');
+    if (rl) {
+      const url = rl.getAttribute('data-reslink'), nm = rl.getAttribute('data-resname');
+      return ytId(url) ? openYouTube(url, nm) : openMediaViewer(url, nm);
+    }
     const ao = e.target.closest('[data-assignown]');
     if (ao) return assignItem(mine[+ao.getAttribute('data-assignown')]);
     const a = e.target.closest('[data-assignres]');
@@ -2560,9 +2693,8 @@ function resourceFilesHtml(r) {
       <span style="width:26px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>
       <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
         <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
-      ${kind === 'pdf'
-        ? `<button class="btn sm ghost" type="button" data-pdf="${esc(a.url)}" data-pdfname="${esc(name)}">Open</button>`
-        : kind !== 'audio' ? `<a class="btn sm ghost" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>` : ''}</div>
+      ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
+        data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
       ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
     </div>`;
   }).join('')}</div>`;
