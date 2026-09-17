@@ -1228,7 +1228,9 @@ function assignSheet(stu, editIdx) {
           <div id="taUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
         <button class="btn sm ghost" id="taAddPhoto">📎 Add files</button>
+        ${(me.teacherFiles || []).length ? `<button class="btn sm ghost" id="taMine">📁 My files (${me.teacherFiles.length})</button>` : ''}
         <span class="hint" style="font-size:12px">or drop them here</span></div>
+      <div id="taMineList" style="display:none;margin-top:10px"></div>
     </div>
     <input id="taFile" type="file" multiple accept="${TASK_FILE_ACCEPT}" style="display:none">
     <div class="eyebrow" style="padding:0 0 4px">Skill drill</div>
@@ -1368,6 +1370,31 @@ function assignSheet(stu, editIdx) {
     e.target.value = '';
     addTaFiles(files);
   };
+  // Already uploaded once — attaching from the library costs nothing.
+  const mineBtn = $('#taMine');
+  if (mineBtn) mineBtn.onclick = () => {
+    const box = $('#taMineList');
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
+    const icon = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷' };
+    box.style.display = 'block';
+    box.innerHTML = myFiles().map((f, i) => {
+      const on = taAtts.some(a => a.url === f.url);
+      return `<button class="btn sm ghost" data-mineadd="${i}" style="width:100%;justify-content:flex-start;margin-bottom:6px;text-align:left"${
+        on ? ' disabled' : ''}>${icon[attachmentKind(f)] || '📎'} ${esc(cleanFileName(f.title || 'File'))}${
+        on ? ' · attached' : ''}</button>`;
+    }).join('');
+    box.querySelectorAll('[data-mineadd]').forEach((b) => {
+      b.onclick = () => {
+        const f = myFiles()[+b.getAttribute('data-mineadd')];
+        if (f && !taAtts.some(a => a.url === f.url)) {
+          taAtts.push({ type: f.type, url: f.url, title: f.title, size: f.size, contentType: f.contentType });
+          paintTaAtts();
+        }
+        box.style.display = 'none';
+      };
+    });
+  };
+
   const drop = $('#taDrop');
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', (e) => { if (!drop.contains(e.relatedTarget)) drop.classList.remove('over'); });
@@ -1437,19 +1464,19 @@ function viewHome() {
 
   $('#screen').innerHTML = `<div class="content">
     <div class="greet"><div><h2>${greet}, ${esc(displayName({ uid: meUid, ...me }))}.</h2>
-      <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})} ·
-      ${practised} of ${students.length} practised this week${quiet.length ? ` · ${quiet.length} need a nudge` : ''}</p></div>
-      <button class="btn" data-go="students">Assign a task</button></div>
-    <div class="stats">
-      ${statCard('Practised this week', practised, `of ${students.length}`, 'Logged any minutes',
-        ring(students.length ? practised / students.length * 100 : 0, 'var(--good)'))}
-      ${statCard('Studio minutes', totalMins.toLocaleString(), '', students.length ? `Average ${Math.round(totalMins / students.length)} per student` : 'No students yet',
-        spark(week, 'var(--teal)'))}
-      ${statCard('Needs attention', quiet.length, '', 'Silent 7 days or more',
-        ring(students.length ? quiet.length / students.length * 100 : 0, 'var(--bad)'))}
-    </div>
+      <p>${new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}${
+        students.length ? ` · ${students.length} student${students.length === 1 ? '' : 's'}` : ''}${
+        quiet.length ? ` · ${quiet.length} need a nudge` : ''}</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" data-go="calendar">Calendar</button>
+        <button class="btn" data-go="students">Assign a task</button></div></div>
     <div class="cols"><div class="stack">
-      <section class="card"><header><h3>Practice Pulse</h3><span class="meta">Least recent first</span></header>
+      <!-- Was three stat cards about the teacher's own numbers, then a table
+           called "Practice Pulse". A teacher opens this to see who needs them:
+           the roster leads, and the numbers that mattered (practised this week,
+           who's quiet) are in its header and in "Needs a nudge" already. -->
+      <section class="card"><header><h3>Students</h3><span class="meta">${
+        students.length ? `${practised} of ${students.length} practised this week` : ''}</span></header>
         ${students.length ? `<div class="tablewrap"><table>
           <thead><tr><th>Student</th><th>Last practice</th><th>This week</th><th>Streak</th><th>State</th></tr></thead>
           <tbody>${students.map(s => {
@@ -1471,9 +1498,23 @@ function viewHome() {
           const nm = displayName(s);
           return `<div class="prow"><span class="avatar">${initials(nm)}</span>
             <div class="pl"><div class="pt">${esc(nm)}</div>
-            <div class="ps">Silent ${daysSince(s.lastSessionDate)} days</div></div></div>`;
+            <div class="ps">${s.lastSessionDate ? `Silent ${daysSince(s.lastSessionDate)} days` : 'Has never practised'}</div></div></div>`;
         }).join('') + '<p class="hint" style="margin:14px 0 0">Message them from the app to nudge their lock screen.</p>'
         : '<p class="hint" style="margin:0">Everyone has practised in the last week.</p>'}
+      </section>
+      <section class="card"><header><h3>My files</h3>
+        <span class="meta">${(me.teacherFiles || []).length ? `${me.teacherFiles.length} file${me.teacherFiles.length === 1 ? '' : 's'}` : ''}</span></header>
+        <p class="hint" style="margin:0 0 12px">Sheet music, tabs and backing tracks in one place — attach them to a
+          task without going looking for the file again.</p>
+        <div id="myFiles">${myFilesHtml()}</div>
+        <div id="mfUpWrap" style="display:none;margin-top:10px">
+          <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:6px">
+            <span id="mfUpName" class="hint" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+            <span id="mfUpPct" class="hint" style="flex:none;font-variant-numeric:tabular-nums"></span></div>
+          <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
+            <div id="mfUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
+        <button class="btn sm ghost" id="mfAdd" style="width:100%;margin-top:12px">+ Add a PDF or audio file</button>
+        <input id="mfInput" type="file" multiple accept="${TASK_FILE_ACCEPT}" style="display:none">
       </section>
       <section class="card"><header><h3>Waiting on you</h3></header>
         ${(() => {
@@ -1486,7 +1527,119 @@ function viewHome() {
         })()}
       </section>
     </div></div></div>`;
+  wireMyFiles();
 }
+
+// ── My files — the teacher's own library (users/{uid}.teacherFiles) ───────
+// The same array the phone's Teacher Home writes, so a PDF added on a laptop
+// is there on the phone and vice versa. Files live at taskFiles/{uid}/…, the
+// path a task's attachments already use.
+const myFiles = () => (Array.isArray(me.teacherFiles) ? me.teacherFiles : []);
+let MF_FOLDER = 'All';
+function myFilesHtml() {
+  const all = myFiles();
+  if (!all.length) return '<p class="hint" style="margin:0">Nothing here yet — add a PDF or a backing track and it stays in your library.</p>';
+  const folders = [...new Set(all.map(f => (f.folder || '').trim()).filter(Boolean))].sort();
+  if (MF_FOLDER !== 'All' && !folders.includes(MF_FOLDER)) MF_FOLDER = 'All';
+  const shown = MF_FOLDER === 'All' ? all : all.filter(f => (f.folder || '') === MF_FOLDER);
+  const icon = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷' };
+  return `${folders.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${['All', ...folders].map(f => `<button class="btn sm ghost" data-mffolder="${esc(f)}"${
+      MF_FOLDER === f ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${esc(f)}</button>`).join('')}</div>` : ''}
+    ${shown.map((f, i) => {
+      const kind = attachmentKind(f), name = cleanFileName(f.title || 'File');
+      return `<div class="taatt"><div style="display:flex;align-items:center;gap:10px">
+        ${kind === 'photo'
+          ? `<img src="${esc(f.url)}" alt="" data-lightbox="${esc(f.url)}" style="width:30px;height:30px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:none">`
+          : `<span style="width:30px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>`}
+        <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
+          <div class="hint" style="font-size:12px">${esc([f.folder, attachmentMeta(f)].filter(Boolean).join(' · '))}</div></div>
+        ${kind === 'pdf' ? `<button class="btn sm ghost" type="button" data-pdf="${esc(f.url)}" data-pdfname="${esc(name)}">Open</button>`
+          : kind === 'audio' ? '' : `<a class="btn sm ghost" href="${esc(f.url)}" target="_blank" rel="noopener" style="text-decoration:none">Open</a>`}
+        <button class="x" data-mfedit="${esc(f.id || String(i))}" title="Rename or file">⋯</button></div>
+        ${kind === 'audio' ? `<audio controls preload="none" src="${esc(f.url)}" style="width:100%;height:34px;margin-top:8px"></audio>` : ''}
+      </div>`;
+    }).join('')}`;
+}
+function repaintMyFiles() {
+  const box = $('#myFiles');
+  if (box) { box.innerHTML = myFilesHtml(); wireMyFiles(); }
+}
+async function saveMyFiles(next) {
+  me.teacherFiles = next;
+  try { await saveMe({ teacherFiles: next }); } catch { toast('Could not save your files'); }
+  repaintMyFiles();
+}
+function wireMyFiles() {
+  const add = $('#mfAdd'), input = $('#mfInput');
+  if (!add || !input) return;
+  add.onclick = () => input.click();
+  input.onchange = async (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    for (const file of files) {
+      if (!kindForContentType(contentTypeForFile(file.name, file.type))) { toast(`${file.name} isn't a PDF, audio, photo or video`); continue; }
+      if (file.size > TASK_FILE_MAX_BYTES) { toast(`${file.name} is over ${TASK_FILE_MAX_LABEL}`); continue; }
+      const wrap = $('#mfUpWrap'), bar = $('#mfUpBar'), pct = $('#mfUpPct'), nm = $('#mfUpName');
+      if (wrap) { wrap.style.display = 'block'; bar.style.width = '0'; pct.textContent = '0%'; nm.textContent = `Uploading ${cleanFileName(file.name)}`; }
+      const up = uploadTaskFile(file, (p) => { if (bar) { bar.style.width = Math.round(p * 100) + '%'; pct.textContent = Math.round(p * 100) + '%'; } });
+      ACTIVE_UPLOAD = { cancel: () => up.cancel() };
+      try {
+        const att = await up.done;
+        await saveMyFiles([{ ...att, id: String(Date.now()), folder: MF_FOLDER === 'All' ? '' : MF_FOLDER, addedAt: new Date().toISOString() }, ...myFiles()]);
+      } catch (err) {
+        if (err?.code !== 'storage/canceled') toast(`Could not upload ${cleanFileName(file.name)}`);
+      }
+      ACTIVE_UPLOAD = null;
+      if ($('#mfUpWrap')) $('#mfUpWrap').style.display = 'none';
+    }
+  };
+  document.querySelectorAll('[data-mffolder]').forEach((b) => {
+    b.onclick = () => { MF_FOLDER = b.getAttribute('data-mffolder'); repaintMyFiles(); };
+  });
+  document.querySelectorAll('[data-mfedit]').forEach((b) => {
+    b.onclick = () => fileSheet(b.getAttribute('data-mfedit'));
+  });
+}
+// Rename it to something you'll recognise, and file it under a folder you name
+// yourself. Removing it here never touches a task it's already attached to.
+function fileSheet(id) {
+  const all = myFiles();
+  const f = all.find((x, i) => (x.id || String(i)) === id);
+  if (!f) return;
+  const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
+  const folders = [...new Set(all.map(x => (x.folder || '').trim()).filter(Boolean))].sort();
+  modal(`<div style="display:flex;align-items:flex-start;gap:12px">
+      <div><h3 style="margin:0">File</h3><div class="hint">${esc(attachmentMeta(f))}</div></div>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <div class="eyebrow" style="padding:18px 0 4px">Name</div>
+    <input id="mfName" style="${F}" value="${esc(cleanFileName(f.title || ''))}">
+    <div class="eyebrow" style="padding:18px 0 4px">Folder</div>
+    <input id="mfFolder" placeholder="e.g. Scales, Grade 3, Backing tracks" style="${F}" value="${esc(f.folder || '')}">
+    ${folders.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${folders.map(x =>
+      `<button class="btn sm ghost" data-mfpick="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
+    <div class="acts"><button class="btn ghost" id="mfDelete" style="flex:1;color:var(--bad);border-color:var(--bad)">Remove</button>
+      <button class="btn" id="mfSave" style="flex:1">Save</button></div>
+    <p class="hint" style="margin:12px 0 0">Removing it here leaves any task you've already attached it to untouched.</p>`);
+  document.querySelectorAll('[data-mfpick]').forEach((b) => {
+    b.onclick = () => { $('#mfFolder').value = b.getAttribute('data-mfpick'); };
+  });
+  $('#mfSave').onclick = async () => {
+    const next = all.map((x, i) => ((x.id || String(i)) === id
+      ? { ...x, title: $('#mfName').value.trim() || x.title, folder: $('#mfFolder').value.trim() }
+      : x));
+    closeModal();
+    await saveMyFiles(next);
+    toast('Saved');
+  };
+  $('#mfDelete').onclick = async () => {
+    if (!confirm('Remove this file from your library?')) return;
+    closeModal();
+    await saveMyFiles(all.filter((x, i) => (x.id || String(i)) !== id));
+    toast('Removed');
+  };
+}
+
 // Lessons falling in the next 7 days, weekly repeats resolved.
 function lessonsThisWeek() {
   const out = [];
