@@ -8,8 +8,8 @@
   if (new URLSearchParams(location.search).get('g')) location.replace('/live.html' + location.search);
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prova — Practice & Progress | AI music practice coach for students, teachers and schools</title>
-<meta name="description" content="Prova is an AI practice coach for guitar and bass — daily practice plans for students, a full studio toolkit for teachers, and school-safe messaging built for classrooms.">
+<title>Prova — Practice & Progress | Practice app for music teachers and their students</title>
+<meta name="description" content="Prova puts the homework you set in your students' pockets: tasks with sheet music and backing tracks, a timer that proves they practised, weekly parent reports, and school-safe messaging. Free for students, on iPhone and the web.">
 <!-- Search Console ownership. Verified two ways on purpose: the meta tag
      survives someone tidying up stray files in web/, and googlef5978b...html
      survives someone reworking this page's head. Removing both un-verifies
@@ -17,7 +17,7 @@
 <meta name="google-site-verification" content="tB1rKM_oA0-4I_Vs26jCjyqwyMkdUwrr4JiNRj55MD8" />
 <link rel="canonical" href="https://prova-583c9.web.app/">
 <meta property="og:title" content="Prova — Practice & Progress">
-<meta property="og:description" content="AI practice plans for students. A studio toolkit for teachers. Built school-safe.">
+<meta property="og:description" content="The homework you set, in your students' pockets — with the timer running and proof they played it. Built school-safe.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://prova-583c9.web.app/">
 <meta property="og:site_name" content="Prova">
@@ -27,7 +27,7 @@
 <meta property="og:image:alt" content="Prova — Practice &amp; Progress: an AI practice coach for guitar and bass.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Prova — Practice & Progress">
-<meta name="twitter:description" content="AI practice plans for students. A studio toolkit for teachers. Built school-safe.">
+<meta name="twitter:description" content="The homework you set, in your students' pockets — with the timer running and proof they played it. Built school-safe.">
 <meta name="twitter:image" content="https://prova-583c9.web.app/img/og-cover.png">
 <link rel="icon" type="image/png" href="/img/icon-192.png">
 <link rel="apple-touch-icon" href="/img/icon-192.png">
@@ -53,9 +53,13 @@
         "https://prova-583c9.web.app/img/shot-notes.png",
         "https://prova-583c9.web.app/img/shot-chords.png"
       ],
-      "description": "Prova is an AI music practice coach for guitar and bass players. It builds a daily practice plan around your instrument, level and goals, times your sessions, tracks your streak and progress, and gives teachers a full studio toolkit for their students.",
+      "description": "Prova is a music practice app for guitar and bass teachers and their students. Teachers assign tasks with sheet music and backing tracks attached, see proof the practice happened, and send parents an automatic weekly report; students practise to a timer, task by task. Players without a teacher get a daily plan built for them.",
       "featureList": [
-        "AI-generated daily practice plans",
+        "Teacher assignments with PDFs, sheet music and backing tracks",
+        "Proof-of-practice video from students",
+        "AI drafts next week's tasks for a teacher to edit and send",
+        "Printable scale, chord and lesson sheets",
+        "AI-generated daily practice plans for players without a teacher",
         "Per-task practice timer and streak tracking",
         "Learn-a-song step plans with chords and tabs",
         "Ear training, fretboard, rhythm and theory games",
@@ -220,13 +224,13 @@
   <div class="copy">
     <div class="kicker">PLAY. PRACTICE. PERFORM.</div>
     <h1>Practice that <span class="blue">actually happens.</span></h1>
-    <p class="sub">Prova is an AI practice coach for guitar and bass — a personal daily plan for every student, a full studio toolkit for every teacher, and safety built in for every school.</p>
+    <p class="sub">Prova is where the homework you set actually gets done. Send tasks with the sheet music and backing track attached, watch the practice come back, and let the weekly report write itself. Free for your students, on iPhone and in any browser.</p>
     <a class="cta store" href="https://apps.apple.com/app/id6789881436" target="_blank" rel="noopener">
       <svg viewBox="0 0 384 512" aria-hidden="true"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
       <span class="lbl"><small>Download on the</small><b>App Store</b></span>
     </a>
     <a class="cta ghost" href="/webapp/" target="_blank" rel="noopener">Try it in your browser</a>
-    <a class="cta ghost" href="#teachers">For teachers →</a>
+    <a class="cta ghost" href="#teachers">What teachers get →</a>
     <span class="badge">Free on iPhone · iOS 15.1 or later</span>
   </div>
   <div class="heroGlow"><img class="phone" src="/img/shot-today.png" width="540" height="1097"
@@ -235,28 +239,30 @@
 
 <section id="teachers">
   <h2>Built for everyone in the music room</h2>
-  <p class="lead">One app connects the practice triangle — the student who practices, the teacher who guides, and the parents and schools who make it possible.</p>
+  <p class="lead">One app connects the practice triangle — the teacher who sets the work, the student who does it, and the parents and schools who need to see it happening.</p>
   <div class="cards">
-    <div class="card">
-      <div class="who">FOR STUDENTS</div>
-      <h3>A plan that fits you</h3>
-      <ul>
-        <li>AI-built daily practice plan for your level and goals</li>
-        <li>Guided practice player — one task at a time</li>
-        <li>Streaks, points and ranks that make practice stick</li>
-        <li>Tuner, metronome, chord &amp; scale library built in</li>
-        <li>Ask Prova — an AI coach for any playing question</li>
-      </ul>
-    </div>
     <div class="card">
       <div class="who">FOR TEACHERS</div>
       <h3>Your studio, organised</h3>
       <ul>
         <li>Connect students with a private join code</li>
-        <li>Assign tasks, songs and multi-week programs</li>
-        <li>Proof-of-practice videos from students</li>
+        <li>Set tasks with the sheet music, tabs or backing track attached</li>
+        <li>Prova drafts next week from each student's practice — you edit and send</li>
+        <li>Proof-of-practice videos, so you know it was played</li>
         <li>Lesson calendar with attendance and notes</li>
         <li>Weekly practice reports emailed to parents — automatically</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="who">FOR STUDENTS</div>
+      <h3>Know exactly what to do</h3>
+      <ul>
+        <li>Your teacher's tasks first, one at a time, with the clock running</li>
+        <li>Read the chart and play the backing track without leaving the app</li>
+        <li>Print any scale, chord set or lesson as a sheet for the music stand</li>
+        <li>Streaks, points and ranks that make practice stick</li>
+        <li>Tuner, metronome, chord &amp; scale library built in</li>
+        <li>No teacher yet? Prova builds you a daily plan instead</li>
       </ul>
     </div>
     <div class="card">
@@ -276,11 +282,14 @@
   <h2>Everything practice needs</h2>
   <p class="lead">From the first open chord to the first gig.</p>
   <div class="feat">
-    <div><b>AI practice plans</b><span>Exact exercises, tempos and frets — regenerated as you improve.</span></div>
-    <div><b>Guided player</b><span>Timers, points and celebrations that carry students task to task.</span></div>
-    <div><b>Teacher assignments</b><span>Tasks with due dates, video links and proof clips back from students.</span></div>
+    <div><b>Teacher assignments</b><span>Tasks with due dates, timers and proof clips back from students.</span></div>
+    <div><b>Sheet music and audio</b><span>Put a PDF or a backing track on a task — it plays inside the app.</span></div>
+    <div><b>Drafts, not homework by robot</b><span>Prova proposes next week from real practice data; the teacher edits and sends.</span></div>
     <div><b>Parent reports</b><span>A beautiful weekly practice summary, emailed automatically.</span></div>
+    <div><b>Guided player</b><span>Timers, points and celebrations that carry students task to task.</span></div>
+    <div><b>Printable sheets</b><span>Any scale, chord set or lesson topic as a page for the music stand.</span></div>
     <div><b>Chords &amp; scales</b><span>140+ chords and every scale that matters, in clear diagrams.</span></div>
+    <div><b>Plans for solo players</b><span>No teacher? Prova writes the week around your instrument, level and goals.</span></div>
     <div><b>Songs &amp; setlists</b><span>Learn-a-song plans and AI gig setlists with live audience song requests.</span></div>
     <div><b>Tuner &amp; metronome</b><span>Chromatic tuner and a speed-trainer metronome, no extra apps.</span></div>
     <div><b>Progress that shows</b><span>Streaks, practice charts and class leaderboards students care about.</span></div>
