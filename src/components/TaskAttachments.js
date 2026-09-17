@@ -42,7 +42,7 @@ export function openAttachment(url) {
 // than two backing tracks playing over each other.
 let nowPlaying = null; // { sound, pause }
 
-function AudioRow({ a }) {
+function AudioRow({ a, onEdit }) {
   const soundRef = useRef(null);
   const mounted = useRef(true);
   const barWidth = useRef(0);
@@ -184,11 +184,12 @@ function AudioRow({ a }) {
           </View>
         )}
       </View>
+      <EditDot a={a} onEdit={onEdit} />
     </View>
   );
 }
 
-function FileRow({ a, kind }) {
+function FileRow({ a, kind, onEdit }) {
   const icon = kind === 'pdf' ? 'document-text' : kind === 'video' ? 'videocam' : 'attach';
   return (
     <TouchableOpacity
@@ -208,11 +209,30 @@ function FileRow({ a, kind }) {
         <Text style={styles.rowMeta} numberOfLines={1}>{attachmentMeta(a)}</Text>
       </View>
       <Text style={styles.openText}>Open</Text>
+      <EditDot a={a} onEdit={onEdit} />
     </TouchableOpacity>
   );
 }
 
-export default function TaskAttachments({ attachments, style }) {
+// Only rendered when a caller passes onEdit — the teacher's own file library
+// does, so a row can be renamed or filed without a second list beside it.
+// Students are never given one.
+function EditDot({ a, onEdit }) {
+  if (!onEdit) return null;
+  return (
+    <TouchableOpacity
+      onPress={() => onEdit(a)}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      style={{ marginLeft: 2 }}
+      accessibilityRole="button"
+      accessibilityLabel={`Rename or file ${cleanFileName(a.title || 'this file')}`}
+    >
+      <Ionicons name="ellipsis-horizontal" size={18} color={COLORS.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+export default function TaskAttachments({ attachments, style, onEdit }) {
   const [zoom, setZoom] = useState(null);
   const list = (Array.isArray(attachments) ? attachments : []).filter((a) => a && a.url);
   if (!list.length) return null;
@@ -224,8 +244,8 @@ export default function TaskAttachments({ attachments, style }) {
       {others.map((a, i) => {
         const kind = attachmentKind(a);
         return kind === 'audio'
-          ? <AudioRow key={`${a.url}_${i}`} a={a} />
-          : <FileRow key={`${a.url}_${i}`} a={a} kind={kind} />;
+          ? <AudioRow key={`${a.url}_${i}`} a={a} onEdit={onEdit} />
+          : <FileRow key={`${a.url}_${i}`} a={a} kind={kind} onEdit={onEdit} />;
       })}
       {photos.length > 0 && (
         <View style={styles.photos}>
@@ -241,6 +261,17 @@ export default function TaskAttachments({ attachments, style }) {
               <View style={styles.expand} pointerEvents="none">
                 <Ionicons name="expand-outline" size={12} color="#fff" />
               </View>
+              {!!onEdit && (
+                <TouchableOpacity
+                  style={styles.photoEdit}
+                  onPress={() => onEdit(a)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rename or file ${cleanFileName(a.title || 'this photo')}`}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={13} color="#fff" />
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -289,6 +320,10 @@ const styles = themedStyles(() => StyleSheet.create({
   expand: {
     position: 'absolute', right: 6, bottom: 6, width: 22, height: 22, borderRadius: 11,
     backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
+  },
+  photoEdit: {
+    position: 'absolute', right: 6, top: 6, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
   },
   zoomBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
   zoomImg: { width: '100%', height: '100%' },

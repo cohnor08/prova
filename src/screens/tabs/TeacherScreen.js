@@ -861,6 +861,10 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState([]); // teacher's saved resources, assignable from here
   const [showResources, setShowResources] = useState(false);
+  // The teacher's own library (Home → My files): attach one without uploading
+  // the same PDF for the fifth time.
+  const [myFiles, setMyFiles] = useState([]);
+  const [showMyFiles, setShowMyFiles] = useState(false);
 
   const close = () => {
     setTitle(''); setDescription(''); setYoutube(''); setSong(''); setDrill(null); setDrillLevel(1);
@@ -881,6 +885,7 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
       .then((s) => {
         setTemplates(Array.isArray(s.data()?.taskTemplates) ? s.data().taskTemplates : []);
         setResources(Array.isArray(s.data()?.customResources) ? s.data().customResources : []);
+        setMyFiles(Array.isArray(s.data()?.teacherFiles) ? s.data().teacherFiles : []);
       })
       .catch(() => {});
   }, []);
@@ -1136,6 +1141,12 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                   <Ionicons name="bookmark" size={14} color={COLORS.text} />
                   <Text style={styles.tplOpenText}>My resources ({resources.length})</Text>
                 </TouchableOpacity>
+                {myFiles.length > 0 && (
+                  <TouchableOpacity style={styles.tplOpenBtn} onPress={() => { Keyboard.dismiss(); setShowMyFiles(true); }} activeOpacity={0.85}>
+                    <Ionicons name="folder-open" size={14} color={COLORS.text} />
+                    <Text style={styles.tplOpenText}>My files ({myFiles.length})</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.tplSaveBtn, !title.trim() && styles.tplSaveBtnDisabled]}
                   onPress={saveAsTemplate}
@@ -1453,6 +1464,50 @@ function AssignTaskModal({ student, klass, recipientUids, editTask, editClassTas
                       ))}
                     </ScrollView>
                   )}
+                </View>
+              </View>
+            )}
+
+            {/* Attach straight from the library on the Home screen — the file
+                is already uploaded, so this is instant. */}
+            {showMyFiles && (
+              <View style={styles.dpBackdrop}>
+                <View style={styles.tplSheet}>
+                  <View style={styles.tplSheetHeader}>
+                    <Text style={styles.tplSheetTitle}>My files</Text>
+                    <TouchableOpacity onPress={() => setShowMyFiles(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+                    {myFiles.map((f) => {
+                      const already = atts.some((a) => a.url === f.url);
+                      return (
+                        <TouchableOpacity
+                          key={f.id || f.url}
+                          style={styles.tplSheetRow}
+                          onPress={() => {
+                            if (!already) setAtts((prev) => [...prev, { type: f.type, url: f.url, title: f.title, size: f.size, contentType: f.contentType }]);
+                            setShowMyFiles(false);
+                          }}
+                          activeOpacity={0.7}
+                          disabled={already}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.tplSheetRowTitle} numberOfLines={1}>{cleanFileName(f.title || 'File')}</Text>
+                            <Text style={styles.tplSheetRowSub} numberOfLines={1}>
+                              {[f.folder, attachmentMeta(f)].filter(Boolean).join(' · ')}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={already ? 'checkmark-circle' : 'add-circle-outline'}
+                            size={18}
+                            color={already ? COLORS.success : COLORS.primary}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
               </View>
             )}

@@ -14,12 +14,16 @@ import { TourSpot, useTourScroller, useTourPadding } from '../../components/Tour
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
+import { pickDocument, uploadTaskFile } from '../../lib/media';
+import { attachmentKind, attachmentMeta, cleanFileName, TASK_FILE_MAX_LABEL } from '../../lib/attachments';
+import TaskAttachments from '../../components/TaskAttachments';
 import { displayName } from '../../lib/displayName';
 import { liveStreak } from '../../lib/score';
 import { sendNotification } from '../../lib/inbox';
 import { advancePrograms } from '../../lib/programs';
 import { studioUpsell, TEACHER_FREE_STUDENT_LIMIT } from '../../lib/entitlements';
 import StudentKeeperModal from '../../components/StudentKeeperModal';
+import SheetModal from '../../components/SheetModal';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -48,9 +52,13 @@ function tipOfTheDay() {
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
   { id: 'code', enabled: true },
+  // Students lead: a teacher opens this screen to see who needs them, not to
+  // read their own statistics. (The three stat boxes that used to sit at the
+  // top are gone — a teacher told us the page read like a student's.)
+  { id: 'pulse', enabled: true },
   { id: 'calendar', enabled: true },
   { id: 'lessons', enabled: true },
-  { id: 'stats', enabled: true },
+  { id: 'files', enabled: true },
   { id: 'getstarted', enabled: true },
   { id: 'actions', enabled: true },
   { id: 'ask', enabled: true },
@@ -58,21 +66,21 @@ const DEFAULT_WIDGETS = [
   { id: 'tip', enabled: false },
   { id: 'top', enabled: false },
   { id: 'notes', enabled: false },
-  // Practice Pulse sits at the bottom — the studio's at-a-glance status.
-  { id: 'pulse', enabled: true },
 ];
+// Retiring a widget means dropping it from here: mergeLayout only keeps ids it
+// knows, so a saved layout loses it on the next load. That's how `stats` went.
 const WIDGET_LABELS = {
   code: 'Join code',
+  pulse: 'Students',
   calendar: 'Calendar',
   lessons: 'Lessons',
-  stats: 'Stats',
+  files: 'My files',
   getstarted: 'Get started',
   actions: 'Quick actions',
   ask: 'Ask Prova',
   tip: 'Tip of the day',
   top: 'Top students',
   notes: 'My notes',
-  pulse: 'Practice Pulse',
 };
 
 const LESSON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -104,16 +112,6 @@ function mergeLayout(saved) {
     have.add(d.id);
   });
   return kept;
-}
-
-function StatCard({ value, label, icon }) {
-  return (
-    <View style={styles.statCard}>
-      <Ionicons name={icon} size={18} color={COLORS.primary} />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
 }
 
 function ChecklistRow({ done, label, onPress }) {
@@ -243,7 +241,17 @@ export default function TeacherHomeScreen({ navigation }) {
   const [note, setNote] = useState('');
   const [lessons, setLessons] = useState([]);
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
-  const [pulseOpen, setPulseOpen] = useState(false);     // Practice Pulse "show more"
+  const [pulseOpen, setPulseOpen] = useState(false);     // student list "show more"
+  // The teacher's own library: every PDF and backing track they use, kept on
+  // their account (users/{uid}.teacherFiles) instead of being re-found on a
+  // laptop every time they set a task.
+  const [files, setFiles] = useState([]);
+  const [fileFolder, setFileFolder] = useState('All');
+  const [fileBusy, setFileBusy] = useState(false);
+  const [filePct, setFilePct] = useState(null);
+  const [fileEdit, setFileEdit] = useState(null);        // the file open in the rename/move sheet
+  const [fileName, setFileName] = useState('');
+  const [fileFolderText, setFileFolderText] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
 
   const [teacherPro, setTeacherPro] = useState(true);    // optimistic — real value loads with the doc
@@ -314,9 +322,64 @@ export default function TeacherHomeScreen({ navigation }) {
         setTeacherPro(true); // FREE LAUNCH: Studio unlocked for all (real value in teacherPlan)
         setNote(s.data()?.teacherNote || '');
         setLessons(Array.isArray(s.data()?.lessons) ? s.data().lessons : []);
+        setFiles(Array.isArray(s.data()?.teacherFiles) ? s.data().teacherFiles : []);
       })
       .catch(() => {});
   }, []);
+
+  // One write for the whole library — it's a small array on the teacher's own
+  // doc, and keeping it in one field means no sync to get wrong.
+  const saveFiles = (next) => {
+    setFiles(next);
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { teacherFiles: next }).catch(() => {});
+  };
+
+  const addFile = async () => {
+    if (fileBusy) return;
+    const picked = await pickDocument();
+    if (!picked) return;
+    if (picked.error) { Alert.alert('Cannot add', picked.error); return; }
+    setFileBusy(true); setFilePct(0);
+    try {
+      const uid = auth.currentUser.uid;
+      const att = await uploadTaskFile(picked, uid, (pct) => setFilePct(pct));
+      saveFiles([{ ...att, id: `${Date.now()}`, folder: fileFolder === 'All' ? '' : fileFolder, addedAt: new Date().toISOString() }, ...files]);
+    } catch (e) {
+      Alert.alert('Upload failed', e?.message || 'That file could not be uploaded.');
+    } finally {
+      setFileBusy(false); setFilePct(null);
+    }
+  };
+
+  const openFileEdit = (f) => {
+    setFileEdit(f);
+    setFileName(cleanFileName(f.title || ''));
+    setFileFolderText(f.folder || '');
+  };
+
+  const saveFileEdit = () => {
+    const next = files.map((f) => (f.id === fileEdit.id
+      ? { ...f, title: fileName.trim() || f.title, folder: fileFolderText.trim() }
+      : f));
+    saveFiles(next);
+    setFileEdit(null);
+  };
+
+  // Removes it from the library only. The copy already attached to a task
+  // keeps working — pulling a file out from under a student's homework would
+  // be a nasty surprise.
+  const deleteFile = () => {
+    const gone = fileEdit;
+    Alert.alert('Remove from your files?', cleanFileName(gone.title || 'This file'), [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => { saveFiles(files.filter((f) => f.id !== gone.id)); setFileEdit(null); },
+      },
+    ]);
+  };
 
   const saveNote = async () => {
     const uid = auth.currentUser?.uid;
@@ -405,14 +468,60 @@ export default function TeacherHomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         ) : null;
-      case 'stats':
+      case 'files': {
+        const folders = [...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].sort();
+        const shown = fileFolder === 'All' ? files : files.filter((f) => (f.folder || '') === fileFolder);
         return (
-          <View style={styles.statsRow}>
-            <StatCard value={stats.students} label="Students" icon="people" />
-            <StatCard value={stats.active} label="Active this week" icon="flame" />
-            <StatCard value={stats.tasks} label="Tasks assigned" icon="clipboard" />
+          <View style={styles.card}>
+            <View style={styles.pulseHeader}>
+              <Text style={styles.cardTitle}>My files</Text>
+              <Text style={styles.pulseSummary}>{files.length ? `${files.length} file${files.length === 1 ? '' : 's'}` : ''}</Text>
+            </View>
+            <Text style={styles.filesSub}>
+              Sheet music, tabs and backing tracks in one place. Tap to open or play; attach them to a task without
+              going looking for the file again. Up to {TASK_FILE_MAX_LABEL} each.
+            </Text>
+            {folders.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.folderRow} contentContainerStyle={{ gap: 8 }}>
+                {['All', ...folders].map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.folderChip, fileFolder === f && styles.folderChipOn]}
+                    onPress={() => setFileFolder(f)}
+                    disabled={editMode}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.folderChipText, fileFolder === f && { color: COLORS.onPrimary }]} numberOfLines={1}>{f}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            {shown.length === 0 ? (
+              <Text style={styles.emptyMini}>
+                {files.length === 0
+                  ? 'Nothing here yet. Add a PDF or a backing track and it stays in your library.'
+                  : `Nothing in “${fileFolder}” yet.`}
+              </Text>
+            ) : (
+              /* The same player the students get — audio plays in the row, a
+                 PDF opens in the app — plus a ⋯ to rename or file each one. */
+              <TaskAttachments
+                attachments={shown}
+                style={{ marginTop: SPACING.sm }}
+                onEdit={editMode ? undefined : openFileEdit}
+              />
+            )}
+            <TouchableOpacity style={styles.filesAddBtn} onPress={addFile} disabled={fileBusy || editMode} activeOpacity={0.85}>
+              {fileBusy
+                ? <Ghost size="small" color={COLORS.primary} />
+                : <Ionicons name="add" size={18} color={COLORS.primary} />}
+              <Text style={styles.filesAddText}>
+                {fileBusy ? (filePct != null ? `Uploading… ${filePct}%` : 'Uploading…') : 'Add a PDF or audio file'}
+              </Text>
+            </TouchableOpacity>
           </View>
         );
+      }
       case 'getstarted':
         return (
           <View style={styles.card}>
@@ -430,15 +539,23 @@ export default function TeacherHomeScreen({ navigation }) {
                 <Ionicons name="person-add" size={18} color={COLORS.onPrimary} />
                 <Text style={styles.actionText}>Add a student</Text>
               </TouchableOpacity>
+              {/* One tap to the calendar, from the top of the screen — a
+                  teacher's most-used page shouldn't need scrolling to. */}
+              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={() => navigation.navigate('TeacherCalendar')} activeOpacity={0.85} disabled={editMode}>
+                <Ionicons name="calendar" size={18} color={COLORS.primary} />
+                <Text style={[styles.actionText, { color: COLORS.primary }]}>Calendar</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.actionsRow}>
               <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goResources} activeOpacity={0.85} disabled={editMode}>
                 <Ionicons name="library" size={18} color={COLORS.primary} />
                 <Text style={[styles.actionText, { color: COLORS.primary }]}>Resources</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={goPacks} activeOpacity={0.85} disabled={editMode}>
+                <Ionicons name="albums-outline" size={18} color={COLORS.primary} />
+                <Text style={[styles.actionText, { color: COLORS.primary }]}>Packs</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt, styles.actionBtnWide]} onPress={goPacks} activeOpacity={0.85} disabled={editMode}>
-              <Ionicons name="albums-outline" size={18} color={COLORS.primary} />
-              <Text style={[styles.actionText, { color: COLORS.primary }]}>Packs & Programs</Text>
-            </TouchableOpacity>
           </View>
         );
       case 'ask':
@@ -527,7 +644,7 @@ export default function TeacherHomeScreen({ navigation }) {
           return (
             <View style={styles.card}>
               <View style={styles.pulseHeader}>
-                <Text style={styles.cardTitle}>Practice Pulse</Text>
+                <Text style={styles.cardTitle}>Students</Text>
                 <Ionicons name="lock-closed" size={14} color={COLORS.textSecondary} />
               </View>
               <Text style={styles.emptyMini}>See who's on track and who needs a nudge, at a glance — part of Prova Studio.</Text>
@@ -553,18 +670,31 @@ export default function TeacherHomeScreen({ navigation }) {
         const shown = pulseOpen ? rows : rows.slice(0, 3);
         return (
           <View style={styles.card}>
+            {/* This card was "Practice Pulse" — a name that meant nothing to the
+                teacher reading it. It is the roster: who they teach, who needs
+                them today, and a tap through to that student. */}
             <View style={styles.pulseHeader}>
-              <Text style={styles.cardTitle}>Practice Pulse</Text>
+              <Text style={styles.cardTitle}>Students</Text>
               <Text style={styles.pulseSummary}>
-                {rows.length === 0 ? '' : needCount === 0 ? 'all on track' : `${needCount} need a nudge`}
+                {rows.length === 0 ? '' : needCount === 0
+                  ? `${rows.length} · all on track`
+                  : `${rows.length} · ${needCount} need a nudge`}
               </Text>
             </View>
             {rows.length === 0 ? (
-              <Text style={styles.emptyMini}>Connect students to see their practice at a glance.</Text>
+              <Text style={styles.emptyMini}>Share your join code and your students appear here.</Text>
             ) : shown.map(({ s, st, streak }) => {
               const done = nudged.has(s.uid);
               return (
-                <View key={s.uid} style={styles.pulseRow}>
+                <TouchableOpacity
+                  key={s.uid}
+                  style={styles.pulseRow}
+                  onPress={goStudents}
+                  activeOpacity={0.7}
+                  disabled={editMode}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${displayName(s)}`}
+                >
                   <View style={[styles.pulseDot, { backgroundColor: st.color }]} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.pulseName} numberOfLines={1}>{displayName(s)}</Text>
@@ -583,7 +713,8 @@ export default function TeacherHomeScreen({ navigation }) {
                       <Text style={[styles.nudgeText, done && { color: COLORS.success }]}>{done ? 'Nudged' : 'Nudge'}</Text>
                     </TouchableOpacity>
                   )}
-                </View>
+                  <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
+                </TouchableOpacity>
               );
             })}
             {rows.length > 3 && (
@@ -685,6 +816,56 @@ export default function TeacherHomeScreen({ navigation }) {
         limit={TEACHER_FREE_STUDENT_LIMIT}
         onDone={(kept) => { setStudents((prev) => prev.filter((s) => kept.includes(s.uid))); setKeeperOpen(false); }}
       />
+
+      {/* Rename a file to something you'll recognise, and file it under a
+          folder of your own naming — typing a new name makes the folder. */}
+      <SheetModal visible={!!fileEdit} onRequestClose={() => setFileEdit(null)} cardStyle={styles.fileSheet}>
+        <View style={styles.fileSheetHead}>
+          <Text style={styles.cardTitle}>File</Text>
+          <TouchableOpacity onPress={() => setFileEdit(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {!!fileEdit && (
+          <Text style={styles.fileSheetMeta}>{attachmentMeta(fileEdit)}</Text>
+        )}
+        <Text style={styles.fileSheetLabel}>NAME</Text>
+        <TextInput
+          style={styles.fileInput}
+          value={fileName}
+          onChangeText={setFileName}
+          placeholder="Grade 3 scales"
+          placeholderTextColor={COLORS.textMuted}
+        />
+        <Text style={styles.fileSheetLabel}>FOLDER</Text>
+        <TextInput
+          style={styles.fileInput}
+          value={fileFolderText}
+          onChangeText={setFileFolderText}
+          placeholder="e.g. Scales, Grade 3, Backing tracks"
+          placeholderTextColor={COLORS.textMuted}
+          autoCapitalize="sentences"
+        />
+        {[...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].length > 0 && (
+          <View style={styles.folderPickRow}>
+            {[...new Set(files.map((f) => (f.folder || '').trim()).filter(Boolean))].sort().map((f) => (
+              <TouchableOpacity key={f} style={styles.folderChip} onPress={() => setFileFolderText(f)} activeOpacity={0.8}>
+                <Text style={styles.folderChipText} numberOfLines={1}>{f}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        <View style={styles.fileSheetBtns}>
+          <TouchableOpacity style={styles.fileDeleteBtn} onPress={deleteFile} activeOpacity={0.85}>
+            <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+            <Text style={styles.fileDeleteText}>Remove</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.fileSaveBtn} onPress={saveFileEdit} activeOpacity={0.85}>
+            <Text style={styles.fileSaveText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.filesSub}>Removing it here leaves any task you've already attached it to untouched.</Text>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -724,13 +905,6 @@ const styles = themedStyles(() => StyleSheet.create({
   codeShareBtn: { alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   codeShareText: { color: COLORS.primary, fontSize: 11, fontWeight: '700' },
 
-  statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
-  statCard: {
-    flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: SPACING.md,
-    alignItems: 'center', gap: 4, borderWidth: 1, borderColor: COLORS.border,
-  },
-  statValue: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
-  statLabel: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', textAlign: 'center', letterSpacing: 0.4 },
   card: {
     backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.lg,
     borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.lg,
@@ -745,6 +919,43 @@ const styles = themedStyles(() => StyleSheet.create({
   miniName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },
   miniScore: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   miniMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  // My files
+  filesSub: { color: COLORS.textMuted, fontSize: 12.5, lineHeight: 18, marginTop: 4 },
+  folderRow: { marginTop: SPACING.sm, marginHorizontal: -2 },
+  folderChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background, maxWidth: 160,
+  },
+  folderChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  folderChipText: { color: COLORS.textSecondary, fontSize: 12.5, fontWeight: '700' },
+  folderPickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.sm },
+  filesAddBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    marginTop: SPACING.md, paddingVertical: 11, borderRadius: 10,
+    borderWidth: 1, borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '12',
+  },
+  filesAddText: { color: COLORS.primary, fontSize: 13.5, fontWeight: '700' },
+  fileSheet: { padding: SPACING.lg, borderRadius: 20 },
+  fileSheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  fileSheetMeta: { color: COLORS.textMuted, fontSize: 12.5, marginBottom: SPACING.md },
+  fileSheetLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: SPACING.sm, marginBottom: 6 },
+  fileInput: {
+    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 11, color: COLORS.text, fontSize: 14.5,
+  },
+  fileSheetBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
+  fileDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12,
+    borderWidth: 1, borderColor: COLORS.error + '55',
+  },
+  fileDeleteText: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
+  fileSaveBtn: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: 12, backgroundColor: COLORS.primary,
+  },
+  fileSaveText: { color: COLORS.onPrimary, fontSize: 14.5, fontWeight: '800' },
+
   // Practice Pulse
   pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
   pulseSummary: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
