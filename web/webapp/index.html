@@ -165,7 +165,11 @@
   .pdfclock{flex:none;font-family:var(--round);font-weight:700;font-size:15px;color:var(--primary);
     font-variant-numeric:tabular-nums}
   .pdfclock[hidden]{display:none}
-  .pdfbox iframe{flex:1;width:100%;border:0;background:#525659}
+  .pdfbody{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#1c1f26}
+  .pdfbody iframe{flex:1;width:100%;height:100%;border:0;background:#525659}
+  .pdfbody video,.pdfbody img{max-width:100%;max-height:100%;display:block}
+  .pdfaudio{width:min(560px,92vw);padding:26px;text-align:center}
+  .pdfaudio audio{width:100%;margin-top:14px}
 
   /* A teacher's files on a task: audio and video play in place, PDFs open in
      the viewer above — nothing sends the student off the page mid-practice. */
@@ -600,7 +604,7 @@
     <a class="btn sm ghost" id="pdfTab" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab</a>
     <button class="btn sm" id="pdfClose">Close</button>
   </div>
-  <iframe id="pdfFrame" title="Attachment"></iframe>
+  <div class="pdfbody" id="pdfBody"></div>
 </div>
 
 <script type="module">
@@ -1167,29 +1171,42 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
-// ── the in-page PDF viewer ───────────────────────────────────────────────
-// Opened from any [data-pdf]. Delegated on the document like the lightbox, so
-// it works from a task card AND from inside the practice player, whose markup
-// is rebuilt on every snapshot. The iframe is only loaded while open — a
-// closed viewer must not hold a 20 MB score in memory.
+// ── the in-page viewer: PDFs, video, audio, images ───────────────────────
+// Whatever a teacher attached opens HERE. The practice clock is running on
+// this page; a file that throws you into another tab takes you out of the
+// session the app is trying to keep you in.
+function openMediaViewer(url, name, kindHint) {
+  const box = document.querySelector('#pdfbox');
+  const body = document.querySelector('#pdfBody');
+  if (!box || !body || !url) return;
+  const kind = kindHint || attachmentKind({ url, title: name }) || 'file';
+  document.querySelector('#pdfName').textContent = name || 'Attachment';
+  document.querySelector('#pdfTab').href = url;
+  const safe = esc(url);
+  body.innerHTML =
+      kind === 'video' ? `<video src="${safe}" controls autoplay playsinline></video>`
+    : kind === 'audio' ? `<div class="pdfaudio"><div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
+        <audio src="${safe}" controls autoplay></audio></div>`
+    : kind === 'photo' ? `<img src="${safe}" alt="${esc(name || '')}">`
+    : `<iframe src="${safe}" title="${esc(name || 'Attachment')}"></iframe>`;
+  box.hidden = false;
+  paintPdfClock();
+}
 (() => {
   const box = document.querySelector('#pdfbox');
-  const frame = document.querySelector('#pdfFrame');
-  if (!box || !frame) return;
-  const close = () => { box.hidden = true; frame.removeAttribute('src'); paintPdfClock(); };
+  const body = document.querySelector('#pdfBody');
+  if (!box || !body) return;
+  // Emptying it stops whatever was playing — a video left running behind a
+  // closed viewer would fight the backing track on the task.
+  const close = () => { box.hidden = true; body.innerHTML = ''; paintPdfClock(); };
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-pdf]');
+    const t = e.target.closest('[data-pdf], [data-media]');
     if (!t) return;
-    const url = t.getAttribute('data-pdf');
+    const url = t.getAttribute('data-pdf') || t.getAttribute('data-media');
     if (!url) return;
     e.preventDefault();
-    document.querySelector('#pdfName').textContent = t.getAttribute('data-pdfname') || 'Attachment';
-    // Every browser's own PDF viewer, in a frame — no library to ship, and
-    // printing/downloading stay available through "Open in a new tab".
-    document.querySelector('#pdfTab').href = url;
-    frame.src = url;
-    box.hidden = false;
-    paintPdfClock();
+    openMediaViewer(url, t.getAttribute('data-pdfname') || t.getAttribute('data-medianame'),
+      t.getAttribute('data-mediakind'));
   });
   document.querySelector('#pdfClose').onclick = close;
   // Escape closes the viewer and nothing else — the player stays open behind it.
@@ -1543,10 +1560,10 @@ function attachmentsHtml(list, key) {
           <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
           <span class="atto">Open</span></button>`;
       }
-      return `<a class="att" href="${esc(a.url)}" target="_blank" rel="noopener">
+      return `<button class="att" type="button" data-media="${esc(a.url)}" data-medianame="${name}" data-mediakind="${esc(kind || 'file')}">
         <span class="atti">📎</span>
         <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div></div>
-        <span class="atto">Open</span></a>`;
+        <span class="atto">Open</span></button>`;
     }).join('')}
     ${photos.length ? `<div class="attphotos">${photos.map(a => `<img src="${esc(a.url)}"
       alt="${esc(cleanFileName(a.title || 'Photo'))} — click to enlarge" data-lightbox="${esc(a.url)}">`).join('')}</div>` : ''}
@@ -4702,13 +4719,17 @@ function lessonNoteSheet(r) {
       </div>` : ''}
     ${r.atts.length ? `<div class="eyebrow" style="padding:18px 0 8px">Attachments</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${r.atts.map((a) => a.type === 'photo'
-          ? `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img src="${esc(a.url)}" alt="${esc(a.title || 'Lesson photo')}"
-               style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"></a>`
-          : `<a class="btn sm ghost" href="${esc(a.url || '#')}" target="_blank" rel="noopener"
-               ${a.url ? '' : 'style="pointer-events:none;opacity:.7"'}>${
-               a.type === 'song' ? '🎵' : a.type === 'video' ? '🎥' : '🔗'} ${esc(a.title || a.url || '')}</a>`
-        ).join('')}</div>` : ''}
+        ${r.atts.map((a) => {
+          // A lesson note's photo used to open in a raw Storage tab; both open
+          // in the viewer now, like every other file in the app.
+          const name = esc(cleanFileName(a.title || 'Lesson attachment'));
+          return attachmentKind(a) === 'photo'
+            ? `<img src="${esc(a.url)}" alt="${name}" data-lightbox="${esc(a.url)}"
+                 style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in">`
+            : `<button class="btn sm ghost" type="button" data-media="${esc(a.url || '')}" data-medianame="${name}"
+                 ${a.url ? '' : 'disabled style="opacity:.7"'}>${
+                 a.type === 'song' ? '🎵' : attachmentKind(a) === 'video' ? '🎥' : attachmentKind(a) === 'audio' ? '🎵' : attachmentKind(a) === 'pdf' ? '📄' : '🔗'} ${name}</button>`;
+        }).join('')}</div>` : ''}
     <button class="btn ghost" data-close style="width:100%;margin-top:20px">Close</button></div>`;
 }
 function fmtNoteDay(ds) {
