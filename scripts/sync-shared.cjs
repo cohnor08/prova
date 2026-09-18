@@ -18,7 +18,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'web', 'shared');
-const FILES = ['src/constants/theory.js', 'src/lib/attachments.js', 'src/lib/printSheets.js'];
+const FILES = ['src/constants/theory.js', 'src/lib/attachments.js', 'src/lib/printSheets.js', 'src/lib/albumArt.js'];
 
 const check = process.argv.includes('--check');
 let bad = 0;

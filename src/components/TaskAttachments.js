@@ -8,6 +8,7 @@ import { Audio } from 'expo-av';
 import * as WebBrowser from 'expo-web-browser';
 import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { attachmentKind, attachmentMeta, cleanFileName } from '../lib/attachments';
+import { couldHaveArtwork, loadEmbeddedPicture, bytesToBase64 } from '../lib/albumArt';
 
 // Everything a teacher attached to a task, as the student sees it: photos as
 // thumbnails that open full size, audio as a player that runs right here (so a
@@ -42,6 +43,21 @@ export function openAttachment(url) {
 // than two backing tracks playing over each other.
 let nowPlaying = null; // { sound, pause }
 
+// An MP3 of a real song carries its own cover. Fetched with two small range
+// requests (never the whole track) and remembered for the session, so a list
+// of the same backing tracks doesn't re-fetch on every render.
+const covers = new Map();
+function coverFor(a) {
+  const url = a && a.url;
+  if (!url || !couldHaveArtwork(a.contentType, a.title)) return Promise.resolve(null);
+  if (!covers.has(url)) {
+    covers.set(url, loadEmbeddedPicture(url, (u, o) => fetch(u, o))
+      .then((pic) => (pic ? `data:${pic.mime};base64,${bytesToBase64(pic.bytes)}` : null))
+      .catch(() => null));
+  }
+  return covers.get(url);
+}
+
 function AudioRow({ a, onEdit }) {
   const soundRef = useRef(null);
   const mounted = useRef(true);
@@ -49,6 +65,13 @@ function AudioRow({ a, onEdit }) {
   const [state, setState] = useState('idle'); // idle | loading | playing | paused | error
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
+  const [cover, setCover] = useState(null);   // the track's own artwork, if it has any
+
+  useEffect(() => {
+    let live = true;
+    coverFor(a).then((uri) => { if (live && uri) setCover(uri); });
+    return () => { live = false; };
+  }, [a.url]);
 
   // Leaving the task (next task, collapsing the card, closing the player)
   // stops the track.
@@ -154,12 +177,16 @@ function AudioRow({ a, onEdit }) {
   return (
     <View style={styles.row}>
       <TouchableOpacity
-        style={styles.playBtn}
+        style={[styles.playBtn, !!cover && styles.playBtnArt]}
         onPress={toggle}
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel={state === 'playing' ? `Pause ${title}` : `Play ${title}`}
       >
+        {/* With a cover, the artwork IS the button and the control sits over
+            it — a record you recognise beats a generic play circle. */}
+        {!!cover && <Image source={{ uri: cover }} style={styles.playArt} resizeMode="cover" />}
+        {!!cover && <View style={styles.playScrim} pointerEvents="none" />}
         {state === 'loading'
           ? <ActivityIndicator size="small" color={COLORS.onPrimary} />
           : <Ionicons name={state === 'playing' ? 'pause' : 'play'} size={18} color={COLORS.onPrimary} style={state === 'playing' ? null : { marginLeft: 2 }} />}
@@ -306,6 +333,9 @@ const styles = themedStyles(() => StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary,
   },
+  playBtnArt: { borderRadius: 8, overflow: 'hidden', backgroundColor: COLORS.card },
+  playArt: { ...StyleSheet.absoluteFillObject },
+  playScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   rowMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },

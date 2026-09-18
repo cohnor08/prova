@@ -177,7 +177,10 @@
   .att{display:flex;gap:12px;align-items:flex-start;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;
     background:var(--card);color:inherit;text-decoration:none}
   a.att:hover{border-color:var(--primary)}
-  .atti{font-size:18px;line-height:1.35;flex:none}
+  /* Fixed box: with a cover in it, a free-sizing icon slot stretched the whole
+     row to the height of the artwork. */
+  .atti{width:38px;height:38px;flex:none;display:grid;place-items:center;font-size:18px;line-height:1}
+  .atti img{width:100%;height:100%;object-fit:cover;border-radius:7px;display:block}
   .attb{flex:1;min-width:0}
   .attn{font-weight:650;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .att audio{display:block;width:100%;height:36px;margin-top:8px}
@@ -615,6 +618,8 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, on
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory.js';
 import { attachmentKind, attachmentMeta, cleanFileName } from '/shared/attachments.js';
+// The cover art inside an MP3 (src/lib/albumArt.js).
+import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
 // The printable sheets — the same file the phone prints from (src/lib/printSheets.js).
 import { chordSheetHtml, scaleSheetHtml, topicSheetHtml } from '/shared/printSheets.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment, deleteDoc, collection, getDocs,
@@ -1172,6 +1177,44 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
+
+// ── album covers ─────────────────────────────────────────────────────────
+// An MP3 of a real song carries its own cover. Two small range requests get
+// it (never the whole track), it's cached per URL, and the 🎵 stays put when
+// there isn't one. Deliberately the file's OWN artwork — Apple's artwork may
+// only be shown next to a link to their store.
+const COVERS = new Map();
+function coverUrl(url) {
+  if (!COVERS.has(url)) {
+    // fetch must stay bound to the window — handing the bare function to the
+    // shared module throws "Illegal invocation" the moment it's called.
+    COVERS.set(url, loadEmbeddedPicture(url, (u, o) => fetch(u, o)).then(
+      (pic) => (pic ? URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime })) : null),
+    ).catch(() => null));
+  }
+  return COVERS.get(url);
+}
+async function paintCovers() {
+  document.querySelectorAll('[data-cover]:not([data-cover-done])').forEach(async (el) => {
+    el.setAttribute('data-cover-done', '1');
+    const src = await coverUrl(el.getAttribute('data-cover'));
+    if (src && el.isConnected) {
+      el.innerHTML = `<img src="${src}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block">`;
+      el.style.fontSize = '0';
+    }
+  });
+}
+// Lists here are repainted wholesale all over the place, so watch rather than
+// remember to call it from a dozen render functions.
+(() => {
+  let queued = null;
+  new MutationObserver(() => {
+    clearTimeout(queued);
+    queued = setTimeout(paintCovers, 80);
+  }).observe(document.body, { childList: true, subtree: true });
+  paintCovers();
+})();
+
 // ── the in-page viewer: PDFs, video, audio, images ───────────────────────
 // Whatever a teacher attached opens HERE. The practice clock is running on
 // this page; a file that throws you into another tab takes you out of the
@@ -1186,7 +1229,10 @@ function openMediaViewer(url, name, kindHint) {
   const safe = esc(url);
   body.innerHTML =
       kind === 'video' ? `<video src="${safe}" controls autoplay playsinline></video>`
-    : kind === 'audio' ? `<div class="pdfaudio"><div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
+    : kind === 'audio' ? `<div class="pdfaudio">
+        <div data-cover="${safe}" style="width:180px;height:180px;margin:0 auto 16px;border-radius:12px;
+          background:var(--raised);display:grid;place-items:center;font-size:44px">🎵</div>
+        <div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
         <audio src="${safe}" controls autoplay></audio></div>`
     : kind === 'photo' ? `<img src="${safe}" alt="${esc(name || '')}">`
     : `<iframe src="${safe}" title="${esc(name || 'Attachment')}"></iframe>`;
@@ -1550,7 +1596,8 @@ function attachmentsHtml(list, key) {
       const kind = attachmentKind(a);
       const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : kind === 'audio' ? 'Audio' : 'File')));
       const meta = esc(attachmentMeta(a));
-      const media = (tag) => `<div class="att"><span class="atti">${icon[kind]}</span><div class="attb">
+      const media = (tag) => `<div class="att"><span class="atti"${
+        kind === 'audio' && couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}>${icon[kind]}</span><div class="attb">
         <div class="attn">${name}</div><div class="hint">${meta}</div>
         <${tag} controls preload="none" src="${esc(a.url)}" data-attmedia="${esc(key + '|' + a.url)}"></${tag}></div></div>`;
       if (kind === 'audio') return media('audio');
@@ -4743,7 +4790,7 @@ async function viewTeacherFiles() {
         const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : 'File')));
         const sub = `${esc(from)}${when(w) ? ` · ${when(w)}` : ''}`;
         return kind === 'audio'
-          ? `<div class="att"><span class="atti">🎵</span><div class="attb">
+          ? `<div class="att"><span class="atti"${couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}>🎵</span><div class="attb">
               <div class="attn">${name}</div><div class="hint">${sub}</div>
               <audio controls preload="none" src="${esc(a.url)}" data-attmedia="${esc('tf|' + a.url)}"></audio></div></div>`
           : `<button class="att" type="button" data-media="${esc(a.url)}" data-medianame="${name}" data-mediakind="${esc(kind)}">
