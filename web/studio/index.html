@@ -179,6 +179,9 @@
   .tadrop{border:1px dashed var(--line);border-radius:12px;padding:12px;margin-bottom:20px;transition:border-color .15s,background .15s}
   .tadrop.over{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,transparent)}
   .taatt{padding:8px 0;border-bottom:1px solid var(--line)}
+  /* A row holding a track opens it on click, so say so. */
+  .taatt:has(audio){cursor:pointer}
+  .taatt audio[hidden]{display:none}
   /* A drafted task is prose, not a form label — Studio's global label rule
      would otherwise SHOUT the whole thing in caps. */
   .draftrow{display:flex;gap:12px;align-items:flex-start;cursor:pointer;
@@ -607,6 +610,35 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
+
+
+// ── audio rows ───────────────────────────────────────────────────────────
+// A list of tracks shouldn't be a wall of player bars: each row carries its
+// player HIDDEN, and a click (or the row's Play button) reveals and starts it.
+// Starting one stops whatever else was playing. The element is in the markup
+// from the start rather than built on click, so a re-render can carry a
+// playing track across (see setHtmlKeepingMedia).
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.taatt, .att');
+  if (!row) return;
+  const onPlayBtn = !!e.target.closest('[data-playrow]');
+  // A click on the player itself, or on another control in the row, is not
+  // "open this track".
+  if (!onPlayBtn && e.target.closest('audio, button, a, input, label')) return;
+  const audio = row.querySelector('audio');
+  if (!audio) return;
+  if (audio.hidden) {
+    document.querySelectorAll('audio:not([hidden])').forEach((other) => { if (other !== audio) other.pause(); });
+    audio.hidden = false;
+    const btn = row.querySelector('[data-playrow]');
+    if (btn) btn.hidden = true;
+    audio.play().catch(() => { /* the controls are showing either way */ });
+  } else if (audio.paused) {
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
+});
 
 // ── album covers ─────────────────────────────────────────────────────────
 // An MP3 of a real song carries its own cover. Two small range requests get
@@ -1379,7 +1411,7 @@ function assignSheet(stu, editIdx) {
           ${kind === 'photo' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
             data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
           <button class="x" data-taattdel="${i}" aria-label="Remove ${esc(name)}">×</button></div>
-        ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
+        ${kind === 'audio' ? `<audio controls preload="none" hidden data-attmedia="${esc(a.url)}" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
       </div>`;
     }).join('');
     box.querySelectorAll('[data-taattdel]').forEach((b2) => {
@@ -1674,11 +1706,12 @@ function myFilesHtml() {
                style="width:30px;height:30px;line-height:30px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>`}
         <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
           <div class="hint" style="font-size:12px">${esc([f.folder, attachmentMeta(f)].filter(Boolean).join(' · '))}</div></div>
-        ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(f.url)}"
+        ${kind === 'audio' ? '<button class="btn sm ghost" type="button" data-playrow>▶ Play</button>'
+          : `<button class="btn sm ghost" type="button" data-media="${esc(f.url)}"
           data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
         <button class="btn sm ghost" data-mfsend="${esc(ref)}" title="Send to a student">Send</button>
         <button class="x" data-mfedit="${esc(ref)}" title="Rename or file">⋯</button></div>
-        ${kind === 'audio' ? `<audio controls preload="none" src="${esc(f.url)}" style="width:100%;height:34px;margin-top:8px"></audio>` : ''}
+        ${kind === 'audio' ? `<audio controls preload="none" hidden data-attmedia="${esc(f.url)}" src="${esc(f.url)}" style="width:100%;height:34px;margin-top:8px"></audio>` : ''}
       </div>`;
     }).join('')}
     ${shown.length > MF_COMPACT ? `<button class="btn sm ghost" id="mfMore" style="width:100%;margin-top:10px">${
@@ -2698,7 +2731,7 @@ function newThing(kind, editIdx) {
           <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
         ${kind === 'pdf' ? `<button class="btn sm ghost" type="button" data-pdf="${esc(a.url)}" data-pdfname="${esc(name)}">Open</button>` : ''}
         <button class="x" data-ntdel="${i}" aria-label="Remove ${esc(name)}">×</button></div>
-        ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
+        ${kind === 'audio' ? `<audio controls preload="none" hidden data-attmedia="${esc(a.url)}" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
       </div>`;
     }).join('') : '<p class="hint" style="margin:0">No files yet.</p>';
     box.querySelectorAll('[data-ntdel]').forEach((b) => {
@@ -2790,9 +2823,10 @@ function resourceFilesHtml(r) {
         style="width:26px;height:26px;line-height:26px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>
       <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
         <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
-      ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
+      ${kind === 'audio' ? '<button class="btn sm ghost" type="button" data-playrow>▶ Play</button>'
+        : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
         data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
-      ${kind === 'audio' ? `<audio controls preload="none" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
+      ${kind === 'audio' ? `<audio controls preload="none" hidden data-attmedia="${esc(a.url)}" src="${esc(a.url)}" style="width:100%;height:36px;margin-top:8px"></audio>` : ''}
     </div>`;
   }).join('')}</div>`;
 }
