@@ -83,6 +83,10 @@ const WIDGET_LABELS = {
   notes: 'My notes',
 };
 
+// The files card lists this many, then offers the rest — a library gets long,
+// and Home is not where you browse it.
+const FILES_COMPACT = 5;
+
 const LESSON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function lessonWhen(l) {
   const [y, m, d] = (l.date || '').split('-').map(Number);
@@ -253,6 +257,7 @@ export default function TeacherHomeScreen({ navigation }) {
   const [fileBusy, setFileBusy] = useState(false);
   const [filePct, setFilePct] = useState(null);
   const [fileEdit, setFileEdit] = useState(null);        // the file open in the rename/move sheet
+  const [filesAll, setFilesAll] = useState(false);       // the card lists five until asked
   const [fileName, setFileName] = useState('');
   const [fileFolderText, setFileFolderText] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);     // inbox badge on the bell
@@ -518,11 +523,20 @@ export default function TeacherHomeScreen({ navigation }) {
             ) : (
               /* The same player the students get — audio plays in the row, a
                  PDF opens in the app — plus a ⋯ to rename or file each one. */
-              <TaskAttachments
-                attachments={shown}
-                style={{ marginTop: SPACING.sm }}
-                onEdit={editMode ? undefined : openFileEdit}
-              />
+              <>
+                <TaskAttachments
+                  attachments={filesAll ? shown : shown.slice(0, FILES_COMPACT)}
+                  style={{ marginTop: SPACING.sm }}
+                  onEdit={editMode ? undefined : openFileEdit}
+                />
+                {shown.length > FILES_COMPACT && (
+                  <TouchableOpacity onPress={() => setFilesAll((v) => !v)} activeOpacity={0.7} disabled={editMode}>
+                    <Text style={styles.filesMore}>
+                      {filesAll ? 'Show less' : `Show all ${shown.length}`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
             <TouchableOpacity style={styles.filesAddBtn} onPress={addFile} disabled={fileBusy || editMode} activeOpacity={0.85}>
               {fileBusy
@@ -934,6 +948,7 @@ const styles = themedStyles(() => StyleSheet.create({
   miniMeta: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   // My files
   filesSub: { color: COLORS.textMuted, fontSize: 12.5, lineHeight: 18, marginTop: 4 },
+  filesMore: { color: COLORS.primary, fontSize: 13, fontWeight: '700', textAlign: 'center', paddingTop: SPACING.sm },
   folderRow: { marginTop: SPACING.sm, marginHorizontal: -2 },
   folderChip: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,

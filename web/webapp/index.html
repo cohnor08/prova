@@ -1046,6 +1046,7 @@ const NAV = [
   { id: 'schedule', t: 'Schedule', i: '<path d="M8 3v4M16 3v4M4 8h16M5 5h14v15H5z"/>' },
   { id: 'calendar', t: 'Calendar', i: '<path d="M8 3v4M16 3v4M4 9h16M5 5h14v15H5z"/><circle cx="12" cy="14" r="1.6"/>' },
   { id: 'lessonnotes', t: 'Lesson notes', i: '<path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>' },
+  { id: 'teacherfiles', t: 'Teacher resources', i: '<path d="M4 7h5l2 2h9v9a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/><path d="M2 7V5a2 2 0 012-2h4l2 2"/>' },
   { g: 'Track' },
   { id: 'progress', t: 'Progress', i: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/>' },
   { id: 'leaderboard', t: 'Leaderboard', i: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0z"/><path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3"/>' },
@@ -1058,7 +1059,7 @@ const NAV = [
 ];
 const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
-  calendar:'Calendar', lessonnotes:'Lesson notes', leaderboard:'Leaderboard', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
+  calendar:'Calendar', lessonnotes:'Lesson notes', teacherfiles:'Teacher resources', leaderboard:'Leaderboard', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
 const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
   ask:'practice', theory:'practice', rhythm:'practice', gig:'calendar' };
 // Built lazily: PI is declared further down, so reading it at this point in
@@ -1268,7 +1269,7 @@ function printSheet(html) {
 const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedule: viewSchedule,
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
-  calendar: viewCalendar, lessonnotes: viewLessonNotes, leaderboard: viewLeaderboard, notifications: viewNotifications, rhythm: viewRhythm,
+  calendar: viewCalendar, lessonnotes: viewLessonNotes, teacherfiles: viewTeacherFiles, leaderboard: viewLeaderboard, notifications: viewNotifications, rhythm: viewRhythm,
   skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
@@ -4700,6 +4701,61 @@ function linkify(text) {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer">${
       label.length > 52 ? label.slice(0, 50) + '…' : label}</a>${tail}`;
   });
+}
+
+// ── Teacher resources ────────────────────────────────────────────────────
+// Every file a teacher has sent, in one place, newest first: what it is, which
+// task it came with, and when. Nothing to file or manage — it fills itself.
+function teacherFileList() {
+  const out = [];
+  allAssigned().forEach((t) => {
+    (Array.isArray(t.attachments) ? t.attachments : []).forEach((a) => {
+      if (a && a.url) out.push({ a, from: t.title || 'A task', when: t.assignedAt || '', kindOf: 'task' });
+    });
+  });
+  // Lesson notes carry attachments too, and they're just as much "from your
+  // teacher" as a task's are. They live on the TEACHER's doc, so they arrive
+  // with LESSON_NOTES (loaded once, on demand).
+  (LESSON_NOTES || []).forEach((r) => {
+    (Array.isArray(r.atts) ? r.atts : []).forEach((a) => {
+      if (a && a.url) out.push({ a, from: 'Lesson note', when: `${r.date}T12:00:00`, kindOf: 'note' });
+    });
+  });
+  return out.sort((x, y) => String(y.when).localeCompare(String(x.when)));
+}
+async function viewTeacherFiles() {
+  // Pull the lesson notes in once so their attachments are here too — after
+  // that it's instant.
+  if (!LESSON_NOTES) await loadLessonNotes();
+  const list = teacherFileList();
+  const icon = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷' };
+  const when = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  setHtmlKeepingMedia($('#screen'), `<div class="content">
+    ${head('Teacher resources', list.length
+      ? `${list.length} file${list.length === 1 ? '' : 's'} your teacher has sent you`
+      : 'Files your teacher sends land here')}
+    <section class="card">
+      ${list.length ? `<div class="atts">${list.map(({ a, from, when: w }) => {
+        const kind = attachmentKind(a);
+        const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : 'File')));
+        const sub = `${esc(from)}${when(w) ? ` · ${when(w)}` : ''}`;
+        return kind === 'audio'
+          ? `<div class="att"><span class="atti">🎵</span><div class="attb">
+              <div class="attn">${name}</div><div class="hint">${sub}</div>
+              <audio controls preload="none" src="${esc(a.url)}" data-attmedia="${esc('tf|' + a.url)}"></audio></div></div>`
+          : `<button class="att" type="button" data-media="${esc(a.url)}" data-medianame="${name}" data-mediakind="${esc(kind)}">
+              <span class="atti">${icon[kind] || '📎'}</span>
+              <div class="attb"><div class="attn">${name}</div><div class="hint">${sub}</div></div>
+              <span class="atto">Open</span></button>`;
+      }).join('')}</div>`
+      : `<div class="empty"><div style="font-weight:650;color:var(--ink)">Nothing yet</div>
+          <div style="font-size:13px;margin-top:4px">Sheet music, tabs and backing tracks your teacher attaches to a
+            task will show up here on their own.</div></div>`}
+    </section>
+  </div>`);
 }
 
 function lessonNoteSheet(r) {
