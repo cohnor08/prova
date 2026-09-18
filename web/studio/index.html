@@ -807,7 +807,14 @@ function go(id) {
 // this did originally) stacks a fresh listener every time you revisit a screen.
 document.addEventListener('click', (e) => {
   const go_ = e.target.closest('[data-go]');
-  if (go_) { go(go_.getAttribute('data-go')); return; }
+  if (go_) {
+    // A row can say WHICH student it means. Without this, clicking Ethan on
+    // the Studio page opened whoever happened to be top of the roster.
+    const who = go_.getAttribute('data-gostu');
+    if (who) selUid = who;
+    go(go_.getAttribute('data-go'));
+    return;
+  }
   const ev = e.target.closest('[data-lesson]');
   if (ev) { occurrenceModal(ev.getAttribute('data-lesson'), ev.getAttribute('data-date')); return; }
   const ed = e.target.closest('[data-edit]');
@@ -925,6 +932,8 @@ function viewStudents() {
   const practised = students.filter((s) => s.weekMins > 0).length;
   const totalMins = students.reduce((a, s) => a + s.weekMins, 0);
   const attention = students.filter((s) => daysSince(s.lastSessionDate) >= 7).length;
+  // Only fall back to the first student when the chosen one is gone — the
+  // Studio page sets selUid before navigating here.
   if (!selUid || !byUid(selUid)) selUid = students[0]?.uid || null;
 
   $('#screen').innerHTML = `<div class="content">
@@ -1504,7 +1513,7 @@ function viewHome() {
           <thead><tr><th>Student</th><th>Last practice</th><th>This week</th><th>Streak</th><th>State</th></tr></thead>
           <tbody>${students.map(s => {
             const [cls, lab] = stateOf(s), nm = displayName(s);
-            return `<tr data-go="students"><td class="stu"><span class="avatar">${initials(nm)}</span>${esc(nm)}</td>
+            return `<tr data-go="students" data-gostu="${esc(s.uid)}"><td class="stu"><span class="avatar">${initials(nm)}</span>${esc(nm)}</td>
               <td class="n">${agoLabel(s.lastSessionDate)}</td><td class="n">${s.weekMins} min</td>
               <td class="n">${s.streak || 0}</td>
               <td><span class="state s-${cls}"><span class="dot"></span>${lab}</span></td></tr>`;
@@ -1516,23 +1525,29 @@ function viewHome() {
           <div class="ps">${esc(fmtDay(l.date))} at ${esc(l.time || '')}</div></div>
           <button class="btn sm ghost" data-go="calendar">Open</button></div>`).join('')}</section>` : ''}
     </div><div class="stack">
-      <section class="card"><header><h3>My files</h3>
-        <span class="meta">${(me.teacherFiles || []).length ? `${me.teacherFiles.length} file${me.teacherFiles.length === 1 ? '' : 's'}` : ''}</span></header>
-        <p class="hint" style="margin:0 0 12px">Sheet music, tabs and backing tracks in one place — attach them to a
-          task without going looking for the file again.</p>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input id="mfSearch" placeholder="Search your files" value="${esc(MF_QUERY)}"
-            style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:inherit;font:inherit">
-          <button class="btn sm ghost" id="mfNewFolder" style="flex:none">+ Folder</button></div>
-        <div id="myFiles">${myFilesHtml()}</div>
-        <div id="mfUpWrap" style="display:none;margin-top:10px">
-          <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:6px">
-            <span id="mfUpName" class="hint" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-            <span id="mfUpPct" class="hint" style="flex:none;font-variant-numeric:tabular-nums"></span></div>
-          <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
-            <div id="mfUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
-        <button class="btn sm ghost" id="mfAdd" style="width:100%;margin-top:12px">+ Add a PDF or audio file</button>
-        <input id="mfInput" type="file" multiple accept="${TASK_FILE_ACCEPT}" style="display:none">
+      ${myFilesCard()}
+      <section class="card"><header><h3>Lately</h3><span class="meta">Last 7 days</span></header>
+        ${(() => {
+          // Built from what the students' own apps write — a task completed, a
+          // proof filmed. This is the reason to open Studio on a Tuesday.
+          const since = Date.now() - 7 * 86400000;
+          const events = [];
+          students.forEach((s2) => {
+            (Array.isArray(s2.assignedTasks) ? s2.assignedTasks : []).forEach((t) => {
+              if (t.completedAt && new Date(t.completedAt).getTime() > since)
+                events.push({ uid: s2.uid, who: displayName(s2), what: `finished “${t.title}”`, at: t.completedAt });
+              if (t.proofAt && new Date(t.proofAt).getTime() > since)
+                events.push({ uid: s2.uid, who: displayName(s2), what: `sent proof on “${t.title}”`, at: t.proofAt });
+            });
+          });
+          events.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+          if (!events.length) return '<p class="hint" style="margin:0">Nothing from your students this week yet.</p>';
+          return events.slice(0, 6).map(ev => `<div class="prow" data-go="students" data-gostu="${esc(ev.uid)}" style="cursor:pointer">
+            <span class="avatar">${initials(ev.who)}</span>
+            <div class="pl"><div class="pt">${esc(ev.who)}</div>
+              <div class="ps">${esc(ev.what)}</div></div>
+            <span class="hint" style="flex:none">${esc(agoLabel(ev.at).toLowerCase())}</span></div>`).join('');
+        })()}
       </section>
       <section class="card"><header><h3>Waiting on you</h3></header>
         ${(() => {
@@ -1546,6 +1561,29 @@ function viewHome() {
       </section>
     </div></div></div>`;
   wireMyFiles();
+}
+
+// The whole card, so Studio's home and the Resources page show the same one.
+function myFilesCard() {
+  const n = myFiles().length;
+  return `<section class="card"><header><h3>My files</h3>
+      <span class="meta">${n ? `${n} file${n === 1 ? '' : 's'}` : ''}</span></header>
+      <p class="hint" style="margin:0 0 12px">Sheet music, tabs and backing tracks in one place — attach them to a
+        task without going looking for the file again.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="mfSearch" placeholder="Search your files" value="${esc(MF_QUERY)}"
+          style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:inherit;font:inherit">
+        <button class="btn sm ghost" id="mfNewFolder" style="flex:none">+ Folder</button></div>
+      <div id="myFiles">${myFilesHtml()}</div>
+      <div id="mfUpWrap" style="display:none;margin-top:10px">
+        <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:6px">
+          <span id="mfUpName" class="hint" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+          <span id="mfUpPct" class="hint" style="flex:none;font-variant-numeric:tabular-nums"></span></div>
+        <div style="height:4px;background:var(--raised);border-radius:2px;overflow:hidden">
+          <div id="mfUpBar" style="width:0%;height:100%;background:var(--primary);transition:width .15s"></div></div></div>
+      <button class="btn sm ghost" id="mfAdd" style="width:100%;margin-top:12px">+ Add a PDF or audio file</button>
+      <input id="mfInput" type="file" multiple accept="${TASK_FILE_ACCEPT}" style="display:none">
+    </section>`;
 }
 
 // ── My files — the teacher's own library (users/{uid}.teacherFiles) ───────
@@ -1562,6 +1600,8 @@ const myFolders = () => {
 };
 let MF_FOLDER = 'All';
 let MF_QUERY = '';
+let MF_ALL = false;          // "Show all" — the card shows five until asked
+const MF_COMPACT = 5;
 function myFilesHtml() {
   const all = myFiles();
   const folders = myFolders();
@@ -1578,8 +1618,11 @@ function myFilesHtml() {
       f === 'All' ? '' : ` <span class="hint">${all.filter(x => (x.folder || '') === f).length}</span>`}</button>`).join('')}
     ${MF_FOLDER === 'All' ? '' : `<button class="btn sm ghost" data-mfdelfolder="${esc(MF_FOLDER)}" title="Delete this folder">🗑</button>`}</div>` : ''}
     ${shown.length === 0 ? `<p class="hint" style="margin:0">${q ? 'Nothing matches that.' : 'Nothing in this folder yet.'}</p>` : ''}
-    ${shown.map((f, i) => {
+    ${(MF_ALL ? shown : shown.slice(0, MF_COMPACT)).map((f) => {
       const kind = attachmentKind(f), name = cleanFileName(f.title || 'File');
+      // Address the file by its own id (fall back to its url) — a position in
+      // a filtered, sliced list points at the wrong file the moment either changes.
+      const ref = f.id || f.url;
       return `<div class="taatt"><div style="display:flex;align-items:center;gap:10px">
         ${kind === 'photo'
           ? `<img src="${esc(f.url)}" alt="" data-media="${esc(f.url)}" data-medianame="${esc(name)}" data-mediakind="photo" style="width:30px;height:30px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:none">`
@@ -1588,11 +1631,13 @@ function myFilesHtml() {
           <div class="hint" style="font-size:12px">${esc([f.folder, attachmentMeta(f)].filter(Boolean).join(' · '))}</div></div>
         ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(f.url)}"
           data-medianame="${esc(name)}" data-mediakind="${esc(kind)}">Open</button>`}
-        <button class="btn sm ghost" data-mfsend="${esc(f.id || String(i))}" title="Send to a student">Send</button>
-        <button class="x" data-mfedit="${esc(f.id || String(i))}" title="Rename or file">⋯</button></div>
+        <button class="btn sm ghost" data-mfsend="${esc(ref)}" title="Send to a student">Send</button>
+        <button class="x" data-mfedit="${esc(ref)}" title="Rename or file">⋯</button></div>
         ${kind === 'audio' ? `<audio controls preload="none" src="${esc(f.url)}" style="width:100%;height:34px;margin-top:8px"></audio>` : ''}
       </div>`;
-    }).join('')}`;
+    }).join('')}
+    ${shown.length > MF_COMPACT ? `<button class="btn sm ghost" id="mfMore" style="width:100%;margin-top:10px">${
+      MF_ALL ? 'Show less' : `Show all ${shown.length}`}</button>` : ''}`;
 }
 function repaintMyFiles() {
   const box = $('#myFiles');
@@ -1645,6 +1690,8 @@ function wireMyFiles() {
     try { await saveMe({ teacherFolders: me.teacherFolders }); } catch { toast('Could not save that folder'); }
     repaintMyFiles();
   };
+  const more = $('#mfMore');
+  if (more) more.onclick = () => { MF_ALL = !MF_ALL; repaintMyFiles(); };
   document.querySelectorAll('[data-mffolder]').forEach((b) => {
     b.onclick = () => { MF_FOLDER = b.getAttribute('data-mffolder'); repaintMyFiles(); };
   });
@@ -1674,7 +1721,7 @@ function wireMyFiles() {
 // point of keeping a library is not having to rebuild the task around it.
 function sendFileSheet(id) {
   const all = myFiles();
-  const f = all.find((x, i) => (x.id || String(i)) === id);
+  const f = all.find((x) => (x.id || x.url) === id);
   if (!f) return;
   if (!students.length) { toast('No students yet'); return; }
   const name = cleanFileName(f.title || 'File');
@@ -1731,7 +1778,7 @@ function sendFileSheet(id) {
 // yourself. Removing it here never touches a task it's already attached to.
 function fileSheet(id) {
   const all = myFiles();
-  const f = all.find((x, i) => (x.id || String(i)) === id);
+  const f = all.find((x) => (x.id || x.url) === id);
   if (!f) return;
   const F = 'width:100%;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:inherit;font:inherit';
   const folders = myFolders();
@@ -1751,7 +1798,7 @@ function fileSheet(id) {
     b.onclick = () => { $('#mfFolder').value = b.getAttribute('data-mfpick'); };
   });
   $('#mfSave').onclick = async () => {
-    const next = all.map((x, i) => ((x.id || String(i)) === id
+    const next = all.map((x) => ((x.id || x.url) === id
       ? { ...x, title: $('#mfName').value.trim() || x.title, folder: $('#mfFolder').value.trim() }
       : x));
     closeModal();
@@ -1761,7 +1808,7 @@ function fileSheet(id) {
   $('#mfDelete').onclick = async () => {
     if (!confirm('Remove this file from your library?')) return;
     closeModal();
-    await saveMyFiles(all.filter((x, i) => (x.id || String(i)) !== id));
+    await saveMyFiles(all.filter((x) => (x.id || x.url) !== id));
     toast('Removed');
   };
 }
@@ -2404,6 +2451,8 @@ function viewResources() {
       <p class="hint" style="margin:10px 0 0">The same four drills your students play — worth knowing before you assign one.</p>
     </div>
 
+    ${myFilesCard()}
+
     <section class="card"><header><h3>Your resources</h3><span class="meta">${mine.length}</span></header>
       ${mine.length ? mine.map((r, i) => `<div class="trow${ROPEN['own' + i] ? ' open' : ''}">
         <div class="thead2" data-ropen="own${i}">
@@ -2471,6 +2520,8 @@ function viewResources() {
         }).join('') : '<p class="hint" style="margin:0">Nothing at this level.</p>'}</section>`;
     }).join('')}
   </div>`;
+
+  wireMyFiles();   // the library card lives on this page too
 
   onScreen(async (e) => {
     const f = e.target.closest('[data-rf]');
