@@ -177,6 +177,7 @@
   .att{display:flex;gap:12px;align-items:flex-start;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;
     background:var(--card);color:inherit;text-decoration:none}
   a.att:hover{border-color:var(--primary)}
+  .att:has(audio[hidden]):hover{border-color:var(--primary)}
   /* Fixed box: with a cover in it, a free-sizing icon slot stretched the whole
      row to the height of the artwork. */
   .atti{width:38px;height:38px;flex:none;display:grid;place-items:center;font-size:18px;line-height:1}
@@ -184,6 +185,9 @@
   .attb{flex:1;min-width:0}
   .attn{font-weight:650;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .att audio{display:block;width:100%;height:36px;margin-top:8px}
+  /* `display:block` above outranks the browser's own rule for [hidden], so a
+     player that is meant to be hidden until clicked would sit there visible. */
+  .att audio[hidden]{display:none}
   .att video{display:block;width:100%;max-height:260px;margin-top:8px;border-radius:8px;background:#000}
   button.att{font:inherit;text-align:left;width:100%;cursor:pointer}
   button.att:hover{border-color:var(--primary)}
@@ -1178,6 +1182,35 @@ window.addEventListener('resize', fitMsg);
 })();
 
 
+
+// ── audio rows ───────────────────────────────────────────────────────────
+// A list of tracks shouldn't be a wall of player bars: each row carries its
+// player HIDDEN, and a click (or the row's Play button) reveals and starts it.
+// Starting one stops whatever else was playing. The element is in the markup
+// from the start rather than built on click, so a re-render can carry a
+// playing track across (see setHtmlKeepingMedia).
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.taatt, .att');
+  if (!row) return;
+  const onPlayBtn = !!e.target.closest('[data-playrow]');
+  // A click on the player itself, or on another control in the row, is not
+  // "open this track".
+  if (!onPlayBtn && e.target.closest('audio, button, a, input, label')) return;
+  const audio = row.querySelector('audio');
+  if (!audio) return;
+  if (audio.hidden) {
+    document.querySelectorAll('audio:not([hidden])').forEach((other) => { if (other !== audio) other.pause(); });
+    audio.hidden = false;
+    const btn = row.querySelector('[data-playrow]');
+    if (btn) btn.hidden = true;
+    audio.play().catch(() => { /* the controls are showing either way */ });
+  } else if (audio.paused) {
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
+});
+
 // ── album covers ─────────────────────────────────────────────────────────
 // An MP3 of a real song carries its own cover. Two small range requests get
 // it (never the whole track), it's cached per URL, and the 🎵 stays put when
@@ -1596,10 +1629,11 @@ function attachmentsHtml(list, key) {
       const kind = attachmentKind(a);
       const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : kind === 'audio' ? 'Audio' : 'File')));
       const meta = esc(attachmentMeta(a));
-      const media = (tag) => `<div class="att"><span class="atti"${
+      const media = (tag) => `<div class="att"${tag === 'audio' ? ' style="cursor:pointer"' : ''}><span class="atti"${
         kind === 'audio' && couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}>${icon[kind]}</span><div class="attb">
         <div class="attn">${name}</div><div class="hint">${meta}</div>
-        <${tag} controls preload="none" src="${esc(a.url)}" data-attmedia="${esc(key + '|' + a.url)}"></${tag}></div></div>`;
+        <${tag} controls preload="none"${tag === 'audio' ? ' hidden' : ''} src="${esc(a.url)}" data-attmedia="${esc(key + '|' + a.url)}"></${tag}></div>
+        ${tag === 'audio' ? '<span class="atto" data-playrow>▶ Play</span>' : ''}</div>`;
       if (kind === 'audio') return media('audio');
       if (kind === 'video') return media('video');
       if (kind === 'pdf') {
@@ -4790,9 +4824,10 @@ async function viewTeacherFiles() {
         const name = esc(cleanFileName(a.title || (kind === 'pdf' ? 'Sheet music' : 'File')));
         const sub = `${esc(from)}${when(w) ? ` · ${when(w)}` : ''}`;
         return kind === 'audio'
-          ? `<div class="att"><span class="atti"${couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}>🎵</span><div class="attb">
+          ? `<div class="att" style="cursor:pointer"><span class="atti"${couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}>🎵</span><div class="attb">
               <div class="attn">${name}</div><div class="hint">${sub}</div>
-              <audio controls preload="none" src="${esc(a.url)}" data-attmedia="${esc('tf|' + a.url)}"></audio></div></div>`
+              <audio controls preload="none" hidden src="${esc(a.url)}" data-attmedia="${esc('tf|' + a.url)}"></audio></div>
+              <span class="atto" data-playrow>▶ Play</span></div>`
           : `<button class="att" type="button" data-media="${esc(a.url)}" data-medianame="${name}" data-mediakind="${esc(kind)}">
               <span class="atti">${icon[kind] || '📎'}</span>
               <div class="attb"><div class="attn">${name}</div><div class="hint">${sub}</div></div>
