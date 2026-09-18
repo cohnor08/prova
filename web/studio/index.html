@@ -440,6 +440,8 @@ import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL }
 // can carry, the size limit, and how each attachment is recognised.
 import { TASK_FILE_MAX_BYTES, TASK_FILE_MAX_LABEL, TASK_FILE_ACCEPT, contentTypeForFile, kindForContentType,
   attachmentKind, attachmentMeta, cleanFileName, storageFileName } from '/shared/attachments.js';
+// The cover art inside an MP3 (src/lib/albumArt.js).
+import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
 
 const app = initializeApp({
   apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
@@ -605,6 +607,44 @@ window.addEventListener('resize', fitMsg);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
 })();
 
+
+// ── album covers ─────────────────────────────────────────────────────────
+// An MP3 of a real song carries its own cover. Two small range requests get
+// it (never the whole track), it's cached per URL, and the 🎵 stays put when
+// there isn't one. Deliberately the file's OWN artwork — Apple's artwork may
+// only be shown next to a link to their store.
+const COVERS = new Map();
+function coverUrl(url) {
+  if (!COVERS.has(url)) {
+    // fetch must stay bound to the window — handing the bare function to the
+    // shared module throws "Illegal invocation" the moment it's called.
+    COVERS.set(url, loadEmbeddedPicture(url, (u, o) => fetch(u, o)).then(
+      (pic) => (pic ? URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime })) : null),
+    ).catch(() => null));
+  }
+  return COVERS.get(url);
+}
+async function paintCovers() {
+  document.querySelectorAll('[data-cover]:not([data-cover-done])').forEach(async (el) => {
+    el.setAttribute('data-cover-done', '1');
+    const src = await coverUrl(el.getAttribute('data-cover'));
+    if (src && el.isConnected) {
+      el.innerHTML = `<img src="${src}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block">`;
+      el.style.fontSize = '0';
+    }
+  });
+}
+// Lists here are repainted wholesale all over the place, so watch rather than
+// remember to call it from a dozen render functions.
+(() => {
+  let queued = null;
+  new MutationObserver(() => {
+    clearTimeout(queued);
+    queued = setTimeout(paintCovers, 80);
+  }).observe(document.body, { childList: true, subtree: true });
+  paintCovers();
+})();
+
 // ── the in-page viewer: PDFs, video, audio, images ───────────────────────
 // NOTHING a teacher attached should send them out of Studio — they are usually
 // mid-task when they open it. Delegated on the document (like the lightbox) so
@@ -619,7 +659,10 @@ function openMediaViewer(url, name, kindHint) {
   const safe = esc(url);
   body.innerHTML =
       kind === 'video' ? `<video src="${safe}" controls autoplay playsinline></video>`
-    : kind === 'audio' ? `<div class="pdfaudio"><div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
+    : kind === 'audio' ? `<div class="pdfaudio">
+        <div data-cover="${safe}" style="width:180px;height:180px;margin:0 auto 16px;border-radius:12px;
+          background:var(--raised);display:grid;place-items:center;font-size:44px">🎵</div>
+        <div style="font-weight:650;font-size:15px">${esc(name || 'Audio')}</div>
         <audio src="${safe}" controls autoplay></audio></div>`
     : kind === 'photo' ? `<img src="${safe}" alt="${esc(name || '')}">`
     // A PDF renders in the frame; anything the browser can't show inline lands
@@ -1328,7 +1371,8 @@ function assignSheet(stu, editIdx) {
         <div style="display:flex;align-items:center;gap:10px">
           ${kind === 'photo'
             ? `<img src="${esc(a.url)}" alt="" data-lightbox="${esc(a.url)}" style="width:34px;height:34px;object-fit:cover;border-radius:7px;cursor:zoom-in;flex:none">`
-            : `<span style="width:34px;text-align:center;font-size:18px;flex:none">${ICONS[kind] || ICONS.file}</span>`}
+            : `<span${couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}
+                 style="width:34px;height:34px;line-height:34px;text-align:center;font-size:18px;flex:none">${ICONS[kind] || ICONS.file}</span>`}
           <div style="flex:1;min-width:0">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
             <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
@@ -1626,7 +1670,8 @@ function myFilesHtml() {
       return `<div class="taatt"><div style="display:flex;align-items:center;gap:10px">
         ${kind === 'photo'
           ? `<img src="${esc(f.url)}" alt="" data-media="${esc(f.url)}" data-medianame="${esc(name)}" data-mediakind="photo" style="width:30px;height:30px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:none">`
-          : `<span style="width:30px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>`}
+          : `<span${couldHaveArtwork(f.contentType, f.title) ? ` data-cover="${esc(f.url)}"` : ''}
+               style="width:30px;height:30px;line-height:30px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>`}
         <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
           <div class="hint" style="font-size:12px">${esc([f.folder, attachmentMeta(f)].filter(Boolean).join(' · '))}</div></div>
         ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(f.url)}"
@@ -2741,7 +2786,8 @@ function resourceFilesHtml(r) {
   return `<div style="display:grid;gap:8px;margin-bottom:12px">${atts.map((a) => {
     const kind = attachmentKind(a), name = cleanFileName(a.title || 'File');
     return `<div class="taatt"><div style="display:flex;align-items:center;gap:10px">
-      <span style="width:26px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>
+      <span${couldHaveArtwork(a.contentType, a.title) ? ` data-cover="${esc(a.url)}"` : ''}
+        style="width:26px;height:26px;line-height:26px;text-align:center;font-size:16px;flex:none">${icon[kind] || '📎'}</span>
       <div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(name)}</div>
         <div class="hint" style="font-size:12px">${esc(attachmentMeta(a))}</div></div>
       ${kind === 'audio' ? '' : `<button class="btn sm ghost" type="button" data-media="${esc(a.url)}"
