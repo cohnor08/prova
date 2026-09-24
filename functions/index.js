@@ -31,10 +31,6 @@ const MODEL_SMART = 'claude-sonnet-4-6';
 // numbers already in the prompt, not a problem to reason through.
 const MODEL_DRAFT = 'claude-sonnet-5';
 
-// Below this much practice in the last 14 days there is nothing to build a
-// draft on — the model would just invent a generic beginner week. Answer at
-// once instead. The phone and Studio run the same check before calling.
-const DRAFT_MIN_RECENT_MINUTES = 15;
 
 // Cached song plans expire after this long, so stale plans eventually regenerate
 // and the songPlans collection can't grow without bound. expiresAt is a Firestore
@@ -1629,16 +1625,15 @@ exports.draftNextWeek = onCall(
     const linked = [s.teacherUid, ...(Array.isArray(s.teacherUids) ? s.teacherUids : [])].filter(Boolean);
     if (!linked.includes(uid)) throw new HttpsError('permission-denied', 'That student is not connected to you.');
 
+    await checkRateLimit(uid, 'draftNextWeek');
+
     // Last 14 days of practice, as the student's own logs recorded it.
     const logsSnap = await db
       .collection('sessionHistory').doc(studentUid).collection('logs')
       .orderBy('date', 'desc').limit(14).get();
-    const cutoff = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
     const days = [];
-    let recentMinutes = 0;
     logsSnap.forEach((d) => {
       const data = d.data() || {};
-      if (d.id >= cutoff) recentMinutes += Number(data.totalMinutes) || 0;
       const cats = Object.entries(data.categories || {})
         .filter(([, v]) => typeof v === 'number' && v > 0)
         .map(([k, v]) => `${k} ${v}m`).join(', ');
@@ -1660,13 +1655,6 @@ exports.draftNextWeek = onCall(
           t.className ? `class: ${t.className}` : '',
         ].filter(Boolean).join(' · ');
       });
-
-    // Nothing to go on — say so now rather than spend ten seconds and a quota
-    // slot on a made-up week. Quota is only taken for a real draft.
-    if (recentMinutes < DRAFT_MIN_RECENT_MINUTES) {
-      return { notEnough: true, recentMinutes, summary: '', tasks: [] };
-    }
-    await checkRateLimit(uid, 'draftNextWeek');
 
     const songs = (Array.isArray(s.songLibrary) ? s.songLibrary : [])
       .slice(0, 6).map((x) => `${x.title}${x.artist ? ` — ${x.artist}` : ''}`);

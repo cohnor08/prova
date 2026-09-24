@@ -17,7 +17,7 @@ import {
   updateDoc, arrayUnion, arrayRemove, onSnapshot, orderBy, limit,
 } from 'firebase/firestore';
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
-import { generateSongPlan, sendParentReportsNow, draftNextWeek, warmDraftNextWeek, draftHasNothingToGoOn } from '../../lib/claude';
+import { generateSongPlan, sendParentReportsNow, draftNextWeek, warmDraftNextWeek } from '../../lib/claude';
 import { track } from '../../lib/analytics';
 import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus, toggleChatReaction } from '../../lib/chat';
@@ -2444,20 +2444,13 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
 
   // Ask for a draft. Reads that student's own practice record server-side; the
   // teacher sees the result before anyone else does.
-  const notEnoughToDraft = (student, mins) => Alert.alert(
-    'Not enough practice yet',
-    `${displayName(student)} has ${mins ? `only practised ${mins} min` : 'not practised'} in the last two weeks — there's nothing to draft from. Set their tasks yourself, or try again once they've played a bit.`,
-  );
-
   const runDraft = async (student) => {
     if (draftBusy) return;
-    if (draftHasNothingToGoOn(student)) return notEnoughToDraft(student, 0);
     setDraftFor(student);
     setDraft(null);
     setDraftBusy(true);
     try {
       const r = await draftNextWeek(student.uid);
-      if (r.notEnough) { setDraftFor(null); notEnoughToDraft(student, r.recentMinutes); return; }
       if (!r.tasks.length) throw new Error('empty');
       setDraft({ summary: r.summary, tasks: r.tasks.map((t) => ({ ...t, on: true })) });
     } catch (e) {
