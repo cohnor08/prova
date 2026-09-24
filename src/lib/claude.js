@@ -96,7 +96,26 @@ export async function askProva({ question, instrument, level, history }) {
 // the teacher edits and sends them from the assign sheet.
 export async function draftNextWeek(studentUid) {
   const r = await callFunction('draftNextWeek', { studentUid });
-  return { summary: r?.summary || '', tasks: Array.isArray(r?.tasks) ? r.tasks : [] };
+  return {
+    summary: r?.summary || '',
+    tasks: Array.isArray(r?.tasks) ? r.tasks : [],
+    notEnough: !!r?.notEnough,
+    recentMinutes: r?.recentMinutes || 0,
+  };
+}
+
+// Wake the draft function when a teacher opens the app, so their first draft
+// isn't also waiting on a cold container. Fire-and-forget.
+export function warmDraftNextWeek() {
+  callFunction('draftNextWeek', { warm: true }).catch(() => {});
+}
+
+// No practice at all in the last two weeks = nothing to draft from. Known from
+// the student doc alone, so the teacher gets the answer without a round trip;
+// the server makes the finer minutes check.
+export function draftHasNothingToGoOn(student) {
+  const last = student?.lastSessionDate ? new Date(student.lastSessionDate).getTime() : 0;
+  return !last || Date.now() - last > 14 * 86400000;
 }
 
 export async function sendParentReportsNow(opts = {}) {

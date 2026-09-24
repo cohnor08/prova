@@ -26,6 +26,15 @@ const MODEL = 'claude-haiku-4-5-20251001';
 // Sonnet for tasks that need genuinely specific, reasoned output (practice plans,
 // setlists). Haiku tends to default to generic phrasing for these.
 const MODEL_SMART = 'claude-sonnet-4-6';
+// A teacher is sitting watching a spinner for the weekly draft, so it gets the
+// current Sonnet with thinking off — the task is a short, structured read of
+// numbers already in the prompt, not a problem to reason through.
+const MODEL_DRAFT = 'claude-sonnet-5';
+
+// Below this much practice in the last 14 days there is nothing to build a
+// draft on — the model would just invent a generic beginner week. Answer at
+// once instead. The phone and Studio run the same check before calling.
+const DRAFT_MIN_RECENT_MINUTES = 15;
 
 // Cached song plans expire after this long, so stale plans eventually regenerate
 // and the songPlans collection can't grow without bound. expiresAt is a Firestore
@@ -203,7 +212,7 @@ async function flagAbuseIfNeeded(uid, action, tokensUsed) {
 
 // ─── Claude API call ──────────────────────────────────────────────────────────
 // Returns { text, tokensIn, tokensOut } so callers can track actual spend.
-async function callClaude(apiKey, prompt, maxTokens, model = MODEL, timeoutMs = 120000) {
+async function callClaude(apiKey, prompt, maxTokens, model = MODEL, timeoutMs = 120000, extra = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -220,6 +229,7 @@ async function callClaude(apiKey, prompt, maxTokens, model = MODEL, timeoutMs = 
         model,
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
+        ...extra,
       }),
     });
 
@@ -1600,6 +1610,10 @@ exports.draftNextWeek = onCall(
     const apiKey = ANTHROPIC_API_KEY.value();
     if (!apiKey) throw new HttpsError('failed-precondition', 'The AI coach is not set up yet.');
 
+    // Fired when a teacher opens the app, so the first real draft doesn't also
+    // pay for a cold container. Does no reads and costs no quota.
+    if (request.data && request.data.warm) return { warm: true };
+
     const studentUid = String((request.data && request.data.studentUid) || '').trim();
     if (!studentUid) throw new HttpsError('invalid-argument', 'studentUid is required.');
 
@@ -1615,15 +1629,16 @@ exports.draftNextWeek = onCall(
     const linked = [s.teacherUid, ...(Array.isArray(s.teacherUids) ? s.teacherUids : [])].filter(Boolean);
     if (!linked.includes(uid)) throw new HttpsError('permission-denied', 'That student is not connected to you.');
 
-    await checkRateLimit(uid, 'draftNextWeek');
-
     // Last 14 days of practice, as the student's own logs recorded it.
     const logsSnap = await db
       .collection('sessionHistory').doc(studentUid).collection('logs')
       .orderBy('date', 'desc').limit(14).get();
+    const cutoff = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
     const days = [];
+    let recentMinutes = 0;
     logsSnap.forEach((d) => {
       const data = d.data() || {};
+      if (d.id >= cutoff) recentMinutes += Number(data.totalMinutes) || 0;
       const cats = Object.entries(data.categories || {})
         .filter(([, v]) => typeof v === 'number' && v > 0)
         .map(([k, v]) => `${k} ${v}m`).join(', ');
@@ -1645,6 +1660,13 @@ exports.draftNextWeek = onCall(
           t.className ? `class: ${t.className}` : '',
         ].filter(Boolean).join(' · ');
       });
+
+    // Nothing to go on — say so now rather than spend ten seconds and a quota
+    // slot on a made-up week. Quota is only taken for a real draft.
+    if (recentMinutes < DRAFT_MIN_RECENT_MINUTES) {
+      return { notEnough: true, recentMinutes, summary: '', tasks: [] };
+    }
+    await checkRateLimit(uid, 'draftNextWeek');
 
     const songs = (Array.isArray(s.songLibrary) ? s.songLibrary : [])
       .slice(0, 6).map((x) => `${x.title}${x.artist ? ` — ${x.artist}` : ''}`);
@@ -1688,7 +1710,17 @@ Reply with ONLY this JSON, no other text:
 
     let result;
     try {
-      result = await callClaude(apiKey, prompt, 1400, MODEL_SMART);
+      const t0 = Date.now();
+      let used = MODEL_DRAFT;
+      try {
+        result = await callClaude(apiKey, prompt, 1400, MODEL_DRAFT, 60000, { thinking: { type: 'disabled' } });
+      } catch (e) {
+        // Never let the faster model be the reason a teacher gets no draft.
+        console.warn('[draftNextWeek] fast model failed, falling back:', e.message);
+        used = MODEL_SMART;
+        result = await callClaude(apiKey, prompt, 1400, MODEL_SMART);
+      }
+      console.log(`[draftNextWeek] ${used} ${Date.now() - t0}ms, ${result.tokensOut} tokens out, ${Date.now() - startTime}ms total`);
     } catch (err) {
       await writeUsageLog(uid, 'draftNextWeek', {
         tokensIn: 0, tokensOut: 0, durationMs: Date.now() - startTime,
