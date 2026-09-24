@@ -464,7 +464,7 @@ function onScreen(fn) {
   host.addEventListener('click', fn);
 }
 const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2400); };
+const toast = (m, ms = 2400) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); };
 
 // ── shared helpers, mirroring the app ─────────────────────────────────────
 // src/lib/displayName.js
@@ -795,6 +795,9 @@ onAuthStateChanged(auth, async (user) => {
   $('#meAv').textContent = initials(displayName({ uid: user.uid, ...d }));
   $('#chipCode').textContent = d.teacherCode || '—';
   renderNav();
+  // Wake the draft function now so the first "Draft next week" doesn't also
+  // wait on a cold container.
+  httpsCallable(fns, 'draftNextWeek')({ warm: true }).catch(() => {});
   await loadStudents();
   go('home');
 });
@@ -1114,11 +1117,21 @@ function paintStudent() {
   el.querySelector('#addTask').onclick = () => assignSheet(s);
   el.querySelector('#msgStu').onclick = () => go('messages');
   el.querySelector('#assignSong').onclick = () => assignSongSheet(s);
+  // Nothing in two weeks = nothing to draft from. Answer at once (the student
+  // doc already says so); the server makes the finer minutes check.
+  const notEnoughToDraft = (mins) => toast(`${displayName(s)} has ${mins ? `only practised ${mins} min` : 'not practised'} in the last two weeks — not enough to draft from yet`, 5500);
   el.querySelector('#draftWeek').onclick = async (e) => {
+    const last = s.lastSessionDate ? new Date(s.lastSessionDate).getTime() : 0;
+    if (!last || Date.now() - last > 14 * 86400000) return notEnoughToDraft(0);
     const btn = e.currentTarget;
     btn.disabled = true; btn.textContent = 'Reading their practice…';
     try {
       const r = await httpsCallable(fns, 'draftNextWeek')({ studentUid: s.uid });
+      if (r?.data?.notEnough) {
+        notEnoughToDraft(r.data.recentMinutes || 0);
+        btn.disabled = false; btn.textContent = "✦ Draft next week's tasks";
+        return;
+      }
       const tasks = (r?.data?.tasks || []).map(t => ({ ...t, on: true }));
       if (!tasks.length) throw new Error('empty');
       draftSheet(s, r.data.summary || '', tasks);
