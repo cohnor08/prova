@@ -602,6 +602,11 @@ export default function TeacherHomeScreen({ navigation }) {
                 )}
               </>
             )}
+            {!prep && (
+              <Text style={[styles.prepText, styles.prepMuted, { marginTop: SPACING.md }]}>
+                {name} isn't connected to you in Prova, so there's no practice or tasks to show. Share your join code{joinCode ? ` (${joinCode})` : ''} and it fills in from their next lesson on.
+              </Text>
+            )}
 
             <View style={styles.prepBtns}>
               <TouchableOpacity
@@ -616,9 +621,11 @@ export default function TeacherHomeScreen({ navigation }) {
                 <Ionicons name="create-outline" size={15} color={COLORS.onPrimary} />
                 <Text style={styles.prepBtnText}>{rec.note ? 'Edit the note' : 'Write the note'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
-                <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
-              </TouchableOpacity>
+              {!!nextStudent && (
+                <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
+                  <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         );

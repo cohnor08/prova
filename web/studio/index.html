@@ -1650,7 +1650,8 @@ function prepCardHtml() {
           <span class="hint" style="flex:none;${t.state === 'untouched' ? 'color:var(--bad)' : ''}">${t.state === 'done' ? 'Done' : t.state === 'started' ? t.minutes + ' min' : 'Not opened'}</span></div>`).join('') : ''}
       ${p.proofs.length ? `<button class="btn sm ghost" style="width:100%;margin-top:12px" data-media="${esc(p.proofs[0].url)}"
           data-medianame="${esc(p.proofs[0].title)}" data-mediakind="${p.proofs[0].type === 'image' || p.proofs[0].type === 'photo' ? 'photo' : 'video'}">▶ Watch their recording${p.proofs.length > 1 ? ` (+${p.proofs.length - 1} more)` : ''}</button>` : ''}
-    ` : ''}
+    ` : `<p class="hint" style="margin:12px 0 0;line-height:1.55">${esc(name)} isn't connected to you in Prova, so there's no practice
+      or tasks to show. Share your join code (${esc(me.teacherCode || '—')}) and it fills in from their next lesson on.</p>`}
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn sm" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">${rec.note ? 'Edit the note' : 'Write the note'}</button>
       ${stu ? `<button class="btn sm ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>` : ''}
