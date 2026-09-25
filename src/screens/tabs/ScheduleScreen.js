@@ -14,6 +14,7 @@ import TimeWheel from '../../components/TimeWheel';
 import { sendNotification } from '../../lib/inbox';
 import { findUserByEmail } from '../../lib/findUser';
 import { displayName } from '../../lib/displayName';
+import { occursOn } from '../../lib/lessonSchedule';
 
 const PRE_GIG_WINDOW = 14; // days before a gig that Pre-Gig Mode kicks in
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -27,13 +28,8 @@ function daysUntil(dateStr) {
   return Math.round((parseYmd(dateStr) - today) / 86400000);
 }
 
-function lessonOccursOn(lesson, dateStr) {
-  if (lesson.repeat === 'weekly') {
-    if (dateStr < lesson.date) return false;
-    return parseYmd(dateStr).getDay() === parseYmd(lesson.date).getDay();
-  }
-  return lesson.date === dateStr;
-}
+// Shared rule (src/lib/lessonSchedule.js) — knows about moved/cancelled weeks.
+const lessonOccursOn = occursOn;
 
 function timeLabel(v) {
   const [h, m] = (v || '').split(':').map(Number);

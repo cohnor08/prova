@@ -445,6 +445,7 @@ import { TASK_FILE_MAX_BYTES, TASK_FILE_MAX_LABEL, TASK_FILE_ACCEPT, contentType
   attachmentKind, attachmentMeta, cleanFileName, storageFileName } from '/shared/attachments.js';
 // The cover art inside an MP3 (src/lib/albumArt.js).
 import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
+import { occursOn, upcomingLessons, lessonPrep, dayLabel, timeLabel as lessonTime, startsIn, moveOccurrence } from '/shared/lessonSchedule.js';
 
 const app = initializeApp({
   apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
@@ -798,6 +799,7 @@ onAuthStateChanged(auth, async (user) => {
   // Wake the draft function now so the first "Draft next week" doesn't also
   // wait on a cold container.
   httpsCallable(fns, 'draftNextWeek')({ warm: true }).catch(() => {});
+  watchLessonRequests();
   await loadStudents();
   go('home');
 });
@@ -893,6 +895,8 @@ document.addEventListener('click', (e) => {
     go(go_.getAttribute('data-go'));
     return;
   }
+  const rq = e.target.closest('[data-req]');
+  if (rq) { rq.disabled = true; answerRequest(rq.getAttribute('data-req'), rq.getAttribute('data-ok') === '1'); return; }
   const ev = e.target.closest('[data-lesson]');
   if (ev) { occurrenceModal(ev.getAttribute('data-lesson'), ev.getAttribute('data-date')); return; }
   const ed = e.target.closest('[data-edit]');
@@ -1564,6 +1568,110 @@ function spark(week, colour) {
     <path d="${d} L66 40 L0 40 Z" fill="color-mix(in srgb,${colour} 16%,transparent)"/>
     <path d="${d}" fill="none" stroke="${colour}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
+// ── Next lesson + lesson changes ─────────────────────────────────────────
+// The same two cards as the phone's Teacher Home. Both read from data that's
+// already stored (/shared/lessonSchedule.js does the working out), so what a
+// teacher sees on a laptop and on their phone agrees.
+let PREP_LOGS = null;      // { uid, logs } — the next lesson's student's practice log
+let LESSON_REQS = [];      // pending "can't make it" requests, kept live
+const whenLbl = (ds, t) => `${dayLabel(ds)}${t ? ' · ' + lessonTime(t) : ''}`;
+
+function watchLessonRequests() {
+  onSnapshot(query(collection(db, 'lessonRequests'), where('teacherUid', '==', meUid)), (snap) => {
+    LESSON_REQS = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .filter((r) => r.status === 'pending')
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const slot = document.getElementById('reqSlot');
+    if (slot) slot.innerHTML = reqCardHtml();
+  }, () => {});
+}
+
+function reqCardHtml() {
+  if (!LESSON_REQS.length) return '';
+  return `<section class="card" style="border-color:var(--warn)"><header><h3>Lesson changes</h3>
+      <span class="meta">${LESSON_REQS.length}</span></header>
+    ${LESSON_REQS.map((r) => `<div class="prow" style="align-items:flex-start">
+      <div class="pl"><div class="pt">${esc(r.studentName || 'Student')} can't make ${esc(whenLbl(r.date, r.time))}</div>
+        <div class="ps">${r.newDate ? `Asks for ${esc(whenLbl(r.newDate, r.newTime))}` : 'Asks to cancel this one'}</div>
+        ${r.note ? `<div class="ps" style="font-style:italic;margin-top:3px">“${esc(r.note)}”</div>` : ''}</div>
+      <div style="display:flex;gap:6px;flex:none">
+        <button class="btn sm ghost" data-req="${esc(r.id)}" data-ok="0">Decline</button>
+        <button class="btn sm" data-req="${esc(r.id)}" data-ok="1">${r.newDate ? 'Move it' : 'Cancel it'}</button></div>
+    </div>`).join('')}</section>`;
+}
+
+async function answerRequest(id, accept) {
+  const r = LESSON_REQS.find((x) => x.id === id); if (!r) return;
+  try {
+    if (accept) {
+      await refreshMe();   // fresh calendar, so an edit made elsewhere isn't lost
+      await saveMe({ lessons: moveOccurrence(lessonsAll(), r) });
+      await refreshMe();
+    }
+    await updateDoc(doc(db, 'lessonRequests', id), { status: accept ? 'accepted' : 'declined', answeredAt: new Date().toISOString() });
+    const was = whenLbl(r.date, r.time);
+    addDoc(collection(db, 'users', r.studentUid, 'inbox'), {
+      type: 'lesson_reply',
+      title: accept ? (r.newDate ? `Lesson moved to ${whenLbl(r.newDate, r.newTime)}` : `${was} lesson cancelled`) : `Your lesson stays ${was}`,
+      body: accept ? 'Your teacher said yes.' : "Your teacher couldn't change this one.",
+      data: { requestId: id }, read: false, createdAt: new Date().toISOString(),
+    }).catch(() => {});
+    toast(accept ? (r.newDate ? 'Moved — they\'ve been told' : 'Cancelled — they\'ve been told') : 'Declined — they\'ve been told');
+    if (screen === 'home') viewHome();
+  } catch (e) { toast('Could not answer — try again'); }
+}
+
+function nextLessonUp() { return upcomingLessons(lessonsAll(), new Date(), 8)[0] || null; }
+
+function prepCardHtml() {
+  const nx = nextLessonUp();
+  if (!nx) return `<section class="card"><header><h3>Next lesson</h3></header>
+    <p class="hint" style="margin:0">Nothing booked this week. Add lessons in the Calendar and the next one shows here, with everything you need for it.</p></section>`;
+  const { lesson, date, at } = nx;
+  const stu = byUid(lesson.studentUid);
+  const name = stu ? displayName(stu) : (lesson.studentName || 'Student');
+  const loaded = !!(stu && PREP_LOGS && PREP_LOGS.uid === stu.uid);
+  const p = stu ? lessonPrep({ lesson, date, student: stu, teacherUid: meUid, attendance: me.attendance || {}, logs: loaded ? PREP_LOGS.logs : {} }) : null;
+  const rec = (me.attendance || {})[`${lesson.id}__${date}`] || {};
+  const label = (t) => `<div class="eyebrow" style="padding:14px 0 4px">${t}</div>`;
+  const taskIcon = { done: '<span style="color:var(--good)">✓</span>', started: '<span style="color:var(--primary)">◐</span>', untouched: '<span style="color:var(--ink-3)">○</span>' };
+  return `<section class="card" style="border-color:var(--primary)">
+    <header><h3>Next lesson</h3>${dayLabel(date) === 'Today' ? `<span class="meta" style="color:var(--primary);font-weight:700">${esc(startsIn(at))}</span>` : ''}</header>
+    <div style="font-size:20px;font-weight:750">${esc(name)}</div>
+    <div class="hint" style="margin-top:2px">${esc(whenLbl(date, lesson.time))}${lesson.note ? ' · ' + esc(lesson.note) : ''}</div>
+    ${p ? `
+      ${label(`Last lesson${p.lastLesson ? ' · ' + esc(dayLabel(p.lastLesson.date)) : ''}`)}
+      <div style="line-height:1.55;${p.lastLesson?.note ? '' : 'color:var(--ink-3)'}">${esc(p.lastLesson?.note || (p.lastLesson ? 'No note written for it.' : 'No earlier lesson on record.'))}</div>
+      ${label('Practice since')}
+      <div style="${loaded && !p.minutes ? 'color:var(--bad)' : ''}">${!loaded ? '…' : p.minutes ? `${p.minutes} min over ${p.days} day${p.days === 1 ? '' : 's'}` : 'None logged'}</div>
+      ${p.tasks.length ? label('Your tasks') + p.tasks.map((t) => `<div style="display:flex;gap:10px;align-items:center;padding:3px 0">
+          <span style="width:16px;text-align:center;flex:none">${taskIcon[t.state]}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
+          <span class="hint" style="flex:none;${t.state === 'untouched' ? 'color:var(--bad)' : ''}">${t.state === 'done' ? 'Done' : t.state === 'started' ? t.minutes + ' min' : 'Not opened'}</span></div>`).join('') : ''}
+      ${p.proofs.length ? `<button class="btn sm ghost" style="width:100%;margin-top:12px" data-media="${esc(p.proofs[0].url)}"
+          data-medianame="${esc(p.proofs[0].title)}" data-mediakind="${p.proofs[0].type === 'image' || p.proofs[0].type === 'photo' ? 'photo' : 'video'}">▶ Watch their recording${p.proofs.length > 1 ? ` (+${p.proofs.length - 1} more)` : ''}</button>` : ''}
+    ` : ''}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn sm" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">${rec.note ? 'Edit the note' : 'Write the note'}</button>
+      ${stu ? `<button class="btn sm ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>` : ''}
+    </div></section>`;
+}
+
+// The practice log for the next lesson's student — fetched after the page
+// paints, then only that card is redrawn.
+async function loadPrepLogs() {
+  const nx = nextLessonUp(); const stu = nx && byUid(nx.lesson.studentUid);
+  if (!stu || (PREP_LOGS && PREP_LOGS.uid === stu.uid)) return;
+  const logs = {};
+  try {
+    const snap = await getDocs(query(collection(db, 'sessionHistory', stu.uid, 'logs'), orderBy('date', 'desc'), limit(45)));
+    snap.forEach((d) => { logs[d.id] = Number(d.data()?.totalMinutes) || 0; });
+  } catch { /* no history — treat as none */ }
+  PREP_LOGS = { uid: stu.uid, logs };
+  const slot = document.getElementById('prepSlot');
+  if (slot) slot.innerHTML = prepCardHtml();
+}
+
 function viewHome() {
   const practised = students.filter(s => s.weekMins > 0).length;
   const totalMins = students.reduce((a, s) => a + s.weekMins, 0);
@@ -1582,6 +1690,8 @@ function viewHome() {
         <button class="btn ghost" data-go="calendar">Calendar</button>
         <button class="btn" data-go="students">Assign a task</button></div></div>
     <div class="cols"><div class="stack">
+      <div id="reqSlot">${reqCardHtml()}</div>
+      <div id="prepSlot">${prepCardHtml()}</div>
       <!-- Was three stat cards about the teacher's own numbers, then a table
            called "Practice Pulse". A teacher opens this to see who needs them:
            the roster leads, and the numbers that mattered (practised this week,
@@ -1640,6 +1750,7 @@ function viewHome() {
       </section>
     </div></div></div>`;
   wireMyFiles();
+  loadPrepLogs();
 }
 
 // The whole card, so Studio's home and the Resources page show the same one.
@@ -3071,13 +3182,11 @@ function noteModal(key) {
 // ── 3. CALENDAR ───────────────────────────────────────────────────────────
 const lessonsAll = () => (Array.isArray(me.lessons) ? me.lessons : []);
 // A lesson shows on its own date, and every following same-weekday if weekly.
+// The rule is shared with the phone (/shared/lessonSchedule.js), so a week a
+// student moved or cancelled disappears here too.
 function lessonsOn(ds) {
-  return lessonsAll().filter((l) => {
-    if (!l.date) return false;
-    if (l.date === ds) return true;
-    if (l.repeat !== 'weekly' || ds < l.date) return false;
-    return new Date(l.date + 'T00:00:00Z').getUTCDay() === new Date(ds + 'T00:00:00Z').getUTCDay();
-  }).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  return lessonsAll().filter((l) => occursOn(l, ds))
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 }
 let weekOffset = 0, CALMODE = 'week';
 const CAL_SPAN = { week: 7, fortnight: 14, month: 28 };

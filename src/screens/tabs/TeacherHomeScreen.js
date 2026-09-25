@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Share, TextInput,
   Animated, PanResponder, Alert,
@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
@@ -24,6 +24,9 @@ import { advancePrograms } from '../../lib/programs';
 import { studioUpsell, TEACHER_FREE_STUDENT_LIMIT } from '../../lib/entitlements';
 import StudentKeeperModal from '../../components/StudentKeeperModal';
 import SheetModal from '../../components/SheetModal';
+import ProofMedia from '../../components/ProofMedia';
+import { upcomingLessons, lessonPrep, dayLabel, timeLabel, startsIn } from '../../lib/lessonSchedule';
+import { watchLessonRequests, answerLessonRequest, whenLabel } from '../../lib/lessonRequests';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
 function computeStats(students) {
@@ -51,6 +54,9 @@ function tipOfTheDay() {
 
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
+  // What a teacher wants before they walk in: the next lesson, what the
+  // student did since the last one, and the note they left themselves.
+  { id: 'prep', enabled: true },
   { id: 'code', enabled: true },
   // Students lead: a teacher opens this screen to see who needs them, not to
   // read their own statistics. (The three stat boxes that used to sit at the
@@ -70,6 +76,7 @@ const DEFAULT_WIDGETS = [
 // Retiring a widget means dropping it from here: mergeLayout only keeps ids it
 // knows, so a saved layout loses it on the next load. That's how `stats` went.
 const WIDGET_LABELS = {
+  prep: 'Next lesson',
   code: 'Join code',
   pulse: 'Students',
   calendar: 'Calendar',
@@ -244,6 +251,11 @@ export default function TeacherHomeScreen({ navigation }) {
   const [dragging, setDragging] = useState(false);
   const [note, setNote] = useState('');
   const [lessons, setLessons] = useState([]);
+  const [attendance, setAttendance] = useState({});     // lesson notes live here, keyed lessonId_date
+  const [prepLogs, setPrepLogs] = useState(null);       // { uid, logs } — next lesson's student's practice
+  const [proofView, setProofView] = useState(null);     // a proof clip opened from the prep card
+  const [requests, setRequests] = useState([]);         // students asking to move/cancel a lesson
+  const [reqBusy, setReqBusy] = useState(null);
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
   const [pulseOpen, setPulseOpen] = useState(false);     // student list "show more"
   // The teacher's own library: every PDF and backing track they use, kept on
@@ -454,6 +466,7 @@ export default function TeacherHomeScreen({ navigation }) {
             setStats(computeStats(list));
             setStudents(list);
             setLessons(Array.isArray(meSnap.data()?.lessons) ? meSnap.data().lessons : []);
+            setAttendance(meSnap.data()?.attendance || {});
           }
         } catch (e) {
           console.error(e);
@@ -465,12 +478,151 @@ export default function TeacherHomeScreen({ navigation }) {
     }, [])
   );
 
+  // Requests arrive live — a teacher shouldn't have to pull to refresh to see
+  // that Thursday is off.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || DEMO_MODE) return;
+    return watchLessonRequests('teacherUid', uid, (all) => setRequests(all.filter((r) => r.status === 'pending')));
+  }, []);
+
+  const answerRequest = async (req, accept) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || reqBusy) return;
+    setReqBusy(req.id);
+    try {
+      await answerLessonRequest(uid, req, accept);
+      if (accept) {
+        const snap = await getDoc(doc(db, 'users', uid));
+        setLessons(Array.isArray(snap.data()?.lessons) ? snap.data().lessons : []);
+      }
+    } catch (e) {
+      Alert.alert('Could not answer', e?.message || 'Please try again.');
+    } finally {
+      setReqBusy(null);
+    }
+  };
+
+  // The next lesson (one happening now counts), and that student's practice
+  // since their last one.
+  const nextUp = useMemo(() => upcomingLessons(lessons, new Date(), 8)[0] || null, [lessons]);
+  const nextStudent = nextUp ? students.find((s) => s.uid === nextUp.lesson.studentUid) : null;
+  useEffect(() => {
+    const sid = nextStudent?.uid;
+    if (!sid || DEMO_MODE) return;
+    if (prepLogs?.uid === sid) return;
+    let alive = true;
+    getDocs(query(collection(db, 'sessionHistory', sid, 'logs'), orderBy('date', 'desc'), limit(45)))
+      .then((snap) => {
+        if (!alive) return;
+        const logs = {};
+        snap.forEach((d) => { logs[d.id] = d.data()?.totalMinutes || 0; });
+        setPrepLogs({ uid: sid, logs });
+      })
+      .catch(() => { if (alive) setPrepLogs({ uid: sid, logs: {} }); });
+    return () => { alive = false; };
+  }, [nextStudent?.uid]);
+
   const goStudents = () => navigation.navigate('Teacher');
   const goResources = () => navigation.navigate('Resources');
   const goPacks = () => navigation.navigate('Packs');
 
   const renderWidget = (id) => {
     switch (id) {
+      case 'prep': {
+        if (!nextUp) {
+          return (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Next lesson</Text>
+              <Text style={styles.emptyMini}>Nothing booked this week. Add lessons in the Calendar and the next one shows here, with everything you need for it.</Text>
+            </View>
+          );
+        }
+        const { lesson, date, at } = nextUp;
+        const name = nextStudent ? displayName(nextStudent) : lesson.studentName;
+        const prep = nextStudent ? lessonPrep({
+          lesson, date, student: nextStudent, teacherUid: auth.currentUser?.uid,
+          attendance, logs: prepLogs?.uid === nextStudent.uid ? prepLogs.logs : {},
+        }) : null;
+        const isToday = dayLabel(date) === 'Today';
+        const note = prep?.lastLesson?.note;
+        const rec = attendance[`${lesson.id}__${date}`] || {};
+        return (
+          <View style={[styles.card, styles.prepCard]}>
+            <View style={styles.prepHead}>
+              <Text style={styles.prepEyebrow}>NEXT LESSON</Text>
+              {isToday && <Text style={styles.prepSoon}>{startsIn(at)}</Text>}
+            </View>
+            <Text style={styles.prepWho} numberOfLines={1}>{name}</Text>
+            <Text style={styles.prepWhen}>{dayLabel(date)} · {timeLabel(lesson.time)}{lesson.note ? ` · ${lesson.note}` : ''}</Text>
+
+            {prep && (
+              <>
+                <Text style={styles.prepLabel}>
+                  LAST LESSON{prep.lastLesson ? ` · ${dayLabel(prep.lastLesson.date).toUpperCase()}` : ''}
+                </Text>
+                <Text style={[styles.prepText, !note && styles.prepMuted]} numberOfLines={4}>
+                  {note || (prep.lastLesson ? 'No note written for it.' : 'No earlier lesson on record.')}
+                </Text>
+
+                <Text style={styles.prepLabel}>PRACTICE SINCE</Text>
+                <Text style={[styles.prepText, !prep.minutes && styles.prepBad]}>
+                  {prepLogs?.uid !== nextStudent.uid ? '…'
+                    : prep.minutes
+                      ? `${prep.minutes} min over ${prep.days} day${prep.days === 1 ? '' : 's'}`
+                      : 'None logged'}
+                </Text>
+
+                {prep.tasks.length > 0 && (
+                  <>
+                    <Text style={styles.prepLabel}>YOUR TASKS</Text>
+                    {prep.tasks.map((t, i) => (
+                      <View key={i} style={styles.prepTask}>
+                        <Ionicons
+                          name={t.state === 'done' ? 'checkmark-circle' : t.state === 'started' ? 'time-outline' : 'ellipse-outline'}
+                          size={16}
+                          color={t.state === 'done' ? COLORS.success : t.state === 'started' ? COLORS.primary : COLORS.textMuted}
+                        />
+                        <Text style={styles.prepTaskTitle} numberOfLines={1}>{t.title}</Text>
+                        <Text style={[styles.prepTaskMeta, t.state === 'untouched' && styles.prepBad]}>
+                          {t.state === 'done' ? 'Done' : t.state === 'started' ? `${t.minutes} min` : 'Not opened'}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {prep.proofs.length > 0 && (
+                  <TouchableOpacity style={styles.prepProof} onPress={() => setProofView(prep.proofs[0])} activeOpacity={0.8} disabled={editMode}>
+                    <Ionicons name="play-circle" size={18} color={COLORS.primary} />
+                    <Text style={styles.prepProofText} numberOfLines={1}>
+                      Watch their recording{prep.proofs.length > 1 ? ` (+${prep.proofs.length - 1} more)` : ''} · {prep.proofs[0].title}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            <View style={styles.prepBtns}>
+              <TouchableOpacity
+                style={styles.prepBtn}
+                activeOpacity={0.85}
+                disabled={editMode}
+                onPress={() => navigation.navigate('LessonNote', {
+                  lessonId: lesson.id, dateStr: date, studentName: lesson.studentName,
+                  studentUid: lesson.studentUid, time: lesson.time, note: rec.note || '',
+                })}
+              >
+                <Ionicons name="create-outline" size={15} color={COLORS.onPrimary} />
+                <Text style={styles.prepBtnText}>{rec.note ? 'Edit the note' : 'Write the note'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
+                <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      }
       case 'code':
         return joinCode ? (
           <View style={styles.codeCard}>
@@ -634,21 +786,8 @@ export default function TeacherHomeScreen({ navigation }) {
           </TouchableOpacity>
         );
       case 'lessons': {
-        // Expand the next 28 days so weekly lessons show their next occurrences.
-        const base = new Date();
-        const occ = [];
-        for (let i = 0; i < 28; i++) {
-          const d = new Date(base); d.setDate(base.getDate() + i);
-          const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          lessons.forEach((l) => {
-            const anchor = (l.date || '').split('-').map(Number);
-            const anchorDow = anchor.length === 3 ? new Date(anchor[0], anchor[1] - 1, anchor[2]).getDay() : -1;
-            const matches = l.repeat === 'weekly' ? (ds >= l.date && d.getDay() === anchorDow) : l.date === ds;
-            if (matches) occ.push({ ...l, date: ds });
-          });
-        }
-        occ.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-        const upcoming = occ.slice(0, 3);
+        // Next 28 days, weekly repeats resolved and moved/cancelled weeks skipped.
+        const upcoming = upcomingLessons(lessons, new Date(), 28).slice(0, 3).map((o) => ({ ...o.lesson, date: o.date }));
         return (
           <View style={styles.card}>
             <View style={styles.lessonsHead}>
@@ -830,13 +969,49 @@ export default function TeacherHomeScreen({ navigation }) {
         ) : loading ? (
           <Ghost color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
-          layout.map((w) => {
+          <>
+          {requests.length > 0 && (
+            <View style={[styles.card, styles.reqCard]}>
+              <Text style={styles.cardTitle}>Lesson changes · {requests.length}</Text>
+              {requests.map((r) => {
+                const busy = reqBusy === r.id;
+                return (
+                  <View key={r.id} style={styles.reqRow}>
+                    <Text style={styles.reqWho} numberOfLines={1}>{r.studentName} can't make {whenLabel(r.date, r.time)}</Text>
+                    <Text style={styles.reqAsk}>
+                      {r.newDate ? `Asks for ${whenLabel(r.newDate, r.newTime)}` : 'Asks to cancel this one'}
+                    </Text>
+                    {!!r.note && <Text style={styles.reqNote} numberOfLines={3}>“{r.note}”</Text>}
+                    <View style={styles.reqBtns}>
+                      <TouchableOpacity style={[styles.reqBtn, styles.reqNo]} onPress={() => answerRequest(r, false)} disabled={!!reqBusy} activeOpacity={0.8}>
+                        <Text style={[styles.reqBtnText, { color: COLORS.textSecondary }]}>Decline</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.reqBtn} onPress={() => answerRequest(r, true)} disabled={!!reqBusy} activeOpacity={0.8}>
+                        <Text style={styles.reqBtnText}>{busy ? '…' : r.newDate ? 'Move it' : 'Cancel it'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+          {layout.map((w) => {
             if (!w.enabled) return null;
             const content = renderWidget(w.id);
             return content ? <View key={w.id}>{content}</View> : null;
-          })
+          })}
+          </>
         )}
       </ScrollView>
+      <SheetModal visible={!!proofView} onRequestClose={() => setProofView(null)} cardStyle={styles.fileSheet}>
+        <View style={styles.fileSheetHead}>
+          <Text style={styles.cardTitle} numberOfLines={1}>{proofView?.title || 'Recording'}</Text>
+          <TouchableOpacity onPress={() => setProofView(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {!!proofView && <ProofMedia key={proofView.url} url={proofView.url} type={proofView.type} style={styles.prepProofMedia} />}
+      </SheetModal>
       <StudentKeeperModal
         visible={keeperOpen}
         students={students}
@@ -941,6 +1116,35 @@ const styles = themedStyles(() => StyleSheet.create({
   calendarCardIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center' },
   calendarCardSub: { color: COLORS.textMuted, fontSize: 12, marginTop: -6 },
   emptyMini: { color: COLORS.textMuted, fontSize: 13 },
+  prepCard: { borderColor: COLORS.primary + '55' },
+  prepHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  prepEyebrow: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  prepSoon: { color: COLORS.primary, fontSize: 12, fontWeight: '800', backgroundColor: COLORS.primary + '1A', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, overflow: 'hidden' },
+  prepWho: { color: COLORS.text, fontSize: 20, fontWeight: '800', marginTop: 4 },
+  prepWhen: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  prepLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: SPACING.md, marginBottom: 3 },
+  prepText: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
+  prepMuted: { color: COLORS.textMuted },
+  prepBad: { color: COLORS.error },
+  prepTask: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 4 },
+  prepTaskTitle: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14 },
+  prepTaskMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', flexShrink: 0 },
+  prepProof: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, padding: SPACING.sm, borderRadius: 10, backgroundColor: COLORS.primary + '12' },
+  prepProofText: { flex: 1, minWidth: 0, color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  prepProofMedia: { width: '100%', aspectRatio: 9 / 16, maxHeight: 460, borderRadius: 12, backgroundColor: '#000' },
+  prepBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  prepBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 10 },
+  prepBtnAlt: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.primary },
+  prepBtnText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '800' },
+  reqCard: { borderColor: '#F59E0B88' },
+  reqRow: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  reqWho: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  reqAsk: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  reqNote: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 4 },
+  reqBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
+  reqBtn: { flex: 1, alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 8 },
+  reqNo: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.border },
+  reqBtnText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '800' },
   miniRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 7, borderTopWidth: 1, borderTopColor: COLORS.border },
   miniRank: { width: 22, textAlign: 'center', fontSize: 15 },
   miniName: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '600' },

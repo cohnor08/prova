@@ -35,6 +35,9 @@ import PracticePlayer from '../../components/PracticePlayer';
 import SheetModal from '../../components/SheetModal';
 import { useCelebration } from '../../components/Celebration';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
+import { occursOn, busyTimes, timeLabel as lessonTimeLabel } from '../../lib/lessonSchedule';
+import { requestLessonChange, withdrawLessonRequest, watchLessonRequests, whenLabel } from '../../lib/lessonRequests';
+import TimeWheel from '../../components/TimeWheel';
 
 const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -99,18 +102,14 @@ const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.g
 
 // The next date a lesson lands on, today or later (handles weekly recurrence).
 // Returns a Date (midnight) or null if it has no upcoming occurrence.
+// Skips a week that was moved or cancelled (the shared rule in lessonSchedule).
 function nextLessonOccurrence(lesson, from) {
-  const startYmd = lesson.date;
-  if (!startYmd) return null;
-  if (lesson.repeat === 'weekly') {
-    const startDow = new Date(`${startYmd}T00:00:00`).getDay();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(from); d.setHours(0, 0, 0, 0); d.setDate(from.getDate() + i);
-      if (ymdLocal(d) >= startYmd && d.getDay() === startDow) return d;
-    }
-    return null;
+  if (!lesson.date) return null;
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(from); d.setHours(0, 0, 0, 0); d.setDate(from.getDate() + i);
+    if (occursOn(lesson, ymdLocal(d))) return d;
   }
-  return ymdLocal(from) <= startYmd ? new Date(`${startYmd}T00:00:00`) : null;
+  return null;
 }
 
 // "4:00 PM" from "16:00"
@@ -557,6 +556,10 @@ export default function TodayScreen({ navigation, route }) {
   const [sessions, setSessions] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
   const [lessons, setLessons] = useState([]); // this student's lessons, read from their teacher's doc
+  const [teacherLessons, setTeacherLessons] = useState([]); // the teacher's whole calendar — only to show which times are taken
+  const [myRequests, setMyRequests] = useState([]);         // "can't make it" requests this student has sent
+  const [change, setChange] = useState(null);               // the open "can't make it" sheet: { lesson, date, mode, newDate, newTime, note }
+  const [changeBusy, setChangeBusy] = useState(false);
   const [attendance, setAttendance] = useState({}); // teacher-set attendance map `${lessonId}__${ymd}` -> { status, note }
   const [loading, setLoading] = useState(true);
   const [feedbackMap, setFeedbackMap] = useState({}); // today's per-session { difficulty, note }
@@ -579,6 +582,12 @@ export default function TodayScreen({ navigation, route }) {
     if (!uid) return;
     const q = query(collection(db, 'users', uid, 'inbox'), where('read', '==', false), limit(10));
     return onSnapshot(q, (snap) => setUnreadCount(snap.size), () => {});
+  }, []);
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    return watchLessonRequests('studentUid', uid, setMyRequests);
   }, []);
 
   // Restore any unfinished run from earlier today (stale days are ignored and
@@ -841,8 +850,9 @@ export default function TodayScreen({ navigation, route }) {
           const tData = tSnap.data() || {};
           const all = Array.isArray(tData.lessons) ? tData.lessons : [];
           setLessons(all.filter((l) => l.studentUid === uid));
+          setTeacherLessons(all);
           setAttendance(tData.attendance || {});
-        } catch { setLessons([]); setAttendance({}); }
+        } catch { setLessons([]); setTeacherLessons([]); setAttendance({}); }
       } else {
         setLessons([]);
         setAttendance({});
@@ -1640,12 +1650,49 @@ export default function TodayScreen({ navigation, route }) {
   };
 
   // The soonest upcoming lesson from the student's teacher, surfaced on Today.
+  // (Requests to move one are watched live so the answer shows without a refresh.)
   const nowDate = new Date();
   const nextLesson = lessons
     .map((l) => ({ lesson: l, when: nextLessonOccurrence(l, nowDate) }))
     .filter((x) => x.when)
     .sort((a, b) => a.when - b.when)[0] || null;
   const lessonIsToday = nextLesson && lessonDayLabel(nextLesson.when) === 'Today';
+  const nextLessonYmd = nextLesson ? ymdLocal(nextLesson.when) : null;
+  const pendingChange = nextLesson
+    ? myRequests.find((r) => r.status === 'pending' && r.lessonId === nextLesson.lesson.id && r.date === nextLessonYmd)
+    : null;
+
+  // "Can't make it" — offer the next two weeks, starting from tomorrow.
+  const changeDays = (() => {
+    const out = [];
+    for (let i = 1; i <= 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); out.push(ymdLocal(d)); }
+    return out;
+  })();
+  const openChange = () => {
+    if (!nextLesson) return;
+    setChange({ lesson: nextLesson.lesson, date: nextLessonYmd, mode: 'move', newDate: null, newTime: nextLesson.lesson.time || '16:00', note: '' });
+  };
+  const sendChange = async () => {
+    if (!change || changeBusy) return;
+    if (change.mode === 'move' && !change.newDate) { Alert.alert('Pick a day', 'Choose the day that works instead.'); return; }
+    setChangeBusy(true);
+    try {
+      await requestLessonChange({
+        teacherUid: userData.teacherUid,
+        student: { uid: auth.currentUser.uid, name: displayName(userData) },
+        lesson: change.lesson,
+        date: change.date,
+        newDate: change.mode === 'move' ? change.newDate : null,
+        newTime: change.newTime,
+        note: change.note,
+      });
+      setChange(null);
+    } catch (e) {
+      Alert.alert('Could not send', e?.message || 'Please try again.');
+    } finally {
+      setChangeBusy(false);
+    }
+  };
 
   // Most recent lesson the teacher has marked attendance for (status + note only,
   // never the numeric mark). Keys are `${lessonId}__${YYYY-MM-DD}`.
@@ -1951,6 +1998,21 @@ export default function TodayScreen({ navigation, route }) {
                         <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
                       </TouchableOpacity>
                     )}
+                    {open && g.isPrimary && nextLesson && (pendingChange ? (
+                      <View style={styles.changeRow}>
+                        <Ionicons name="hourglass-outline" size={14} color={COLORS.textSecondary} />
+                        <Text style={styles.changeText} numberOfLines={2}>
+                          {pendingChange.newDate ? `Asked to move to ${whenLabel(pendingChange.newDate, pendingChange.newTime)}` : 'Asked to cancel'} — waiting for your teacher
+                        </Text>
+                        <TouchableOpacity onPress={() => withdrawLessonRequest(pendingChange.id).catch(() => {})} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Text style={styles.changeLink}>Undo</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity onPress={openChange} style={styles.changeRow} activeOpacity={0.7}>
+                        <Text style={styles.changeLink}>Can't make it?</Text>
+                      </TouchableOpacity>
+                    ))}
                     {open && g.isPrimary && lastAttended && (
                       <TouchableOpacity
                         style={styles.lessonRow}
@@ -2271,6 +2333,65 @@ export default function TodayScreen({ navigation, route }) {
           setTimeout(openDayReview, 400); // let the player dismiss before the sheet slides up
         }}
       />
+
+      {/* Can't make a lesson: suggest another day/time or just cancel that one.
+          The teacher answers from their home screen; nothing moves until then. */}
+      <SheetModal visible={!!change} onRequestClose={() => setChange(null)} cardStyle={styles.changeSheet} keyboardLift>
+        {!!change && (() => {
+          const busy = change.newDate ? busyTimes(teacherLessons, change.newDate, change.lesson.id) : [];
+          return (
+            <>
+              <Text style={styles.changeTitle}>Can't make {whenLabel(change.date, change.lesson.time)}?</Text>
+              <View style={styles.changeModes}>
+                {[['move', 'Suggest another time'], ['cancel', 'Just cancel this one']].map(([m, label]) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.changeMode, change.mode === m && styles.changeModeOn]}
+                    onPress={() => setChange((c) => ({ ...c, mode: m }))}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.changeModeText, change.mode === m && styles.changeModeTextOn]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {change.mode === 'move' && (
+                <>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                    {changeDays.map((ds) => {
+                      const on = change.newDate === ds;
+                      return (
+                        <TouchableOpacity key={ds} style={[styles.changeDay, on && styles.changeModeOn]} onPress={() => setChange((c) => ({ ...c, newDate: ds }))} activeOpacity={0.8}>
+                          <Text style={[styles.changeModeText, on && styles.changeModeTextOn]}>{lessonDayLabel(new Date(`${ds}T00:00:00`))}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  {!!change.newDate && (
+                    <>
+                      <TimeWheel value={change.newTime} onChange={(t) => setChange((c) => ({ ...c, newTime: t }))} />
+                      <Text style={styles.changeHint}>
+                        {busy.length ? `Your teacher already teaches at ${busy.map(lessonTimeLabel).join(', ')} that day.` : 'Your teacher has nothing else booked that day.'}
+                      </Text>
+                    </>
+                  )}
+                </>
+              )}
+              <TextInput
+                style={styles.changeNote}
+                placeholder="Add a note (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={change.note}
+                onChangeText={(t) => setChange((c) => ({ ...c, note: t }))}
+                maxLength={300}
+                multiline
+              />
+              <TouchableOpacity style={[styles.changeSend, changeBusy && { opacity: 0.6 }]} onPress={sendChange} disabled={changeBusy} activeOpacity={0.85}>
+                <Text style={styles.changeSendText}>{changeBusy ? 'Sending…' : 'Ask my teacher'}</Text>
+              </TouchableOpacity>
+            </>
+          );
+        })()}
+      </SheetModal>
 
       {/* Pre-gig: "practice your set first?" → pick a song from the setlist */}
       <SheetModal
@@ -2744,6 +2865,21 @@ const makeStyles = (COLORS) => StyleSheet.create({
     marginHorizontal: -(SPACING.lg - SPACING.sm), // full-width like the task group
   },
   lessonRowText: { flex: 1, color: COLORS.onPrimary, fontSize: 13, fontWeight: '600' },
+  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 6, paddingHorizontal: 2 },
+  changeText: { flex: 1, minWidth: 0, color: COLORS.textSecondary, fontSize: 12.5 },
+  changeLink: { color: COLORS.primary, fontSize: 12.5, fontWeight: '700' },
+  changeSheet: { padding: SPACING.lg, borderRadius: 20, gap: SPACING.sm },
+  changeTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 4 },
+  changeModes: { flexDirection: 'row', gap: 8 },
+  changeMode: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
+  changeDay: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border },
+  changeModeOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  changeModeText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  changeModeTextOn: { color: COLORS.onPrimary },
+  changeHint: { color: COLORS.textSecondary, fontSize: 12.5, textAlign: 'center' },
+  changeNote: { color: COLORS.text, fontSize: 14, minHeight: 60, textAlignVertical: 'top', borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 10 },
+  changeSend: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  changeSendText: { color: COLORS.onPrimary, fontSize: 15, fontWeight: '800' },
   attDot: { width: 9, height: 9, borderRadius: 5 },
   attNoteText: { color: COLORS.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
   notesChip: {
