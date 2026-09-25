@@ -156,7 +156,21 @@ export function lessonPrep({ lesson, date, student, teacherUid, attendance, logs
     .filter((t) => t.proofUrl && (!t.proofAt || t.proofAt >= sinceIso))
     .map((t) => ({ title: t.title || 'Task', url: t.proofUrl, type: t.proofType || 'video' }));
 
+  // What to actually do in the lesson, worked out from the above. Plain rules,
+  // no AI: every line points at something the student did or didn't do.
+  const q = (t) => `“${t}”`;
+  const workOn = [];
+  proofs.forEach((p) => workOn.push({ kind: 'proof', text: `Watch their recording of ${q(p.title)} before they arrive` }));
+  if (!minutes) workOn.push({ kind: 'bad', text: last ? 'No practice logged since the last lesson — find out why before setting more' : 'No practice logged this week — find out what got in the way' });
+  else if (minutes < 30) workOn.push({ kind: 'warn', text: `A light week (${minutes} min) — keep today's new work small` });
+  tasks.filter((t) => t.state === 'started').forEach((t) => workOn.push({ kind: 'hear', text: `Hear ${q(t.title)} first — ${t.minutes} min in, not finished. Find where it's stuck` }));
+  tasks.filter((t) => t.state === 'untouched').forEach((t) => workOn.push({ kind: 'bad', text: `Ask about ${q(t.title)} — never opened. Too hard, or unclear?` }));
+  tasks.filter((t) => t.state === 'done').forEach((t) => workOn.push({ kind: 'good', text: `${q(t.title)} is done — give them the next step` }));
+  if (!tasks.length) workOn.push({ kind: 'warn', text: 'Nothing set for them yet — leave today with their first task' });
+  if (last && last.note) workOn.push({ kind: 'note', text: `Follow up on last lesson: ${q(last.note.length > 90 ? last.note.slice(0, 88) + '…' : last.note)}` });
+
   return {
+    workOn: workOn.slice(0, 5),
     lastLesson: last ? { date: last.date, note: last.note || '', status: last.status || null, mark: last.mark || null } : null,
     since,
     minutes,

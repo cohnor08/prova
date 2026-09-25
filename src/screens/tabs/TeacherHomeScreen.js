@@ -505,7 +505,10 @@ export default function TeacherHomeScreen({ navigation }) {
 
   // The next lesson (one happening now counts), and that student's practice
   // since their last one.
-  const nextUp = useMemo(() => upcomingLessons(lessons, new Date(), 8)[0] || null, [lessons]);
+  const nextUp = useMemo(() => {
+    const mine = new Set(students.map((x) => x.uid));
+    return upcomingLessons(lessons.filter((l) => mine.has(l.studentUid)), new Date(), 8)[0] || null;
+  }, [lessons, students]);
   const nextStudent = nextUp ? students.find((s) => s.uid === nextUp.lesson.studentUid) : null;
   useEffect(() => {
     const sid = nextStudent?.uid;
@@ -530,87 +533,81 @@ export default function TeacherHomeScreen({ navigation }) {
   const renderWidget = (id) => {
     switch (id) {
       case 'prep': {
-        if (!nextUp) {
-          return (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Next lesson</Text>
-              <Text style={styles.emptyMini}>Nothing booked this week. Add lessons in the Calendar and the next one shows here, with everything you need for it.</Text>
-            </View>
-          );
-        }
+        // Nothing connected to prepare for → no card (the Lessons card still
+        // lists the booking). A leftover lesson must not take the top spot.
+        if (!nextUp || !nextStudent) return null;
         const { lesson, date, at } = nextUp;
-        const name = nextStudent ? displayName(nextStudent) : lesson.studentName;
-        const prep = nextStudent ? lessonPrep({
+        const name = displayName(nextStudent);
+        const loaded = prepLogs?.uid === nextStudent.uid;
+        const prep = lessonPrep({
           lesson, date, student: nextStudent, teacherUid: auth.currentUser?.uid,
-          attendance, logs: prepLogs?.uid === nextStudent.uid ? prepLogs.logs : {},
-        }) : null;
-        const isToday = dayLabel(date) === 'Today';
-        const note = prep?.lastLesson?.note;
+          attendance, logs: loaded ? prepLogs.logs : {},
+        });
         const rec = attendance[`${lesson.id}__${date}`] || {};
+        const dot = { proof: COLORS.primary, bad: COLORS.error, warn: '#F59E0B', hear: COLORS.primary, good: COLORS.success, note: COLORS.textMuted };
         return (
           <View style={[styles.card, styles.prepCard]}>
             <View style={styles.prepHead}>
-              <Text style={styles.prepEyebrow}>NEXT LESSON</Text>
-              {isToday && <Text style={styles.prepSoon}>{startsIn(at)}</Text>}
+              <Text style={styles.prepWho} numberOfLines={1}>Prep for {name}</Text>
             </View>
-            <Text style={styles.prepWho} numberOfLines={1}>{name}</Text>
-            <Text style={styles.prepWhen}>{dayLabel(date)} · {timeLabel(lesson.time)}{lesson.note ? ` · ${lesson.note}` : ''}</Text>
+            <Text style={styles.prepWhen}>
+              {dayLabel(date)} · {timeLabel(lesson.time)}{dayLabel(date) === 'Today' ? ` · ${startsIn(at)}` : ''}
+            </Text>
 
-            {prep && (
+            {!loaded ? (
+              <Text style={[styles.prepText, styles.prepMuted, { marginTop: SPACING.md }]}>Reading their practice…</Text>
+            ) : (
               <>
-                <Text style={styles.prepLabel}>
-                  LAST LESSON{prep.lastLesson ? ` · ${dayLabel(prep.lastLesson.date).toUpperCase()}` : ''}
-                </Text>
-                <Text style={[styles.prepText, !note && styles.prepMuted]} numberOfLines={4}>
-                  {note || (prep.lastLesson ? 'No note written for it.' : 'No earlier lesson on record.')}
-                </Text>
-
-                <Text style={styles.prepLabel}>PRACTICE SINCE</Text>
-                <Text style={[styles.prepText, !prep.minutes && styles.prepBad]}>
-                  {prepLogs?.uid !== nextStudent.uid ? '…'
-                    : prep.minutes
-                      ? `${prep.minutes} min over ${prep.days} day${prep.days === 1 ? '' : 's'}`
-                      : 'None logged'}
-                </Text>
-
-                {prep.tasks.length > 0 && (
-                  <>
-                    <Text style={styles.prepLabel}>YOUR TASKS</Text>
-                    {prep.tasks.map((t, i) => (
-                      <View key={i} style={styles.prepTask}>
-                        <Ionicons
-                          name={t.state === 'done' ? 'checkmark-circle' : t.state === 'started' ? 'time-outline' : 'ellipse-outline'}
-                          size={16}
-                          color={t.state === 'done' ? COLORS.success : t.state === 'started' ? COLORS.primary : COLORS.textMuted}
-                        />
-                        <Text style={styles.prepTaskTitle} numberOfLines={1}>{t.title}</Text>
-                        <Text style={[styles.prepTaskMeta, t.state === 'untouched' && styles.prepBad]}>
-                          {t.state === 'done' ? 'Done' : t.state === 'started' ? `${t.minutes} min` : 'Not opened'}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-
+                <Text style={styles.prepLabel}>WORK ON TODAY</Text>
+                {prep.workOn.map((w, i) => (
+                  <View key={i} style={styles.prepWork}>
+                    <View style={[styles.prepDot, { backgroundColor: dot[w.kind] }]} />
+                    <Text style={styles.prepWorkText}>{w.text}</Text>
+                  </View>
+                ))}
                 {prep.proofs.length > 0 && (
                   <TouchableOpacity style={styles.prepProof} onPress={() => setProofView(prep.proofs[0])} activeOpacity={0.8} disabled={editMode}>
                     <Ionicons name="play-circle" size={18} color={COLORS.primary} />
                     <Text style={styles.prepProofText} numberOfLines={1}>
-                      Watch their recording{prep.proofs.length > 1 ? ` (+${prep.proofs.length - 1} more)` : ''} · {prep.proofs[0].title}
+                      Watch their recording{prep.proofs.length > 1 ? ` (+${prep.proofs.length - 1} more)` : ''}
                     </Text>
                   </TouchableOpacity>
                 )}
+
+                <Text style={styles.prepLabel}>
+                  SINCE LAST LESSON{prep.lastLesson ? ` (${dayLabel(prep.lastLesson.date).toUpperCase()})` : ''}
+                </Text>
+                <View style={styles.prepTask}>
+                  <Text style={styles.prepTaskTitle}>Practice</Text>
+                  <Text style={[styles.prepTaskMeta, !prep.minutes && styles.prepBad]}>
+                    {prep.minutes ? `${prep.minutes} min over ${prep.days} day${prep.days === 1 ? '' : 's'}` : 'None logged'}
+                  </Text>
+                </View>
+                {prep.tasks.map((t, i) => (
+                  <View key={i} style={styles.prepTask}>
+                    <Text style={styles.prepTaskTitle} numberOfLines={1}>{t.title}</Text>
+                    <Text style={[styles.prepTaskMeta, {
+                      color: t.state === 'done' ? COLORS.success : t.state === 'started' ? COLORS.primary : COLORS.error,
+                    }]}>
+                      {t.state === 'done' ? 'Done' : t.state === 'started' ? `${t.minutes} min, not finished` : "Didn't touch"}
+                    </Text>
+                  </View>
+                ))}
+                {!!prep.lastLesson?.note && (
+                  <>
+                    <Text style={styles.prepLabel}>YOUR NOTE FROM LAST TIME</Text>
+                    <Text style={[styles.prepText, styles.prepMuted]} numberOfLines={5}>{prep.lastLesson.note}</Text>
+                  </>
+                )}
               </>
-            )}
-            {!prep && (
-              <Text style={[styles.prepText, styles.prepMuted, { marginTop: SPACING.md }]}>
-                {name} isn't connected to you in Prova, so there's no practice or tasks to show. Share your join code{joinCode ? ` (${joinCode})` : ''} and it fills in from their next lesson on.
-              </Text>
             )}
 
             <View style={styles.prepBtns}>
+              <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
+                <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
-                style={styles.prepBtn}
+                style={[styles.prepBtn, styles.prepBtnAlt]}
                 activeOpacity={0.85}
                 disabled={editMode}
                 onPress={() => navigation.navigate('LessonNote', {
@@ -618,14 +615,8 @@ export default function TeacherHomeScreen({ navigation }) {
                   studentUid: lesson.studentUid, time: lesson.time, note: rec.note || '',
                 })}
               >
-                <Ionicons name="create-outline" size={15} color={COLORS.onPrimary} />
-                <Text style={styles.prepBtnText}>{rec.note ? 'Edit the note' : 'Write the note'}</Text>
+                <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>{rec.note ? 'Edit' : 'Write'} lesson note</Text>
               </TouchableOpacity>
-              {!!nextStudent && (
-                <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
-                  <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         );
@@ -1133,6 +1124,9 @@ const styles = themedStyles(() => StyleSheet.create({
   prepText: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
   prepMuted: { color: COLORS.textMuted },
   prepBad: { color: COLORS.error },
+  prepWork: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: 4 },
+  prepDot: { width: 7, height: 7, borderRadius: 4, marginTop: 7 },
+  prepWorkText: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, lineHeight: 20 },
   prepTask: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 4 },
   prepTaskTitle: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14 },
   prepTaskMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', flexShrink: 0 },

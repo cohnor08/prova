@@ -1621,40 +1621,47 @@ async function answerRequest(id, accept) {
   } catch (e) { toast('Could not answer — try again'); }
 }
 
-function nextLessonUp() { return upcomingLessons(lessonsAll(), new Date(), 8)[0] || null; }
+// Only lessons with students connected to you: a lesson left over from someone
+// who has gone has nothing to prepare from, and must not take the top spot.
+function nextLessonUp() {
+  return upcomingLessons(lessonsAll().filter((l) => byUid(l.studentUid)), new Date(), 8)[0] || null;
+}
 
 function prepCardHtml() {
   const nx = nextLessonUp();
-  if (!nx) return `<section class="card"><header><h3>Next lesson</h3></header>
-    <p class="hint" style="margin:0">Nothing booked this week. Add lessons in the Calendar and the next one shows here, with everything you need for it.</p></section>`;
+  if (!nx) return '';
   const { lesson, date, at } = nx;
   const stu = byUid(lesson.studentUid);
-  const name = stu ? displayName(stu) : (lesson.studentName || 'Student');
-  const loaded = !!(stu && PREP_LOGS && PREP_LOGS.uid === stu.uid);
-  const p = stu ? lessonPrep({ lesson, date, student: stu, teacherUid: meUid, attendance: me.attendance || {}, logs: loaded ? PREP_LOGS.logs : {} }) : null;
+  const name = displayName(stu);
+  const loaded = !!(PREP_LOGS && PREP_LOGS.uid === stu.uid);
+  const p = lessonPrep({ lesson, date, student: stu, teacherUid: meUid, attendance: me.attendance || {}, logs: loaded ? PREP_LOGS.logs : {} });
   const rec = (me.attendance || {})[`${lesson.id}__${date}`] || {};
-  const label = (t) => `<div class="eyebrow" style="padding:14px 0 4px">${t}</div>`;
-  const taskIcon = { done: '<span style="color:var(--good)">✓</span>', started: '<span style="color:var(--primary)">◐</span>', untouched: '<span style="color:var(--ink-3)">○</span>' };
+  const label = (t) => `<div class="eyebrow" style="padding:16px 0 6px">${t}</div>`;
+  const dot = { proof: 'var(--primary)', bad: 'var(--bad)', warn: 'var(--warn)', hear: 'var(--primary)', good: 'var(--good)', note: 'var(--ink-3)' };
+  const taskTag = (t) => t.state === 'done' ? '<span style="color:var(--good)">Done</span>'
+    : t.state === 'started' ? `<span style="color:var(--primary)">${t.minutes} min, not finished</span>`
+    : '<span style="color:var(--bad)">Didn\'t touch</span>';
+  const soon = dayLabel(date) === 'Today' ? ` · ${esc(startsIn(at))}` : '';
   return `<section class="card" style="border-color:var(--primary)">
-    <header><h3>Next lesson</h3>${dayLabel(date) === 'Today' ? `<span class="meta" style="color:var(--primary);font-weight:700">${esc(startsIn(at))}</span>` : ''}</header>
-    <div style="font-size:20px;font-weight:750">${esc(name)}</div>
-    <div class="hint" style="margin-top:2px">${esc(whenLbl(date, lesson.time))}${lesson.note ? ' · ' + esc(lesson.note) : ''}</div>
-    ${p ? `
-      ${label(`Last lesson${p.lastLesson ? ' · ' + esc(dayLabel(p.lastLesson.date)) : ''}`)}
-      <div style="line-height:1.55;${p.lastLesson?.note ? '' : 'color:var(--ink-3)'}">${esc(p.lastLesson?.note || (p.lastLesson ? 'No note written for it.' : 'No earlier lesson on record.'))}</div>
-      ${label('Practice since')}
-      <div style="${loaded && !p.minutes ? 'color:var(--bad)' : ''}">${!loaded ? '…' : p.minutes ? `${p.minutes} min over ${p.days} day${p.days === 1 ? '' : 's'}` : 'None logged'}</div>
-      ${p.tasks.length ? label('Your tasks') + p.tasks.map((t) => `<div style="display:flex;gap:10px;align-items:center;padding:3px 0">
-          <span style="width:16px;text-align:center;flex:none">${taskIcon[t.state]}</span>
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
-          <span class="hint" style="flex:none;${t.state === 'untouched' ? 'color:var(--bad)' : ''}">${t.state === 'done' ? 'Done' : t.state === 'started' ? t.minutes + ' min' : 'Not opened'}</span></div>`).join('') : ''}
-      ${p.proofs.length ? `<button class="btn sm ghost" style="width:100%;margin-top:12px" data-media="${esc(p.proofs[0].url)}"
+    <header><h3>Prep for ${esc(name)}</h3><span class="meta">${esc(whenLbl(date, lesson.time))}${soon}</span></header>
+    ${!loaded ? '<p class="hint" style="margin:0">Reading their practice…</p>' : `
+      <div class="eyebrow" style="padding:0 0 6px">Work on today</div>
+      ${p.workOn.map((w) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;line-height:1.5">
+        <span style="width:7px;height:7px;border-radius:50%;background:${dot[w.kind]};margin-top:8px;flex:none"></span>
+        <span>${esc(w.text)}</span></div>`).join('')}
+      ${p.proofs.length ? `<button class="btn sm" style="width:100%;margin-top:10px" data-media="${esc(p.proofs[0].url)}"
           data-medianame="${esc(p.proofs[0].title)}" data-mediakind="${p.proofs[0].type === 'image' || p.proofs[0].type === 'photo' ? 'photo' : 'video'}">▶ Watch their recording${p.proofs.length > 1 ? ` (+${p.proofs.length - 1} more)` : ''}</button>` : ''}
-    ` : `<p class="hint" style="margin:12px 0 0;line-height:1.55">${esc(name)} isn't connected to you in Prova, so there's no practice
-      or tasks to show. Share your join code (${esc(me.teacherCode || '—')}) and it fills in from their next lesson on.</p>`}
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn sm" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">${rec.note ? 'Edit the note' : 'Write the note'}</button>
-      ${stu ? `<button class="btn sm ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>` : ''}
+      ${label(`Since last lesson${p.lastLesson ? ' (' + esc(dayLabel(p.lastLesson.date)) + ')' : ''}`)}
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span>Practice</span>
+        <span style="${p.minutes ? '' : 'color:var(--bad)'}">${p.minutes ? `${p.minutes} min over ${p.days} day${p.days === 1 ? '' : 's'}` : 'None logged'}</span></div>
+      ${p.tasks.map((t) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
+        <span style="flex:none">${taskTag(t)}</span></div>`).join('')}
+      ${p.lastLesson?.note ? `${label('Your note from last time')}<div style="line-height:1.55;color:var(--ink-2);white-space:pre-wrap">${esc(p.lastLesson.note)}</div>` : ''}
+    `}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn sm ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>
+      <button class="btn sm ghost" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">${rec.note ? 'Edit' : 'Write'} today's lesson note</button>
     </div></section>`;
 }
 
