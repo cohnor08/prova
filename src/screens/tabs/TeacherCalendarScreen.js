@@ -12,21 +12,16 @@ import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import SheetModal from '../../components/SheetModal';
 
+import { occursOn as occursOnShared } from '../../lib/lessonSchedule';
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 
-// Does a lesson happen on a given date? Weekly lessons recur on the same weekday
-// from their start date onward; one-off lessons only match their exact date.
-function occursOn(lesson, dateStr) {
-  if (lesson.repeat === 'weekly') {
-    if (dateStr < lesson.date) return false;
-    return parseYmd(dateStr).getDay() === parseYmd(lesson.date).getDay();
-  }
-  return lesson.date === dateStr;
-}
+// Does a lesson happen on a given date? Shared with every other screen (and the
+// web apps) so a moved or cancelled week shows the same everywhere.
+const occursOn = occursOnShared;
 
 // Format a 24h "HH:MM" string as a friendly 12h label.
 function timeLabel(v) {

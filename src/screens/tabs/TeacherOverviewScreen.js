@@ -42,7 +42,9 @@ function occurrencesInRange(lesson, startStr, endStr) {
   } else if (lesson.date >= startStr && lesson.date <= endStr) {
     out.push(lesson.date);
   }
-  return out;
+  // A week that was moved or cancelled didn't happen — don't count it as unmarked.
+  const skip = Array.isArray(lesson.skip) ? lesson.skip : [];
+  return skip.length ? out.filter((d) => !skip.includes(d)) : out;
 }
 
 function pctColor(pct) {

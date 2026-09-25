@@ -624,6 +624,9 @@ import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory
 import { attachmentKind, attachmentMeta, cleanFileName } from '/shared/attachments.js';
 // The cover art inside an MP3 (src/lib/albumArt.js).
 import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
+// Which days a lesson lands on — the same rule as the phone and Studio, so a
+// week that was moved or cancelled disappears everywhere at once.
+import { occursOn, busyTimes, dayLabel as lessonDayLbl, timeLabel as lessonTimeLbl } from '/shared/lessonSchedule.js';
 // The printable sheets — the same file the phone prints from (src/lib/printSheets.js).
 import { chordSheetHtml, scaleSheetHtml, topicSheetHtml } from '/shared/printSheets.js';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, increment, deleteDoc, collection, getDocs,
@@ -4370,27 +4373,25 @@ async function saveTheme(mode, accent) {
 // One view: a whole month, navigated a month at a time. The week/fortnight/
 // month switcher plus prev/next was four controls to answer "what's on?".
 let TEACHER_LESSONS = [], CALM = 0;
+const TEACHER_CAL = {};   // teacherUid -> that teacher's whole calendar, only to show which times are taken
 async function loadTeacherLessons() {
   const ids = [me.teacherUid, ...(Array.isArray(me.teacherUids) ? me.teacherUids : [])].filter(Boolean);
   const seen = new Set(); TEACHER_LESSONS = [];
   await Promise.all([...new Set(ids)].map(async (tid) => {
     try {
       const d = (await getDoc(doc(db, 'users', tid))).data() || {};
-      (Array.isArray(d.lessons) ? d.lessons : [])
+      TEACHER_CAL[tid] = Array.isArray(d.lessons) ? d.lessons : [];
+      TEACHER_CAL[tid]
         .filter(l => l.studentUid === uid)
-        .forEach(l => { if (!seen.has(l.id)) { seen.add(l.id); TEACHER_LESSONS.push({ ...l, teacher: displayName(d) }); } });
+        .forEach(l => { if (!seen.has(l.id)) { seen.add(l.id); TEACHER_LESSONS.push({ ...l, teacher: displayName(d), teacherUid: tid }); } });
     } catch { /* a teacher we can't read is simply absent */ }
   }));
 }
 const dayISO = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const addD = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 function lessonsOnDay(ds) {
-  return TEACHER_LESSONS.filter(l => {
-    if (!l.date) return false;
-    if (l.date === ds) return true;
-    if (l.repeat !== 'weekly' || ds < l.date) return false;
-    return new Date(l.date + 'T00:00:00Z').getUTCDay() === new Date(ds + 'T00:00:00Z').getUTCDay();
-  }).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  return TEACHER_LESSONS.filter(l => occursOn(l, ds))
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 }
 function eventsOnDay(ds) {
   const gigs = (Array.isArray(me.gigs) ? me.gigs : []).filter(g => g.date === ds)
@@ -4457,8 +4458,95 @@ async function viewCalendar() {
     </section></div>`;
 }
 
-// Teacher lessons are read-only here: they live on the teacher's doc, so the
-// student gets the details and nothing that implies they can change them.
+// Teacher lessons are read-only here: they live on the teacher's doc. What a
+// student CAN do is ask — "can't make it" sends a request the teacher accepts
+// or declines (lessonRequests, same as the phone), and nothing moves until then.
+const whenLbl = (ds, t) => `${lessonDayLbl(ds)}${t ? ' · ' + lessonTimeLbl(t) : ''}`;
+async function myPendingRequest(lessonId, ds) {
+  try {
+    const snap = await getDocs(query(collection(db, 'lessonRequests'), where('studentUid', '==', uid)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .find(r => r.status === 'pending' && String(r.lessonId) === String(lessonId) && r.date === ds) || null;
+  } catch { return null; }
+}
+async function paintLessonAsk(l, ds) {
+  const box = document.getElementById('lessonAsk'); if (!box) return;
+  const today = dayISO(new Date());
+  if (!l.teacherUid || ds < today) { box.innerHTML = ''; return; }
+  const r = await myPendingRequest(l.id, ds);
+  if (!document.getElementById('lessonAsk')) return;
+  box.innerHTML = r
+    ? `<div class="hint" style="margin:16px 0 0">⏳ ${r.newDate ? `Asked to move to ${esc(whenLbl(r.newDate, r.newTime))}` : 'Asked to cancel'} — waiting for your teacher.
+        <a href="#" id="askUndo" style="color:var(--primary);font-weight:650">Undo</a></div>`
+    : `<button class="btn ghost" id="askOpen" style="width:100%;margin-top:16px">Can't make it?</button>`;
+  const undo = document.getElementById('askUndo');
+  if (undo) undo.onclick = async (e) => {
+    e.preventDefault();
+    try { await updateDoc(doc(db, 'lessonRequests', r.id), { status: 'withdrawn' }); toast('Request withdrawn'); paintLessonAsk(l, ds); }
+    catch { toast('Could not withdraw — try again'); }
+  };
+  const open = document.getElementById('askOpen');
+  if (open) open.onclick = () => changeSheet(l, ds);
+}
+function changeSheet(l, ds) {
+  const tomorrow = dayISO(addD(new Date(), 1));
+  let mode = 'move';
+  $('#overlays').innerHTML = `<div class="scrim" data-close></div><div class="modal" style="text-align:left">
+    <div style="display:flex;align-items:center"><span class="lab">Lesson</span>
+      <button class="x" data-close style="margin-left:auto">×</button></div>
+    <h3 style="margin:8px 0 12px;font-size:18px">Can't make ${esc(whenLbl(ds, l.time))}?</h3>
+    <div style="display:flex;gap:8px" id="askMode">
+      <button class="btn" data-m="move" style="flex:1">Suggest another time</button>
+      <button class="btn ghost" data-m="cancel" style="flex:1">Just cancel this one</button></div>
+    <div id="askMove" style="margin-top:14px">
+      <div style="display:flex;gap:8px">
+        <input id="askDate" type="date" min="${tomorrow}" style="flex:1;min-width:0">
+        <input id="askTime" type="time" value="${esc(l.time || '16:00')}" style="flex:1;min-width:0"></div>
+      <p class="hint" id="askBusy" style="margin:8px 0 0"></p></div>
+    <textarea id="askNote" rows="3" maxlength="300" placeholder="Add a note (optional)" style="width:100%;margin-top:14px"></textarea>
+    <button class="btn" id="askSend" style="width:100%;margin-top:14px">Ask my teacher</button></div>`;
+  const busyHint = () => {
+    const d = $('#askDate').value;
+    const b = d ? busyTimes(TEACHER_CAL[l.teacherUid] || [], d, l.id) : [];
+    $('#askBusy').textContent = !d ? '' : b.length
+      ? `Your teacher already teaches at ${b.map(lessonTimeLbl).join(', ')} that day.`
+      : 'Your teacher has nothing else booked that day.';
+  };
+  $('#askDate').onchange = busyHint;
+  document.querySelectorAll('#askMode [data-m]').forEach((b) => b.onclick = () => {
+    mode = b.getAttribute('data-m');
+    document.querySelectorAll('#askMode [data-m]').forEach((x) => x.classList.toggle('ghost', x !== b));
+    $('#askMove').style.display = mode === 'move' ? '' : 'none';
+  });
+  $('#askSend').onclick = async () => {
+    const newDate = mode === 'move' ? $('#askDate').value : null;
+    if (mode === 'move' && !newDate) { toast('Pick the day that works instead'); return; }
+    const btn = $('#askSend'); btn.disabled = true; btn.textContent = 'Sending…';
+    const name = displayName({ uid, ...me });
+    const req = {
+      teacherUid: l.teacherUid, studentUid: uid, studentName: name,
+      lessonId: l.id, date: ds, time: l.time || '',
+      newDate: newDate || null, newTime: newDate ? ($('#askTime').value || l.time || '') : null,
+      note: $('#askNote').value.trim().slice(0, 300),
+      status: 'pending', createdAt: new Date().toISOString(),
+    };
+    try {
+      const ref = await addDoc(collection(db, 'lessonRequests'), req);
+      addDoc(collection(db, 'users', l.teacherUid, 'inbox'), {
+        type: 'lesson_request',
+        title: `${name} can't make ${whenLbl(ds, req.time)}`,
+        body: req.newDate ? `Asks to move it to ${whenLbl(req.newDate, req.newTime)}` : 'Asks to cancel this one',
+        data: { requestId: ref.id }, read: false, createdAt: new Date().toISOString(),
+      }).catch(() => {});
+      toast('Sent — your teacher will answer');
+      lessonSheet(l.id, ds);
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Ask my teacher';
+      toast('Could not send — try again');
+    }
+  };
+}
+
 function lessonSheet(id, ds) {
   const l = TEACHER_LESSONS.find(x => String(x.id) === String(id));
   if (!l) return;
@@ -4472,8 +4560,9 @@ function lessonSheet(id, ds) {
     ${l.repeat === 'weekly' ? '<p class="hint" style="margin:0 0 6px">Repeats every week</p>' : ''}
     ${l.note ? `<div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;
       padding:13px 15px;margin-top:12px;white-space:pre-wrap;line-height:1.6;font-size:14px">${linkify(l.note)}</div>` : ''}
-    <p class="hint" style="margin:16px 0 0;font-size:12px">Set by your teacher — ask them if this needs to change.</p>
+    <div id="lessonAsk"></div>
     <button class="btn ghost" data-close style="width:100%;margin-top:16px">Close</button></div>`;
+  paintLessonAsk(l, ds);
 }
 
 const TYPE_WORD = { gig: 'Gig', lesson: 'Lesson', task: 'Task' };

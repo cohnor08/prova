@@ -61,6 +61,30 @@ service cloud.firestore {
 
     // Session history — written by the app when a session is rated,
     // read by the app for Progress charts. Owner-only access.
+    // "Can't make Thursday" — a student asks their teacher to move or cancel
+    // one lesson (src/lib/lessonRequests.js). The student creates it, pending,
+    // and only for a teacher they are actually linked to; only that teacher
+    // answers it; the student may withdraw it while it's still pending.
+    match /lessonRequests/{reqId} {
+      allow read: if request.auth != null
+        && (resource.data.studentUid == request.auth.uid || resource.data.teacherUid == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teacherUid', '') == request.resource.data.teacherUid
+            || request.resource.data.teacherUid in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teacherUids', []));
+      allow update: if request.auth != null
+        && resource.data.teacherUid == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['accepted', 'declined']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'answeredAt']);
+      allow update: if request.auth != null
+        && resource.data.studentUid == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'withdrawn'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
     match /sessionHistory/{userId}/{document=**} {
       // Owner reads + writes their own history; a linked teacher may read it
       // (to show the student's practice heatmap on the teacher dashboard).
