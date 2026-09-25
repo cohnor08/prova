@@ -445,7 +445,7 @@ import { TASK_FILE_MAX_BYTES, TASK_FILE_MAX_LABEL, TASK_FILE_ACCEPT, contentType
   attachmentKind, attachmentMeta, cleanFileName, storageFileName } from '/shared/attachments.js';
 // The cover art inside an MP3 (src/lib/albumArt.js).
 import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
-import { occursOn, upcomingLessons, lessonPrep, dayLabel, timeLabel as lessonTime, startsIn, moveOccurrence } from '/shared/lessonSchedule.js?v=2';
+import { occursOn, lessonPrep, dayLabel, timeLabel as lessonTime, moveOccurrence } from '/shared/lessonSchedule.js?v=2';
 
 const app = initializeApp({
   apiKey: 'AIzaSyAP7411t8bn81DoCtJI7ajy30UGaPdaRNU',
@@ -892,9 +892,12 @@ document.addEventListener('click', (e) => {
     // the Studio page opened whoever happened to be top of the roster.
     const who = go_.getAttribute('data-gostu');
     if (who) selUid = who;
+    if (go_.closest('.modal')) closeModal();   // e.g. "Open Sam" from inside Prep
     go(go_.getAttribute('data-go'));
     return;
   }
+  const pr = e.target.closest('[data-prep]');
+  if (pr) { const v = pr.getAttribute('data-prep'), k = v.lastIndexOf('|'); prepModal(v.slice(0, k), v.slice(k + 1)); return; }
   const rq = e.target.closest('[data-req]');
   if (rq) { rq.disabled = true; answerRequest(rq.getAttribute('data-req'), rq.getAttribute('data-ok') === '1'); return; }
   const ev = e.target.closest('[data-lesson]');
@@ -1572,7 +1575,6 @@ function spark(week, colour) {
 // The same two cards as the phone's Teacher Home. Both read from data that's
 // already stored (/shared/lessonSchedule.js does the working out), so what a
 // teacher sees on a laptop and on their phone agrees.
-let PREP_LOGS = null;      // { uid, logs } — the next lesson's student's practice log
 let LESSON_REQS = [];      // pending "can't make it" requests, kept live
 const whenLbl = (ds, t) => `${dayLabel(ds)}${t ? ' · ' + lessonTime(t) : ''}`;
 
@@ -1621,63 +1623,57 @@ async function answerRequest(id, accept) {
   } catch (e) { toast('Could not answer — try again'); }
 }
 
-// Only lessons with students connected to you: a lesson left over from someone
-// who has gone has nothing to prepare from, and must not take the top spot.
-function nextLessonUp() {
-  return upcomingLessons(lessonsAll().filter((l) => byUid(l.studentUid)), new Date(), 8)[0] || null;
+// ── Prep: a button on a lesson, not a box on the page ─────────────────
+// Opens what to work on with that student in that lesson. Practice logs are
+// fetched the first time and kept for the session.
+const PREP_CACHE = {};   // studentUid -> { 'YYYY-MM-DD': minutes }
+async function prepLogsFor(uid) {
+  if (PREP_CACHE[uid]) return PREP_CACHE[uid];
+  const logs = {};
+  try {
+    const snap = await getDocs(query(collection(db, 'sessionHistory', uid, 'logs'), orderBy('date', 'desc'), limit(45)));
+    snap.forEach((d) => { logs[d.id] = Number(d.data()?.totalMinutes) || 0; });
+  } catch { /* no history — treat as none */ }
+  return (PREP_CACHE[uid] = logs);
 }
 
-function prepCardHtml() {
-  const nx = nextLessonUp();
-  if (!nx) return '';
-  const { lesson, date, at } = nx;
-  const stu = byUid(lesson.studentUid);
-  const name = displayName(stu);
-  const loaded = !!(PREP_LOGS && PREP_LOGS.uid === stu.uid);
-  const p = lessonPrep({ lesson, date, student: stu, teacherUid: meUid, attendance: me.attendance || {}, logs: loaded ? PREP_LOGS.logs : {} });
-  const rec = (me.attendance || {})[`${lesson.id}__${date}`] || {};
+function prepBodyHtml(lesson, date, stu, logs) {
+  const p = lessonPrep({ lesson, date, student: stu, teacherUid: meUid, attendance: me.attendance || {}, logs });
   const label = (t) => `<div class="eyebrow" style="padding:16px 0 6px">${t}</div>`;
   const dot = { proof: 'var(--primary)', bad: 'var(--bad)', warn: 'var(--warn)', hear: 'var(--primary)', good: 'var(--good)', note: 'var(--ink-3)' };
   const taskTag = (t) => t.state === 'done' ? '<span style="color:var(--good)">Done</span>'
     : t.state === 'started' ? `<span style="color:var(--primary)">${t.minutes} min, not finished</span>`
     : '<span style="color:var(--bad)">Didn\'t touch</span>';
-  const soon = dayLabel(date) === 'Today' ? ` · ${esc(startsIn(at))}` : '';
-  return `<section class="card" style="border-color:var(--primary)">
-    <header><h3>Prep for ${esc(name)}</h3><span class="meta">${esc(whenLbl(date, lesson.time))}${soon}</span></header>
-    ${!loaded ? '<p class="hint" style="margin:0">Reading their practice…</p>' : `
-      <div class="eyebrow" style="padding:0 0 6px">Work on today</div>
-      ${p.workOn.map((w) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;line-height:1.5">
-        <span style="width:7px;height:7px;border-radius:50%;background:${dot[w.kind]};margin-top:8px;flex:none"></span>
-        <span>${esc(w.text)}</span></div>`).join('')}
-      ${p.proofs.length ? `<button class="btn sm" style="width:100%;margin-top:10px" data-media="${esc(p.proofs[0].url)}"
-          data-medianame="${esc(p.proofs[0].title)}" data-mediakind="${p.proofs[0].type === 'image' || p.proofs[0].type === 'photo' ? 'photo' : 'video'}">▶ Watch their recording${p.proofs.length > 1 ? ` (+${p.proofs.length - 1} more)` : ''}</button>` : ''}
-      ${label(`Since last lesson${p.lastLesson ? ' (' + esc(dayLabel(p.lastLesson.date)) + ')' : ''}`)}
-      <div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span>Practice</span>
-        <span style="${p.minutes ? '' : 'color:var(--bad)'}">${p.minutes ? `${p.minutes} min over ${p.days} day${p.days === 1 ? '' : 's'}` : 'None logged'}</span></div>
-      ${p.tasks.map((t) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
-        <span style="flex:none">${taskTag(t)}</span></div>`).join('')}
-      ${p.lastLesson?.note ? `${label('Your note from last time')}<div style="line-height:1.55;color:var(--ink-2);white-space:pre-wrap">${esc(p.lastLesson.note)}</div>` : ''}
-    `}
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn sm ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>
-      <button class="btn sm ghost" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">${rec.note ? 'Edit' : 'Write'} today's lesson note</button>
-    </div></section>`;
+  return `<div class="eyebrow" style="padding:0 0 6px">Work on today</div>
+    ${p.workOn.map((w) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;line-height:1.5">
+      <span style="width:7px;height:7px;border-radius:50%;background:${dot[w.kind]};margin-top:8px;flex:none"></span>
+      <span>${esc(w.text)}</span></div>`).join('')}
+    ${p.proofs.length ? `<button class="btn sm" style="width:100%;margin-top:10px" data-media="${esc(p.proofs[0].url)}"
+        data-medianame="${esc(p.proofs[0].title)}" data-mediakind="${p.proofs[0].type === 'image' || p.proofs[0].type === 'photo' ? 'photo' : 'video'}">▶ Watch their recording${p.proofs.length > 1 ? ` (+${p.proofs.length - 1} more)` : ''}</button>` : ''}
+    ${label(`Since last lesson${p.lastLesson ? ' (' + esc(dayLabel(p.lastLesson.date)) + ')' : ''}`)}
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span>Practice</span>
+      <span style="${p.minutes ? '' : 'color:var(--bad)'}">${p.minutes ? `${p.minutes} min over ${p.days} day${p.days === 1 ? '' : 's'}` : 'None logged'}</span></div>
+    ${p.tasks.map((t) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
+      <span style="flex:none">${taskTag(t)}</span></div>`).join('')}
+    ${p.lastLesson?.note ? `${label('Your note from last time')}<div style="line-height:1.55;color:var(--ink-2);white-space:pre-wrap">${esc(p.lastLesson.note)}</div>` : ''}`;
 }
 
-// The practice log for the next lesson's student — fetched after the page
-// paints, then only that card is redrawn.
-async function loadPrepLogs() {
-  const nx = nextLessonUp(); const stu = nx && byUid(nx.lesson.studentUid);
-  if (!stu || (PREP_LOGS && PREP_LOGS.uid === stu.uid)) return;
-  const logs = {};
-  try {
-    const snap = await getDocs(query(collection(db, 'sessionHistory', stu.uid, 'logs'), orderBy('date', 'desc'), limit(45)));
-    snap.forEach((d) => { logs[d.id] = Number(d.data()?.totalMinutes) || 0; });
-  } catch { /* no history — treat as none */ }
-  PREP_LOGS = { uid: stu.uid, logs };
-  const slot = document.getElementById('prepSlot');
-  if (slot) slot.innerHTML = prepCardHtml();
+async function prepModal(lessonId, date) {
+  const lesson = lessonsAll().find((x) => String(x.id) === String(lessonId)); if (!lesson) return;
+  const stu = byUid(lesson.studentUid);
+  if (!stu) { toast(`${lesson.studentName || 'This student'} isn't connected to you — nothing to prep from`); return; }
+  const name = displayName(stu);
+  const paint = (body) => modal(`<div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="flex:1;min-width:0"><h3 style="margin:0">Prep for ${esc(name)}</h3>
+        <div class="hint" style="margin-top:4px">${esc(whenLbl(date, lesson.time))}</div></div>
+      <button class="x" data-close aria-label="Close">×</button></div>
+    <div style="margin-top:16px">${body}</div>
+    <div class="acts"><button class="btn ghost" style="flex:1" data-go="students" data-gostu="${esc(stu.uid)}">Open ${esc(name.split(' ')[0])}</button>
+      <button class="btn ghost" style="flex:1" data-lesson="${esc(lesson.id)}" data-date="${esc(date)}">Lesson note</button></div>`);
+  if (!PREP_CACHE[stu.uid]) paint('<p class="hint" style="margin:0">Reading their practice…</p>');
+  const logs = await prepLogsFor(stu.uid);
+  paint(prepBodyHtml(lesson, date, stu, logs));
 }
 
 function viewHome() {
@@ -1699,7 +1695,6 @@ function viewHome() {
         <button class="btn" data-go="students">Assign a task</button></div></div>
     <div class="cols"><div class="stack">
       <div id="reqSlot">${reqCardHtml()}</div>
-      <div id="prepSlot">${prepCardHtml()}</div>
       <!-- Was three stat cards about the teacher's own numbers, then a table
            called "Practice Pulse". A teacher opens this to see who needs them:
            the roster leads, and the numbers that mattered (practised this week,
@@ -1720,6 +1715,7 @@ function viewHome() {
         <span class="meta">${upcoming.length}</span></header>
         ${upcoming.map(l => `<div class="prow"><div class="pl"><div class="pt">${esc(l.studentName || 'Student')}</div>
           <div class="ps">${esc(fmtDay(l.date))} at ${esc(l.time || '')}</div></div>
+          ${byUid(l.studentUid) ? `<button class="btn sm" data-prep="${esc(l.id)}|${esc(l.date)}">Prep</button>` : ''}
           <button class="btn sm ghost" data-go="calendar">Open</button></div>`).join('')}</section>` : ''}
     </div><div class="stack">
       ${myFilesCard()}
@@ -1758,7 +1754,6 @@ function viewHome() {
       </section>
     </div></div></div>`;
   wireMyFiles();
-  loadPrepLogs();
 }
 
 // The whole card, so Studio's home and the Resources page show the same one.
@@ -3281,6 +3276,7 @@ function occurrenceModal(lessonId, ds) {
       <h3 style="margin:0;flex:1;min-width:0">${esc(l.studentName || 'Lesson')}</h3>
       <button class="x" data-close aria-label="Close">×</button></div>
     <p class="hint" style="margin:6px 0 18px">${esc(fmtDay(ds))} at ${esc(l.time || '')}${l.repeat === 'weekly' ? ' · repeats weekly' : ''}${l.note ? ' · ' + esc(l.note) : ''}</p>
+    ${byUid(l.studentUid) ? `<button class="btn sm" data-prep="${esc(l.id)}|${esc(ds)}" style="width:100%;margin:-6px 0 18px">✦ Prep for this lesson</button>` : ''}
     <div class="field"><label>Attendance</label><div class="seg" id="oStatus">
       ${['present','late','absent'].map((s) => `<button data-v="${s}" aria-pressed="${rec.status === s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div></div>
     <div class="field"><label>How did it go?</label><div class="seg" id="oMark" data-stars="1">

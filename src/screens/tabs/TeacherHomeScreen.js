@@ -25,7 +25,7 @@ import { studioUpsell, TEACHER_FREE_STUDENT_LIMIT } from '../../lib/entitlements
 import StudentKeeperModal from '../../components/StudentKeeperModal';
 import SheetModal from '../../components/SheetModal';
 import ProofMedia from '../../components/ProofMedia';
-import { upcomingLessons, lessonPrep, dayLabel, timeLabel, startsIn } from '../../lib/lessonSchedule';
+import { upcomingLessons, lessonPrep, dayLabel, timeLabel } from '../../lib/lessonSchedule';
 import { watchLessonRequests, answerLessonRequest, whenLabel } from '../../lib/lessonRequests';
 import { DEMO_MODE, DEMO_STUDENTS_DATA } from './TeacherScreen';
 
@@ -54,9 +54,6 @@ function tipOfTheDay() {
 
 // Home is composed of widgets the teacher can show/hide and reorder.
 const DEFAULT_WIDGETS = [
-  // What a teacher wants before they walk in: the next lesson, what the
-  // student did since the last one, and the note they left themselves.
-  { id: 'prep', enabled: true },
   { id: 'code', enabled: true },
   // Students lead: a teacher opens this screen to see who needs them, not to
   // read their own statistics. (The three stat boxes that used to sit at the
@@ -76,7 +73,6 @@ const DEFAULT_WIDGETS = [
 // Retiring a widget means dropping it from here: mergeLayout only keeps ids it
 // knows, so a saved layout loses it on the next load. That's how `stats` went.
 const WIDGET_LABELS = {
-  prep: 'Next lesson',
   code: 'Join code',
   pulse: 'Students',
   calendar: 'Calendar',
@@ -252,7 +248,8 @@ export default function TeacherHomeScreen({ navigation }) {
   const [note, setNote] = useState('');
   const [lessons, setLessons] = useState([]);
   const [attendance, setAttendance] = useState({});     // lesson notes live here, keyed lessonId_date
-  const [prepLogs, setPrepLogs] = useState(null);       // { uid, logs } — next lesson's student's practice
+  const [prepFor, setPrepFor] = useState(null);         // { lesson, date } — the Prep sheet
+  const [prepCache, setPrepCache] = useState({});       // studentUid -> practice log, fetched on first Prep
   const [proofView, setProofView] = useState(null);     // a proof clip opened from the prep card
   const [requests, setRequests] = useState([]);         // students asking to move/cancel a lesson
   const [reqBusy, setReqBusy] = useState(null);
@@ -503,55 +500,48 @@ export default function TeacherHomeScreen({ navigation }) {
     }
   };
 
-  // The next lesson (one happening now counts), and that student's practice
-  // since their last one.
-  const nextUp = useMemo(() => {
-    const mine = new Set(students.map((x) => x.uid));
-    return upcomingLessons(lessons.filter((l) => mine.has(l.studentUid)), new Date(), 8)[0] || null;
-  }, [lessons, students]);
-  const nextStudent = nextUp ? students.find((s) => s.uid === nextUp.lesson.studentUid) : null;
-  useEffect(() => {
-    const sid = nextStudent?.uid;
-    if (!sid || DEMO_MODE) return;
-    if (prepLogs?.uid === sid) return;
-    let alive = true;
+  // Prep is a button on a lesson: open the sheet, fetch that student's
+  // practice log the first time.
+  const openPrep = (lesson, date) => {
+    setPrepFor({ lesson, date });
+    const sid = lesson.studentUid;
+    if (!sid || prepCache[sid] || DEMO_MODE) return;
     getDocs(query(collection(db, 'sessionHistory', sid, 'logs'), orderBy('date', 'desc'), limit(45)))
       .then((snap) => {
-        if (!alive) return;
         const logs = {};
         snap.forEach((d) => { logs[d.id] = d.data()?.totalMinutes || 0; });
-        setPrepLogs({ uid: sid, logs });
+        setPrepCache((c) => ({ ...c, [sid]: logs }));
       })
-      .catch(() => { if (alive) setPrepLogs({ uid: sid, logs: {} }); });
-    return () => { alive = false; };
-  }, [nextStudent?.uid]);
+      .catch(() => setPrepCache((c) => ({ ...c, [sid]: {} })));
+  };
 
   const goStudents = () => navigation.navigate('Teacher');
   const goResources = () => navigation.navigate('Resources');
   const goPacks = () => navigation.navigate('Packs');
 
-  const renderWidget = (id) => {
-    switch (id) {
-      case 'prep': {
-        // Nothing connected to prepare for → no card (the Lessons card still
-        // lists the booking). A leftover lesson must not take the top spot.
-        if (!nextUp || !nextStudent) return null;
-        const { lesson, date, at } = nextUp;
+  const renderPrep = () => {
+        if (!prepFor) return null;
+        const { lesson, date } = prepFor;
+        const nextStudent = students.find((x) => x.uid === lesson.studentUid);
+        if (!nextStudent) return null;
         const name = displayName(nextStudent);
-        const loaded = prepLogs?.uid === nextStudent.uid;
+        const loaded = !!prepCache[nextStudent.uid];
         const prep = lessonPrep({
           lesson, date, student: nextStudent, teacherUid: auth.currentUser?.uid,
-          attendance, logs: loaded ? prepLogs.logs : {},
+          attendance, logs: loaded ? prepCache[nextStudent.uid] : {},
         });
         const rec = attendance[`${lesson.id}__${date}`] || {};
         const dot = { proof: COLORS.primary, bad: COLORS.error, warn: '#F59E0B', hear: COLORS.primary, good: COLORS.success, note: COLORS.textMuted };
         return (
-          <View style={[styles.card, styles.prepCard]}>
-            <View style={styles.prepHead}>
-              <Text style={styles.prepWho} numberOfLines={1}>Prep for {name}</Text>
+          <View>
+            <View style={styles.fileSheetHead}>
+              <Text style={[styles.prepWho, { flex: 1, minWidth: 0 }]} numberOfLines={1}>Prep for {name}</Text>
+              <TouchableOpacity onPress={() => setPrepFor(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
             </View>
             <Text style={styles.prepWhen}>
-              {dayLabel(date)} · {timeLabel(lesson.time)}{dayLabel(date) === 'Today' ? ` · ${startsIn(at)}` : ''}
+              {dayLabel(date)} · {timeLabel(lesson.time)}
             </Text>
 
             {!loaded ? (
@@ -566,7 +556,7 @@ export default function TeacherHomeScreen({ navigation }) {
                   </View>
                 ))}
                 {prep.proofs.length > 0 && (
-                  <TouchableOpacity style={styles.prepProof} onPress={() => setProofView(prep.proofs[0])} activeOpacity={0.8} disabled={editMode}>
+                  <TouchableOpacity style={styles.prepProof} onPress={() => { const pv = prep.proofs[0]; setPrepFor(null); setTimeout(() => setProofView(pv), 350); }} activeOpacity={0.8}>
                     <Ionicons name="play-circle" size={18} color={COLORS.primary} />
                     <Text style={styles.prepProofText} numberOfLines={1}>
                       Watch their recording{prep.proofs.length > 1 ? ` (+${prep.proofs.length - 1} more)` : ''}
@@ -603,24 +593,26 @@ export default function TeacherHomeScreen({ navigation }) {
             )}
 
             <View style={styles.prepBtns}>
-              <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} disabled={editMode} onPress={goStudents}>
+              <TouchableOpacity style={[styles.prepBtn, styles.prepBtnAlt]} activeOpacity={0.85} onPress={() => { setPrepFor(null); goStudents(); }}>
                 <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>Open {name.split(' ')[0]}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.prepBtn, styles.prepBtnAlt]}
                 activeOpacity={0.85}
-                disabled={editMode}
-                onPress={() => navigation.navigate('LessonNote', {
+                onPress={() => { setPrepFor(null); navigation.navigate('LessonNote', {
                   lessonId: lesson.id, dateStr: date, studentName: lesson.studentName,
                   studentUid: lesson.studentUid, time: lesson.time, note: rec.note || '',
-                })}
+                }); }}
               >
                 <Text style={[styles.prepBtnText, { color: COLORS.primary }]}>{rec.note ? 'Edit' : 'Write'} lesson note</Text>
               </TouchableOpacity>
             </View>
           </View>
         );
-      }
+  };
+
+  const renderWidget = (id) => {
+    switch (id) {
       case 'code':
         return joinCode ? (
           <View style={styles.codeCard}>
@@ -798,6 +790,11 @@ export default function TeacherHomeScreen({ navigation }) {
                 <Ionicons name="time-outline" size={15} color={COLORS.primary} />
                 <Text style={styles.miniName} numberOfLines={1}>{l.studentName}</Text>
                 <Text style={styles.miniMeta}>{lessonWhen(l)}</Text>
+                {students.some((x) => x.uid === l.studentUid) && (
+                  <TouchableOpacity style={styles.nudgeBtn} onPress={() => openPrep(l, l.date)} disabled={editMode} activeOpacity={0.8}>
+                    <Text style={styles.nudgeText}>Prep</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </View>
@@ -1001,6 +998,11 @@ export default function TeacherHomeScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+      <SheetModal visible={!!prepFor} onRequestClose={() => setPrepFor(null)} cardStyle={styles.fileSheet}>
+        <ScrollView style={{ maxHeight: 560 }} showsVerticalScrollIndicator={false}>
+          {renderPrep()}
+        </ScrollView>
+      </SheetModal>
       <SheetModal visible={!!proofView} onRequestClose={() => setProofView(null)} cardStyle={styles.fileSheet}>
         <View style={styles.fileSheetHead}>
           <Text style={styles.cardTitle} numberOfLines={1}>{proofView?.title || 'Recording'}</Text>
