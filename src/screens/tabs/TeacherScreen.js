@@ -19,7 +19,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow, draftNextWeek, warmDraftNextWeek } from '../../lib/claude';
 import { track } from '../../lib/analytics';
-import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents, unlinkTeacher } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus, toggleChatReaction } from '../../lib/chat';
 import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
 import { ReactionChips, ReactionPicker } from '../../components/Reactions';
@@ -2217,9 +2217,11 @@ function TeacherDashboard() {
       {
         text: 'Remove', style: 'destructive', onPress: async () => {
           try {
-            // Unlink the student (clear their teacherUid). Allowed for the
-            // linked teacher by the Firestore rule.
-            await updateDoc(doc(db, 'users', studentUid), { teacherUid: null });
+            // Unlink fully: out of teacherUids AND teacherUid. Clearing only
+            // teacherUid left the link in teacherUids, so the "removed" student
+            // kept appearing everywhere (queryMyStudents reads both). Same
+            // write Studio's Remove makes; the rule allows exactly these two fields.
+            await unlinkTeacher(studentUid, auth.currentUser.uid);
             setStudents((prev) => prev.filter((s) => s.uid !== studentUid));
           } catch (e) {
             Alert.alert('Error', "Couldn't remove this student. Please try again.");
