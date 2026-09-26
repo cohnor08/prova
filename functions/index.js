@@ -1587,6 +1587,75 @@ exports.sendParentReportsNow = onCall(
   },
 );
 
+// ─── Join requests: a teacher approves who joins their studio ─────────────────
+// A student entering a teacher's code now only creates joinRequests/{s}_{t}
+// (pending). Rules stop a student adding a teacher to their own doc, so the
+// link is written here, with the admin SDK, once the teacher says yes.
+// data: { studentUids: string[] (1-100), accept: boolean }
+// Takes a list so "Accept all" is one call however many are waiting.
+exports.answerJoinRequest = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Please sign in.');
+  const accept = !!(request.data && request.data.accept);
+  const ids = Array.isArray(request.data && request.data.studentUids)
+    ? [...new Set(request.data.studentUids.map(String).filter(Boolean))].slice(0, 100)
+    : [];
+  if (!ids.length) throw new HttpsError('invalid-argument', 'studentUids is required.');
+
+  const meSnap = await db.collection('users').doc(uid).get();
+  const me = meSnap.data() || {};
+  if (me.role !== 'teacher') throw new HttpsError('permission-denied', 'Teachers only.');
+  const teacherName = me.username || (me.email || '').split('@')[0] || 'Your teacher';
+
+  const done = [];
+  for (const sid of ids) {
+    const reqRef = db.collection('joinRequests').doc(`${sid}_${uid}`);
+    try {
+      await db.runTransaction(async (tx) => {
+        const r = await tx.get(reqRef);
+        if (!r.exists || r.data().teacherUid !== uid || r.data().status !== 'pending') return;
+        const stuRef = db.collection('users').doc(sid);
+        if (accept) {
+          const stu = (await tx.get(stuRef)).data();
+          if (!stu) { tx.update(reqRef, { status: 'declined', answeredAt: new Date().toISOString() }); return; }
+          const patch = { teacherUids: admin.firestore.FieldValue.arrayUnion(uid) };
+          if (!stu.teacherUid) patch.teacherUid = uid;   // first teacher = primary
+          tx.update(stuRef, patch);
+        }
+        tx.update(reqRef, { status: accept ? 'accepted' : 'declined', answeredAt: new Date().toISOString() });
+        done.push(sid);
+      });
+    } catch (e) {
+      console.error('[answerJoinRequest]', sid, e.message);
+      continue;
+    }
+    if (!done.includes(sid)) continue;
+    // Tell the student either way (their inbox also drives push).
+    await db.collection('users').doc(sid).collection('inbox').add({
+      type: accept ? 'join_accepted' : 'join_declined',
+      title: accept ? `${teacherName} accepted you` : `${teacherName} didn't accept your request`,
+      body: accept ? 'Their tasks, lesson notes and messages will show up in Prova now.' : 'Check the code with your teacher if you think this is a mistake.',
+      data: { teacherUid: uid },
+      read: false,
+      createdAt: new Date().toISOString(),
+    }).catch(() => {});
+    if (accept) {
+      // The chat thread linking used to seed on the student's side.
+      const chatId = [uid, sid].sort().join('_');
+      const seed = { chatId, lastMessage: '', lastMessageAt: admin.firestore.FieldValue.serverTimestamp(), lastSenderUid: '' };
+      const stuSnap = await db.collection('users').doc(sid).get().catch(() => null);
+      const stuEmail = (stuSnap && stuSnap.data() && stuSnap.data().email) || '';
+      await Promise.all([
+        db.doc(`userChats/${uid}/conversations/${chatId}`).get().then((d) => d.exists ? null
+          : d.ref.set({ ...seed, otherUid: sid, otherEmail: stuEmail })),
+        db.doc(`userChats/${sid}/conversations/${chatId}`).get().then((d) => d.exists ? null
+          : d.ref.set({ ...seed, otherUid: uid, otherEmail: me.email || '' })),
+      ]).catch((e) => console.error('[answerJoinRequest] chat seed', e.message));
+    }
+  }
+  return { done: done.length, of: ids.length };
+});
+
 // ─── Draft next week's tasks for one student ──────────────────────────────────
 // The teacher asks, reads what comes back, edits it, and sends it — nothing here
 // reaches a student on its own. That's the whole point: a draft only has to be

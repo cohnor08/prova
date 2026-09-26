@@ -19,7 +19,7 @@ import {
 import { auth, db, ignorePermissionDenied } from '../../lib/firebase';
 import { generateSongPlan, sendParentReportsNow, draftNextWeek, warmDraftNextWeek } from '../../lib/claude';
 import { track } from '../../lib/analytics';
-import { ensureTeacherCode, queryMyStudents, unlinkTeacher } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents, unlinkTeacher, watchJoinRequests, answerJoinRequests } from '../../lib/teacher';
 import { makeChatId, sendChatMessage, markChatRead, receiptStatus, toggleChatReaction } from '../../lib/chat';
 import { msgMs, timeLabel, dayLabel, sameDay } from '../../lib/chatTime';
 import { ReactionChips, ReactionPicker } from '../../components/Reactions';
@@ -1837,6 +1837,16 @@ function StudentActivityChart({ studentUid }) {
 function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [inviteEmail, setInviteEmail] = useState('');
+  // Students asking to join. A list, not pop-ups: fifty at once is one card
+  // with "Accept all", not fifty alerts.
+  const [joinReqs, setJoinReqs] = useState([]);
+  const [joinBusy, setJoinBusy] = useState(null);      // a studentUid, or 'all'
+  const [joinAll, setJoinAll] = useState(false);        // show every request, not the first five
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || DEMO_MODE) return;
+    return watchJoinRequests('teacherUid', uid, setJoinReqs);
+  }, []);
   const [inviting, setInviting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -2026,6 +2036,19 @@ function TeacherDashboard() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteGroupChat(group.id).catch(() => {}) },
     ]);
+  };
+
+  const answerJoin = async (uids, accept) => {
+    if (joinBusy || !uids.length) return;
+    setJoinBusy(uids.length > 1 ? 'all' : uids[0]);
+    try {
+      await answerJoinRequests(uids, accept);
+      if (accept) await loadStudents();
+    } catch (e) {
+      Alert.alert('Could not answer', e?.message || 'Please try again.');
+    } finally {
+      setJoinBusy(null);
+    }
   };
 
   const loadStudents = async () => {
@@ -2619,7 +2642,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                 <Text style={styles.inviteLabel}>YOUR JOIN CODE</Text>
                 <Text style={styles.codeBig}>{joinCode || '······'}</Text>
                 <Text style={styles.codeHint}>
-                  Students enter this in their Profile → My Teacher to connect with you instantly.
+                  Students enter this in their Profile → My Teacher. They show up here as a request for you to accept.
                 </Text>
                 <TouchableOpacity style={styles.shareCodeBtn} onPress={shareCode} activeOpacity={0.85}>
                   <Ionicons name="share-outline" size={16} color={COLORS.onPrimary} />
@@ -2634,6 +2657,40 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                 <Text style={styles.contactsBtnText}>Parent contacts</Text>
                 <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
+            )}
+
+            {joinReqs.length > 0 && (
+              <View style={styles.joinCard}>
+                <View style={styles.joinHead}>
+                  <Text style={styles.joinTitle}>Asking to join · {joinReqs.length}</Text>
+                  {joinReqs.length > 1 && (
+                    <TouchableOpacity onPress={() => answerJoin(joinReqs.map((r) => r.studentUid), true)} disabled={!!joinBusy} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.joinAllText}>{joinBusy === 'all' ? 'Accepting…' : 'Accept all'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {(joinAll ? joinReqs : joinReqs.slice(0, 5)).map((r) => (
+                  <View key={r.id} style={styles.joinRow}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.joinName} numberOfLines={1}>{r.studentName || 'A student'}</Text>
+                      <Text style={styles.joinMeta} numberOfLines={1}>
+                        {[r.instrument, r.level, r.studentEmail].filter(Boolean).join(' · ') || 'No details yet'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.joinNo} onPress={() => answerJoin([r.studentUid], false)} disabled={!!joinBusy} activeOpacity={0.8}>
+                      <Text style={styles.joinNoText}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.joinYes} onPress={() => answerJoin([r.studentUid], true)} disabled={!!joinBusy} activeOpacity={0.8}>
+                      <Text style={styles.joinYesText}>{joinBusy === r.studentUid ? '…' : 'Accept'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {joinReqs.length > 5 && (
+                  <TouchableOpacity onPress={() => setJoinAll((v) => !v)} activeOpacity={0.7}>
+                    <Text style={styles.joinMore}>{joinAll ? 'Show fewer' : `Show all ${joinReqs.length}`}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             {!DEMO_MODE && !loading && students.length === 0 && (
@@ -3877,6 +3934,18 @@ export default function TeacherScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = themedStyles(() => StyleSheet.create({
+  joinCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '55', padding: SPACING.md, marginBottom: SPACING.md },
+  joinHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  joinTitle: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  joinAllText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  joinRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 9, borderTopWidth: 1, borderTopColor: COLORS.border },
+  joinName: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  joinMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
+  joinNo: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
+  joinNoText: { color: COLORS.textSecondary, fontSize: 12.5, fontWeight: '700' },
+  joinYes: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: COLORS.primary },
+  joinYesText: { color: COLORS.onPrimary, fontSize: 12.5, fontWeight: '800' },
+  joinMore: { color: COLORS.textMuted, fontSize: 12.5, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm },
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.xs },
