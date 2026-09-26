@@ -48,12 +48,16 @@ service cloud.firestore {
     // teacher search-by-email feature). Only the owner can write.
     match /users/{userId} {
       allow read:  if request.auth != null;
-      // Stage 1 of join approval: joining is a request (joinRequests below),
-      // but phones on the old build still write the link themselves, so the
-      // owner rule stays open until the OTA is out. Stage 2 (PR "lock
-      // teacher links") swaps this for create/update rules that stop a
-      // student adding a teacher — see noTeacherAdded().
-      allow write: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      // Owners write their own doc — except that a student can no longer ADD a
+      // teacher to it. Joining is a request the teacher approves
+      // (joinRequests below); the approval writes the link server-side
+      // (answerJoinRequest, admin SDK). Removing a teacher is still the
+      // student's own call.
+      allow create: if isAdmin() || (request.auth != null && request.auth.uid == userId
+        && listOr(request.resource.data.get('teacherUids', [])).size() == 0
+        && request.resource.data.get('teacherUid', null) == null);
+      allow update: if isAdmin() || (request.auth != null && request.auth.uid == userId && noTeacherAdded());
+      allow delete: if isAdmin() || (request.auth != null && request.auth.uid == userId);
       // Any of the student's linked teachers (student.teacherUid == teacher, OR
       // teacher in student.teacherUids) may update ONLY their assignedTasks — so
       // a teacher can assign tasks to the student's own record. Students connect
