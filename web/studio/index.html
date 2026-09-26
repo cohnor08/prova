@@ -166,6 +166,11 @@
   .cal .hd b{display:block;font-family:var(--round);font-size:15px;color:var(--ink);letter-spacing:0}
   .cal .cell{background:var(--card);padding:9px 8px;min-height:132px;display:flex;flex-direction:column;gap:6px}
   .cal .cell.today{background:color-mix(in srgb,var(--primary) 7%,var(--card))}
+  /* A day is itself a button: click the empty part to book a lesson there. */
+  .cal .cell[data-addday]{cursor:pointer;position:relative}
+  .cal .cell[data-addday]::after{content:'+';position:absolute;right:9px;bottom:6px;font-size:18px;line-height:1;color:var(--ink-3);opacity:0;transition:opacity .12s}
+  .cal .cell[data-addday]:hover{background:color-mix(in srgb,var(--primary) 5%,var(--card))}
+  .cal .cell[data-addday]:hover::after{opacity:1}
   .ev{border-radius:7px;padding:7px 9px;font-size:11.5px;line-height:1.35;background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);border-left:2px solid var(--primary);cursor:pointer;text-align:left;border-top:0;border-right:0;border-bottom:0;width:100%}
   .ev:hover{background:color-mix(in srgb,var(--primary) 28%,transparent)}
   .ev b{display:block;font-weight:650}
@@ -3219,14 +3224,13 @@ function viewCalendar() {
           .map(([k, l]) => `<button class="btn ghost sm" data-calmode="${k}"${CALMODE === k
             ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${l}</button>`).join('')}</div>
         <button class="btn ghost sm" id="nextW">Next →</button>
-        <button class="btn" id="addLesson"${students.length ? '' : ' disabled title="Connect a student first"'}>Add lesson</button>
+        <button class="btn" id="addLesson">Add lesson</button>
       </div></div>
-    ${noStudentsNotice('You can’t book a lesson until a student has joined.')}
     <section class="card"><div class="cal">
       ${days.slice(0, 7).map((d) => `<div class="hd">${DOW[(d.getDay() + 6) % 7]}</div>`).join('')}
       ${days.map((d) => {
         const ds = dayKey(d);
-        return `<div class="cell ${ds === today ? 'today' : ''}">
+        return `<div class="cell ${ds === today ? 'today' : ''}" data-addday="${ds}" title="Add a lesson on this day">
           <div class="hint" style="font-family:var(--round);font-weight:600">${d.getDate()}</div>
           ${lessonsOn(ds).map((l) => {
           const rec = att[`${l.id}__${ds}`] || {};
@@ -3236,7 +3240,7 @@ function viewCalendar() {
         }).join('')}</div>`;
       }).join('')}
     </div>
-    <p class="hint" style="margin:14px 0 0">Click a lesson to mark attendance, write a note or cancel it.</p></section>
+    <p class="hint" style="margin:14px 0 0">Click a day to book a lesson on it. Click a lesson to mark attendance, write a note or cancel it.</p></section>
   </div>`;
 
   document.querySelectorAll('[data-calmode]').forEach(b => b.onclick = () => {
@@ -3244,18 +3248,39 @@ function viewCalendar() {
   });
   $('#prevW').onclick = () => { weekOffset--; viewCalendar(); };
   $('#nextW').onclick = () => { weekOffset++; viewCalendar(); };
-  $('#addLesson').onclick = lessonModal;
+  $('#addLesson').onclick = () => lessonModal();
+  // The empty part of a day books a lesson on that day; a lesson inside it
+  // still opens the lesson (handled by the app-wide [data-lesson] listener).
+  document.querySelector('.cal').onclick = (e) => {
+    if (e.target.closest('.ev')) return;
+    const c = e.target.closest('[data-addday]');
+    if (c) lessonModal(c.getAttribute('data-addday'));
+  };
 }
-function lessonModal() {
-  if (!students.length) { toast('Add a student first'); return; }
+// Book a lesson. The student can be anyone you teach: pick a connected
+// student, or type the name of someone who isn't on Prova — their lesson sits
+// on your calendar with notes and attendance like any other, it just has no
+// practice to show and nobody to notify.
+const OTHER_STUDENT = '__other';
+function lessonModal(day) {
+  const hasStudents = students.length > 0;
   modal(`<h3>Book a lesson</h3>
-    <div class="field"><label>Student</label><select id="lStu">${students.map((s) => `<option value="${s.uid}">${esc(displayName(s))}</option>`).join('')}</select></div>
-    <div class="field"><label>Date</label><input id="lDate" type="date" value="${dayKey(new Date())}"></div>
+    <div class="field"><label>Student</label>
+      ${hasStudents ? `<select id="lStu">${students.map((s) => `<option value="${s.uid}">${esc(displayName(s))}</option>`).join('')}
+        <option value="${OTHER_STUDENT}">Someone not on Prova…</option></select>` : ''}
+      <input id="lName" placeholder="Their name" maxlength="60" style="${hasStudents ? 'display:none;margin-top:8px' : ''}"></div>
+    <div class="field"><label>Date</label><input id="lDate" type="date" value="${day || dayKey(new Date())}"></div>
     <div class="field"><label>Time</label><input id="lTime" type="time" value="16:30"></div>
     <div class="field"><label>Note (optional)</label><input id="lNote" placeholder="What you plan to cover"></div>
     <div class="field"><label>Repeat</label><div class="seg" id="lRep">
       <button data-v="none" aria-pressed="true">One off</button><button data-v="weekly" aria-pressed="false">Every week</button></div></div>
     <div class="acts"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="lSave">Book it</button></div>`);
+  const sel = document.getElementById('lStu');
+  if (sel) sel.onchange = () => {
+    const other = sel.value === OTHER_STUDENT;
+    $('#lName').style.display = other ? '' : 'none';
+    if (other) $('#lName').focus();
+  };
   let repeat = 'none';
   $('#lRep').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
@@ -3263,10 +3288,18 @@ function lessonModal() {
     [...$('#lRep').children].forEach((x) => x.setAttribute('aria-pressed', String(x.getAttribute('data-v') === repeat)));
   });
   $('#lSave').onclick = async () => {
-    const uid = $('#lStu').value, s = byUid(uid);
+    const picked = sel ? sel.value : OTHER_STUDENT;
+    const typed = $('#lName').value.trim();
+    const s = picked === OTHER_STUDENT ? null : byUid(picked);
+    if (!s && !typed) { toast('Type the student’s name'); $('#lName').focus(); return; }
     const date = $('#lDate').value, time = $('#lTime').value;
     if (!date || !time) { toast('Pick a date and a time'); return; }
-    const lesson = { id: Date.now().toString(), studentUid: uid, studentName: s ? displayName(s) : 'Student', date, time, note: $('#lNote').value.trim(), repeat };
+    const lesson = {
+      id: Date.now().toString(),
+      studentUid: s ? s.uid : null,          // null = not on Prova
+      studentName: s ? displayName(s) : typed,
+      date, time, note: $('#lNote').value.trim(), repeat,
+    };
     $('#lSave').disabled = true;
     try { await saveMe({ lessons: [...lessonsAll(), lesson] }); await refreshMe(); closeModal(); viewCalendar(); toast('Lesson booked'); }
     catch { toast('Could not save'); $('#lSave').disabled = false; }
