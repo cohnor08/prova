@@ -805,6 +805,7 @@ onAuthStateChanged(auth, async (user) => {
   // wait on a cold container.
   httpsCallable(fns, 'draftNextWeek')({ warm: true }).catch(() => {});
   watchLessonRequests();
+  watchJoinRequests();
   await loadStudents();
   go('home');
 });
@@ -901,6 +902,10 @@ document.addEventListener('click', (e) => {
     go(go_.getAttribute('data-go'));
     return;
   }
+  const jn = e.target.closest('[data-join]');
+  if (jn) { answerJoin([jn.getAttribute('data-join')], jn.getAttribute('data-ok') === '1'); return; }
+  if (e.target.closest('[data-joinall]')) { answerJoin(JOIN_REQS.map((r) => r.studentUid), true); return; }
+  if (e.target.closest('[data-joinmore]')) { JOIN_ALL = !JOIN_ALL; const sl = document.getElementById('joinSlot'); if (sl) sl.innerHTML = joinCardHtml(); return; }
   const pr = e.target.closest('[data-prep]');
   if (pr) { const v = pr.getAttribute('data-prep'), k = v.lastIndexOf('|'); prepModal(v.slice(0, k), v.slice(k + 1)); return; }
   const rq = e.target.closest('[data-req]');
@@ -1030,6 +1035,7 @@ function viewStudents() {
     <div class="greet"><div><h2>Students</h2>
       <p>${students.length} student${students.length === 1 ? '' : 's'} · join code <b style="color:var(--ink)">${esc(me.teacherCode || '—')}</b></p></div>
       <button class="btn ghost" id="reload">Refresh</button></div>
+    <div id="joinSlot">${joinCardHtml()}</div>
     <div class="stats">
       ${statCard('Practised this week', practised, `of ${students.length}`, 'Logged any minutes', ring(students.length ? practised / students.length * 100 : 0, 'var(--good)'))}
       ${statCard('Studio minutes', totalMins.toLocaleString(), '', students.length ? `Average ${Math.round(totalMins / students.length)} per student` : 'No students yet', '')}
@@ -1583,6 +1589,55 @@ function spark(week, colour) {
 let LESSON_REQS = [];      // pending "can't make it" requests, kept live
 const whenLbl = (ds, t) => `${dayLabel(ds)}${t ? ' · ' + lessonTime(t) : ''}`;
 
+// ── Join requests ──────────────────────────────────────────────────────
+// A student entering your code asks to join; they aren't in your studio until
+// you accept. Kept as a list on the Students page (with Accept all) — at 50
+// requests, pop-ups would be unusable. Home only gets a one-line pointer.
+let JOIN_REQS = [], JOIN_ALL = false, JOIN_BUSY = false;
+function watchJoinRequests() {
+  onSnapshot(query(collection(db, 'joinRequests'), where('teacherUid', '==', meUid), where('status', '==', 'pending')), (snap) => {
+    JOIN_REQS = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const slot = document.getElementById('joinSlot'); if (slot) slot.innerHTML = joinCardHtml();
+    const line = document.getElementById('joinLine'); if (line) line.innerHTML = joinLineHtml();
+    renderNav();
+  }, () => {});
+}
+function joinLineHtml() {
+  const n = JOIN_REQS.length; if (!n) return '';
+  return `<section class="card" data-go="students" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 18px;border-color:var(--primary)">
+    <span style="flex:1;font-weight:650">${n} student${n === 1 ? '' : 's'} want${n === 1 ? 's' : ''} to join your studio</span>
+    <span style="color:var(--primary);font-weight:700">Review →</span></section>`;
+}
+function joinCardHtml() {
+  const n = JOIN_REQS.length; if (!n) return '';
+  const shown = JOIN_ALL ? JOIN_REQS : JOIN_REQS.slice(0, 6);
+  return `<section class="card" style="border-color:var(--primary);margin-bottom:18px"><header><h3>Asking to join</h3>
+      <span class="meta">${n}</span>${n > 1 ? `<button class="btn sm" data-joinall style="margin-left:12px">Accept all ${n}</button>` : ''}</header>
+    ${shown.map((r) => `<div class="prow">
+      <span class="avatar">${initials(r.studentName || '?')}</span>
+      <div class="pl" style="min-width:0"><div class="pt">${esc(r.studentName || 'A student')}</div>
+        <div class="ps">${esc([r.instrument, r.level, r.studentEmail].filter(Boolean).join(' · ') || 'No details yet')}
+          · asked ${esc(agoLabel(r.createdAt).toLowerCase())}</div></div>
+      <button class="btn sm ghost" data-join="${esc(r.studentUid)}" data-ok="0">Decline</button>
+      <button class="btn sm" data-join="${esc(r.studentUid)}" data-ok="1">Accept</button></div>`).join('')}
+    ${n > 6 ? `<button class="btn sm ghost" data-joinmore style="width:100%;margin-top:10px">${JOIN_ALL ? 'Show fewer' : `Show all ${n}`}</button>` : ''}
+  </section>`;
+}
+async function answerJoin(uids, accept) {
+  if (JOIN_BUSY || !uids.length) return;
+  JOIN_BUSY = true;
+  document.querySelectorAll('[data-join],[data-joinall]').forEach((b) => { b.disabled = true; });
+  try {
+    const r = await httpsCallable(fns, 'answerJoinRequest')({ studentUids: uids, accept });
+    const n = r?.data?.done || 0;
+    toast(accept ? `${n} student${n === 1 ? '' : 's'} added` : 'Declined — they’ve been told');
+    if (accept) { await loadStudents(); if (screen === 'students' || screen === 'home') go(screen); }
+  } catch { toast('Could not answer — try again'); }
+  JOIN_BUSY = false;
+  const slot = document.getElementById('joinSlot'); if (slot) slot.innerHTML = joinCardHtml();
+}
+
 function watchLessonRequests() {
   onSnapshot(query(collection(db, 'lessonRequests'), where('teacherUid', '==', meUid)), (snap) => {
     LESSON_REQS = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
@@ -1699,6 +1754,7 @@ function viewHome() {
         <button class="btn ghost" data-go="calendar">Calendar</button>
         <button class="btn" data-go="students">Assign a task</button></div></div>
     <div class="cols"><div class="stack">
+      <div id="joinLine">${joinLineHtml()}</div>
       <div id="reqSlot">${reqCardHtml()}</div>
       <!-- Was three stat cards about the teacher's own numbers, then a table
            called "Practice Pulse". A teacher opens this to see who needs them:

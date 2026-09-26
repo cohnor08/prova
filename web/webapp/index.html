@@ -920,6 +920,7 @@ async function load() {
   // Names for the teacher-task labels and the Profile card. Never fatal — a
   // failed read just falls back to the generic "Teacher" pill.
   try { await loadTeachers(); } catch { TEACHERS = {}; }
+  loadJoinPending();
   watchMe();
 }
 
@@ -944,7 +945,9 @@ function watchMe() {
     sessions = me.practicePlan?.weeklyPlan?.[TODAY_NAME]?.sessions || [];
     $('#chipStreak').textContent = me.streak || 0;
     $('#chipScore').textContent = (me.provaScore || 0).toLocaleString();
-    if (teachersChanged) loadTeachers().then(() => { if (!busyOnScreen()) rerender(); });
+    // A teacher accepting shows up here as a new teacher — the pending request
+    // it answered drops out of the list at the same time.
+    if (teachersChanged) Promise.all([loadTeachers(), loadJoinPending()]).then(() => { if (!busyOnScreen()) rerender(); });
     if (busyOnScreen()) return;
     rerender();
   }, () => { /* a dropped listener just means no live updates, not an error */ });
@@ -2738,6 +2741,9 @@ function viewJournal() {
 // SEVERAL teachers at once and each link is its own thing: separate tasks,
 // separate lesson notes, separate chat thread. Connecting or disconnecting is
 // a write to the student's OWN user doc, so it needs no special rules.
+// Joining is a REQUEST the teacher accepts (same as src/lib/teacher.js
+// requestTeacherByCode): rules stop a student adding a teacher to their own
+// doc, and the link is written server-side once the teacher says yes.
 async function linkTeacherByCode(rawCode) {
   const code = (rawCode || '').trim().toUpperCase();
   if (!code) throw new Error('Enter your teacher’s code.');
@@ -2745,15 +2751,37 @@ async function linkTeacherByCode(rawCode) {
   if (snap.empty) throw new Error('No teacher found with that code. Double-check it.');
   const t = snap.docs[0];
   if (t.id === uid) throw new Error('That’s your own code.');
-  const already = myTeacherUids();
-  if (already.includes(t.id)) throw new Error('You’re already connected to this teacher.');
-  const next = [...already, t.id];
-  const update = { teacherUids: next };
-  if (!me.teacherUid) update.teacherUid = t.id; // first teacher = primary
-  await updateDoc(doc(db, 'users', uid), update);
-  Object.assign(me, update);
-  await loadTeachers();
-  return TEACHERS[t.id]?.name || displayName(t.data() || {});
+  if (myTeacherUids().includes(t.id)) throw new Error('You’re already connected to this teacher.');
+  const name = displayName(t.data() || {});
+  const ref = doc(db, 'joinRequests', `${uid}_${t.id}`);
+  const prev = await getDoc(ref).then((d) => d.exists() ? d.data() : null).catch(() => null);
+  if (prev?.status === 'pending') throw new Error(`You’ve already asked ${name} — waiting for them to accept.`);
+  const fields = {
+    status: 'pending', createdAt: new Date().toISOString(),
+    studentName: displayName({ uid, ...me }), studentEmail: me.email || auth.currentUser?.email || '',
+    instrument: me.instrument || '', level: me.level || '',
+  };
+  if (prev) await updateDoc(ref, fields);
+  else await setDoc(ref, { ...fields, studentUid: uid, teacherUid: t.id });
+  addDoc(collection(db, 'users', t.id, 'inbox'), {
+    type: 'join_request', title: `${fields.studentName} wants to join your studio`,
+    body: 'Accept or decline them on your Students page.', data: { studentUid: uid },
+    read: false, createdAt: new Date().toISOString(),
+  }).catch(() => {});
+  await loadJoinPending();
+  return name;
+}
+// Requests still waiting on a teacher — shown under "Your teachers".
+let JOIN_PENDING = [];
+async function loadJoinPending() {
+  try {
+    const snap = await getDocs(query(collection(db, 'joinRequests'), where('studentUid', '==', uid), where('status', '==', 'pending')));
+    JOIN_PENDING = await Promise.all(snap.docs.map(async (d) => {
+      const r = d.data();
+      const t = await getDoc(doc(db, 'users', r.teacherUid)).then((x) => x.data() || {}).catch(() => ({}));
+      return { ...r, teacherName: displayName(t) };
+    }));
+  } catch { JOIN_PENDING = []; }
 }
 // Disconnect ONE teacher, promoting another to primary if this was it. The
 // chat thread and its history are deliberately left alone.
@@ -2778,17 +2806,21 @@ function teachersCard() {
       <button class="btn sm ghost" data-unlink="${esc(tid)}" style="color:var(--bad);border-color:var(--bad)">Disconnect</button>
     </div>`;
   }).join('');
+  const pending = JOIN_PENDING.map((r) => `<div class="prow">
+      <div class="pl" style="min-width:0"><div class="pt">${esc(r.teacherName || 'Your teacher')}</div>
+        <div class="ps">⏳ Asked to join — waiting for them to accept</div></div>
+      <button class="btn sm ghost" data-unask="${esc(r.teacherUid)}">Cancel</button></div>`).join('');
   return card('Your teachers', ids.length ? String(ids.length) : '', `
-    <div class="rows" style="margin-top:-13px">${list || `<div class="prow"><div class="pl">
+    <div class="rows" style="margin-top:-13px">${pending}${list || (pending ? '' : `<div class="prow"><div class="pl">
       <div class="pt">Not connected to a teacher</div>
-      <div class="ps">Enter the code your teacher gives you and their tasks, lesson notes and messages appear here.</div>
-    </div></div>`}</div>
+      <div class="ps">Enter the code your teacher gives you. Once they accept, their tasks, lesson notes and messages appear here.</div>
+    </div></div>`)}</div>
     <div class="eyebrow" style="padding:18px 0 8px">${ids.length ? 'Connect another teacher' : 'Connect a teacher'}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <input id="tcCode" placeholder="6-character code" maxlength="6" autocomplete="off"
         style="flex:1;min-width:140px;background:var(--raised);border:1px solid var(--line);border-radius:10px;
                padding:11px 13px;color:inherit;font:inherit;text-transform:uppercase;letter-spacing:2px;font-weight:650">
-      <button class="btn sm" id="tcGo">Connect</button></div>
+      <button class="btn sm" id="tcGo">Ask to join</button></div>
     <p class="hint" style="margin:12px 0 0">You can be connected to more than one teacher —
       each one sets their own tasks and keeps their own lesson notes.</p>`);
 }
@@ -2878,19 +2910,27 @@ function viewProfile() {
   const tcGo = $('#tcGo'), tcCode = $('#tcCode');
   if (tcGo) {
     const connect = async () => {
-      tcGo.disabled = true; tcGo.textContent = 'Connecting…';
+      tcGo.disabled = true; tcGo.textContent = 'Sending…';
       try {
         const nm = await linkTeacherByCode(tcCode.value);
-        toast(`Connected to ${nm}`);
+        toast(`Request sent — you’ll be connected when ${nm} accepts`);
         viewProfile();
       } catch (e) {
-        toast(e?.message || 'Could not connect. Check the code and try again.');
-        tcGo.disabled = false; tcGo.textContent = 'Connect';
+        toast(e?.message || 'Could not send. Check the code and try again.');
+        tcGo.disabled = false; tcGo.textContent = 'Ask to join';
       }
     };
     tcGo.onclick = connect;
     tcCode.onkeydown = (e) => { if (e.key === 'Enter') connect(); };
   }
+  document.querySelectorAll('[data-unask]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await updateDoc(doc(db, 'joinRequests', `${uid}_${b.getAttribute('data-unask')}`), { status: 'withdrawn' });
+        await loadJoinPending(); viewProfile(); toast('Request cancelled');
+      } catch { toast('Could not cancel — try again'); }
+    };
+  });
   document.querySelectorAll('[data-unlink]').forEach((b) => {
     b.onclick = () => {
       const tid = b.getAttribute('data-unlink');

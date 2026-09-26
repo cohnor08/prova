@@ -3,7 +3,7 @@ import { track } from './analytics';
 
 const FUNCTIONS_BASE = 'https://us-central1-prova-583c9.cloudfunctions.net';
 
-async function callFunction(name, data, timeoutMs = 120000) {
+export async function callFunction(name, data, timeoutMs = 120000) {
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
 

@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generatePracticePlan } from '../../lib/claude';
 import { auth, db } from '../../lib/firebase';
 import { unregisterPushToken } from '../../lib/pushToken';
-import { linkTeacherByCode, unlinkTeacher, teacherIdsOf } from '../../lib/teacher';
+import { requestTeacherByCode, withdrawJoinRequest, watchJoinRequests, unlinkTeacher, teacherIdsOf } from '../../lib/teacher';
 import { clearSavedLogin } from '../../lib/savedLogin';
 import { ensureNotificationPermission, scheduleDailyReminder, cancelDailyReminder, cancelStreakSaver, sendTestNotification } from '../../lib/notifications';
 import TimeWheel, { formatTime12 } from '../../components/TimeWheel';
@@ -277,6 +277,7 @@ export default function ProfileScreen({ navigation }) {
   const [tipInput, setTipInput] = useState('');
   const [savingTip, setSavingTip] = useState(false);
   const [teacherCodeInput, setTeacherCodeInput] = useState('');
+  const [joinPending, setJoinPending] = useState([]);  // requests waiting on a teacher to accept
   const [linkingTeacher, setLinkingTeacher] = useState(false);
   const [showAddTeacher, setShowAddTeacher] = useState(false);
   const tourScrollRef = useTourScroller('Profile'); // full tour scroll access
@@ -302,16 +303,33 @@ export default function ProfileScreen({ navigation }) {
     return () => { alive = false; };
   }, [teacherIdsKey]);
 
+  // Pending join requests, live — when the teacher accepts, the request drops
+  // out of this list and the teacher appears above (the user doc listener).
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    return watchJoinRequests('studentUid', uid, setJoinPending);
+  }, []);
+  const [pendingNames, setPendingNames] = useState({});
+  useEffect(() => {
+    joinPending.forEach((r) => {
+      if (pendingNames[r.teacherUid]) return;
+      getDoc(doc(db, 'users', r.teacherUid)).then((d) => {
+        const t = d.data() || {};
+        setPendingNames((m) => ({ ...m, [r.teacherUid]: t.username || t.email?.split('@')[0] || 'Your teacher' }));
+      }).catch(() => {});
+    });
+  }, [joinPending]);
+
   const handleLinkTeacher = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     setLinkingTeacher(true);
     try {
-      const { uid: tUid, name } = await linkTeacherByCode(uid, teacherCodeInput);
-      setUserData((p) => ({ ...p, teacherUids: [...teacherIdsOf(p || {}), tUid], teacherUid: p?.teacherUid || tUid }));
+      const { name } = await requestTeacherByCode({ ...(userData || {}), uid }, teacherCodeInput);
       setTeacherCodeInput('');
       setShowAddTeacher(false);
-      Alert.alert('Connected! 🎉', `You're now linked with ${name}. They can assign you practice tasks.`);
+      Alert.alert('Request sent', `${name} will see it on their Students page. You'll be connected as soon as they accept.`);
     } catch (e) {
       Alert.alert('Could not connect', e.message);
     } finally {
@@ -623,11 +641,26 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.rowValue, { color: COLORS.error }]}>Disconnect</Text>
             </TouchableOpacity>
           ))}
+          {joinPending.map((r) => (
+            <TouchableOpacity
+              key={r.id}
+              style={styles.row}
+              activeOpacity={0.7}
+              onPress={() => Alert.alert('Cancel your request?', `You asked to join ${pendingNames[r.teacherUid] || 'this teacher'}.`, [
+                { text: 'Keep it', style: 'cancel' },
+                { text: 'Cancel request', style: 'destructive', onPress: () => withdrawJoinRequest(r.studentUid, r.teacherUid).catch(() => {}) },
+              ])}
+            >
+              <Ionicons name="hourglass-outline" size={18} color={COLORS.textMuted} style={styles.rowIcon} />
+              <Text style={styles.rowLabel} numberOfLines={1}>{pendingNames[r.teacherUid] || 'Your teacher'}</Text>
+              <Text style={styles.rowValue}>Waiting to accept</Text>
+            </TouchableOpacity>
+          ))}
           {(teachers.length === 0 || showAddTeacher) ? (
             <View style={styles.teacherConnect}>
               <View style={styles.teacherConnectHead}>
                 <Text style={[styles.teacherConnectHint, { flex: 1 }]}>
-                  {teachers.length === 0 ? 'Got a code from your teacher? Enter it to connect.' : 'Enter another teacher’s code to connect.'}
+                  {teachers.length === 0 ? 'Got a code from your teacher? Enter it and they’ll get a request to accept.' : 'Enter another teacher’s code — they’ll get a request to accept.'}
                 </Text>
                 {/* Only offer a way out when there's something to go back to —
                     a student with no teacher yet needs the form to stay put. */}
@@ -660,7 +693,7 @@ export default function ProfileScreen({ navigation }) {
                 >
                   {linkingTeacher
                     ? <Ghost size="small" color={COLORS.onPrimary} />
-                    : <Text style={styles.teacherConnectBtnText}>Connect</Text>}
+                    : <Text style={styles.teacherConnectBtnText}>Ask to join</Text>}
                 </TouchableOpacity>
               </View>
             </View>

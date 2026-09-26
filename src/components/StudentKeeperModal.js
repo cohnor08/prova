@@ -13,6 +13,7 @@ import { auth, db } from '../lib/firebase';
 import { COLORS, SPACING, themedStyles } from '../constants/theme';
 import { displayName } from '../lib/displayName';
 import { track } from '../lib/analytics';
+import { unlinkTeacher } from '../lib/teacher';
 
 export default function StudentKeeperModal({ visible, students, limit, onDone }) {
   const [picked, setPicked] = useState([]);
@@ -28,7 +29,9 @@ export default function StudentKeeperModal({ visible, students, limit, onDone })
     setSaving(true);
     const dropped = students.filter((s) => !picked.includes(s.uid));
     for (const s of dropped) {
-      try { await updateDoc(doc(db, 'users', s.uid), { teacherUid: null }); } catch (e) { /* best-effort per student */ }
+      // Full unlink (teacherUids AND teacherUid) — clearing teacherUid alone
+      // left them connected through teacherUids.
+      try { await unlinkTeacher(s.uid, auth.currentUser.uid); } catch (e) { /* best-effort per student */ }
     }
     try { await updateDoc(doc(db, 'users', auth.currentUser.uid), { students: picked }); } catch (e) {}
     track('roster_trimmed', { kept: picked.length, dropped: dropped.length });

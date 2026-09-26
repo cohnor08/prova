@@ -23,6 +23,20 @@ service cloud.firestore {
     // Founders' admin panel (prova-583c9.web.app/admin). Admin access is
     // pinned to the founders' own auth UIDs — server-side enforcement, not
     // just a login screen. Add Cohnor's UID when known.
+    // A student's own update may drop teachers or re-pick the primary among
+    // teachers they already have, but never add one. The legacy single
+    // teacherUid counts as already-linked.
+    function listOr(v) { return v is list ? v : []; }
+    function noTeacherAdded() {
+      let old = resource.data;
+      let nu = request.resource.data;
+      let before = listOr(old.get('teacherUids', [])).toSet()
+        .union([old.get('teacherUid', null)].toSet());
+      let primary = nu.get('teacherUid', null);
+      return listOr(nu.get('teacherUids', [])).toSet().difference(before).size() == 0
+        && (primary == null || primary == '' || primary in before);
+    }
+
     function isAdmin() {
       return request.auth != null && request.auth.uid in [
         '0ZC25xoENxWUcyLYAmDjSAiuCEQ2'   // Ethan (ethanlam2309@gmail.com)
@@ -34,6 +48,11 @@ service cloud.firestore {
     // teacher search-by-email feature). Only the owner can write.
     match /users/{userId} {
       allow read:  if request.auth != null;
+      // Stage 1 of join approval: joining is a request (joinRequests below),
+      // but phones on the old build still write the link themselves, so the
+      // owner rule stays open until the OTA is out. Stage 2 (PR "lock
+      // teacher links") swaps this for create/update rules that stop a
+      // student adding a teacher — see noTeacherAdded().
       allow write: if isAdmin() || (request.auth != null && request.auth.uid == userId);
       // Any of the student's linked teachers (student.teacherUid == teacher, OR
       // teacher in student.teacherUids) may update ONLY their assignedTasks — so
@@ -65,6 +84,25 @@ service cloud.firestore {
     // one lesson (src/lib/lessonRequests.js). The student creates it, pending,
     // and only for a teacher they are actually linked to; only that teacher
     // answers it; the student may withdraw it while it's still pending.
+    // A student asking to join a teacher (src/lib/joinRequests.js). The id is
+    // `${studentUid}_${teacherUid}`, so there's one per pair. The student
+    // creates it pending — only for a real teacher — and may withdraw it or ask
+    // again later. Only answerJoinRequest (server) accepts or declines it.
+    match /joinRequests/{reqId} {
+      allow read: if request.auth != null
+        && (resource.data.studentUid == request.auth.uid || resource.data.teacherUid == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.studentUid == request.auth.uid
+        && reqId == request.auth.uid + '_' + request.resource.data.teacherUid
+        && request.resource.data.status == 'pending'
+        && get(/databases/$(database)/documents/users/$(request.resource.data.teacherUid)).data.get('role', '') == 'teacher';
+      allow update: if request.auth != null
+        && resource.data.studentUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'createdAt', 'studentName', 'studentEmail', 'instrument', 'level'])
+        && ((resource.data.status == 'pending' && request.resource.data.status == 'withdrawn')
+            || (resource.data.status in ['declined', 'withdrawn'] && request.resource.data.status == 'pending'));
+    }
+
     match /lessonRequests/{reqId} {
       allow read: if request.auth != null
         && (resource.data.studentUid == request.auth.uid || resource.data.teacherUid == request.auth.uid);

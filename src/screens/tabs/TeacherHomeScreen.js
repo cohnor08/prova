@@ -13,7 +13,7 @@ import { auth, db } from '../../lib/firebase';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
-import { ensureTeacherCode, queryMyStudents } from '../../lib/teacher';
+import { ensureTeacherCode, queryMyStudents, watchJoinRequests } from '../../lib/teacher';
 import { pickDocument, uploadTaskFile } from '../../lib/media';
 import { attachmentKind, attachmentMeta, cleanFileName, TASK_FILE_MAX_LABEL } from '../../lib/attachments';
 import TaskAttachments from '../../components/TaskAttachments';
@@ -253,6 +253,7 @@ export default function TeacherHomeScreen({ navigation }) {
   const [proofView, setProofView] = useState(null);     // a proof clip opened from the prep card
   const [requests, setRequests] = useState([]);         // students asking to move/cancel a lesson
   const [reqBusy, setReqBusy] = useState(null);
+  const [joinCount, setJoinCount] = useState(0);        // students asking to join — answered on the Students tab
   const [nudged, setNudged] = useState(() => new Set()); // student uids nudged this session
   const [pulseOpen, setPulseOpen] = useState(false);     // student list "show more"
   // The teacher's own library: every PDF and backing track they use, kept on
@@ -481,6 +482,11 @@ export default function TeacherHomeScreen({ navigation }) {
     const uid = auth.currentUser?.uid;
     if (!uid || DEMO_MODE) return;
     return watchLessonRequests('teacherUid', uid, (all) => setRequests(all.filter((r) => r.status === 'pending')));
+  }, []);
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || DEMO_MODE) return;
+    return watchJoinRequests('teacherUid', uid, (all) => setJoinCount(all.length));
   }, []);
 
   const answerRequest = async (req, accept) => {
@@ -966,6 +972,16 @@ export default function TeacherHomeScreen({ navigation }) {
           <Ghost color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
         ) : (
           <>
+          {joinCount > 0 && (
+            <TouchableOpacity style={[styles.card, styles.joinLine]} onPress={goStudents} activeOpacity={0.8}>
+              <Ionicons name="person-add" size={17} color={COLORS.primary} />
+              <Text style={styles.joinLineText} numberOfLines={1}>
+                {joinCount} student{joinCount === 1 ? '' : 's'} want{joinCount === 1 ? 's' : ''} to join
+              </Text>
+              <Text style={styles.joinLineGo}>Review</Text>
+              <Ionicons name="chevron-forward" size={15} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
           {requests.length > 0 && (
             <View style={[styles.card, styles.reqCard]}>
               <Text style={styles.cardTitle}>Lesson changes · {requests.length}</Text>
@@ -1140,6 +1156,9 @@ const styles = themedStyles(() => StyleSheet.create({
   prepBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 10 },
   prepBtnAlt: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.primary },
   prepBtnText: { color: COLORS.onPrimary, fontSize: 13, fontWeight: '800' },
+  joinLine: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, borderColor: COLORS.primary + '55' },
+  joinLineText: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  joinLineGo: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   reqCard: { borderColor: '#F59E0B88' },
   reqRow: { paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
   reqWho: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
