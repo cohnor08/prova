@@ -777,7 +777,8 @@ export default function TeacherHomeScreen({ navigation }) {
         );
       case 'lessons': {
         // Next 28 days, weekly repeats resolved and moved/cancelled weeks skipped.
-        const upcoming = upcomingLessons(lessons, new Date(), 28).slice(0, 3).map((o) => ({ ...o.lesson, date: o.date }));
+        // Hidden (not deleted) when the student is no longer connected.
+        const upcoming = upcomingLessons(lessons.filter((l) => !l.studentUid || students.some((x) => x.uid === l.studentUid)), new Date(), 28).slice(0, 3).map((o) => ({ ...o.lesson, date: o.date }));
         return (
           <View style={styles.card}>
             <View style={styles.lessonsHead}>

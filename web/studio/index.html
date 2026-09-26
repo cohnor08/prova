@@ -3187,8 +3187,12 @@ const lessonsAll = () => (Array.isArray(me.lessons) ? me.lessons : []);
 // A lesson shows on its own date, and every following same-weekday if weekly.
 // The rule is shared with the phone (/shared/lessonSchedule.js), so a week a
 // student moved or cancelled disappears here too.
+// Lessons with a student who is no longer connected are hidden, not deleted —
+// they come back if the student reconnects. (Writes always use lessonsAll(),
+// so saving the calendar never drops them.)
+const lessonShown = (l) => !l.studentUid || !!byUid(l.studentUid);
 function lessonsOn(ds) {
-  return lessonsAll().filter((l) => occursOn(l, ds))
+  return lessonsAll().filter((l) => lessonShown(l) && occursOn(l, ds))
     .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 }
 let weekOffset = 0, CALMODE = 'week';

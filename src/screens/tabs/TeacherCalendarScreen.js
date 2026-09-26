@@ -5,9 +5,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { displayName } from '../../lib/displayName';
+import { queryMyStudents } from '../../lib/teacher';
 import { COLORS, SPACING, themedStyles } from '../../constants/theme';
 import { useThemeSync } from '../../lib/ThemeContext';
 import SheetModal from '../../components/SheetModal';
@@ -121,12 +122,12 @@ export default function TeacherCalendarScreen({ navigation }) {
           if (!uid) return;
           const [meSnap, stuSnap] = await Promise.all([
             getDoc(doc(db, 'users', uid)),
-            getDocs(query(collection(db, 'users'), where('teacherUid', '==', uid))),
+            queryMyStudents(uid),
           ]);
           if (cancelled) return;
           setLessons(Array.isArray(meSnap.data()?.lessons) ? meSnap.data().lessons : []);
           setAttendance(meSnap.data()?.attendance || {});
-          setStudents(stuSnap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+          setStudents(stuSnap);
         } catch (e) { /* ignore */ }
       })();
       return () => { cancelled = true; };
@@ -202,12 +203,16 @@ export default function TeacherCalendarScreen({ navigation }) {
   for (let i = 0; i < firstDow; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  const lessonsOnDay = (dateStr) => lessons.filter((l) => occursOn(l, dateStr));
+  // Lessons with a student who is no longer connected are hidden, not
+  // deleted — they come back if the student reconnects. saveLessons() always
+  // writes the full `lessons`, so nothing is lost by hiding them here.
+  const shownLessons = lessons.filter((l) => !l.studentUid || students.some((s) => s.uid === l.studentUid));
+  const lessonsOnDay = (dateStr) => shownLessons.filter((l) => occursOn(l, dateStr));
 
   const dayLessons = lessonsOnDay(selected)
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
-  const upcoming = lessons
+  const upcoming = shownLessons
     .filter((l) => l.date >= todayStr)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
     .slice(0, 1);
