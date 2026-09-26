@@ -364,7 +364,12 @@ export default function TeacherCalendarScreen({ navigation }) {
 
       {/* Add lesson modal */}
       <SheetModal visible={showAdd} onRequestClose={() => setShowAdd(false)} cardStyle={styles.modalCard} keyboardLift>
-            <Text style={styles.modalTitle}>New lesson</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+              <Text style={[styles.modalTitle, { flex: 1, minWidth: 0 }]}>New lesson</Text>
+              <TouchableOpacity onPress={() => { setShowAdd(false); resetForm(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close">
+                <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.modalSub}>{prettyDate(selected)}</Text>
 
             <Text style={styles.fieldLabel}>STUDENT</Text>
@@ -467,7 +472,7 @@ export default function TeacherCalendarScreen({ navigation }) {
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={addLesson}>
-                <Text style={styles.saveText}>Add lesson</Text>
+                <Text style={styles.saveText}>Done</Text>
               </TouchableOpacity>
             </View>
       </SheetModal>
