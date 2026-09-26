@@ -15,6 +15,7 @@ import SheetModal from '../../components/SheetModal';
 
 import { occursOn as occursOnShared } from '../../lib/lessonSchedule';
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const OTHER = '__other';   // add-lesson: someone who isn't on Prova
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -100,7 +101,8 @@ export default function TeacherCalendarScreen({ navigation }) {
   const [showAdd, setShowAdd] = useState(false);
 
   // Add-lesson form
-  const [aStudent, setAStudent] = useState(null);
+  const [aStudent, setAStudent] = useState(null);  // a uid, or OTHER for someone not on Prova
+  const [aName, setAName] = useState('');           // typed name when aStudent === OTHER
   const [aSearch, setASearch] = useState('');
   const [aHour, setAHour] = useState(4);        // 1–12
   const [aMin, setAMin] = useState(0);          // 0–59
@@ -109,7 +111,7 @@ export default function TeacherCalendarScreen({ navigation }) {
   const [aWeekly, setAWeekly] = useState(false);
 
   const resetForm = () => {
-    setAStudent(null); setASearch(''); setAHour(4); setAMin(0);
+    setAStudent(null); setAName(''); setASearch(''); setAHour(4); setAMin(0);
     setAMeridiem('PM'); setANote(''); setAWeekly(false);
   };
 
@@ -166,13 +168,18 @@ export default function TeacherCalendarScreen({ navigation }) {
     updateRecord(lesson, dateStr, { mark: cur.mark === mark ? null : mark });
   };
 
+  // The student can be anyone you teach: a connected student, or a typed name
+  // for someone who isn't on Prova (studentUid null — notes and attendance
+  // work the same, there's just no practice to show and nobody to notify).
   const addLesson = () => {
-    if (!aStudent) { Alert.alert('Pick a student', 'Choose who the lesson is with.'); return; }
-    const s = students.find((x) => x.uid === aStudent);
+    const other = aStudent === OTHER || students.length === 0;
+    if (other && !aName.trim()) { Alert.alert('Type their name', 'Who is the lesson with?'); return; }
+    if (!other && !aStudent) { Alert.alert('Pick a student', 'Choose who the lesson is with.'); return; }
+    const s = other ? null : students.find((x) => x.uid === aStudent);
     const lesson = {
       id: Date.now().toString(),
-      studentUid: aStudent,
-      studentName: s ? displayName(s) : 'Student',
+      studentUid: s ? s.uid : null,
+      studentName: s ? displayName(s) : aName.trim().slice(0, 60),
       date: selected,
       time: to24h(aHour, aMin, aMeridiem),
       note: aNote.trim(),
@@ -259,7 +266,14 @@ export default function TeacherCalendarScreen({ navigation }) {
             const isToday = cellYmd === todayStr;
             const has = lessonsOnDay(cellYmd).length;
             return (
-              <TouchableOpacity key={d} style={styles.cell} onPress={() => setSelected(cellYmd)} activeOpacity={0.7}>
+              <TouchableOpacity
+                key={d}
+                style={styles.cell}
+                // Tap a day to see it; tap it again (or hold it) to book a lesson on it.
+                onPress={() => { if (isSel) setShowAdd(true); else setSelected(cellYmd); }}
+                onLongPress={() => { setSelected(cellYmd); setShowAdd(true); }}
+                activeOpacity={0.7}
+              >
                 <View style={[styles.cellInner, isSel && styles.cellSelected, isToday && !isSel && styles.cellToday]}>
                   <Text style={[styles.cellText, isSel && { color: '#fff', fontWeight: '800' }]}>{d}</Text>
                 </View>
@@ -355,7 +369,14 @@ export default function TeacherCalendarScreen({ navigation }) {
 
             <Text style={styles.fieldLabel}>STUDENT</Text>
             {students.length === 0 ? (
-              <Text style={styles.empty}>No connected students yet.</Text>
+              <TextInput
+                style={styles.nameInput}
+                value={aName}
+                onChangeText={setAName}
+                placeholder="Their name"
+                placeholderTextColor={COLORS.textMuted}
+                maxLength={60}
+              />
             ) : (
               <>
                 {students.length > 4 && (
@@ -388,9 +409,24 @@ export default function TeacherCalendarScreen({ navigation }) {
                           <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{displayName(s)}</Text>
                         </TouchableOpacity>
                       );
-                    });
+                    }).concat(
+                      <TouchableOpacity key={OTHER} style={[styles.chip, aStudent === OTHER && styles.chipOn]} onPress={() => setAStudent(OTHER)} activeOpacity={0.8}>
+                        <Text style={[styles.chipText, aStudent === OTHER && styles.chipTextOn]} numberOfLines={1}>Someone not on Prova…</Text>
+                      </TouchableOpacity>
+                    );
                   })()}
                 </View>
+                {aStudent === OTHER && (
+                  <TextInput
+                    style={styles.nameInput}
+                    value={aName}
+                    onChangeText={setAName}
+                    placeholder="Their name"
+                    placeholderTextColor={COLORS.textMuted}
+                    maxLength={60}
+                    autoFocus
+                  />
+                )}
               </>
             )}
 
@@ -510,6 +546,7 @@ const styles = themedStyles(() => StyleSheet.create({
   noteInput: { backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: SPACING.md, paddingVertical: 12, fontSize: 14 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: COLORS.card, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 9, marginBottom: SPACING.sm },
   searchInput: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, padding: 0 },
+  nameInput: { color: COLORS.text, fontSize: 15, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING.md, paddingVertical: 11, marginTop: SPACING.sm },
   modalBtns: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.card },
   cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '700' },
