@@ -3264,7 +3264,9 @@ function viewCalendar() {
 const OTHER_STUDENT = '__other';
 function lessonModal(day) {
   const hasStudents = students.length > 0;
-  modal(`<h3>Book a lesson</h3>
+  modal(`<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+      <h3 style="margin:0;flex:1;min-width:0">Book a lesson</h3>
+      <button class="x" data-close aria-label="Close">×</button></div>
     <div class="field"><label>Student</label>
       ${hasStudents ? `<select id="lStu">${students.map((s) => `<option value="${s.uid}">${esc(displayName(s))}</option>`).join('')}
         <option value="${OTHER_STUDENT}">Someone not on Prova…</option></select>` : ''}
@@ -3274,7 +3276,7 @@ function lessonModal(day) {
     <div class="field"><label>Note (optional)</label><input id="lNote" placeholder="What you plan to cover"></div>
     <div class="field"><label>Repeat</label><div class="seg" id="lRep">
       <button data-v="none" aria-pressed="true">One off</button><button data-v="weekly" aria-pressed="false">Every week</button></div></div>
-    <div class="acts"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="lSave">Book it</button></div>`);
+    <div class="acts"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="lSave">Done</button></div>`);
   const sel = document.getElementById('lStu');
   if (sel) sel.onchange = () => {
     const other = sel.value === OTHER_STUDENT;
