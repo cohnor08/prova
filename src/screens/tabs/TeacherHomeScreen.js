@@ -973,7 +973,7 @@ export default function TeacherHomeScreen({ navigation }) {
         ) : (
           <>
           {joinCount > 0 && (
-            <TouchableOpacity style={[styles.card, styles.joinLine]} onPress={goStudents} activeOpacity={0.8}>
+            <TouchableOpacity style={[styles.card, styles.joinLine]} onPress={() => navigation.navigate('Teacher', { openJoin: Date.now() })} activeOpacity={0.8}>
               <Ionicons name="person-add" size={17} color={COLORS.primary} />
               <Text style={styles.joinLineText} numberOfLines={1}>
                 {joinCount} student{joinCount === 1 ? '' : 's'} want{joinCount === 1 ? 's' : ''} to join
