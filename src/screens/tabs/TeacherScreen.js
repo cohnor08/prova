@@ -10,7 +10,7 @@ import ProofMedia from '../../components/ProofMedia';
 import { TourSpot, useTourScroller, useTourPadding } from '../../components/TourSpot';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, query, where, getDocs, doc, getDoc,
@@ -1841,7 +1841,10 @@ function TeacherDashboard() {
   // with "Accept all", not fifty alerts.
   const [joinReqs, setJoinReqs] = useState([]);
   const [joinBusy, setJoinBusy] = useState(null);      // a studentUid, or 'all'
-  const [joinAll, setJoinAll] = useState(false);        // show every request, not the first five
+  const [joinOpen, setJoinOpen] = useState(false);      // the requests sheet — Review opens it
+  const joinRoute = useRoute();
+  // Home's "N want to join → Review" lands here with openJoin set.
+  useEffect(() => { if (joinRoute.params?.openJoin) setJoinOpen(true); }, [joinRoute.params?.openJoin]);
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid || DEMO_MODE) return;
@@ -2659,38 +2662,16 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               </TouchableOpacity>
             )}
 
+            {/* One line however many are waiting (1 or 50); the list opens in a sheet. */}
             {joinReqs.length > 0 && (
-              <View style={styles.joinCard}>
-                <View style={styles.joinHead}>
-                  <Text style={styles.joinTitle}>Asking to join · {joinReqs.length}</Text>
-                  {joinReqs.length > 1 && (
-                    <TouchableOpacity onPress={() => answerJoin(joinReqs.map((r) => r.studentUid), true)} disabled={!!joinBusy} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.joinAllText}>{joinBusy === 'all' ? 'Accepting…' : 'Accept all'}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {(joinAll ? joinReqs : joinReqs.slice(0, 5)).map((r) => (
-                  <View key={r.id} style={styles.joinRow}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.joinName} numberOfLines={1}>{r.studentName || 'A student'}</Text>
-                      <Text style={styles.joinMeta} numberOfLines={1}>
-                        {[r.instrument, r.level, r.studentEmail].filter(Boolean).join(' · ') || 'No details yet'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity style={styles.joinNo} onPress={() => answerJoin([r.studentUid], false)} disabled={!!joinBusy} activeOpacity={0.8}>
-                      <Text style={styles.joinNoText}>Decline</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.joinYes} onPress={() => answerJoin([r.studentUid], true)} disabled={!!joinBusy} activeOpacity={0.8}>
-                      <Text style={styles.joinYesText}>{joinBusy === r.studentUid ? '…' : 'Accept'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                {joinReqs.length > 5 && (
-                  <TouchableOpacity onPress={() => setJoinAll((v) => !v)} activeOpacity={0.7}>
-                    <Text style={styles.joinMore}>{joinAll ? 'Show fewer' : `Show all ${joinReqs.length}`}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TouchableOpacity style={styles.joinLine} onPress={() => setJoinOpen(true)} activeOpacity={0.8}>
+                <Ionicons name="person-add" size={17} color={COLORS.primary} />
+                <Text style={styles.joinLineText} numberOfLines={1}>
+                  {joinReqs.length} student{joinReqs.length === 1 ? '' : 's'} want{joinReqs.length === 1 ? 's' : ''} to join
+                </Text>
+                <Text style={styles.joinAllText}>Review</Text>
+                <Ionicons name="chevron-forward" size={15} color={COLORS.primary} />
+              </TouchableOpacity>
             )}
 
             {!DEMO_MODE && !loading && students.length === 0 && (
@@ -3271,6 +3252,40 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
       />
 
       {/* The draft, for the teacher's eyes only until they send it. */}
+      <SheetModal visible={joinOpen} onRequestClose={() => setJoinOpen(false)} cardStyle={styles.joinSheet}>
+        <View style={styles.joinHead}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.joinTitle}>Asking to join</Text>
+            <Text style={styles.joinMeta}>{joinReqs.length ? `${joinReqs.length} waiting` : 'You’re all caught up'}</Text>
+          </View>
+          {joinReqs.length > 1 && (
+            <TouchableOpacity onPress={() => answerJoin(joinReqs.map((r) => r.studentUid), true)} disabled={!!joinBusy} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginRight: SPACING.md }}>
+              <Text style={styles.joinAllText}>{joinBusy === 'all' ? 'Accepting…' : `Accept all ${joinReqs.length}`}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => setJoinOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close">
+            <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={{ maxHeight: 460 }}>
+          {joinReqs.map((r) => (
+            <View key={r.id} style={styles.joinRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.joinName} numberOfLines={1}>{r.studentName || 'A student'}</Text>
+                <Text style={styles.joinMeta} numberOfLines={1}>
+                  {[r.instrument, r.level, r.studentEmail].filter(Boolean).join(' · ') || 'No details yet'}
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.joinNo} onPress={() => answerJoin([r.studentUid], false)} disabled={!!joinBusy} activeOpacity={0.8}>
+                <Text style={styles.joinNoText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.joinYes} onPress={() => answerJoin([r.studentUid], true)} disabled={!!joinBusy} activeOpacity={0.8}>
+                <Text style={styles.joinYesText}>{joinBusy === r.studentUid ? '…' : 'Accept'}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      </SheetModal>
       <SheetModal visible={!!draftFor && !!draft} onRequestClose={() => { setDraftFor(null); setDraft(null); }} cardStyle={styles.modalCard}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 }}>
           <Text style={[styles.modalTitle, { flex: 1, marginBottom: 0 }]}>Draft for {displayName(draftFor || {})}</Text>
@@ -3934,7 +3949,9 @@ export default function TeacherScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = themedStyles(() => StyleSheet.create({
-  joinCard: { backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 1, borderColor: COLORS.primary + '55', padding: SPACING.md, marginBottom: SPACING.md },
+  joinLine: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.primary + '55', paddingHorizontal: SPACING.md, paddingVertical: 13, marginBottom: SPACING.md },
+  joinLineText: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  joinSheet: { padding: SPACING.lg, borderRadius: 20 },
   joinHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   joinTitle: { flex: 1, minWidth: 0, color: COLORS.text, fontSize: 15, fontWeight: '800' },
   joinAllText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
@@ -3945,7 +3962,6 @@ const styles = themedStyles(() => StyleSheet.create({
   joinNoText: { color: COLORS.textSecondary, fontSize: 12.5, fontWeight: '700' },
   joinYes: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: COLORS.primary },
   joinYesText: { color: COLORS.onPrimary, fontSize: 12.5, fontWeight: '800' },
-  joinMore: { color: COLORS.textMuted, fontSize: 12.5, fontWeight: '600', textAlign: 'center', marginTop: SPACING.sm },
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.xl, paddingBottom: SPACING.xxl },
   title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: SPACING.xs },
