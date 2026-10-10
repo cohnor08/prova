@@ -8,4 +8,4 @@ Disallow: /preview/
 Disallow: /live.html
 Disallow: /check.html
 
-Sitemap: https://prova-583c9.web.app/sitemap.xml
+Sitemap: https://practiceprova.com/sitemap.xml
