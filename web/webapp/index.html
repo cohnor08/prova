@@ -49,7 +49,7 @@
   textarea{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--ink)}
   input[type=number]::-webkit-inner-spin-button{opacity:.35}
   .field{margin-bottom:15px}
-  .err{color:var(--bad);font-size:13px;min-height:19px;margin-top:4px}
+  .err{color:var(--ink-2);font-size:13px;min-height:19px;margin-top:4px}
   .rolebtn{display:block;width:100%;text-align:left;background:var(--raised);border:1px solid var(--line);
     border-radius:var(--r-md);padding:14px 16px;margin-bottom:10px;cursor:pointer}
   .rolebtn:hover{border-color:var(--primary)}
@@ -151,7 +151,7 @@
      with a way out, rather than hidden on the student's behalf. */
   .formerrow{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 13px;border-radius:10px;
     background:var(--raised);color:var(--ink-3);font-size:12.5px}
-  .linkbtn{background:none;border:0;padding:0;cursor:pointer;font:inherit;font-weight:700;color:var(--bad)}
+  .formerrow .linkbtn{width:auto;background:none;border:0;padding:0;cursor:pointer;font:inherit;font-weight:700;color:var(--bad)}
   .showmore{width:100%;background:none;border:0;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;font-weight:650;padding:12px 0 0;cursor:pointer}
 
   /* The in-page PDF viewer. Sits above everything (including the practice
@@ -2864,12 +2864,12 @@ function viewProfile() {
           `<button data-accent="${k}" aria-label="${k}" style="width:34px;height:34px;border-radius:50%;cursor:pointer;
             background:${a[0]};border:2px solid ${(me.theme?.accent || 'blue') === k ? 'var(--ink)' : 'transparent'}"></button>`).join('')}</div>
         <p class="hint" style="margin:14px 0 0">Saved to your account, so your phone picks it up too.</p>`)}
+      ${card('Reminders live in the app','', `<p class="hint" style="margin:0 0 14px">Practice reminders are set in the phone app for now.</p>
+        <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
       ${card('Danger zone','', `
         <p class="hint" style="margin:0 0 14px">Deleting removes your plan, history, chats and uploads permanently.
           This cannot be undone.</p>
         <button class="btn ghost" id="delAcc" style="color:var(--bad);border-color:var(--bad)">Delete my account</button>`)}
-      ${card('Reminders live in the app','', `<p class="hint" style="margin:0 0 14px">Practice reminders are set in the phone app for now.</p>
-        <button class="btn ghost wide" id="soBtn">Sign out</button>`)}
     </div></div></div>`;
   $('#soBtn').onclick = confirmSignOut;
   document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () =>
