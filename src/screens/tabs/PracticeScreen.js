@@ -520,6 +520,22 @@ export default function PracticeScreen({ route, navigation }) {
           </View>
           <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
         </TouchableOpacity>
+        <TouchableOpacity style={[styles.journalCard, { marginBottom: 0 }]} onPress={() => navigation.navigate('PastTasks')} activeOpacity={0.85}>
+          <View style={styles.learnIcon}><Ionicons name="checkmark-done-outline" size={20} color={COLORS.primary} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.learnCardText}>Past tasks</Text>
+            <Text style={styles.learnCardSub}>Finished tasks — bring one back</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.journalCard, { marginBottom: 0 }]} onPress={() => navigation.navigate('MyFiles')} activeOpacity={0.85}>
+          <View style={styles.learnIcon}><Ionicons name="folder-open-outline" size={20} color={COLORS.primary} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.learnCardText}>My files</Text>
+            <Text style={styles.learnCardSub}>Sheet music & tracks from your teacher</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.journalCard} onPress={() => navigation.navigate('Journal')} activeOpacity={0.85}>
           <View style={styles.learnIcon}><Ionicons name="book-outline" size={20} color={COLORS.primary} /></View>
           <View style={{ flex: 1, minWidth: 0 }}>

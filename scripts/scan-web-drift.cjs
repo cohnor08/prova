@@ -21,16 +21,18 @@ const fs = require('fs');
 
 const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
 
-// A field counts as "used" if it appears as `.field` or as a quoted key —
+// A field counts as "used" if it appears as `.field`, a quoted key or an
+// object key being written (`field:`) —
 // enough to tell "this file knows about it" from "this file has never heard
 // of it", which is the drift being caught. Not an attempt at real analysis.
 const uses = (src, field) =>
-  new RegExp(`(\\.${field}\\b|['"\`]${field}['"\`])`).test(src);
+  new RegExp(`(\\.${field}\\b|['"\`]${field}['"\`]|\\b${field}:)`).test(src);
 
 const PHONE = [
   'src/screens/tabs/TodayScreen.js',   // student side: reads tasks, writes proof
   'src/screens/tabs/TeacherScreen.js', // teacher side: writes tasks
   'src/lib/teacher.js',                // the teacher ↔ student link itself
+  'src/lib/taskVisibility.js',         // which tasks show on Today vs Past tasks
 ];
 const STUDENT_WEB = 'web/webapp/index.html';
 const TEACHER_WEB = 'web/studio/index.html';
@@ -48,6 +50,8 @@ const SHARED = [
   // cover. classId guards the same feature and is unambiguous.
   ['attachments',   STUDENT_WEB, 'photos, video, PDFs and audio a teacher attached to a task'],
   ['completed',     STUDENT_WEB, 'whether a task is done'],
+  ['completedAt',   STUDENT_WEB, "when a task was finished (the phone counts today's finished tasks from it)"],
+  ['revived',       STUDENT_WEB, 'a finished task the student brought back from Past tasks'],
   // proof of practice — student writes, teacher reads
   ['proofs',        STUDENT_WEB, 'the list of proof clips on a task'],
   ['proofUrl',      STUDENT_WEB, 'newest proof clip (mirrored for single-clip readers)'],

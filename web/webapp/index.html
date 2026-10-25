@@ -5799,7 +5799,8 @@ async function finish() {
       const next = allAssigned().map((t, j) => {
         if (j !== PLAY.i) return t;
         const { revived, ...rest } = t;
-        return { ...rest, completed: true };
+        return { ...rest, completed: true, completedAt: new Date().toISOString(),
+          practicedSec: (t.practicedSec || 0) + secs, pointsEarned: (t.pointsEarned || 0) + pts };
       });
       const patch = { assignedTasks: next, provaScore: increment(pts), totalMinutes: increment(mins) };
       // streak: same today/yesterday rule as src/lib/practiceLog.js
