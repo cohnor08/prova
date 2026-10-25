@@ -106,6 +106,10 @@
   .greet h2{font-size:24px;font-weight:640;letter-spacing:-.3px}
   .greet p{margin:3px 0 0;color:var(--ink-3);font-size:13.5px}
   .cols{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(0,1fr);gap:22px;align-items:start}
+  /* Today: the columns sit on the stat row's 3-column grid, so the side card
+     lines up exactly under Prova Score. */
+  .cols.even{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:14px}
+  .cols.even>:first-child{grid-column:span 2}
   .stack{display:flex;flex-direction:column;gap:22px;min-width:0}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow)}
   .card>header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
@@ -443,7 +447,7 @@
     display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--ink-3);padding-bottom:3px}
   .beatbar.on{border-color:var(--primary)} .beatbar.cur{outline:2px solid var(--primary);outline-offset:1px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-  @media (max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}.shell{grid-template-columns:70px minmax(0,1fr)}.rail .word,.nav span,.eyebrow,.who .nm,.who .rl{display:none}.nav{justify-content:center}}
+  @media (max-width:1080px){.cols,.cols.even{grid-template-columns:minmax(0,1fr)}.cols.even>:first-child{grid-column:auto}.shell{grid-template-columns:70px minmax(0,1fr)}.rail .word,.nav span,.eyebrow,.who .nm,.who .rl{display:none}.nav{justify-content:center}}
   /* ── Phones ──────────────────────────────────────────────────────────────
      Only applies under 720px; the desktop rules above are untouched.
 
@@ -1102,10 +1106,10 @@ const NAV = [
   { id: 'notifications', t: 'Notifications', i: '<path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 004 0"/>' },
   { id: 'profile',  t: 'Profile',  i: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>' },
 ];
-const TITLES = { today:'Today', practice:'Practice', songs:'Songs', schedule:'Schedule',
+const TITLES = { today:'Today', practice:'Practice', pasttasks:'Past tasks', songs:'Songs', schedule:'Schedule',
   progress:'Progress', journal:'Journal', profile:'Profile', messages:'Messages',
   calendar:'Calendar', lessonnotes:'Lesson notes', teacherfiles:'Teacher resources', leaderboard:'Leaderboard', notifications:'Notifications', skilltree:'Skill tree', theory:'Theory quiz', gig:'Performance mode', chords:'Chords & scales', library:'Lesson library', ear:'Ear training', fret:'Fretboard game', rhythm:'Rhythm tapper', ask:'Ask Prova' };
-const PARENT = { chords:'practice', library:'practice', ear:'practice', fret:'practice',
+const PARENT = { pasttasks:'practice', chords:'practice', library:'practice', ear:'practice', fret:'practice',
   ask:'practice', theory:'practice', rhythm:'practice', gig:'calendar' };
 // Built lazily: PI is declared further down, so reading it at this point in
 // module evaluation would throw before the app ever boots.
@@ -1385,7 +1389,7 @@ const VIEWS = { today: render, practice: viewPractice, songs: viewSongs, schedul
   progress: viewProgress, journal: viewJournal, profile: viewProfile, messages: viewMessages,
   chords: viewChords, library: viewLibrary, ear: viewEar, fret: viewFret, ask: viewAsk,
   calendar: viewCalendar, lessonnotes: viewLessonNotes, teacherfiles: viewTeacherFiles, leaderboard: viewLeaderboard, notifications: viewNotifications, rhythm: viewRhythm,
-  skilltree: viewSkillTree, theory: viewTheory, gig: viewGig };
+  skilltree: viewSkillTree, theory: viewTheory, gig: viewGig, pasttasks: viewPastTasks };
 const rerender = () => (VIEWS[screen] || render)();
 function go(id) {
   // Leaving a game abandons the round, exactly as the phone does on blur.
@@ -1590,14 +1594,13 @@ async function reviveTask(oi, on, play) {
   toast(on ? 'Back on your Today list' : 'Moved to Past tasks');
   rerender();
 }
-function pastTasksCard() {
+// The Past tasks page, opened from its tile on Practice.
+function viewPastTasks() {
   const list = pastTasks();
-  if (!list.length) return '';
-  const shown = SHOWALL.past ? list : list.slice(0, 5);
-  return `<section class="card"><header><h3>Past tasks</h3>
-      <span class="meta">${list.length} done</span></header>
-    <p class="hint" style="margin:-4px 0 12px">Tasks from your teacher you've already finished. Bring one back to keep working on it.</p>
-    ${shown.map((t) => {
+  $('#screen').innerHTML = `<div class="content">
+    ${head('Past tasks', "Tasks from your teacher you've already finished. Bring one back to keep working on it.")}
+    <section class="card"><header><h3>Finished</h3><span class="meta">${list.length || ''}</span></header>
+    ${list.length ? list.map((t) => {
       const who = taskTeacherName(t);
       return `<div class="prow"><div class="pl">
         <div class="pt">${esc(t.title)}</div>
@@ -1606,9 +1609,8 @@ function pastTasksCard() {
         <div class="btnrow" style="flex:none">
           <button class="btn sm ghost" data-taskrevive="${t._i}:1">Bring back</button>
           <button class="btn sm" data-taskrevive="${t._i}:1:1">Practice now</button></div></div>`;
-    }).join('')}
-    ${list.length > 5 ? `<button class="showmore" data-showall="past">${SHOWALL.past ? 'Show less' : `Show all (${list.length})`}</button>` : ''}
-  </section>`;
+    }).join('') : '<p class="hint" style="margin:0">Nothing here yet. Tasks you finish move here once their due date has passed.</p>'}
+    </section></div>`;
 }
 
 // ── My files ───────────────────────────────────────────────────────────────
@@ -1986,7 +1988,7 @@ function render() {
       <div class="stat"><div class="k">Total practice</div><div class="v">${Math.round((me.totalMinutes || 0) / 60)}<small>hrs</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
-    <div class="cols"><div class="stack">
+    <div class="cols even"><div class="stack">
       ${sessions.length ? `<div class="planhead">
         <div class="phrow">
           <div class="phstat"><div class="phn">${doneMin}<span class="phsub2">/${planned}</span></div><div class="phk">minutes</div></div>
@@ -2122,8 +2124,10 @@ function viewPractice() {
   const eye = (t) => `<div class="eyebrow" style="padding:0 0 8px">${t}</div>`;
   $('#screen').innerHTML = `<div class="content">
     ${head('Practice', 'Reference, drills and tools.')}
-    ${pastTasksCard()}
     <div>${eye('Learn')}<div style="${GRID}">
+      ${allAssigned().length ? tile('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/>', 'Past tasks',
+        pastTasks().length ? `${pastTasks().length} finished task${pastTasks().length === 1 ? '' : 's'} from your teacher. Bring one back to practice it again.`
+          : 'Tasks from your teacher land here once they are done.', 'Open →', 'pasttasks') : ''}
       ${tile(PI.grid, 'Chords &amp; scales', `${APP.chords.length} chord shapes and ${APP.scales.length} scales on an interactive fretboard.`, 'Open →', 'chords')}
       ${tile(PI.book, 'Lesson library', `${APP.lib.length} topics, beginner through advanced.`, 'Browse →', 'library')}
     </div></div>
@@ -2531,7 +2535,7 @@ function viewProgress() {
       <div class="stat"><div class="k">Current streak</div><div class="v">${me.streak || 0}<small>days</small></div></div>
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
-    <div class="cols"><div class="stack">
+    <div class="cols even"><div class="stack">
       ${card('Minutes practiced', `${weekTotal} min this week`,
         `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end;height:150px;padding-top:6px">
           ${days.map(x => { const m = week[x.k] || 0;
