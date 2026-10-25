@@ -16,7 +16,7 @@ import { db } from './firebase';
 //
 // We can't see Firebase Auth from the client, so "real" is judged on what a
 // live account leaves behind: it has been through onboarding, it has a name,
-// it has practised, and it is the more recent one.
+// it has practiced, and it is the more recent one.
 function liveliness(u) {
   let score = 0;
   if (u.onboardingComplete === true) score += 8;

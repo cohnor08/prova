@@ -42,7 +42,7 @@ const STUDENT_STEPS = [
   { tab: null, title: 'Welcome to Prova', text: 'Your practice coach. Twenty seconds — here’s where everything lives.' },
   { tab: 0, title: 'Today', text: 'Your daily practice. One button starts the session, and your plan adapts as you go.' },
   { tab: 1, title: 'Practice', text: 'Your toolkit — songs, setlists, chords and scales, ear training and the fretboard game.' },
-  { tab: 2, title: 'Progress', text: 'Streaks, badges, your Prova Score and the skill tree. Practising fills this up.' },
+  { tab: 2, title: 'Progress', text: 'Streaks, badges, your Prova Score and the skill tree. Practicing fills this up.' },
   { tab: 3, title: 'Messages', text: 'Chats and tasks from your teacher land here. Connect one anytime with their join code, in Profile.' },
   { tab: null, title: 'That’s the map', text: 'Prova will guide you from here. Have fun.' },
 ];
@@ -61,8 +61,8 @@ const TEACHER_STEPS = [
 // e.g. the teacher section for a student with no teacher).
 const STUDENT_STEPS_FULL = [
   { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
-  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-start', scroller: 'TodayHome', title: 'Your daily plan', text: 'Today’s summary — minutes, exercises, and the one button that starts a guided session. The plan adapts weekly to how you actually practise.' },
-  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-ask', scroller: 'TodayHome', title: 'Ask Prova', text: 'Your AI coach. Technique, theory, what to practise next — ask anything.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-start', scroller: 'TodayHome', title: 'Your daily plan', text: 'Today’s summary — minutes, exercises, and the one button that starts a guided session. The plan adapts weekly to how you actually practice.' },
+  { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-ask', scroller: 'TodayHome', title: 'Ask Prova', text: 'Your AI coach. Technique, theory, what to practice next — ask anything.' },
   { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-challenge', scroller: 'TodayHome', title: 'Daily challenge', text: 'A bonus task every day — quick points and an easy way to keep the streak alive.' },
   { nav: { tab: 'Today', screen: 'TodayHome' }, target: 't-drills', scroller: 'TodayHome', title: 'Today’s drills', text: 'Two rotating mini-games a day. First rounds bank points and count as real practice.' },
   { nav: { tab: 'Practice', screen: 'PracticeHome' }, target: 'p-learn', scroller: 'PracticeHome', title: 'Learn', text: 'The lesson library, chords & scales, ear training, the fretboard game, rhythm tapper and theory quiz.' },
@@ -73,12 +73,12 @@ const STUDENT_STEPS_FULL = [
   { nav: { tab: 'Messages' }, target: 'm-chats', title: 'Messages', text: 'Chat with your teacher — photos and videos too — and get class announcements. React with the smiley under any message.' },
   { nav: { tab: 'Profile' }, target: 'pr-teacher', scroller: 'Profile', title: 'Your teacher', text: 'Connect a teacher with their join code and their tasks land on Today. You can link more than one.' },
   { nav: { tab: 'Profile' }, target: 'pr-appearance', scroller: 'Profile', title: 'Make it yours', text: 'Light or dark, your accent colour, practice reminders — and this tour, any time.' },
-  { title: 'That’s everything', text: 'Now go practise — Prova takes it from here.' },
+  { title: 'That’s everything', text: 'Now go practice — Prova takes it from here.' },
 ];
 
 const TEACHER_STEPS_FULL = [
   { title: 'The full tour', text: 'Every main feature, right where it lives. Use Next to step through — skip whenever.' },
-  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-code', scroller: 'TeacherHomeMain', title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practising and who’s gone quiet, at a glance.' },
+  { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-code', scroller: 'TeacherHomeMain', title: 'Home — your dashboard', text: 'Today’s lessons, your join code, and Practice Pulse — who’s practicing and who’s gone quiet, at a glance.' },
   { nav: { tab: 'Home', screen: 'TeacherHomeMain' }, target: 'th-lessons', scroller: 'TeacherHomeMain', title: 'Lessons, packs & programs', text: 'Schedule lessons and attendance on the calendar, keep lesson notes, and bundle work into reusable packs or multi-week programs.' },
   { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Your students', text: 'Students connect with your join code. Open anyone for their streak, practice chart and assigned work.' },
   { nav: { tab: 'Teacher' }, target: 'ts-roster', scroller: 'TeacherStudents', title: 'Assign work', text: 'Open a student and hit Assign Task — tutorials, songs, or a skill drill at the exact level you choose, to one student or a whole class.' },

@@ -10,7 +10,7 @@
 import { doc, setDoc, increment } from 'firebase/firestore';
 import { db } from './firebase';
 
-// Streak + lastSessionDate updates for "practised just now" — the same
+// Streak + lastSessionDate updates for "practiced just now" — the same
 // today/yesterday rule finalizeDay uses, so applying both in either order on
 // the same day never double-increments: once today is stamped, the streak
 // simply holds.

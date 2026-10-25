@@ -65,6 +65,16 @@
   .btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
   .btn.sm{padding:7px 13px;font-size:13px}
   .btn.wide{width:100%}
+  /* A row of task buttons: everything centred on one line, the ▶ drawn as an
+     icon rather than a text glyph so it sits level with the label. */
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn.ico{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+  .btn.ico svg{width:10px;height:10px;flex:none}
+  .donechip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;font-size:13px;font-weight:650;
+    border-radius:var(--r-sm);border:1px solid color-mix(in srgb,var(--good) 40%,transparent);
+    color:var(--good);background:color-mix(in srgb,var(--good) 10%,transparent)}
+  .mfrow{display:flex;align-items:center;gap:8px}
+  .mfrow .att{flex:1;min-width:0}
 
   .shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:var(--ground)}
   .rail{border-right:1px solid var(--line);background:var(--page);display:flex;flex-direction:column;padding:20px 13px;gap:22px}
@@ -605,7 +615,7 @@
 <div class="pdfbox" id="pdfbox" hidden>
   <div class="pdfbar">
     <span class="pdfname" id="pdfName"></span>
-    <!-- Reading the chart IS practising, so the clock stays in sight while the
+    <!-- Reading the chart IS practicing, so the clock stays in sight while the
          viewer covers the player. Empty (and hidden) when nothing is running. -->
     <span class="pdfclock" id="pdfClock" hidden></span>
     <a class="btn sm ghost" id="pdfTab" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab</a>
@@ -621,7 +631,8 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, on
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
 import { CATEGORIES as THEORY_CATEGORIES, makeTheoryRound } from '/shared/theory.js';
-import { attachmentKind, attachmentMeta, cleanFileName } from '/shared/attachments.js';
+import { attachmentKind, attachmentMeta, cleanFileName, contentTypeForFile, kindForContentType, storageFileName,
+  TASK_FILE_ACCEPT, TASK_FILE_MAX_BYTES, TASK_FILE_MAX_LABEL } from '/shared/attachments.js';
 // The cover art inside an MP3 (src/lib/albumArt.js).
 import { couldHaveArtwork, loadEmbeddedPicture } from '/shared/albumArt.js';
 // Which days a lesson lands on — the same rule as the phone and Studio, so a
@@ -994,6 +1005,15 @@ async function loadTeachers() {
   }));
   TEACHERS = out;
 }
+async function lookUpTeacher(tid) {
+  TEACHERS[tid] = null;                        // asked once, even if it fails
+  try {
+    const d = (await getDoc(doc(db, 'users', tid))).data();
+    if (!d) return;
+    TEACHERS[tid] = { name: displayName(d), email: d.email || '' };
+    if (!busyOnScreen()) rerender();
+  } catch { /* stays unnamed */ }
+}
 
 // Who set this task. Tasks carry `teacherUid` (the phone has always written it,
 // Studio now does too) but older ones don't — for those, a student with exactly
@@ -1002,6 +1022,9 @@ async function loadTeachers() {
 function taskTeacherName(task) {
   const byUid = task?.teacherUid && TEACHERS[task.teacherUid]?.name;
   if (byUid) return byUid;
+  // A task from a teacher the student is no longer linked to still names who
+  // set it — loadTeachers() only covers current ones, so look it up once.
+  if (task?.teacherUid && !(task.teacherUid in TEACHERS)) lookUpTeacher(task.teacherUid);
   const ids = myTeacherUids();
   return ids.length === 1 && TEACHERS[ids[0]] ? TEACHERS[ids[0]].name : '';
 }
@@ -1049,6 +1072,13 @@ function duePhrase(v) {
   return `due ${dueDay(v)}`;
 }
 const isOverdue = (t) => !!t.dueDate && !t.completed && new Date(t.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0);
+// A finished task leaves Today. Two exceptions: one finished EARLY stays,
+// ticked, until its deadline passes, and one the student brought back from
+// Past tasks (Practice screen) stays until they finish it again. An unfinished
+// task never leaves, however late it is.
+const dueNotPassed = (t) => !!t.dueDate && new Date(t.dueDate).setHours(0,0,0,0) >= new Date().setHours(0,0,0,0);
+const onTodayList = (t) => !t.completed || !!t.revived || dueNotPassed(t);
+const PLAY_ICO = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>';
 
 // ── nav ──────────────────────────────────────────────────────────────────
 const ICON = { home:'<path d="M3 9l9-6 9 6v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>' };
@@ -1543,6 +1573,156 @@ async function removeTask(oi) {
   } catch { toast('Could not remove — check your connection.'); }
 }
 
+// Past tasks: finished ones that have left Today (see onTodayList). Bringing
+// one back sets `revived` on the student's copy only — `completed` stays true,
+// so the teacher's view of what was done doesn't change. Finishing it again in
+// the player clears the flag and it returns here.
+const pastTasks = () => allAssigned().map((t, i) => ({ ...t, _i: i })).filter(t => !onTodayList(t))
+  .sort((p, q) => new Date(q.dueDate || q.assignedAt || 0) - new Date(p.dueDate || p.assignedAt || 0));
+async function reviveTask(oi, on, play) {
+  const ok = await patchTask(oi, (t) => {
+    if (on) return { ...t, revived: true };
+    const { revived, ...rest } = t;
+    return rest;
+  });
+  if (!ok) return;
+  if (play) { openPlayer('assigned', oi); return; }
+  toast(on ? 'Back on your Today list' : 'Moved to Past tasks');
+  rerender();
+}
+function pastTasksCard() {
+  const list = pastTasks();
+  if (!list.length) return '';
+  const shown = SHOWALL.past ? list : list.slice(0, 5);
+  return `<section class="card"><header><h3>Past tasks</h3>
+      <span class="meta">${list.length} done</span></header>
+    <p class="hint" style="margin:-4px 0 12px">Tasks from your teacher you've already finished. Bring one back to keep working on it.</p>
+    ${shown.map((t) => {
+      const who = taskTeacherName(t);
+      return `<div class="prow"><div class="pl">
+        <div class="pt">${esc(t.title)}</div>
+        <div class="ps">${esc([who, t.dueDate ? duePhrase(t.dueDate) : fmtSetOn(t.assignedAt) && 'set ' + fmtSetOn(t.assignedAt)]
+          .filter(Boolean).join(' · '))}</div></div>
+        <div class="btnrow" style="flex:none">
+          <button class="btn sm ghost" data-taskrevive="${t._i}:1">Bring back</button>
+          <button class="btn sm" data-taskrevive="${t._i}:1:1">Practice now</button></div></div>`;
+    }).join('')}
+    ${list.length > 5 ? `<button class="showmore" data-showall="past">${SHOWALL.past ? 'Show less' : `Show all (${list.length})`}</button>` : ''}
+  </section>`;
+}
+
+// ── My files ───────────────────────────────────────────────────────────────
+// The student's version of Studio's "My files": everything their teachers
+// have attached to a task, gathered in one place, plus anything they add
+// themselves (users/{uid}.myFiles). Their own uploads go to taskFiles/{uid}/…,
+// which storage.rules lets only them write.
+const ownFiles = () => (Array.isArray(me.myFiles) ? me.myFiles : []);
+function teacherFiles() {
+  const seen = new Set(), out = [];
+  allAssigned().forEach((t) => (Array.isArray(t.attachments) ? t.attachments : []).forEach((a) => {
+    if (!a?.url || seen.has(a.url)) return;
+    seen.add(a.url); out.push({ ...a, _from: t.title });
+  }));
+  return out;
+}
+let MYF_QUERY = '';
+function myFileRow(f, own) {
+  const kind = attachmentKind(f);
+  const name = esc(cleanFileName(f.title || 'File'));
+  const meta = esc([own ? '' : f._from, attachmentMeta(f)].filter(Boolean).join(' · '));
+  const icon = { pdf: '📄', audio: '🎵', video: '🎥', photo: '📷' }[kind] || '📎';
+  const body = `<span class="atti">${icon}</span>
+    <div class="attb"><div class="attn">${name}</div><div class="hint">${meta}</div>`;
+  const row = kind === 'audio'
+    ? `<div class="att" style="cursor:pointer">${body}
+        <audio controls preload="none" hidden src="${esc(f.url)}" data-attmedia="${esc('files|' + f.url)}"></audio></div>
+        <span class="atto" data-playrow>▶ Play</span></div>`
+    : kind === 'pdf'
+      ? `<button class="att" type="button" data-pdf="${esc(f.url)}" data-pdfname="${name}">${body}</div><span class="atto">Open</span></button>`
+      : `<button class="att" type="button" data-media="${esc(f.url)}" data-medianame="${name}" data-mediakind="${esc(kind || 'file')}">${body}</div><span class="atto">Open</span></button>`;
+  return `<div class="mfrow">${row}${own ? `<button class="x" data-myfiledel="${esc(f.id || f.url)}" title="Remove">×</button>` : ''}</div>`;
+}
+function myFilesCard() {
+  const q = MYF_QUERY.trim().toLowerCase();
+  const match = (f) => !q || `${cleanFileName(f.title || '')} ${f._from || ''}`.toLowerCase().includes(q);
+  const theirs = teacherFiles(), mine = ownFiles();
+  const n = theirs.length + mine.length;
+  const group = (label, list, own) => list.filter(match).length ? `<div class="eyebrow" style="padding:6px 0 8px">${label}</div>
+    <div class="atts">${list.filter(match).map(f => myFileRow(f, own)).join('')}</div>` : '';
+  return `<section class="card" id="myFilesCard"><header><h3>My files</h3>
+      <span class="meta">${n ? `${n} file${n === 1 ? '' : 's'}` : ''}</span></header>
+    <p class="hint" style="margin:0 0 12px">Sheet music, tabs and backing tracks in one place — everything your teacher has sent, plus your own.</p>
+    ${n > 4 ? `<input id="myfSearch" placeholder="Search your files" value="${esc(MYF_QUERY)}"
+      style="width:100%;margin-bottom:12px;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:inherit;font:inherit">` : ''}
+    ${n ? group('From your teacher', theirs, false) + group('Yours', mine, true)
+        + (q && !theirs.concat(mine).some(match) ? '<p class="hint" style="margin:0">Nothing matches that.</p>' : '')
+      : '<p class="hint" style="margin:0">Nothing here yet. Files your teacher attaches to a task show up here.</p>'}
+    <button class="btn sm ghost" data-myfileadd="1" style="width:100%;margin-top:12px">+ Add a PDF, audio or video file</button>
+  </section>`;
+}
+// The search box re-renders only this card, so typing keeps focus.
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'myfSearch') return;
+  MYF_QUERY = e.target.value;
+  const card = $('#myFilesCard');
+  if (!card) return;
+  const pos = e.target.selectionStart;
+  card.outerHTML = myFilesCard();
+  const box = $('#myfSearch');
+  if (box) { box.focus(); box.setSelectionRange(pos, pos); }
+});
+async function uploadMyFile(file, onProgress) {
+  const contentType = contentTypeForFile(file.name, file.type);
+  const path = `taskFiles/${uid}/${Date.now()}_${storageFileName(file.name)}`;
+  const token = await auth.currentUser.getIdToken();
+  const url = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(path)}`;
+  const res = await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+      ? resolve(JSON.parse(xhr.responseText)) : reject(new Error('upload ' + xhr.status));
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.send(file);
+  });
+  const dlToken = (res.downloadTokens || '').split(',')[0];
+  return { id: String(Date.now()), type: kindForContentType(contentType), title: cleanFileName(file.name),
+    size: file.size, contentType, addedAt: new Date().toISOString(),
+    url: `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${dlToken}` };
+}
+function pickMyFiles() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true; inp.accept = TASK_FILE_ACCEPT;
+  inp.onchange = async () => {
+    for (const file of [...(inp.files || [])]) {
+      if (!kindForContentType(contentTypeForFile(file.name, file.type))) { toast(`${file.name} isn't a PDF, audio, photo or video`); continue; }
+      if (file.size > TASK_FILE_MAX_BYTES) { toast(`${file.name} is over ${TASK_FILE_MAX_LABEL}`); continue; }
+      const t = toastSticky(`Uploading ${cleanFileName(file.name)}… 0%`);
+      try {
+        const f = await uploadMyFile(file, (p) => t.set(`Uploading ${cleanFileName(file.name)}… ${Math.round(p * 100)}%`));
+        const next = [f, ...ownFiles()];
+        await updateDoc(doc(db, 'users', uid), { myFiles: next });
+        me.myFiles = next;
+        t.done(); rerender();
+      } catch { t.done(); toast(`Could not upload ${cleanFileName(file.name)}`); }
+    }
+  };
+  inp.click();
+}
+async function removeMyFile(ref) {
+  const f = ownFiles().find(x => (x.id || x.url) === ref);
+  if (!f) return;
+  const ok = await confirmModal({ title: 'Remove this file?', body: `"${cleanFileName(f.title || 'File')}" comes out of My files.`, danger: 'Remove' });
+  if (!ok) return;
+  const next = ownFiles().filter(x => x !== f);
+  try {
+    await updateDoc(doc(db, 'users', uid), { myFiles: next });
+    me.myFiles = next; rerender();
+  } catch { toast('Could not remove — check your connection.'); }
+}
+
 // Watch one clip, stepping through the rest without closing. Replace and
 // delete live HERE rather than on the row, so they act on the clip you are
 // actually looking at — on the row they could only ever mean "the latest one",
@@ -1691,7 +1871,9 @@ function rows(list, kind, limit, showKey = kind) {
     // on screen — assigned rows are re-ordered for display.
     const oi = x._i ?? i;
     const id = kind + oi, isOpen = OPEN[id];
-    const done = kind === 'plan' ? doneIds().includes(x.id) : !!x.completed;
+    // A task brought back from Past tasks is open again for the student, even
+    // though the teacher still sees it finished.
+    const done = kind === 'plan' ? doneIds().includes(x.id) : !!x.completed && !x.revived;
     const isTask = kind === 'assigned';
     // A plan session's length is `duration`; a teacher task's is `durationMin`
     // (same split targetFor() handles for the timer). Reading only `duration`
@@ -1706,7 +1888,7 @@ function rows(list, kind, limit, showKey = kind) {
         <div class="tick${done ? ' on' : ''}">${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--ground)" stroke-width="3.5" style="width:11px;height:11px"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
         <div style="flex:1;min-width:0"><div class="ttl${done ? ' done' : ''}">${esc(x.title)}</div>
           ${x.category ? `<div class="tsub">${esc(String(x.category).replace(/_/g,' '))}</div>` : ''}</div>
-        ${isTask ? `<span class="pill set">${who ? esc(who) : 'Teacher'}</span>` : ''}
+        ${isTask && who ? `<span class="pill set">${esc(who)}</span>` : ''}
         ${due ? `<span class="pill ${isOverdue(x) ? 'late' : 'due'}">${esc(due)}</span>` : ''}
         ${mins ? `<div class="dur">${mins} min</div>` : ''}
       </div>
@@ -1723,11 +1905,12 @@ function rows(list, kind, limit, showKey = kind) {
         ${isTask && fromAFormerTeacher(x) ? `<div class="formerrow">
           <span style="flex:1">From a teacher you’re no longer connected to</span>
           <button class="linkbtn" data-taskremove="${oi}">Remove</button></div>` : ''}
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${done ? '<span class="hint">Completed</span>'
-            : `<button class="btn sm" data-play="${kind}:${oi}">Practice this</button>`}
-          <button class="btn sm ghost" data-yt="${esc(x.youtube || (x.title + ' ' + (me.instrument || 'guitar') + ' tutorial'))}" data-yttitle="${esc(x.title)}">▶ Watch a lesson</button>
+        <div class="btnrow">
+          ${done ? '<span class="donechip">✓ Completed</span>'
+            : `<button class="btn sm" data-play="${kind}:${oi}">${isTask && x.revived ? 'Practice again' : 'Practice this'}</button>`}
+          <button class="btn sm ghost ico" data-yt="${esc(x.youtube || (x.title + ' ' + (me.instrument || 'guitar') + ' tutorial'))}" data-yttitle="${esc(x.title)}">${PLAY_ICO}Watch a lesson</button>
           ${x.song ? `<button class="btn sm ghost" data-yt="${esc(x.song)} ${esc(me.instrument || 'guitar')} tutorial" data-yttitle="${esc(x.song)}">🎵 ${esc(x.song)}</button>` : ''}
+          ${isTask && x.revived ? `<button class="linkbtn" data-taskrevive="${oi}:0" style="width:auto;padding:0 4px;margin-left:auto">Put it away</button>` : ''}
         </div>
       </div></div>`;
   }).join('') +
@@ -1748,7 +1931,7 @@ function assignedGroups() {
   // `_i` is the task's index in the REAL assignedTasks array. The player and
   // the completion write both address tasks by that index, so it has to travel
   // with the row — the display order here is presentation only.
-  const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i }));
+  const withIndex = allAssigned().map((t, i) => ({ ...t, _i: i })).filter(onTodayList);
   // Split one-to-one teacher tasks from class-assigned ones exactly as the
   // phone does (TodayScreen: soloTasks vs classGroups keyed on className) —
   // a class task carries classId/className, a personal one doesn't. Sending
@@ -1777,15 +1960,10 @@ function render() {
   // Someone else sets this student's work — Prova shouldn't be touting its own
   // plan against their teacher's homework. Mirrors hasTeacher in TodayScreen.js.
   const hasTeacher = myTeacherUids().length > 0;
-  const taskCard = (title, list, showKey, meta) => {
-    const open = list.filter(t => !t.completed).length;
-    return `<section class="card"><header><h3>${esc(title)}</h3>
-      <span class="meta">${list.filter(t => t.completed).length} of ${list.length} done</span></header>
+  const taskCard = (title, list, showKey, meta) => `<section class="card"><header><h3>${esc(title)}</h3>
+      <span class="meta">${list.filter(t => t.completed && !t.revived).length} of ${list.length} done</span></header>
       ${meta ? `<p class="hint" style="margin:-4px 0 4px">${esc(meta)}</p>` : ''}
-      ${open && isStudent ? `<p class="hint" style="margin:${meta ? '4px' : '-4px'} 0 14px">${
-        open === 1 ? 'One task' : `${open} tasks`} still to do.</p>` : ''}
       ${rows(list, 'assigned', 4, showKey)}</section>`;
-  };
   // All of one teacher's tasks belong in ONE card. Splitting further (per
   // teacher, per batch) turned a single teacher into several headings.
   const assignedCard = (solo.length ? taskCard('From your teacher', solo, 'assigned') : '')
@@ -1815,8 +1993,7 @@ function render() {
           <div class="phstat"><div class="phn">${sessions.length}</div><div class="phk">exercises</div></div>
           <div class="phstat"><div class="phn">${donePlan}</div><div class="phk">done</div></div>
         </div>
-        <div class="track" style="margin:16px 0 10px"><i style="width:${pct}%"></i></div>
-        <div class="hint" style="text-align:center">${donePlan} of ${sessions.length} completed · ${pct}%</div>
+        <div class="track" style="margin:16px 0 0"><i style="width:${pct}%"></i></div>
         <button class="btn" data-play="next" style="width:100%;margin-top:16px;padding:14px">${
           all ? '▶ Practice more' : hasStartedToday() ? '▶ Resume practice' : '▶ Start practice'}</button>
         ${(me.setlists || []).length ? `<button data-setpractice="1" style="width:100%;margin-top:12px;background:none;
@@ -1852,9 +2029,7 @@ function render() {
       </section>`}
       ${isStudent ? '' : assignedCard}
     </div><div class="stack">
-      <section class="card"><header><h3>This account</h3></header>
-        <p class="hint" style="margin:0">Signed in as ${esc(me.email || '')}. Everything here is your real data —
-        completing a task writes the same points, minutes and streak the app does.</p></section>
+      ${myFilesCard()}
     </div></div>
   </div>`);
 }
@@ -1883,6 +2058,12 @@ document.addEventListener('click', (e) => {
     const [oi, k] = t.getAttribute('data-proofview').split(':').map(Number); viewProof(oi, k); return;
   }
   if ((t = e.target.closest('[data-taskremove]'))) { removeTask(+t.getAttribute('data-taskremove')); return; }
+  if ((t = e.target.closest('[data-taskrevive]'))) {
+    const [oi, on, play] = t.getAttribute('data-taskrevive').split(':').map(Number);
+    reviveTask(oi, !!on, !!play); return;
+  }
+  if ((t = e.target.closest('[data-myfileadd]'))) { pickMyFiles(); return; }
+  if ((t = e.target.closest('[data-myfiledel]'))) { removeMyFile(t.getAttribute('data-myfiledel')); return; }
   if ((t = e.target.closest('[data-showall]'))) {
     const y = window.scrollY, k = t.getAttribute('data-showall');
     SHOWALL[k] = !SHOWALL[k]; rerender(); window.scrollTo(0, y); return;
@@ -1941,6 +2122,7 @@ function viewPractice() {
   const eye = (t) => `<div class="eyebrow" style="padding:0 0 8px">${t}</div>`;
   $('#screen').innerHTML = `<div class="content">
     ${head('Practice', 'Reference, drills and tools.')}
+    ${pastTasksCard()}
     <div>${eye('Learn')}<div style="${GRID}">
       ${tile(PI.grid, 'Chords &amp; scales', `${APP.chords.length} chord shapes and ${APP.scales.length} scales on an interactive fretboard.`, 'Open →', 'chords')}
       ${tile(PI.book, 'Lesson library', `${APP.lib.length} topics, beginner through advanced.`, 'Browse →', 'library')}
@@ -2350,7 +2532,7 @@ function viewProgress() {
       <div class="stat"><div class="k">Prova Score</div><div class="v">${(me.provaScore || 0).toLocaleString()}</div></div>
     </div>
     <div class="cols"><div class="stack">
-      ${card('Minutes practised', `${weekTotal} min this week`,
+      ${card('Minutes practiced', `${weekTotal} min this week`,
         `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end;height:150px;padding-top:6px">
           ${days.map(x => { const m = week[x.k] || 0;
             return `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
@@ -2385,7 +2567,7 @@ function viewProgress() {
             <span class="hint">${g.done ? 'Done' : 'Open'}</span></div>`).join('')
         : empty('No goals yet', 'Set some in the app.'))}
       ${card('This week', '', `<div class="rows">
-        <div class="prow"><div class="pl"><div class="pt">Days practised</div></div>
+        <div class="prow"><div class="pl"><div class="pt">Days practiced</div></div>
           <div class="fig">${days.filter(x => week[x.k]).length}/7</div></div>
         <div class="prow"><div class="pl"><div class="pt">Best day</div></div>
           <div class="fig">${Math.max(0, ...days.map(x => week[x.k] || 0))} min</div></div>
@@ -2478,7 +2660,7 @@ function lbRowsHtml(rows) {
   const q = LB_Q.trim().toLowerCase();
   if (!rows.length) {
     return empty(LB_TAB === 'friends' ? 'No friends yet' : 'Nothing here yet',
-      LB_TAB === 'friends' ? 'Add someone by their Prova email to compare scores.' : 'Practise to get on the board.');
+      LB_TAB === 'friends' ? 'Add someone by their Prova email to compare scores.' : 'Practice to get on the board.');
   }
   const ranked = rows.map((r, i) => ({ r, i }));
   const hits = q ? ranked.filter(({ r }) => displayName(r).toLowerCase().includes(q)) : ranked;
@@ -4177,7 +4359,7 @@ function planSheet() {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="plLevel">
       ${['Beginner','Novice','Intermediate','Advanced','Elite'].map(x => `<button class="btn sm ghost" data-pl="${x}"${
         (me.level || 'Beginner') === x ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${x}</button>`).join('')}</div>
-    <div class="eyebrow" style="padding:0 0 6px">Days you can practise</div>
+    <div class="eyebrow" style="padding:0 0 6px">Days you can practice</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="plDays">
       ${DAY_NAMES.map(d => `<button class="btn sm ghost" data-pd="${d}"${chosen.has(d)
         ? ' style="border-color:var(--primary);color:var(--ink)"' : ''}>${d.slice(0,3)[0].toUpperCase()+d.slice(1,3)}</button>`).join('')}</div>
@@ -4361,7 +4543,7 @@ function viewSkillTree() {
     ['Mastery',     [[5000,'5,000 pts'],[15000,'15,000 pts'],[25000,'25,000 pts'],[50000,'50,000 pts']], score],
   ];
   $('#screen').innerHTML = `<div class="content">
-    ${head('Skill tree', 'Unlocks from what you have actually practised')}
+    ${head('Skill tree', 'Unlocks from what you have actually practiced')}
     <section class="card"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
       ${lanes.map(([name, nodes, val]) => `<div style="display:flex;flex-direction:column;align-items:center;gap:9px">
         <div class="eyebrow" style="padding:0">${name}</div>
@@ -5461,7 +5643,7 @@ function queue() {
   const d = doneIds();
   const { solo, classGroups } = assignedGroups();
   const teacher = [...solo, ...classGroups.flatMap(g => g.tasks)]
-    .filter(t => !t.completed).map(t => ({ kind: 'assigned', i: t._i }));
+    .filter(t => !t.completed || t.revived).map(t => ({ kind: 'assigned', i: t._i }));
   const plan = sessions.map((x, i) => ({ kind: 'plan', i })).filter(q => !d.includes(sessions[q.i].id));
   return teacherTasksFirst() ? [...teacher, ...plan] : [...plan, ...teacher];
 }
@@ -5474,7 +5656,7 @@ function recallLast() {
     const v = localStorage.getItem(lastKey()); if (!v) return null;
     const [kind, i] = v.split(':');
     const item = playList(kind)[+i]; if (!item) return null;
-    const done = kind === 'plan' ? doneIds().includes(item.id) : !!item.completed;
+    const done = kind === 'plan' ? doneIds().includes(item.id) : !!item.completed && !item.revived;
     return done ? null : { kind, i: +i };
   } catch { return null; }
 }
@@ -5541,9 +5723,9 @@ function drawPlayer() {
     <div class="clock" id="pClock">${PLAY.target ? fmt(rem) : fmt(PLAY.elapsed)}</div>
     <p class="hint" style="margin:12px 0 0">${PLAY.target
       ? `${Math.round(PLAY.target / 60)} min ${PLAY.kind === 'assigned' ? 'teacher task' : 'task'}`
-      : 'No timer — practise for at least 30 seconds'}</p>
+      : 'No timer — practice for at least 30 seconds'}</p>
     ${PRIOR[PLAY.kind + PLAY.i] ? `<p class="hint" style="margin:8px 0 0">${fmt(PRIOR[PLAY.kind + PLAY.i])} already banked on this task</p>` : ''}
-    <button class="btn ghost" id="pWatch" style="width:100%;margin-top:18px">▶ Watch a lesson</button>
+    <button class="btn ghost ico" id="pWatch" style="width:100%;margin-top:18px">${PLAY_ICO}Watch a lesson</button>
     <div style="display:flex;gap:10px;margin-top:10px">
       <button class="btn ghost" id="pPause" style="flex:1">${PLAY.paused ? 'Resume' : 'Pause'}</button>
       <button class="btn" id="pDone" style="flex:1" ${
@@ -5563,7 +5745,7 @@ function drawPlayer() {
     ? (PLAY.i + 1 < (PLAY.songs || []).length ? openRehearsal(PLAY.i + 1) : closePlayer())
     : step(1);
   // Watching pauses the clock — the app does the same, so time spent on a
-  // video is never counted as time spent practising.
+  // video is never counted as time spent practicing.
   $('#pWatch').onclick = () => {
     PLAY.paused = true;
     WATCHING = true;
@@ -5605,7 +5787,12 @@ async function finish() {
       celebrate({ points: pts, title: 'Task done!', subtitle: 'Prova points', emoji: '🎸' });
     } else {
       const pts = teacherTaskPoints(secs);
-      const next = allAssigned().map((t, j) => j === PLAY.i ? { ...t, completed: true } : t);
+      // Finishing a task brought back from Past tasks sends it back there.
+      const next = allAssigned().map((t, j) => {
+        if (j !== PLAY.i) return t;
+        const { revived, ...rest } = t;
+        return { ...rest, completed: true };
+      });
       const patch = { assignedTasks: next, provaScore: increment(pts), totalMinutes: increment(mins) };
       // streak: same today/yesterday rule as src/lib/practiceLog.js
       const last = me.lastSessionDate ? new Date(me.lastSessionDate) : null;

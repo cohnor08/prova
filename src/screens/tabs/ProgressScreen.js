@@ -589,7 +589,7 @@ function CategoryBreakdown({ data }) {
         <ChartEmpty
           icon="pie-chart-outline"
           title="See where your time goes"
-          hint="Once you practise, this breaks your minutes down by technique, theory, songs and more."
+          hint="Once you practice, this breaks your minutes down by technique, theory, songs and more."
         />
       </View>
     );
@@ -1227,7 +1227,7 @@ export default function ProgressScreen({ navigation }) {
       //
       // This used to fetch the top 20 by `totalMinutes` and then re-sort them
       // by score — two different orderings, so the board was "twenty people
-      // who practised the most, shuffled by a number that isn't minutes".
+      // who practiced the most, shuffled by a number that isn't minutes".
       // Anyone with a high score and few logged minutes fell off it, and with
       // most accounts tied on 0 minutes the last places were arbitrary.
       // Ordering server-side by `provaScore` isn't the fix either: Firestore

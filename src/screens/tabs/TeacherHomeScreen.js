@@ -833,7 +833,7 @@ export default function TeacherHomeScreen({ navigation }) {
         const rows = students
           .map((s) => ({ s, st: statusOf(s), streak: liveStreak(s) }))
           .sort((a, b) => a.st.rank - b.st.rank || b.streak - a.streak);
-        // "Needs a nudge" = hasn't practised in more than 3 days (rank 0).
+        // "Needs a nudge" = hasn't practiced in more than 3 days (rank 0).
         const needCount = rows.filter((r) => r.st.rank === 0).length;
         const shown = pulseOpen ? rows : rows.slice(0, 3);
         return (

@@ -28,7 +28,7 @@ const PROMPTS = [
   'Did anything finally click today?',
   'How did your hands / timing / tone feel?',
   'What did you spend the most time on?',
-  'What will you practise tomorrow?',
+  'What will you practice tomorrow?',
 ];
 const dateLabel = (iso) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
