@@ -36,7 +36,7 @@ export function useStaleReload(enabled = true) {
       const since = backgroundedAt.current;
       backgroundedAt.current = null;
       if (since == null || Date.now() - since < STALE_MS) return;
-      // Practising with the phone face-down for half an hour is normal use —
+      // Practicing with the phone face-down for half an hour is normal use —
       // never restart out from under an open session.
       if (isAppBusy()) return;
 

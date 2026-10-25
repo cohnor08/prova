@@ -458,7 +458,7 @@
 
   var NAV = {
     stu: [
-      { g:'Practise' },
+      { g:'Practice' },
       { id:'today', t:'Today', i:I.home },
       { id:'practice', t:'Practice', i:I.clock },
       { id:'songs', t:'Songs', i:I.music },
@@ -583,7 +583,7 @@
     var d = TASKS.filter(function (x) { return x.done; }).length;
     return '<div class="content">' +
       '<div class="greet"><div><h2>Good evening, Ethan.</h2><p>Sunday 6 August · <span id="taskCount">' + d + ' of 5</span> tasks done · 17 minutes left</p></div>' +
-      '<button class="btn auto" id="startBtn">' + (Object.keys(PRIOR).length ? 'Resume practice' : 'Start practising') + '</button></div>' +
+      '<button class="btn auto" id="startBtn">' + (Object.keys(PRIOR).length ? 'Resume practice' : 'Start practicing') + '</button></div>' +
       '<div class="stats">' +
         stat('Streak', 12, 'days', 'Best yet — <em>keep it</em>', ring(60, 'var(--primary)')) +
         stat('This week', 184, 'min', '<em>+22%</em> on last week', spark('M0 32 L12 26 L24 30 L36 18 L48 22 L60 10 L72 6', 'var(--primary)')) +
@@ -599,7 +599,7 @@
           '<div><div class="t">Play a full song without stopping</div>' +
           '<div class="s">Counts even on a rest day — keeps the streak alive.</div>' +
           '<button class="btn sm" style="margin-top:10px">Mark as done</button></div></div>') +
-        card('Minutes practised', 'Last 7 days', bars(WEEK)) +
+        card('Minutes practiced', 'Last 7 days', bars(WEEK)) +
       '</div><div class="stack">' +
         card('Next lesson', '', '<div class="lesson"><div class="when"><div class="dd">08</div><div class="mm">Aug</div></div>' +
           '<div><div class="t">Marcus Reid</div><div class="s">Tuesday, 4:30pm · 30 min</div>' +
@@ -794,7 +794,7 @@
       ['Play it for someone','That is the real test','']];
     return '<div class="content">' +
       '<div class="greet"><div><h2>Wish You Were Here</h2><p>Pink Floyd · 8-step plan · step 4 of 8</p></div>' +
-      '<button class="btn auto" id="startBtn">Practise this step</button></div>' +
+      '<button class="btn auto" id="startBtn">Practice this step</button></div>' +
       '<div class="cols"><div class="stack">' +
         card('The plan', '3 of 8 done', '<div class="steps">' + st.map(function (s, i) {
           return '<div class="step ' + s[2] + '"><div class="no">' + (s[2] === 'done' ? '✓' : i + 1) + '</div>' +
@@ -840,7 +840,7 @@
           '<div class="s">' + (plan[i][0]) + '</div></div>' + (i === 6 ? '<span class="pill now">Today</span>' : '') +
           '<div class="dur">' + (plan[i][1] || '—') + '</div></div>';
       }).join('') + '</div>') +
-      card('How your plan is built', '', '<p class="hint" style="margin:0">Prova builds the week from your goals, your level, the days you said you are free and how much you actually practised last week. Miss a few days and it eases off; get ahead and it pushes.</p>') +
+      card('How your plan is built', '', '<p class="hint" style="margin:0">Prova builds the week from your goals, your level, the days you said you are free and how much you actually practiced last week. Miss a few days and it eases off; get ahead and it pushes.</p>') +
       '</div>';
   };
 
@@ -855,7 +855,7 @@
         stat('Badges', 14, 'of 32', '3 earned this month', ring(44, 'var(--good)')) +
       '</div>' +
       '<div class="cols"><div class="stack">' +
-        card('Minutes practised', 'Last 7 days', bars(WEEK)) +
+        card('Minutes practiced', 'Last 7 days', bars(WEEK)) +
         card('Where the time goes', 'This month', cats.map(function (c) {
           return '<div class="goal"><div class="row"><span class="g">' + c[0] + '</span><span class="n">' + c[1] + ' min</span></div>' +
             '<div class="track"><i style="width:' + Math.round(c[1] / 68 * 100) + '%"></i></div></div>';
@@ -895,7 +895,7 @@
         '<section class="card" style="text-align:center;padding:34px">' +
         '<div class="eyebrow" style="padding:0">Your week</div>' +
         '<div class="clock" style="margin:10px 0 4px">184</div>' +
-        '<div class="hint">minutes practised · up 22% on the week before</div>' +
+        '<div class="hint">minutes practiced · up 22% on the week before</div>' +
         '<div class="stats" style="margin-top:26px;grid-template-columns:repeat(3,1fr)">' +
         '<div><div class="v" style="font-family:var(--round);font-size:22px;font-weight:600">5</div><div class="hint">days</div></div>' +
         '<div><div class="v" style="font-family:var(--round);font-size:22px;font-weight:600">51</div><div class="hint">best day</div></div>' +
@@ -903,7 +903,7 @@
         '</div></section>' +
       '</div><div class="stack">' +
         card('Your week in bars', '', bars(WEEK)) +
-        card('Most practised', '', '<div class="goal"><div class="row"><span class="g">Songs</span><span class="n">68 min</span></div><div class="track"><i style="width:100%"></i></div></div>') +
+        card('Most practiced', '', '<div class="goal"><div class="row"><span class="g">Songs</span><span class="n">68 min</span></div><div class="track"><i style="width:100%"></i></div></div>') +
       '</div></div></div>';
   };
 
@@ -1020,10 +1020,10 @@
 
   S.thome = function () {
     return '<div class="content">' +
-      '<div class="greet"><div><h2>Good evening, Marcus.</h2><p>Sunday 6 August · 9 of 12 practised this week · 2 need a nudge</p></div>' +
+      '<div class="greet"><div><h2>Good evening, Marcus.</h2><p>Sunday 6 August · 9 of 12 practiced this week · 2 need a nudge</p></div>' +
       '<button class="btn auto">Assign a task</button></div>' +
       '<div class="stats">' +
-        stat('Practised this week', 9, 'of 12', '<em>+2</em> on last week', ring(75, 'var(--good)')) +
+        stat('Practiced this week', 9, 'of 12', '<em>+2</em> on last week', ring(75, 'var(--good)')) +
         stat('Studio minutes', '1,420', '', 'Average 118 per student', spark('M0 28 L12 30 L24 20 L36 24 L48 14 L60 16 L72 8', 'var(--teal)')) +
         stat('Needs attention', 2, '', 'Silent 7 days or more', ring(17, 'var(--bad)')) +
       '</div>' +
@@ -1037,7 +1037,7 @@
             return '<div class="task click"><div class="tick"></div><div class="body"><div class="t">' + l[1] + '</div><div class="s">' + l[0] + '</div></div><div class="dur">' + l[2] + '</div></div>';
           }).join('') + '</div>') +
       '</div><div class="stack">' +
-        card('Needs a nudge', '', '<p class="hint" style="margin:0 0 14px">Two students haven\'t practised in over a week. A nudge lands on their lock screen.</p>' +
+        card('Needs a nudge', '', '<p class="hint" style="margin:0 0 14px">Two students haven\'t practiced in over a week. A nudge lands on their lock screen.</p>' +
           '<div class="lesson" style="margin-bottom:14px"><span class="avatar">PT</span><div><div class="t">Priya Tan</div><div class="s">Silent 11 days</div></div></div>' +
           '<div class="lesson" style="margin-bottom:16px"><span class="avatar">JO</span><div><div class="t">Jordan Okafor</div><div class="s">Silent 8 days</div></div></div>' +
           '<button class="btn" style="width:100%">Nudge both</button>') +
@@ -1115,7 +1115,7 @@
             '<td><span class="pill ' + (r[2] === 'Off' ? 'warn' : 'set') + '">' + r[2] + '</span></td></tr>';
         }).join('') + '</tbody></table></div>') +
       '</div><div class="stack">' +
-        card('What a parent gets', '', '<p class="hint" style="margin:0 0 14px">Minutes practised each day, streak, tasks completed, attendance and your latest note. Nothing else — no chat, no journal.</p>' +
+        card('What a parent gets', '', '<p class="hint" style="margin:0 0 14px">Minutes practiced each day, streak, tasks completed, attendance and your latest note. Nothing else — no chat, no journal.</p>' +
           '<div style="background:var(--raised);border-radius:var(--r-md);padding:16px">' + bars(WEEK) + '</div>' +
           '<button class="btn ghost" data-share="1" style="width:100%;margin-top:14px">Preview the email</button>') +
         card('Automatic reports', '', '<div class="rows">' +
@@ -1313,7 +1313,7 @@
     if (tb) tb.addEventListener('click', function () {
       ov.innerHTML = '<div class="scrim" data-close></div><div class="modal">' +
         '<div class="lab">Guided tour</div><h3>This is your rail</h3>' +
-        '<p class="hint" style="margin:0">Everything lives here — practise on top, how you are tracking in the middle, your teacher and settings at the bottom. It never moves.</p>' +
+        '<p class="hint" style="margin:0">Everything lives here — practice on top, how you are tracking in the middle, your teacher and settings at the bottom. It never moves.</p>' +
         '<div class="acts"><button class="btn" data-close>Got it</button></div></div>';
     });
     var bb = document.getElementById('bellBtn');
@@ -1340,7 +1340,7 @@
          [I.star,'Badge earned','Ten sessions in a row','Fri']]
       : [[I.mail,'Parent reports sent','8 reports went out on schedule','1h'],
          [I.chat,'New message','Ethan replied about the barre chords','3h'],
-         [I.users,'Student went quiet','Priya Tan has not practised in 11 days','Yesterday'],
+         [I.users,'Student went quiet','Priya Tan has not practiced in 11 days','Yesterday'],
          [I.play,'Proof uploaded','Sam Mitchell sent an F barre video','Thu']];
     ov.innerHTML = '<div class="scrim" data-close></div><aside class="panel">' +
       '<header><h3>Notifications</h3><button class="x" data-close aria-label="Close">×</button></header>' +
@@ -1356,7 +1356,7 @@
       '<div class="bubbles" id="askBub"><div class="bub them">Hi Ethan. What are you working on?</div></div>' +
       '<div class="starters">' +
       '<button class="starter">Why do my barre chords buzz?</button>' +
-      '<button class="starter">What should I practise today?</button>' +
+      '<button class="starter">What should I practice today?</button>' +
       '<button class="starter">Explain the CAGED system</button></div>' +
       '<div class="composer" style="margin-top:14px"><span class="fake">Ask anything…</span><button class="btn sm">Send</button></div></aside>';
     var A = { 0:'Nine times out of ten it is thumb position, not strength. Drop your thumb to the middle of the neck, roll the index finger slightly onto its side, and press just behind the fret. Try it at 50 bpm and stop the moment it buzzes.',
@@ -1378,7 +1378,7 @@
   function openPlayer() {
     var left = 15 * 60;
     ov.innerHTML = '<div class="scrim" data-close></div><div class="modal">' +
-      '<div class="lab">Now practising</div><h3>Wish You Were Here — intro picking</h3>' +
+      '<div class="lab">Now practicing</div><h3>Wish You Were Here — intro picking</h3>' +
       '<div class="clock" id="clk">15:00</div>' +
       '<p class="hint" style="margin:14px 0 0">Step 4 of 8 · 92 bpm</p>' +
       '<div class="acts"><button class="btn" id="pp">Pause</button><button class="btn ghost" data-close>Done</button></div></div>';
@@ -1508,7 +1508,7 @@
     if (/^Write a note$/i.test(label)) {
       sheet('Write a lesson note',
         fld('Student', sel('wnStu', ROSTER.map(function (r) { return r[1]; }))) +
-        fld('Note', '<textarea id="wnBody" rows="4" placeholder="What you covered, what to practise…" style="width:100%;' +
+        fld('Note', '<textarea id="wnBody" rows="4" placeholder="What you covered, what to practice…" style="width:100%;' +
           'background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:inherit;font:inherit"></textarea>'),
         'Save note', function () {
           var b = document.getElementById('wnBody').value.trim();
@@ -1553,7 +1553,7 @@
     if (/^Mark as done$/i.test(label)) { celebrate(); say('+50 points · streak safe'); return; }
     if (/^Regenerate my plan$/i.test(label)) { say('Rebuilding your week from last week’s practice…'); return; }
     if (/^Share/i.test(label)) { say('Shareable card copied'); return; }
-    if (/^Practise this step$/i.test(label)) { openPlayer(); return; }
+    if (/^Practice this step$/i.test(label)) { openPlayer(); return; }
     if (/^Go live$/i.test(label)) { go('gig'); return; }
     if (/^New pack$/i.test(label)) { say('New pack — add lessons, then assign it to students'); return; }
     if (/^Change level$/i.test(label)) { say('Level changed'); return; }
@@ -1613,7 +1613,7 @@
   var THEORY = { i: 0, picked: null, score: 0 };
   var CHORDVIEW = 'chords';
   var GOALS = [{ t: 'Play Wish You Were Here start to finish', n: 4, d: 8 },
-               { t: 'Practise 5 days a week this month', n: 3, d: 5 }];
+               { t: 'Practice 5 days a week this month', n: 3, d: 5 }];
   var JOURNAL = [['Sunday 6 Aug','The barre finally stopped buzzing. Thumb position was the whole problem.',5,'Focused'],
                  ['Friday 4 Aug','Long session. Got the intro up to 92 bpm without falling apart.',4,'Good'],
                  ['Wednesday 2 Aug','Tired, short session, mostly chord changes. Still counts.',3,'Flat']];
@@ -1800,7 +1800,7 @@
     var done = LEARN.filter(function (x) { return x[2]; }).length;
     return '<div class="content">' +
       '<div class="greet"><div><h2>Wish You Were Here</h2><p>Pink Floyd · 8-step plan · ' + done + ' of 8 done</p></div>' +
-      '<button class="btn auto" id="startBtn">Practise this step</button></div>' +
+      '<button class="btn auto" id="startBtn">Practice this step</button></div>' +
       '<div class="cols"><div class="stack">' +
         card('The plan', done + ' of 8 done', '<div class="steps">' + LEARN.map(function (st, i) {
           var isNow = !st[2] && LEARN.slice(0, i).every(function (x) { return x[2]; });
@@ -1963,7 +1963,7 @@
     if ((t = e.target.closest('.medal'))) {
       sheet('Ten in a row', '<div style="text-align:center;padding:6px 0 10px">' +
         '<div class="medal" style="width:76px;height:76px;margin:0 auto 16px;border-color:var(--primary);color:var(--primary)">' + svg(I.star) + '</div>' +
-        '<p class="hint" style="margin:0">Practise ten days in a row. Earned 28 July — and yours forever, even if the streak breaks.</p></div>',
+        '<p class="hint" style="margin:0">Practice ten days in a row. Earned 28 July — and yours forever, even if the streak breaks.</p></div>',
         'Nice', function () { closeOv(); });
       return;
     }
@@ -2660,7 +2660,7 @@
             (x.proof ? '<button class="tchip" data-tgo="proof">📹 Attach proof</button>' : '') +
           '</div>' +
           (kind === 'plan'
-            ? '<button class="btn sm" data-play="task" data-i="' + i + '">Practise this</button>'
+            ? '<button class="btn sm" data-play="task" data-i="' + i + '">Practice this</button>'
             : '<button class="btn sm" data-assigned="' + i + '">' + (x.done ? 'Mark not done' : 'Mark as done') + '</button>') +
         '</div></div>';
     }).join('') +
@@ -2691,11 +2691,11 @@
         'fill="var(--ink)">' + doneP + '/' + TASKS.length + '</text></svg>' +
       '<div class="phcopy">' +
         '<div class="phline">' + (all ? 'Done for today' : left + ' minutes left today') + '</div>' +
-        '<div class="phsub">' + MINS_TODAY + ' of ' + planned + ' min practised' +
+        '<div class="phsub">' + MINS_TODAY + ' of ' + planned + ' min practiced' +
           (Object.keys(PRIOR).length ? ' · one task part-finished' : '') + '</div>' +
       '</div>' +
       '<button class="btn' + (all ? ' ghost' : '') + '" id="startBtn">' +
-        (all ? 'Practise more' : Object.keys(PRIOR).length || doneP ? 'Resume practice' : 'Start practice') +
+        (all ? 'Practice more' : Object.keys(PRIOR).length || doneP ? 'Resume practice' : 'Start practice') +
       '</button></div>';
     html = html.replace('<div class="cols"><div class="stack">', '<div class="cols"><div class="stack">' + head);
     // the header owns Start practice now — drop the duplicate in the greeting

@@ -174,7 +174,7 @@ function taskDueLabel(due) {
 // "45s" / "12m" / "2h" — how long a student has practiced a task. Largest unit
 // only: once it reaches minutes the seconds stop mattering, and once it reaches
 // hours the minutes stop mattering.
-function fmtPractised(sec) {
+function fmtPracticed(sec) {
   const s = Math.round(sec || 0);
   if (s <= 0) return null;
   if (s < 60) return `${s}s`;
@@ -2805,7 +2805,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                             // One trailing status only, so the row stays clean:
                             // overdue wins, else time practiced, else the due date.
                             const due = taskDueLabel(t.dueDate);
-                            const practised = fmtPractised(t.practicedSec);
+                            const practiced = fmtPracticed(t.practicedSec);
                             return (
                               <TouchableOpacity
                                 key={t.id}
@@ -2821,8 +2821,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                 <View style={styles.miniStatusSlot}>
                                   {due?.overdue ? (
                                     <Text style={[styles.miniDue, styles.miniDueOverdue]} numberOfLines={1}>Overdue</Text>
-                                  ) : practised ? (
-                                    <Text style={styles.miniPractised} numberOfLines={1}>{practised}</Text>
+                                  ) : practiced ? (
+                                    <Text style={styles.miniPracticed} numberOfLines={1}>{practiced}</Text>
                                   ) : due ? (
                                     <Text style={styles.miniDue} numberOfLines={1}>{due.text}</Text>
                                   ) : null}
@@ -3016,7 +3016,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                       <TouchableOpacity style={styles.classMemberRow} onPress={() => toggleStudent(sKey)} activeOpacity={0.7}>
                                         <Ionicons name={sOpen ? 'chevron-down' : 'chevron-forward'} size={15} color={COLORS.textMuted} />
                                         <Text style={styles.classMemberName} numberOfLines={1}>{displayName(m)}</Text>
-                                        {fmtPractised(mSec) && <Text style={styles.classMemberPts}>{fmtPractised(mSec)}</Text>}
+                                        {fmtPracticed(mSec) && <Text style={styles.classMemberPts}>{fmtPracticed(mSec)}</Text>}
                                         <Text style={[styles.classMemberProgress, mt.length > 0 && done === mt.length && { color: COLORS.success }]}>
                                           {mt.length ? `${done}/${mt.length}` : '—'}
                                         </Text>
@@ -3047,8 +3047,8 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                                 {t.title}
                                               </Text>
                                             </TouchableOpacity>
-                                            {fmtPractised(t.practicedSec) && (
-                                              <Text style={styles.miniPractised}>{fmtPractised(t.practicedSec)}</Text>
+                                            {fmtPracticed(t.practicedSec) && (
+                                              <Text style={styles.miniPracticed}>{fmtPracticed(t.practicedSec)}</Text>
                                             )}
                                             <TouchableOpacity onPress={() => removeAssignedTask(m.uid, t.id, t.title)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                                               <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
@@ -3081,7 +3081,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                                     <View key={m.uid} style={styles.lbRow}>
                                       <Text style={[styles.lbRank, i < 3 && styles.lbRankMedal]}>{medal || `${i + 1}`}</Text>
                                       <Text style={styles.lbName} numberOfLines={1}>{displayName(m)}</Text>
-                                      <Text style={styles.lbScore}>{fmtPractised(sec) || '0m'}</Text>
+                                      <Text style={styles.lbScore}>{fmtPracticed(sec) || '0m'}</Text>
                                     </View>
                                   );
                                 });
@@ -3595,7 +3595,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                             <Text style={styles.completedMeta}>
                               {[
                                 t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
-                                fmtPractised(t.practicedSec) ? `${fmtPractised(t.practicedSec)} practiced` : null,
+                                fmtPracticed(t.practicedSec) ? `${fmtPracticed(t.practicedSec)} practiced` : null,
                                 t.feedback ? '💬' : null,
                                 t.className || null,
                               ].filter(Boolean).join(' · ')}
@@ -3636,7 +3636,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
               const live = students.find((s) => s.uid === taskOverview.student?.uid) || taskOverview.student;
               const t = (live?.assignedTasks || []).find((x) => x.id === taskOverview.task.id) || taskOverview.task;
               const due = taskDueLabel(t.dueDate);
-              const practised = fmtPractised(t.practicedSec);
+              const practiced = fmtPracticed(t.practicedSec);
               const drill = t.drill && getDrill(t.drill);
               const drillLabel = drill ? (drillAssignmentLabel(t.drill, t.drillMode, t.drillLevel) || '') : '';
               const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null);
@@ -3681,7 +3681,7 @@ ${note ? `<div class="note"><div class="q">“${esc(note)}”</div><div class="a
                     )}
                     <View style={styles.ovBadge}>
                       <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
-                      <Text style={styles.ovBadgeText}>{practised ? `${practised} practised` : 'Not practised yet'}</Text>
+                      <Text style={styles.ovBadgeText}>{practiced ? `${practiced} practiced` : 'Not practiced yet'}</Text>
                     </View>
                   </View>
 
@@ -4204,7 +4204,7 @@ const styles = themedStyles(() => StyleSheet.create({
   miniStatusSlot: { width: 66, alignItems: 'flex-end' },
   miniProofSlot: { width: 24, alignItems: 'center' },
   miniDue: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
-  miniPractised: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  miniPracticed: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
   miniDueOverdue: { color: COLORS.error },
 
   // Task overview sheet

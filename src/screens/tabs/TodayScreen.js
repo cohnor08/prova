@@ -196,7 +196,7 @@ const proofClipsOf = (t) => (Array.isArray(t?.proofs) && t.proofs.length > 0
   ? t.proofs
   : (t?.proofUrl ? [{ url: t.proofUrl, type: t.proofType || 'video', at: t.proofAt || null }] : []));
 
-// Recording still happens in the player, where you practise. But the card's
+// Recording still happens in the player, where you practice. But the card's
 // proof row is now a way IN to the viewer — it used to be dead text, so a
 // submitted clip could not be watched, replaced or deleted from here at all.
 function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, onRemove, topDivider }) {
@@ -306,7 +306,7 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       {/* Proof lives in the player now, not on the card. Recording, viewing
           and replacing were three controls competing with Practice on every
           task — the card just reports the state, and everything you can DO
-          with proof happens where you actually practise. */}
+          with proof happens where you actually practice. */}
       {expanded && task.proofUrl && (
         <TouchableOpacity
           style={styles.proofRow}
@@ -1149,7 +1149,7 @@ export default function TodayScreen({ navigation, route }) {
       if (t.id !== taskId) return t;
       const target = (t.durationMin || 0) * 60;
       const practicedSec = (t.practicedSec || 0) + Math.round(lapSeconds);
-      // A timed task is "done" once its set time has been practised — it then
+      // A timed task is "done" once its set time has been practiced — it then
       // drops off Today (kept in the doc as completed so the teacher still sees
       // it). A task with no timer never auto-completes: it stays as open-ended
       // practice the student can repeat.
@@ -1445,7 +1445,7 @@ export default function TodayScreen({ navigation, route }) {
   const connectedTeacherIds = new Set(teacherIdsOf(userData || {}));
   const fromAFormerTeacher = (t) =>
     !!t.teacherUid && connectedTeacherIds.size > 0 && !connectedTeacherIds.has(t.teacherUid);
-  // A student with a teacher is told what to practise by a person. Prova's own
+  // A student with a teacher is told what to practice by a person. Prova's own
   // AI plan then competes with that homework for the same half hour — so for
   // them the teacher's work leads, the plan is labelled extra, and Prova stops
   // offering to write one. Solo players are untouched: the plan is all they have.
@@ -1499,8 +1499,8 @@ export default function TodayScreen({ navigation, route }) {
   const doneCount = completedIds.length + tasksDoneToday.length;
   const totalMins = sessions.reduce((s, x) => s + (x.duration || 0), 0)
     + [...openTasks, ...tasksDoneToday].reduce((s, t) => s + (t.durationMin || 0), 0);
-  // Minutes practised today = summed duration of everything completed so far.
-  const practisedMins = sessions.reduce((s, x) => s + (completedIds.includes(x.id) ? (x.duration || 0) : 0), 0)
+  // Minutes practiced today = summed duration of everything completed so far.
+  const practicedMins = sessions.reduce((s, x) => s + (completedIds.includes(x.id) ? (x.duration || 0) : 0), 0)
     + tasksDoneToday.reduce((s, t) => s + (t.durationMin || 0), 0);
   const progress = exerciseCount > 0 ? doneCount / exerciseCount : 0;
   // Show the "review today" entry point once every session is done but the day
@@ -1808,7 +1808,7 @@ export default function TodayScreen({ navigation, route }) {
             <TourSpot id="t-start" />
             <View style={styles.summaryStats}>
               {[
-                { value: practisedMins, suffix: totalMins > 0 ? ` /${totalMins}` : null, label: 'MINUTES' },
+                { value: practicedMins, suffix: totalMins > 0 ? ` /${totalMins}` : null, label: 'MINUTES' },
                 { value: exerciseCount, label: 'EXERCISES' },
                 { value: doneCount, label: 'DONE' },
               ].map((stat, i) => (
@@ -1826,9 +1826,6 @@ export default function TodayScreen({ navigation, route }) {
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
-            <Text style={styles.progressLabel}>
-              {doneCount} of {exerciseCount} completed · {Math.round(progress * 100)}%
-            </Text>
             {playerQueue.length > 0 && (
               <TouchableOpacity style={styles.startPracticeBtn} onPress={openPlayerMaybeAsk} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.onPrimary} />

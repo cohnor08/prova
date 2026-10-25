@@ -328,27 +328,24 @@ For days the user is NOT available, set the value to null instead of an object.
 Each session object:
 {
   "id": "unique_string",
-  "title": "Exercise name",
-  "description": "Exact, physical, step-by-step instructions — see the specificity rules below",
+  "title": "Short, plain exercise name, 2-4 words",
+  "description": "One short, plain sentence — see the rules below",
   "duration": number_in_minutes,
   "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation",
   "reference": "a YouTube SEARCH PHRASE (not a URL) the player can look up to see this exact exercise demonstrated"
 }
 
-SPECIFICITY RULES — these are the most important rules. A ${level} player must be able to do the exercise from the description ALONE, without already knowing it:
-- Name the exact notes, strings, and fret numbers. Write tab-style where useful, e.g. "low E string: 0-3-5, 0-3-6-5".
-- For chords, give the full fingering by string and fret, e.g. "G major = low-E 3rd fret, A 2nd fret, high-E 3rd fret" — never just "play a G chord".
-- For scales/licks, give the starting string + fret and the position, e.g. "A minor pentatonic position 1, starting low-E 5th fret".
-- Always give a concrete tempo in BPM and a rep count or duration, e.g. "loop at 70 BPM for 3 min" or "10 clean reps".
-- ${instrument === 'Bass' ? 'This is a BASS player — use bass strings (E A D G), bass-appropriate notes and basslines.' : 'This is a GUITAR player — use guitar chord shapes and all 6 strings (E A D G B e).'}
-- Reference real, well-known songs/riffs by name where they fit (e.g. "the riff from Smoke on the Water"), so the player can recognise it.
+HOW TO WRITE EACH SESSION — this matters most. Write the way a real guitar teacher scribbles a note in a student's book: short, plain, friendly. No coaching jargon, no hype, no stacked clauses.
+- Title: 2-4 everyday words, e.g. "Finger warm-up", "G to C changes", "Pentatonic box 1".
+- Description: ONE short sentence, under ~100 characters. Say what to play and roughly how — a fret, a tempo or a rep count where it helps — and stop.
+- ${instrument === 'Bass' ? 'This is a BASS player — bass strings (E A D G) and basslines.' : 'This is a GUITAR player — guitar chord shapes, strings E A D G B e.'}
+- Name a well-known song or riff when it fits ("the Smoke on the Water riff").
 
-The "reference" field: write a specific YouTube search phrase that would surface a tutorial for THIS exercise, e.g. "G to C chord change beginner guitar lesson" or "A minor pentatonic position 1 guitar". Do NOT invent a URL or a channel name — just the search phrase.
+Good: "Frets 1-2-3-4 on every string, one note per click at 60 BPM."
+Good: "Switch G to C four times a bar, slow enough to stay clean."
+Bad (too vague): "Warm up your fingers." Bad (too AI): "Systematically traverse each string employing a one-finger-per-fret approach to cultivate dexterity and synchronisation."
 
-This is the REQUIRED level of detail for a description — match it (do not copy it verbatim):
-"On the low E string play frets 1-2-3-4 with index-middle-ring-pinky, one note per click at 60 BPM, then move that same 1-2-3-4 shape across to the A, D, G, B and high-E strings and back. Keep every note clean and even — 3 min."
-A BAD description (never write like this): "Warm up your fingers" / "Practice some chords" / "Work on the A minor scale".
-HARD LIMIT: keep EVERY description to ONE sentence, maximum ~160 characters — exact and physical but terse. Never write two sentences or a paragraph; long descriptions will be rejected.
+The "reference" field: a YouTube search phrase that would find a tutorial for this exercise, e.g. "G to C chord change beginner guitar lesson". Never a URL or channel name.
 
 Other rules:
 - Total session durations must equal the daily practice time exactly
@@ -1248,8 +1245,8 @@ For days the player is NOT available, set that day to null.
 Each session object:
 {
   "id": "unique_string",
-  "title": "Exercise name",
-  "description": "ONE terse sentence, max ~160 chars, with exact strings/frets/fingerings/BPM/reps so a ${level} player can do it from the description alone.",
+  "title": "Short, plain exercise name, 2-4 words",
+  "description": "ONE short, plain sentence under ~100 chars, the way a teacher jots a note — what to play and roughly how (a fret, BPM or rep count where it helps). No jargon, no hype.",
   "duration": number_in_minutes,
   "category": "warmup" | "technique" | "theory" | "ear_training" | "repertoire" | "improvisation",
   "reference": "a YouTube SEARCH PHRASE (never a URL) for a tutorial of this exercise"
@@ -1714,12 +1711,12 @@ exports.draftNextWeek = onCall(
       .filter((t) => !t.teacherUid || t.teacherUid === uid)
       .slice(-14)
       .map((t) => {
-        const practised = Math.round((t.practicedSec || 0) / 60);
+        const practiced = Math.round((t.practicedSec || 0) / 60);
         return [
           `"${String(t.title || '').slice(0, 80)}"`,
           t.durationMin ? `${t.durationMin} min set` : 'no timer',
           t.completed ? 'DONE' : 'not done',
-          practised ? `${practised} min practised` : 'never opened',
+          practiced ? `${practiced} min practiced` : 'never opened',
           t.proofUrl ? 'proof submitted' : '',
           t.className ? `class: ${t.className}` : '',
         ].filter(Boolean).join(' · ');
@@ -1742,7 +1739,7 @@ Level: ${s.level || 'Beginner'}
 Goals: ${(Array.isArray(s.goals) ? s.goals : []).join(', ') || 'not set'}
 Current streak: ${s.streak || 0} days
 Total practice ever: ${s.totalMinutes || 0} minutes
-Last practised: ${daysSince === null ? 'never' : daysSince === 0 ? 'today' : `${daysSince} day(s) ago`}
+Last practiced: ${daysSince === null ? 'never' : daysSince === 0 ? 'today' : `${daysSince} day(s) ago`}
 
 PRACTICE, LAST 14 DAYS (days not listed = no practice)
 ${days.length ? days.join('\n') : 'Nothing logged.'}
@@ -1755,10 +1752,11 @@ ${songs.length ? songs.join('\n') : 'None saved.'}
 
 Draft 3 or 4 tasks for next week. Rules:
 - Build on what was already set: finish what stalled, move on from what is done.
-- If they have barely practised, make the first task small and easy to start.
-- Be concrete: name chords, keys, tempos in BPM, bar counts, which song.
-- title: under 45 characters, plain, no quotes.
-- description: 1-2 sentences telling them exactly what to do.
+- If they have barely practiced, make the first task small and easy to start.
+- Be concrete but brief: a chord, a tempo, a song — whatever matters most.
+- Write like the teacher jotting in a lesson book: short, plain, friendly. No jargon, no hype.
+- title: 2-5 everyday words, no quotes.
+- description: ONE short sentence, under ~100 characters.
 - durationMin: a whole number between 5 and 30.
 - Do not mention this was written by an AI.
 

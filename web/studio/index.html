@@ -1025,7 +1025,7 @@ document.addEventListener('keydown', (e) => {
 
 // ── 1. STUDENTS + PRACTICE PULSE ──────────────────────────────────────────
 function viewStudents() {
-  const practised = students.filter((s) => s.weekMins > 0).length;
+  const practiced = students.filter((s) => s.weekMins > 0).length;
   const totalMins = students.reduce((a, s) => a + s.weekMins, 0);
   const attention = students.filter((s) => daysSince(s.lastSessionDate) >= 7).length;
   // Only fall back to the first student when the chosen one is gone — the
@@ -1038,7 +1038,7 @@ function viewStudents() {
       <button class="btn ghost" id="reload">Refresh</button></div>
     <div id="joinSlot">${joinCardHtml()}</div>
     <div class="stats">
-      ${statCard('Practised this week', practised, `of ${students.length}`, 'Logged any minutes', ring(students.length ? practised / students.length * 100 : 0, 'var(--good)'))}
+      ${statCard('Practiced this week', practiced, `of ${students.length}`, 'Logged any minutes', ring(students.length ? practiced / students.length * 100 : 0, 'var(--good)'))}
       ${statCard('Studio minutes', totalMins.toLocaleString(), '', students.length ? `Average ${Math.round(totalMins / students.length)} per student` : 'No students yet', '')}
       ${statCard('Needs attention', attention, '', 'Silent 7 days or more', ring(students.length ? attention / students.length * 100 : 0, 'var(--bad)'))}
     </div>
@@ -1348,7 +1348,7 @@ function assignSheet(stu, editIdx) {
     <div class="eyebrow" style="padding:0 0 4px">Attachments</div>
     <p class="hint" style="margin:0 0 10px">Sheet music or tabs as a PDF or photo, a backing track or recording
       (MP3, WAV, M4A), or a video — up to ${TASK_FILE_MAX_LABEL} each. The student opens them from the task,
-      and audio plays right there while they practise.</p>
+      and audio plays right there while they practice.</p>
     <div id="taDrop" class="tadrop">
       <div id="taAtts"></div>
       <div id="taUpWrap" style="display:none;margin-top:10px">
@@ -1754,7 +1754,7 @@ async function prepModal(lessonId, date) {
 }
 
 function viewHome() {
-  const practised = students.filter(s => s.weekMins > 0).length;
+  const practiced = students.filter(s => s.weekMins > 0).length;
   const totalMins = students.reduce((a, s) => a + s.weekMins, 0);
   const quiet = students.filter(s => daysSince(s.lastSessionDate) >= 7);
   const week = {}; students.forEach(s => Object.entries(s.week || {}).forEach(([k, v]) => { week[k] = (week[k] || 0) + v; }));
@@ -1775,10 +1775,10 @@ function viewHome() {
       <div id="reqSlot">${reqCardHtml()}</div>
       <!-- Was three stat cards about the teacher's own numbers, then a table
            called "Practice Pulse". A teacher opens this to see who needs them:
-           the roster leads, and the numbers that mattered (practised this week,
+           the roster leads, and the numbers that mattered (practiced this week,
            who's quiet) are in its header and in "Needs a nudge" already. -->
       <section class="card"><header><h3>Students</h3><span class="meta">${
-        students.length ? `${practised} of ${students.length} practised this week` : ''}</span></header>
+        students.length ? `${practiced} of ${students.length} practiced this week` : ''}</span></header>
         ${students.length ? `<div class="tablewrap"><table>
           <thead><tr><th>Student</th><th>Last practice</th><th>This week</th><th>Streak</th><th>State</th></tr></thead>
           <tbody>${students.map(s => {
@@ -3223,7 +3223,7 @@ function noteModal(key) {
       ${[1,2,3,4,5].map(n => `<button data-star="${n}" aria-pressed="${(rec?.mark || 0) >= n}"
         style="font-size:19px;padding:4px 6px;line-height:1;background:none;border:0;color:${(rec?.mark || 0) >= n
           ? 'var(--warn)' : 'var(--line)'}">★</button>`).join('')}</div></div>
-    <div class="field"><label>Note</label><textarea id="nNote" rows="5" placeholder="What you covered, what to practise…">${esc(rec?.note || '')}</textarea></div>
+    <div class="field"><label>Note</label><textarea id="nNote" rows="5" placeholder="What you covered, what to practice…">${esc(rec?.note || '')}</textarea></div>
     <div class="acts"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="nSave">Save note</button></div>`);
 
   let status = rec?.status || '', mark = rec?.mark || '';
@@ -3395,7 +3395,7 @@ function occurrenceModal(lessonId, ds) {
       ${[1,2,3,4,5].map(n => `<button data-star="${n}" aria-pressed="${(rec.mark || 0) >= n}"
         style="font-size:19px;padding:4px 6px;line-height:1;background:none;border:0;color:${(rec.mark || 0) >= n
           ? 'var(--warn)' : 'var(--line)'}">★</button>`).join('')}</div></div>
-    <div class="field"><label>Lesson note</label><textarea id="oNote" rows="4" placeholder="What you covered, what to practise…">${esc(rec.note || '')}</textarea></div>
+    <div class="field"><label>Lesson note</label><textarea id="oNote" rows="4" placeholder="What you covered, what to practice…">${esc(rec.note || '')}</textarea></div>
     <div class="field"><label>Attachments</label>
       <div id="oAtts"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -3518,7 +3518,7 @@ function viewReports() {
         <button class="btn ghost wide" id="sendTest" style="margin-top:10px">Send test report</button>
       </section>
       <section class="card"><header><h3>What a parent sees</h3></header>
-        <p class="hint" style="margin:0">Minutes practised each day, current streak, tasks completed, attendance and your latest lesson note. Nothing else — never chat, never their journal.</p>
+        <p class="hint" style="margin:0">Minutes practiced each day, current streak, tasks completed, attendance and your latest lesson note. Nothing else — never chat, never their journal.</p>
       </section>
     </div></div></div>`;
 
