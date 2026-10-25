@@ -25,6 +25,7 @@ import { awardNewBadges } from '../../lib/badges';
 import PracticeWrapped, { wrappedWeekKey } from '../../components/PracticeWrapped';
 import { track } from '../../lib/analytics';
 import { displayName } from '../../lib/displayName';
+import { onTodayList, isDoneForStudent, setRevived } from '../../lib/taskVisibility';
 import { teacherIdsOf } from '../../lib/teacher';
 import { pickMedia, captureMedia, uploadProofMedia } from '../../lib/media';
 import * as MediaLibrary from 'expo-media-library';
@@ -199,7 +200,10 @@ const proofClipsOf = (t) => (Array.isArray(t?.proofs) && t.proofs.length > 0
 // Recording still happens in the player, where you practice. But the card's
 // proof row is now a way IN to the viewer — it used to be dead text, so a
 // submitted clip could not be watched, replaced or deleted from here at all.
-function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, onRemove, topDivider }) {
+function TeacherTaskCard({ task: raw, expanded, onToggle, onPractice, openTaskLink, onOpenSong, onOpenDrill, onOpenProof, onRemove, onPutAway, topDivider }) {
+  // A task brought back from Past tasks reads as open again on the student's
+  // side, though the teacher still sees it finished.
+  const task = raw.revived ? { ...raw, completed: false } : raw;
   const COLORS = useThemeColors();
   const styles = React.useMemo(() => makeStyles(COLORS), [COLORS]);
   const target = (task.durationMin || 0) * 60; // 0 = no set target, open-ended
@@ -344,7 +348,12 @@ function TeacherTaskCard({ task, expanded, onToggle, onPractice, openTaskLink, o
       {expanded && !task.completed && (
         <TouchableOpacity style={styles.practiceThisBtn} onPress={() => onPractice(task)} activeOpacity={0.85}>
           <Ionicons name="play" size={15} color={COLORS.onPrimary} />
-          <Text style={styles.practiceThisText}>Practice{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
+          <Text style={styles.practiceThisText}>{raw.revived ? 'Practice again' : 'Practice'}{target > 0 ? ` · ${task.durationMin} min` : ''}</Text>
+        </TouchableOpacity>
+      )}
+      {expanded && raw.revived && onPutAway && (
+        <TouchableOpacity onPress={() => onPutAway(raw)} style={styles.putAwayBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.putAwayText}>Put it back in Past tasks</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -672,10 +681,24 @@ export default function TodayScreen({ navigation, route }) {
         setCompletedIds(d.sessionProgress?.date === todayKey ? (d.sessionProgress.ids || []) : []);
         setFeedbackMap(todayFeedbackMap(d, todayKey));
         if (typeof d.provaScore === 'number') setUserData((p) => (p ? { ...p, provaScore: d.provaScore } : p));
+        // A task brought back (or put away) on the Past tasks screen.
+        if (Array.isArray(d.assignedTasks)) setUserData((p) => (p ? { ...p, assignedTasks: d.assignedTasks } : p));
       } catch { /* ignore */ }
     });
     return unsub;
   }, [navigation]);
+
+  // "Practice now" on Past tasks brings the task back and lands here: open the
+  // player on it as soon as the refreshed task list has it.
+  const practiceTaskParam = route?.params?.practiceTask;
+  useEffect(() => {
+    if (!practiceTaskParam) return;
+    const t = (userData?.assignedTasks || []).find((x) => x.id === practiceTaskParam);
+    if (!t || !t.revived) return;
+    navigation.setParams({ practiceTask: undefined });
+    setPlayerStartId(`t_${t.id}`);
+    setPlayerVisible(true);
+  }, [practiceTaskParam, userData?.assignedTasks]);
 
   // When the app opens and the user missed exactly one day (with a streak worth
   // saving + a restore available), pop the "you lost your streak" modal once.
@@ -1154,9 +1177,13 @@ export default function TodayScreen({ navigation, route }) {
       // it). A task with no timer never auto-completes: it stays as open-ended
       // practice the student can repeat.
       finished = target > 0 && practicedSec >= target;
+      // A task already done stays done (the web app's Done button finishes
+      // untimed ones), and practicing one brought back from Past tasks sends it
+      // back there.
+      const { revived, ...rest } = t;
       return {
-        ...t,
-        completed: finished,
+        ...rest,
+        completed: finished || !!t.completed,
         completedAt: finished ? new Date().toISOString() : (t.completedAt || null),
         practicedSec,
         pointsEarned: (t.pointsEarned || 0) + pts,
@@ -1299,6 +1326,17 @@ export default function TodayScreen({ navigation, route }) {
   // Offered ONLY for those — a task from a current teacher is their homework,
   // not the student's to delete. Removal is by id, never by index, so it can't
   // take the wrong task if the list has shifted.
+  // Send a brought-back task to Past tasks again without practicing it.
+  const putAwayTask = async (task) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const before = userData?.assignedTasks || [];
+    const next = setRevived(before, task.id, false);
+    setUserData((p) => ({ ...p, assignedTasks: next }));
+    try { await updateDoc(doc(db, 'users', uid), { assignedTasks: next }); }
+    catch (e) { setUserData((p) => ({ ...p, assignedTasks: before })); Alert.alert('Error', "Couldn't save. Please try again."); }
+  };
+
   const removeTask = (task) => {
     Alert.alert(
       'Remove this task?',
@@ -1453,16 +1491,22 @@ export default function TodayScreen({ navigation, route }) {
   const assignedTasks = userData?.assignedTasks || [];
   // Separate one-to-one teacher tasks from class-assigned ones (which carry a
   // classId/className), so the student can tell them apart.
-  // Completed tasks disappear from the student's list to keep it from piling up
-  // (they stay in the doc as `completed` for the teacher's dashboard/proof).
-  const soloTasks = assignedTasks.filter((t) => !t.classId && !t.completed);
+  // Finished tasks leave Today — except one finished early, which stays ticked
+  // until its due date, and one brought back from Past tasks (see
+  // lib/taskVisibility.js). They stay in the doc as `completed` either way, for
+  // the teacher's dashboard and the Past tasks screen.
+  const soloTasks = assignedTasks.filter((t) => !t.classId && onTodayList(t));
   const classGroups = [];
-  assignedTasks.filter((t) => t.classId && !t.completed).forEach((t) => {
+  assignedTasks.filter((t) => t.classId && onTodayList(t)).forEach((t) => {
     const key = t.className || 'Class';
     let g = classGroups.find((x) => x.key === key);
     if (!g) { g = { key, name: key, tasks: [] }; classGroups.push(g); }
     g.tasks.push(t);
   });
+  // What's still owed leads; a task finished early sinks below it.
+  const openFirst = (a, b) => isDoneForStudent(a) - isDoneForStudent(b);
+  soloTasks.sort(openFirst);
+  classGroups.forEach((g) => g.tasks.sort(openFirst));
 
   // Group the 1-to-1 (non-class) teacher tasks by which teacher assigned them, so
   // a student connected to several teachers gets a "FROM <name>" card each. The
@@ -1494,7 +1538,7 @@ export default function TodayScreen({ navigation, route }) {
   // with a set time add to the planned minutes — open-ended ones add nothing.
   const tasksDoneToday = assignedTasks.filter((t) => t.completed && t.completedAt
     && new Date(t.completedAt).toDateString() === new Date().toDateString());
-  const openTasks = assignedTasks.filter((t) => !t.completed);
+  const openTasks = assignedTasks.filter((t) => !isDoneForStudent(t));
   const exerciseCount = sessions.length + openTasks.length + tasksDoneToday.length;
   const doneCount = completedIds.length + tasksDoneToday.length;
   const totalMins = sessions.reduce((s, x) => s + (x.duration || 0), 0)
@@ -1522,7 +1566,7 @@ export default function TodayScreen({ navigation, route }) {
   const tasksInDisplayOrder = [
     ...teacherOrder.flatMap((tid) => soloByTeacher[tid] || []),
     ...classGroups.flatMap((g) => g.tasks),
-  ];
+  ].filter((t) => !isDoneForStudent(t));
   const planItems = [
     ...sessions
       .filter((s) => !completedIds.includes(s.id))
@@ -1967,17 +2011,11 @@ export default function TodayScreen({ navigation, route }) {
                     <View style={styles.assignedBody}>
                     <TouchableOpacity style={[styles.teacherHeader, !open && { marginBottom: 0 }]} onPress={toggle} activeOpacity={0.7}>
                       <Ionicons name="school" size={16} color={COLORS.primary} />
-                      <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>TEACHER</Text>
+                      <Text style={[styles.teacherKicker, { flex: 1 }]} numberOfLines={1}>{(g.name || 'Your teacher').toUpperCase()}</Text>
                       {g.isPrimary && userData?.teacherUid && <NotesChip onPress={() => navigation.navigate('LessonNotes')} />}
-                      {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>}
+                      {g.tasks.length > 0 && <Text style={styles.classGroupSub}>{g.tasks.filter(isDoneForStudent).length} of {g.tasks.length} done</Text>}
                       <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
-                    {open && !!g.name && (
-                      <View style={styles.teacherNameRow}>
-                        <Ionicons name="person-circle-outline" size={15} color={COLORS.textMuted} />
-                        <Text style={styles.teacherNameText}>{g.name}</Text>
-                      </View>
-                    )}
                     {open && g.isPrimary && nextLesson && (
                       <TouchableOpacity
                         style={styles.lessonRow}
@@ -2043,6 +2081,7 @@ export default function TodayScreen({ navigation, route }) {
                             onOpenDrill={openDrill}
                             onOpenProof={viewProof}
                             onRemove={fromAFormerTeacher(t) ? removeTask : null}
+                            onPutAway={putAwayTask}
                           />
                         ))}
                       </View>
@@ -2062,7 +2101,7 @@ export default function TodayScreen({ navigation, route }) {
                     <TouchableOpacity style={[styles.classGroupHeader, collapsed && { marginBottom: 0 }]} onPress={() => toggleGroup(g.key)} activeOpacity={0.7}>
                       <Ionicons name="people" size={16} color={COLORS.accent} />
                       <Text style={[styles.classGroupKicker, { flex: 1 }]} numberOfLines={1}>{g.name.toUpperCase()}</Text>
-                      <Text style={styles.classGroupSub}>{g.tasks.length} to do</Text>
+                      <Text style={styles.classGroupSub}>{g.tasks.filter(isDoneForStudent).length} of {g.tasks.length} done</Text>
                       <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={COLORS.textMuted} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
                     {!collapsed && g.tasks.length > 0 && (
@@ -2080,6 +2119,7 @@ export default function TodayScreen({ navigation, route }) {
                             onOpenDrill={openDrill}
                             onOpenProof={viewProof}
                             onRemove={fromAFormerTeacher(t) ? removeTask : null}
+                            onPutAway={putAwayTask}
                           />
                         ))}
                       </View>
@@ -2628,6 +2668,8 @@ const makeStyles = (COLORS) => StyleSheet.create({
     backgroundColor: COLORS.primaryDark, borderRadius: 12, paddingVertical: 12, marginTop: SPACING.md,
   },
   practiceThisText: { color: COLORS.onPrimary, fontSize: 14, fontWeight: '700' },
+  putAwayBtn: { alignSelf: 'center', marginTop: SPACING.sm, paddingVertical: 4 },
+  putAwayText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
   summaryStats: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
   summaryStat: { flex: 1, alignItems: 'center' },
   summaryDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
@@ -2679,8 +2721,6 @@ const makeStyles = (COLORS) => StyleSheet.create({
   teacherKicker: { color: COLORS.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   classGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   classGroupKicker: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  teacherNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
-  teacherNameText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   classGroupSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   // Tasks live flush inside one grouped inset panel (taskGroup); each row is
   // full-width with a hairline between rows, iOS-grouped-list style.

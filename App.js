@@ -89,6 +89,8 @@ import ChordLibraryScreen from './src/screens/tabs/ChordLibraryScreen';
 import LearnSongScreen from './src/screens/tabs/LearnSongScreen';
 import MessagesScreen from './src/screens/tabs/MessagesScreen';
 import StudentLessonNoteScreen from './src/screens/tabs/StudentLessonNoteScreen';
+import PastTasksScreen from './src/screens/tabs/PastTasksScreen';
+import MyFilesScreen from './src/screens/tabs/MyFilesScreen';
 import SkillTreeScreen from './src/screens/tabs/SkillTreeScreen';
 import EarTrainingScreen from './src/screens/tabs/EarTrainingScreen';
 import FretboardGameScreen from './src/screens/tabs/FretboardGameScreen';
@@ -143,6 +145,8 @@ function PracticeStackScreen() {
       <PracticeStack.Screen name="Journal" component={JournalScreen} />
       <PracticeStack.Screen name="LearnSong" component={LearnSongScreen} />
       <PracticeStack.Screen name="LessonNotes" component={StudentLessonNoteScreen} />
+      <PracticeStack.Screen name="PastTasks" component={PastTasksScreen} />
+      <PracticeStack.Screen name="MyFiles" component={MyFilesScreen} />
     </PracticeStack.Navigator>
   );
 }

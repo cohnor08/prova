@@ -25,7 +25,7 @@ Each tab is a stack:
 | Stack | Screens |
 |---|---|
 | **Today** | TodayHome, CreatePlan, LessonNotes, Notifications |
-| **Practice** | PracticeHome, Songs, Schedule, Library, ChordLibrary, EarTraining, FretboardGame, RhythmTapper, TheoryQuiz, Journal, LearnSong, LessonNotes |
+| **Practice** | PracticeHome, Songs, Schedule, Library, ChordLibrary, EarTraining, FretboardGame, RhythmTapper, TheoryQuiz, Journal, LearnSong, LessonNotes, PastTasks, MyFiles |
 | **Progress** | ProgressHome, SkillTree |
 | **Teacher Home** | TeacherHomeMain, TeacherCalendar, TeacherOverview, LessonNote, Packs, Notifications |
 | **Resources** (teacher) | ResourcesHome, EarTraining, FretboardGame, RhythmTapper, TheoryQuiz |
